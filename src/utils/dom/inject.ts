@@ -180,6 +180,11 @@ export function removeTranslationFor(element: HTMLElement) {
   unwrapSourceWrapper(element)
 }
 
+export function removeAndReload(element: HTMLElement, options: InjectOptions = {}) {
+  removeTranslationFor(element)
+  showLoading(element, options)
+}
+
 export function removeAllTranslations() {
   document.querySelectorAll(ASTRA_TRANSLATION_SELECTOR).forEach((el) => el.remove())
   document.querySelectorAll(ASTRA_SOURCE_SELECTOR).forEach((el) => {

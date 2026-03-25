@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest"
 
 import {
   injectTranslation,
+  removeAndReload,
   removeTranslationFor,
   replaceLoading,
   showLoading,
@@ -59,5 +60,70 @@ describe("inject helpers", () => {
     removeTranslationFor(target)
     expect(target.querySelector("[data-astra-source]")).toBeNull()
     expect(target.textContent).toContain("Hello world")
+  })
+
+  it("removeAndReload clears existing translation and shows new loading", () => {
+    const el = document.createElement("p")
+    el.textContent = "Original text"
+    document.body.appendChild(el)
+
+    // First: inject a completed translation
+    injectTranslation(el, "Translated text", { mode: "bilingual", theme: "default" })
+    expect(el.querySelector("[data-astra-translation='1']")).not.toBeNull()
+
+    // Now: remove and reload for re-translation
+    removeAndReload(el, { mode: "bilingual", theme: "default" })
+
+    // Old translation should be gone
+    expect(el.querySelector("[data-astra-translation='1']")).toBeNull()
+    // New loading should be present
+    expect(el.querySelector("[data-astra-translation='loading']")).not.toBeNull()
+    // Source text should be accessible
+    expect(el.textContent).toContain("Original text")
+  })
+
+  it("removeAndReload works on element with loading wrapper", () => {
+    const el = document.createElement("p")
+    el.textContent = "Original text"
+    document.body.appendChild(el)
+
+    showLoading(el, { mode: "bilingual" })
+    removeAndReload(el, { mode: "bilingual" })
+
+    // Should have exactly one loading wrapper
+    const loadings = el.querySelectorAll("[data-astra-translation='loading']")
+    expect(loadings.length).toBe(1)
+  })
+
+  it("removeAndReload works on element with no previous translation", () => {
+    const el = document.createElement("p")
+    el.textContent = "Fresh text"
+    document.body.appendChild(el)
+
+    removeAndReload(el, { mode: "bilingual" })
+
+    expect(el.querySelector("[data-astra-translation='loading']")).not.toBeNull()
+    expect(el.textContent).toContain("Fresh text")
+  })
+
+  it("removeTranslationFor restores source wrapper in translation-only mode", () => {
+    const el = document.createElement("p")
+    el.textContent = "Source text"
+    document.body.appendChild(el)
+
+    replaceLoading(el, "Translated", { mode: "translation-only", theme: "default" })
+
+    // Source should be hidden
+    const sourceWrapper = el.querySelector("[data-astra-source]")
+    expect(sourceWrapper).not.toBeNull()
+    expect(sourceWrapper?.getAttribute("data-astra-source-hidden")).toBe("1")
+
+    // Remove translation
+    removeTranslationFor(el)
+
+    // Source wrapper should be gone, text restored
+    expect(el.querySelector("[data-astra-source]")).toBeNull()
+    expect(el.querySelector("[data-astra-translation]")).toBeNull()
+    expect(el.textContent).toContain("Source text")
   })
 })
