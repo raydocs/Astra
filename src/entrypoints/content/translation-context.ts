@@ -1,5 +1,9 @@
 import type { TranslationRequestContext } from "@/types/messages"
 import {
+  ASTRA_SOURCE_SELECTOR,
+  ASTRA_TRANSLATION_SELECTOR,
+} from "@/utils/dom/inject"
+import {
   buildContentSummary,
   collectTextBlocks,
   findContentRoot,
@@ -10,10 +14,59 @@ let cachedInlineSummary:
       root: HTMLElement
       pageUrl: string
       pageTitle: string
-      textLength: number
+      mutationVersion: number
       summary: string | undefined
     }
   | null = null
+let inlineSummaryMutationVersion = 0
+let inlineSummaryObserver: MutationObserver | null = null
+
+function getElementForNode(node: Node | null): HTMLElement | null {
+  if (!node) return null
+  return node.nodeType === 1
+    ? node as HTMLElement
+    : node.parentElement
+}
+
+function isWithinAstraInjectedContent(node: Node | null): boolean {
+  const element = getElementForNode(node)
+  return !!element?.closest(`${ASTRA_TRANSLATION_SELECTOR}, ${ASTRA_SOURCE_SELECTOR}`)
+}
+
+function ensureInlineSummaryObserver() {
+  if (inlineSummaryObserver || typeof MutationObserver === "undefined" || !document.body) return
+
+  inlineSummaryObserver = new MutationObserver((mutations) => {
+    for (const mutation of mutations) {
+      if (mutation.type === "characterData") {
+        if (isWithinAstraInjectedContent(mutation.target)) continue
+        inlineSummaryMutationVersion += 1
+        return
+      }
+
+      if (mutation.type === "childList") {
+        if (!isWithinAstraInjectedContent(mutation.target)) {
+          inlineSummaryMutationVersion += 1
+          return
+        }
+
+        const hasMeaningfulNode = [...mutation.addedNodes, ...mutation.removedNodes].some(
+          node => !isWithinAstraInjectedContent(node),
+        )
+        if (hasMeaningfulNode) {
+          inlineSummaryMutationVersion += 1
+          return
+        }
+      }
+    }
+  })
+
+  inlineSummaryObserver.observe(document.body, {
+    childList: true,
+    subtree: true,
+    characterData: true,
+  })
+}
 
 export function getDocumentTranslationContext(): Pick<
   TranslationRequestContext,
@@ -35,11 +88,12 @@ export function getDocumentTranslationContext(): Pick<
 export function buildInlineTranslationContext(
   extra: { selectionContext?: string; contextElement?: HTMLElement | null } = {},
 ): TranslationRequestContext {
+  ensureInlineSummaryObserver()
+
   const base = getDocumentTranslationContext()
   const contentRoot = findContentRoot(document)
   const contextElement = extra.contextElement
   const canUseContentSummary = !contextElement || contentRoot.contains(contextElement)
-  const textLength = contentRoot.textContent?.trim().length ?? 0
 
   let contentSummary: string | undefined
   if (canUseContentSummary) {
@@ -47,7 +101,7 @@ export function buildInlineTranslationContext(
       && cachedInlineSummary.root === contentRoot
       && cachedInlineSummary.pageUrl === (base.pageUrl ?? "")
       && cachedInlineSummary.pageTitle === (base.pageTitle ?? "")
-      && cachedInlineSummary.textLength === textLength
+      && cachedInlineSummary.mutationVersion === inlineSummaryMutationVersion
 
     if (cacheKeyMatches && cachedInlineSummary) {
       contentSummary = cachedInlineSummary.summary
@@ -61,7 +115,7 @@ export function buildInlineTranslationContext(
         root: contentRoot,
         pageUrl: base.pageUrl ?? "",
         pageTitle: base.pageTitle ?? "",
-        textLength,
+        mutationVersion: inlineSummaryMutationVersion,
         summary: contentSummary,
       }
     }

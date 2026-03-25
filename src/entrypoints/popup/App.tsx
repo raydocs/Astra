@@ -177,13 +177,7 @@ export default function App() {
         },
         presentation: configDraft.presentation,
         hoverTrigger: configDraft.hoverTrigger,
-        ...(activeSiteKey
-          ? {
-              sites: {
-                [activeSiteKey]: configDraft.sites[activeSiteKey] ?? {},
-              },
-            }
-          : {}),
+        sites: configDraft.sites,
       })
       setConfigDraft(nextConfig)
       setPersistedConfig(nextConfig)

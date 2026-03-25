@@ -188,6 +188,14 @@ describe("popup App", () => {
     })
     await flushApp()
 
+    expect(saveConfigMock).toHaveBeenCalledWith(expect.objectContaining({
+      sites: {
+        "example.com": {
+          enabled: false,
+          alwaysTranslate: false,
+        },
+      },
+    }))
     expect(stopActiveTabTranslationMock).toHaveBeenCalledTimes(1)
     expect(translateButton.disabled).toBe(true)
     expect(container.textContent).toContain("Astra 已在此站点禁用")
