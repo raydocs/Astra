@@ -79,6 +79,7 @@ export async function requestTranslationBatch(payload: {
   sourceLang?: string
   context?: TranslationRequestContext
   task?: TranslationTask
+  customSystemPrompt?: string
 }): Promise<TranslationBatchRequestResult> {
   try {
     const response = await browser.runtime.sendMessage({

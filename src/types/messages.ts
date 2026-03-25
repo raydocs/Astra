@@ -26,7 +26,7 @@ export const ContentTranslationOverridesSchema = z.object({
   contentScope: ContentScopeSchema.optional(),
 })
 
-export const TranslationTaskSchema = z.enum(["translate", "explain"])
+export const TranslationTaskSchema = z.enum(["translate", "explain", "custom"])
 
 export const TranslateBatchPayloadSchema = z.object({
   texts: z.array(z.string()),
@@ -34,6 +34,7 @@ export const TranslateBatchPayloadSchema = z.object({
   sourceLang: z.string().min(1).optional(),
   context: TranslationRequestContextSchema.optional(),
   task: TranslationTaskSchema.optional(),
+  customSystemPrompt: z.string().optional(),
 })
 
 const TranslationErrorSchema = z.object({

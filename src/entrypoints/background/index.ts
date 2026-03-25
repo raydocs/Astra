@@ -59,7 +59,8 @@ async function handleTranslate(payload: {
     contentSummary?: string
     selectionContext?: string
   }
-  task?: "translate" | "explain"
+  task?: "translate" | "explain" | "custom"
+  customSystemPrompt?: string
 }): Promise<RuntimeResponse> {
   const config = await readConfig()
 
@@ -69,6 +70,7 @@ async function handleTranslate(payload: {
     sourceLang: payload.sourceLang,
     context: payload.context,
     task: payload.task,
+    customSystemPrompt: payload.customSystemPrompt,
   })
 
   return {

@@ -39,7 +39,8 @@ export function buildTranslationPrompt({
   sourceLang,
   context,
   task = "translate",
-}: Pick<TranslationOptions, "texts" | "targetLang" | "sourceLang" | "context" | "task">): string {
+  customSystemPrompt,
+}: Pick<TranslationOptions, "texts" | "targetLang" | "sourceLang" | "context" | "task" | "customSystemPrompt">): string {
   const sourceHint = sourceLang ? ` from ${sourceLang}` : ""
   const contextPayload = {
     pageTitle: truncate(context?.pageTitle, 200),
@@ -52,18 +53,20 @@ export function buildTranslationPrompt({
 
   const hasContext = Object.values(contextPayload).some(Boolean)
 
-  const instructions = task === "explain"
-    ? [
-        `Explain each input text${sourceHint} for a reader who wants to understand it in ${targetLang}.`,
-        "Keep the explanation concise but useful: clarify meaning, implied context, tone, and any important vocabulary or phrasing.",
-        "Use any provided page context only to disambiguate terminology, referents, and tone.",
-        "Do not repeat the raw source text unless it is necessary for clarity.",
-      ]
-    : [
-        `Translate each input text${sourceHint} to ${targetLang}.`,
-        "Use any provided page context only to disambiguate terminology, referents, and tone.",
-        "Do not translate the context itself unless it appears in the input texts.",
-      ]
+  const instructions = task === "custom" && customSystemPrompt
+    ? [customSystemPrompt]
+    : task === "explain"
+      ? [
+          `Explain each input text${sourceHint} for a reader who wants to understand it in ${targetLang}.`,
+          "Keep the explanation concise but useful: clarify meaning, implied context, tone, and any important vocabulary or phrasing.",
+          "Use any provided page context only to disambiguate terminology, referents, and tone.",
+          "Do not repeat the raw source text unless it is necessary for clarity.",
+        ]
+      : [
+          `Translate each input text${sourceHint} to ${targetLang}.`,
+          "Use any provided page context only to disambiguate terminology, referents, and tone.",
+          "Do not translate the context itself unless it appears in the input texts.",
+        ]
 
   return [
     ...instructions,
@@ -123,6 +126,7 @@ export async function translateWithOpenAI(
     sourceLang,
     context,
     task = "translate",
+    customSystemPrompt,
   } = options
 
   const openai = createOpenAI({
@@ -136,15 +140,19 @@ export async function translateWithOpenAI(
     sourceLang,
     context,
     task,
+    customSystemPrompt,
   })
+
+  const systemMessage = task === "custom" && customSystemPrompt
+    ? "You are a helpful AI assistant. Follow the user instructions precisely and return the result in the requested JSON format."
+    : task === "explain"
+      ? "You are an expert bilingual reading coach. Explain source texts clearly and naturally for the target-language reader while preserving nuance and context."
+      : "You are a professional translator. Preserve the meaning, tone, and formatting of each source text while producing natural target-language output."
 
   try {
     const { text } = await generateText({
       model: openai(model),
-      system:
-        task === "explain"
-          ? "You are an expert bilingual reading coach. Explain source texts clearly and naturally for the target-language reader while preserving nuance and context."
-          : "You are a professional translator. Preserve the meaning, tone, and formatting of each source text while producing natural target-language output.",
+      system: systemMessage,
       prompt,
     })
 

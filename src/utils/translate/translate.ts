@@ -16,6 +16,7 @@ export interface TranslateRequest {
   sourceLang?: string
   context?: TranslationRequestContext
   task?: TranslationTask
+  customSystemPrompt?: string
 }
 
 export interface TranslateResponse {
@@ -119,7 +120,7 @@ async function withConcurrency<T>(
 export async function translateTexts(
   request: TranslateRequest,
 ): Promise<TranslateResult> {
-  const { texts, targetLang, sourceLang, context, task = "translate" } = request
+  const { texts, targetLang, sourceLang, context, task = "translate", customSystemPrompt } = request
 
   if (texts.length === 0) {
     return { ok: true, translations: [] }
@@ -135,6 +136,7 @@ export async function translateTexts(
         ...(sourceLang ? { sourceLang } : {}),
         ...(context ? { context } : {}),
         ...(task !== "translate" ? { task } : {}),
+        ...(customSystemPrompt ? { customSystemPrompt } : {}),
       })
     } catch (error) {
       return {
