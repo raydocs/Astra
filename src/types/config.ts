@@ -4,7 +4,7 @@ export const ProviderIdSchema = z.literal("openai")
 
 export const TranslationModeSchema = z.enum(["bilingual", "translation-only"])
 export const TranslationThemeSchema = z.enum(["default", "underline", "highlight"])
-export const HoverTriggerSchema = z.enum(["alt", "disabled"])
+export const HoverTriggerSchema = z.enum(["alt", "always", "disabled"])
 export const ContentScopeSchema = z.enum(["page", "article"])
 
 export const PresentationSettingsSchema = z.object({

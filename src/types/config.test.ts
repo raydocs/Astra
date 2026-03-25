@@ -48,6 +48,35 @@ describe("resolveSiteTranslationSettings", () => {
     expect(resolved.hoverTrigger).toBe("alt")
   })
 
+  it("resolves 'always' hover trigger from global config", () => {
+    const config: AstraConfig = {
+      ...DEFAULT_ASTRA_CONFIG,
+      hoverTrigger: "always",
+    }
+
+    const resolved = resolveSiteTranslationSettings(config, "example.com")
+
+    expect(resolved.hoverTrigger).toBe("always")
+  })
+
+  it("resolves 'always' hover trigger from site-level override", () => {
+    const config: AstraConfig = {
+      ...DEFAULT_ASTRA_CONFIG,
+      hoverTrigger: "alt",
+      sites: {
+        "example.com": {
+          enabled: true,
+          alwaysTranslate: false,
+          hoverTrigger: "always",
+        },
+      },
+    }
+
+    const resolved = resolveSiteTranslationSettings(config, "example.com")
+
+    expect(resolved.hoverTrigger).toBe("always")
+  })
+
   it("defaults contentScope to page", () => {
     const resolved = resolveSiteTranslationSettings(DEFAULT_ASTRA_CONFIG, "example.com")
     expect(resolved.contentScope).toBe("page")
