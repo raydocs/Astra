@@ -318,4 +318,22 @@ describe("SelectionToolbar interaction suppression", () => {
 
     expect(shadow.textContent).not.toContain("Old explanation")
   })
+
+  it("renders all default-enabled action buttons", async () => {
+    const target = document.getElementById("target") as HTMLElement
+
+    await triggerDocumentMouseDown(target)
+
+    setSelection("Hello world")
+    await triggerDocumentMouseUp(target)
+
+    const host = document.getElementById(HOST_ID)!
+    const shadow = host.shadowRoot!
+    const buttons = shadow.querySelectorAll("button")
+    const buttonTexts = Array.from(buttons).map((btn) => btn.textContent)
+
+    expect(buttonTexts).toContain("翻译")
+    expect(buttonTexts).toContain("解释")
+    expect(buttonTexts).toContain("复制")
+  })
 })

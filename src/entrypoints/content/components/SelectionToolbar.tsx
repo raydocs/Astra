@@ -3,11 +3,12 @@ import { createRoot } from "react-dom/client"
 import { readConfig } from "@/utils/storage/config"
 import { copyTextToClipboard } from "@/utils/dom/clipboard"
 import { resolveSiteTranslationSettings } from "@/types/config"
+import { getEnabledActions, type BuiltinAction } from "@/types/actions"
 import {
   clearInteractionSuppression,
   setInteractionSuppressionReason,
 } from "../interaction-coordination"
-import { runInlineAction } from "../inline-actions"
+import { runActionById } from "../inline-actions"
 
 interface ToolbarPosition {
   top: number
@@ -107,10 +108,8 @@ function SelectionToolbarApp() {
   const [position, setPosition] = useState<ToolbarPosition>({ top: 0, left: 0 })
   const [selectedText, setSelectedText] = useState("")
   const [selectionContext, setSelectionContext] = useState<string | undefined>(undefined)
-  const [translating, setTranslating] = useState(false)
-  const [translation, setTranslation] = useState<string | null>(null)
-  const [explaining, setExplaining] = useState(false)
-  const [explanation, setExplanation] = useState<string | null>(null)
+  const [runningAction, setRunningAction] = useState<string | null>(null)
+  const [actionResult, setActionResult] = useState<{ actionId: string; text: string } | null>(null)
   const [hoveredBtn, setHoveredBtn] = useState<string | null>(null)
 
   const toolbarRef = useRef<HTMLDivElement>(null)
@@ -122,10 +121,8 @@ function SelectionToolbarApp() {
   visibleRef.current = visible
 
   const resetInlineResults = useCallback(() => {
-    setTranslation(null)
-    setTranslating(false)
-    setExplanation(null)
-    setExplaining(false)
+    setRunningAction(null)
+    setActionResult(null)
   }, [])
 
   const dismiss = useCallback(() => {
@@ -240,79 +237,52 @@ function SelectionToolbarApp() {
     return { targetLang: resolved.targetLang, enabled: resolved.enabled }
   }
 
-  const handleTranslate = async () => {
-    if (!selectedText || translating) return
+  const handleAction = async (action: BuiltinAction) => {
+    if (!selectedText || runningAction) return
     const requestVersion = selectionVersionRef.current
     const requestText = selectedText
     const requestContext = selectionContext
-    setTranslating(true)
-    setTranslation(null)
+    setRunningAction(action.id)
+    setActionResult(null)
 
     try {
       const { targetLang, enabled } = await resolveTargetLang()
       if (requestVersion !== selectionVersionRef.current) return
       if (!enabled) {
-        setTranslation("⚠ Astra is disabled on this site.")
+        setActionResult({ actionId: action.id, text: "⚠ Astra is disabled on this site." })
         return
       }
 
-      const result = await runInlineAction({
+      const result = await runActionById({
+        actionId: action.id,
         text: requestText,
         targetLang,
-        task: "translate",
         selectionContext: requestContext,
         contextElement: selectionContextElementRef.current,
       })
 
       if (requestVersion !== selectionVersionRef.current) return
-      setTranslation(result.ok ? result.text : `⚠ ${result.message}`)
-    } catch (error: unknown) {
-      if (requestVersion !== selectionVersionRef.current) return
-      setTranslation(`⚠ ${error instanceof Error ? error.message : "翻译失败"}`)
-    } finally {
-      if (requestVersion !== selectionVersionRef.current) return
-      setTranslating(false)
-    }
-  }
-
-  const handleExplain = async () => {
-    if (!selectedText || explaining) return
-    const requestVersion = selectionVersionRef.current
-    const requestText = selectedText
-    const requestContext = selectionContext
-    setExplaining(true)
-    setExplanation(null)
-
-    try {
-      const { targetLang, enabled } = await resolveTargetLang()
-      if (requestVersion !== selectionVersionRef.current) return
-      if (!enabled) {
-        setExplanation("⚠ Astra is disabled on this site.")
-        return
-      }
-
-      const result = await runInlineAction({
-        text: requestText,
-        targetLang,
-        task: "explain",
-        selectionContext: requestContext,
-        contextElement: selectionContextElementRef.current,
+      setActionResult({
+        actionId: action.id,
+        text: result.ok ? result.text : `⚠ ${result.message}`,
       })
-
-      if (requestVersion !== selectionVersionRef.current) return
-      setExplanation(result.ok ? result.text : `⚠ ${result.message}`)
     } catch (error: unknown) {
       if (requestVersion !== selectionVersionRef.current) return
-      setExplanation(`⚠ ${error instanceof Error ? error.message : "解释失败"}`)
+      setActionResult({
+        actionId: action.id,
+        text: `⚠ ${error instanceof Error ? error.message : "操作失败"}`,
+      })
     } finally {
       if (requestVersion !== selectionVersionRef.current) return
-      setExplaining(false)
+      setRunningAction(null)
     }
   }
 
   const handleCopy = async () => {
-    await copyTextToClipboard(translation ?? selectedText)
+    await copyTextToClipboard(actionResult?.text ?? selectedText)
   }
+
+  const actions = getEnabledActions()
 
   if (!visible) return null
 
@@ -323,36 +293,24 @@ function SelectionToolbarApp() {
       onMouseDown={(event) => event.stopPropagation()}
     >
       <div style={styles.buttonBar}>
-        <button
-          style={{
-            ...styles.button,
-            ...(hoveredBtn === "translate" ? styles.buttonHover : {}),
-          }}
-          onMouseEnter={() => setHoveredBtn("translate")}
-          onMouseLeave={() => setHoveredBtn(null)}
-          onClick={(event) => {
-            event.stopPropagation()
-            skipNextMouseUp.current = true
-            void handleTranslate()
-          }}
-        >
-          翻译
-        </button>
-        <button
-          style={{
-            ...styles.button,
-            ...(hoveredBtn === "explain" ? styles.buttonHover : {}),
-          }}
-          onMouseEnter={() => setHoveredBtn("explain")}
-          onMouseLeave={() => setHoveredBtn(null)}
-          onClick={(event) => {
-            event.stopPropagation()
-            skipNextMouseUp.current = true
-            void handleExplain()
-          }}
-        >
-          解释
-        </button>
+        {actions.map((action) => (
+          <button
+            key={action.id}
+            style={{
+              ...styles.button,
+              ...(hoveredBtn === action.id ? styles.buttonHover : {}),
+            }}
+            onMouseEnter={() => setHoveredBtn(action.id)}
+            onMouseLeave={() => setHoveredBtn(null)}
+            onClick={(event) => {
+              event.stopPropagation()
+              skipNextMouseUp.current = true
+              void handleAction(action)
+            }}
+          >
+            {action.labelZh}
+          </button>
+        ))}
         <button
           style={{
             ...styles.button,
@@ -370,22 +328,15 @@ function SelectionToolbarApp() {
         </button>
       </div>
 
-      {(translating || translation !== null) && (
-        <div style={styles.resultPanel}>
-          {translating ? (
+      {(runningAction || actionResult) && (
+        <div style={{
+          ...styles.resultPanel,
+          borderLeftColor: actionResult?.actionId === "explain" ? "#8b5cf6" : BRAND_COLOR,
+        }}>
+          {runningAction ? (
             <span style={styles.dots}>⋯</span>
           ) : (
-            translation
-          )}
-        </div>
-      )}
-
-      {(explaining || explanation !== null) && (
-        <div style={{ ...styles.resultPanel, borderLeftColor: "#8b5cf6" }}>
-          {explaining ? (
-            <span style={styles.dots}>⋯</span>
-          ) : (
-            explanation
+            actionResult?.text
           )}
         </div>
       )}
