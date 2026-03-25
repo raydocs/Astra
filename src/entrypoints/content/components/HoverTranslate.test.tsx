@@ -8,6 +8,7 @@ const {
   findContentRootMock,
   hasInjectedTranslationMock,
   getDocumentTranslationContextMock,
+  buildInlineTranslationContextMock,
   copyTextToClipboardMock,
 } = vi.hoisted(() => ({
   readConfigMock: vi.fn(),
@@ -16,6 +17,7 @@ const {
   findContentRootMock: vi.fn(),
   hasInjectedTranslationMock: vi.fn(),
   getDocumentTranslationContextMock: vi.fn(),
+  buildInlineTranslationContextMock: vi.fn(),
   copyTextToClipboardMock: vi.fn(),
 }))
 
@@ -42,6 +44,7 @@ vi.mock("@/utils/dom/clipboard", () => ({
 
 vi.mock("../translation-context", () => ({
   getDocumentTranslationContext: getDocumentTranslationContextMock,
+  buildInlineTranslationContext: buildInlineTranslationContextMock,
 }))
 
 import { DEFAULT_ASTRA_CONFIG, type AstraConfig } from "@/types/config"
@@ -111,6 +114,12 @@ describe("HoverTranslate", () => {
     findClosestTextBlockMock.mockImplementation(() => ({ element: target, text: "Hello world" }))
     hasInjectedTranslationMock.mockReturnValue(false)
     getDocumentTranslationContextMock.mockReturnValue({ pageTitle: "Test page" })
+    buildInlineTranslationContextMock.mockImplementation(
+      ({ selectionContext }: { selectionContext?: string } = {}) => ({
+        pageTitle: "Test page",
+        ...(selectionContext ? { selectionContext } : {}),
+      }),
+    )
 
     await act(async () => {
       mountHoverTranslate()

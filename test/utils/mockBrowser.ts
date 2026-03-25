@@ -1,6 +1,7 @@
 import { vi } from "vitest"
 
 type StorageData = Record<string, unknown>
+type Listener<TArgs extends unknown[]> = (...args: TArgs) => unknown
 
 function cloneStorageSubset(storage: StorageData, keys?: string | string[]) {
   if (typeof keys === "string") {
@@ -14,11 +15,51 @@ function cloneStorageSubset(storage: StorageData, keys?: string | string[]) {
   return { ...storage }
 }
 
+function createListenerBus<TArgs extends unknown[] = []>() {
+  const listeners = new Set<Listener<TArgs>>()
+
+  return {
+    addListener: vi.fn((listener: Listener<TArgs>) => {
+      listeners.add(listener)
+    }),
+    removeListener: vi.fn((listener: Listener<TArgs>) => {
+      listeners.delete(listener)
+    }),
+    async emit(...args: TArgs) {
+      const results: unknown[] = []
+      for (const listener of listeners) {
+        results.push(await listener(...args))
+      }
+      return results
+    },
+    clear() {
+      listeners.clear()
+    },
+    get size() {
+      return listeners.size
+    },
+  }
+}
+
 export function createMockBrowser(initialStorage: StorageData = {}) {
   const storage: StorageData = { ...initialStorage }
+  const runtimeMessageBus = createListenerBus<[unknown, unknown, (response?: unknown) => void]>()
+  const installedBus = createListenerBus<[unknown]>()
+  const commandBus = createListenerBus<[string]>()
+  const tabActivatedBus = createListenerBus<[unknown]>()
 
   return {
     __storage: storage,
+    __emitRuntimeMessage: runtimeMessageBus.emit,
+    __emitInstalled: installedBus.emit,
+    __emitCommand: commandBus.emit,
+    __emitTabActivated: tabActivatedBus.emit,
+    __resetListeners: () => {
+      runtimeMessageBus.clear()
+      installedBus.clear()
+      commandBus.clear()
+      tabActivatedBus.clear()
+    },
     storage: {
       local: {
         get: vi.fn((keys?: string | string[]) => Promise.resolve(cloneStorageSubset(storage, keys))),
@@ -37,24 +78,26 @@ export function createMockBrowser(initialStorage: StorageData = {}) {
     runtime: {
       sendMessage: vi.fn(),
       onMessage: {
-        addListener: vi.fn(),
-        removeListener: vi.fn(),
+        addListener: runtimeMessageBus.addListener,
+        removeListener: runtimeMessageBus.removeListener,
       },
       onInstalled: {
-        addListener: vi.fn(),
+        addListener: installedBus.addListener,
+        removeListener: installedBus.removeListener,
       },
     },
     tabs: {
       query: vi.fn(() => Promise.resolve([])),
       sendMessage: vi.fn(),
       onActivated: {
-        addListener: vi.fn(),
-        removeListener: vi.fn(),
+        addListener: tabActivatedBus.addListener,
+        removeListener: tabActivatedBus.removeListener,
       },
     },
     commands: {
       onCommand: {
-        addListener: vi.fn(),
+        addListener: commandBus.addListener,
+        removeListener: commandBus.removeListener,
       },
     },
   }

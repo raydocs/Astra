@@ -355,4 +355,155 @@ describe("page translation controller", () => {
     expect(state.lastError?.code).toBe("SITE_DISABLED")
     expect(translateTextsMock).not.toHaveBeenCalled()
   })
+
+  it("re-translates blocks when source text changes in place", async () => {
+    vi.useFakeTimers()
+    translateTextsMock.mockResolvedValue({
+      ok: true,
+      translations: ["可见文本"],
+    })
+
+    await startPageTranslation({ targetLang: "zh-CN" })
+    await flushPromises()
+
+    expect(translateTextsMock).toHaveBeenCalledTimes(1)
+    expect(translateTextsMock).toHaveBeenCalledWith(expect.objectContaining({
+      texts: ["Visible text"],
+    }))
+
+    const visible = document.getElementById("visible")!
+    const textNode = Array.from(visible.childNodes).find(
+      (n) => n.nodeType === Node.TEXT_NODE && n.textContent?.trim(),
+    )!
+    ;(textNode as Text).data = "Updated visible text"
+
+    translateTextsMock.mockResolvedValueOnce({
+      ok: true,
+      translations: ["更新的可见文本"],
+    })
+
+    await flushPromises()
+    vi.advanceTimersByTime(200)
+    await flushPromises()
+
+    expect(translateTextsMock).toHaveBeenCalledTimes(2)
+    expect(translateTextsMock).toHaveBeenLastCalledWith(expect.objectContaining({
+      texts: ["Updated visible text"],
+    }))
+
+    vi.useRealTimers()
+  })
+
+  it("re-translates tracked blocks after childList rewrites inside the block", async () => {
+    vi.useFakeTimers()
+    translateTextsMock.mockResolvedValue({
+      ok: true,
+      translations: ["可见文本"],
+    })
+
+    await startPageTranslation({ targetLang: "zh-CN" })
+    await flushPromises()
+
+    const visible = document.getElementById("visible")!
+    visible.textContent = "Updated via childList"
+
+    translateTextsMock.mockResolvedValueOnce({
+      ok: true,
+      translations: ["通过 childList 更新"],
+    })
+
+    await flushPromises()
+    vi.advanceTimersByTime(200)
+    await flushPromises()
+
+    expect(translateTextsMock).toHaveBeenCalledTimes(2)
+    expect(translateTextsMock).toHaveBeenLastCalledWith(expect.objectContaining({
+      texts: ["Updated via childList"],
+    }))
+
+    vi.useRealTimers()
+  })
+
+  it("ignores stale failures after a source revision change and keeps the session running", async () => {
+    vi.useFakeTimers()
+
+    let rejectFirst!: (error: Error) => void
+    translateTextsMock
+      .mockImplementationOnce(() => new Promise((_resolve, reject) => {
+        rejectFirst = reject
+      }))
+      .mockResolvedValueOnce({
+        ok: true,
+        translations: ["更新后的可见文本"],
+      })
+
+    await startPageTranslation({ targetLang: "zh-CN" })
+    await flushPromises()
+
+    const visible = document.getElementById("visible")!
+    const textNode = Array.from(visible.childNodes).find(
+      (n) => n.nodeType === Node.TEXT_NODE && n.textContent?.trim(),
+    )!
+    ;(textNode as Text).data = "Updated visible text"
+
+    await flushPromises()
+    vi.advanceTimersByTime(200)
+    await flushPromises()
+
+    rejectFirst(new Error("stale request failed"))
+    await flushPromises()
+    await flushPromises()
+
+    expect(translateTextsMock).toHaveBeenCalledTimes(2)
+    expect(translateTextsMock).toHaveBeenNthCalledWith(2, expect.objectContaining({
+      texts: ["Updated visible text"],
+    }))
+    expect(getPageTranslationState().phase).toBe("running")
+    expect(getPageTranslationState().lastError).toBeNull()
+    expect(document.querySelector("[data-astra-translation=\"1\"]")?.textContent).toContain("更新后的可见文本")
+
+    vi.useRealTimers()
+  })
+
+  it("re-translates translation-only blocks when the preserved source subtree changes", async () => {
+    vi.useFakeTimers()
+    translateTextsMock
+      .mockResolvedValueOnce({
+        ok: true,
+        translations: ["仅译文"],
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        translations: ["更新后的仅译文"],
+      })
+
+    await startPageTranslation({
+      targetLang: "zh-CN",
+      translationMode: "translation-only",
+    })
+    await flushPromises()
+
+    const source = document.querySelector("#visible [data-astra-source]") as HTMLElement
+    expect(source).not.toBeNull()
+    source.style.display = "none"
+
+    const textNode = Array.from(source.childNodes).find(
+      (n) => n.nodeType === Node.TEXT_NODE && n.textContent?.trim(),
+    )!
+    ;(textNode as Text).data = "Updated hidden source"
+
+    await flushPromises()
+    vi.advanceTimersByTime(200)
+    await flushPromises()
+
+    expect(translateTextsMock).toHaveBeenCalledTimes(2)
+    expect(translateTextsMock).toHaveBeenNthCalledWith(2, expect.objectContaining({
+      texts: ["Updated hidden source"],
+    }))
+    expect(getPageTranslationState().phase).toBe("running")
+    expect(document.querySelector("#visible [data-astra-translation=\"1\"]")?.textContent)
+      .toContain("更新后的仅译文")
+
+    vi.useRealTimers()
+  })
 })

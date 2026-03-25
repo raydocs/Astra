@@ -6,18 +6,14 @@ import { createOpenAI } from "@ai-sdk/openai"
 import { generateText } from "ai"
 import { z } from "zod"
 
-import type { TranslationRequestContext, TranslationTask } from "@/types/messages"
 import { AstraError } from "@/types/translation"
 
-export interface TranslationOptions {
+import type { ProviderTranslationRequest } from "./types"
+
+export interface TranslationOptions extends ProviderTranslationRequest {
   apiKey: string
   baseURL?: string
   model?: string
-  texts: string[]
-  targetLang: string
-  sourceLang?: string
-  context?: TranslationRequestContext
-  task?: TranslationTask
 }
 
 const ProviderResponseSchema = z.object({

@@ -8,11 +8,13 @@ import {
 import {
   clearLoading,
   removeAllTranslations,
+  removeTranslationFor,
   replaceLoading,
   showLoading,
 } from "@/utils/dom/inject"
 import {
   collectTextBlocks,
+  extractTextBlockText,
   findContentRoot,
   type TextBlock,
 } from "@/utils/dom/traversal"
@@ -254,17 +256,24 @@ function scheduleDrain(session: TranslationSession) {
             context: session.context,
           })
         } catch (error) {
-          session.registry.markFailed(inFlightInfo.map(({ element, revision }) => ({ element, revision })))
+          const accepted = session.registry.markFailed(
+            inFlightInfo.map(({ element, revision }) => ({ element, revision })),
+          )
 
-          inFlightInfo.forEach(({ element }) => {
+          accepted.forEach((element) => {
             clearLoading(element)
           })
 
-          stopSession({
-            code: "UNKNOWN",
-            message: error instanceof Error ? error.message : "Translation failed.",
-          }, { preserveProgress: true })
-          return
+          if (accepted.length > 0) {
+            stopSession({
+              code: "UNKNOWN",
+              message: error instanceof Error ? error.message : "Translation failed.",
+            }, { preserveProgress: true })
+            return
+          }
+
+          publishSessionState(session, "running")
+          continue
         }
 
         if (currentSession?.id !== session.id) {
@@ -272,14 +281,21 @@ function scheduleDrain(session: TranslationSession) {
         }
 
         if (!result.ok) {
-          session.registry.markFailed(inFlightInfo.map(({ element, revision }) => ({ element, revision })))
+          const accepted = session.registry.markFailed(
+            inFlightInfo.map(({ element, revision }) => ({ element, revision })),
+          )
 
-          inFlightInfo.forEach(({ element }) => {
+          accepted.forEach((element) => {
             clearLoading(element)
           })
 
-          stopSession(result.error, { preserveProgress: true })
-          return
+          if (accepted.length > 0) {
+            stopSession(result.error, { preserveProgress: true })
+            return
+          }
+
+          publishSessionState(session, "running")
+          continue
         }
 
         const accepted = session.registry.markTranslated(
@@ -366,24 +382,107 @@ function createIntersectionObserver(session: TranslationSession): IntersectionOb
   })
 }
 
+function getElementForNode(node: Node | null): HTMLElement | null {
+  if (!node) return null
+  return node.nodeType === 1
+    ? node as HTMLElement
+    : node.parentElement
+}
+
+function isWithinAstraTranslation(node: Node | null): boolean {
+  const element = getElementForNode(node)
+  return !!element?.closest("[data-astra-translation]")
+}
+
+function findTrackedBlockElement(
+  session: TranslationSession,
+  node: Node | null,
+): HTMLElement | null {
+  let current = getElementForNode(node)
+
+  while (current && !session.registry.has(current)) {
+    current = current.parentElement
+  }
+
+  return current
+}
+
+function handleTextChanges(session: TranslationSession, elements: Set<HTMLElement>) {
+  if (currentSession?.id !== session.id) return
+
+  let changed = false
+
+  for (const element of elements) {
+    // Walk up to find the tracked block element
+    let current: HTMLElement | null = element
+    while (current && !session.registry.has(current)) {
+      current = current.parentElement
+    }
+    if (!current) continue
+
+    const block = session.registry.getBlock(current)
+    if (!block) continue
+
+    // Get the current text content of the block
+    const currentText = extractTextBlockText(current)
+    if (currentText === block.sourceText) continue
+
+    // Source text changed — clear old translation, bump revision, re-queue
+    removeTranslationFor(current)
+    clearLoading(current)
+    session.registry.markSourceChanged(current, currentText)
+    changed = true
+
+    if (currentText && isNearViewport(current)) {
+      enqueueBlock(session, current)
+    }
+  }
+
+  if (changed) {
+    publishSessionState(session, session.phase)
+    scheduleDrain(session)
+  }
+}
+
 function createMutationObserver(session: TranslationSession): MutationObserver | null {
   if (typeof MutationObserver === "undefined") return null
 
   return new MutationObserver((mutations) => {
     if (currentSession?.id !== session.id) return
 
-    for (const mutation of mutations) {
-      for (const addedNode of mutation.addedNodes) {
-        if (!(addedNode instanceof HTMLElement)) continue
-        if (addedNode.matches("[data-astra-translation], [data-astra-source]")) continue
-        if (addedNode.closest("[data-astra-translation], [data-astra-source]")) continue
-        if (addedNode.classList.contains("notranslate")) continue
+    let hasNewNodes = false
+    const changedTextElements = new Set<HTMLElement>()
 
-        session.pendingMutationRoots.add(addedNode)
+    for (const mutation of mutations) {
+      if (mutation.type === "childList") {
+        const trackedTarget = findTrackedBlockElement(session, mutation.target)
+        if (trackedTarget && !isWithinAstraTranslation(mutation.target)) {
+          changedTextElements.add(trackedTarget)
+        }
+
+        for (const addedNode of mutation.addedNodes) {
+          if (!(addedNode instanceof HTMLElement)) continue
+          if (addedNode.matches("[data-astra-translation]")) continue
+          if (addedNode.closest("[data-astra-translation]")) continue
+          if (addedNode.classList.contains("notranslate")) continue
+
+          session.pendingMutationRoots.add(addedNode)
+          hasNewNodes = true
+        }
+      } else if (mutation.type === "characterData") {
+        const trackedTarget = findTrackedBlockElement(session, mutation.target)
+        if (!trackedTarget) continue
+        if (isWithinAstraTranslation(mutation.target)) continue
+        changedTextElements.add(trackedTarget)
       }
     }
 
-    if (session.pendingMutationRoots.size > 0) {
+    // Handle text-in-place changes via registry
+    if (changedTextElements.size > 0) {
+      handleTextChanges(session, changedTextElements)
+    }
+
+    if (hasNewNodes) {
       scheduleMutationScan(session)
     }
   })
@@ -477,6 +576,7 @@ export async function startPageTranslation(
   session.mutationObserver?.observe(document.body, {
     childList: true,
     subtree: true,
+    characterData: true,
   })
 
   if (blocks.length === 0) {

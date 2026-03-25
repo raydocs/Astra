@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest"
 import {
   buildContentSummary,
   collectTextBlocks,
+  extractTextBlockText,
   findClosestTextBlock,
   findContentRoot,
 } from "./traversal"
@@ -59,6 +60,17 @@ describe("collectTextBlocks", () => {
 
     const blocks = collectTextBlocks(findContentRoot(document))
     expect(blocks.map((block) => block.text)).toEqual(["Hello"])
+  })
+
+  it("reads preserved source wrapper text even when the wrapper is hidden", () => {
+    document.body.innerHTML = `
+      <main>
+        <p id="target"><span data-astra-source="1" style="display:none">Hello hidden source</span><span data-astra-translation="1">你好</span></p>
+      </main>
+    `
+
+    const target = document.getElementById("target") as HTMLElement
+    expect(extractTextBlockText(target)).toBe("Hello hidden source")
   })
 
   it("builds a deduplicated content summary", () => {

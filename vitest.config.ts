@@ -13,5 +13,13 @@ export default defineConfig({
     environment: "jsdom",
     globals: true,
     setupFiles: ["./test/setup.ts"],
+    exclude: [
+      "**/node_modules/**",
+      "**/dist/**",
+      "**/.output/**",
+      "**/.wxt/**",
+      "**/.claude/**",
+      "**/.specify/**",
+    ],
   },
 })

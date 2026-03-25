@@ -1,8 +1,8 @@
 import { defineBackground, browser } from "#imports"
 import { isRuntimeTranslateBatchRequest, type RuntimeResponse } from "@/types/messages"
-import { createTranslationError, toTranslationError } from "@/types/translation"
-import { translateWithOpenAI } from "@/utils/providers/openai"
+import { toTranslationError } from "@/types/translation"
 import { toggleTabTranslation } from "@/utils/extension/messages"
+import { translateWithProvider } from "@/utils/providers/router"
 import { readConfig } from "@/utils/storage/config"
 
 export default defineBackground({
@@ -63,20 +63,7 @@ async function handleTranslate(payload: {
 }): Promise<RuntimeResponse> {
   const config = await readConfig()
 
-  if (!config.provider.apiKey) {
-    return {
-      type: "runtime/translate-batch:error",
-      error: createTranslationError(
-        "CONFIG_MISSING",
-        "No API key configured. Open Astra popup to set your OpenAI API key.",
-      ),
-    }
-  }
-
-  const translations = await translateWithOpenAI({
-    apiKey: config.provider.apiKey,
-    baseURL: config.provider.baseURL,
-    model: config.provider.model,
+  const translations = await translateWithProvider(config.provider, {
     texts: payload.texts,
     targetLang: payload.targetLang,
     sourceLang: payload.sourceLang,

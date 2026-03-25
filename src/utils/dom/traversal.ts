@@ -1,4 +1,8 @@
-import { ASTRA_TRANSLATION_SELECTOR } from "./inject"
+import {
+  ASTRA_SOURCE_ATTR,
+  ASTRA_TRANSLATION_ATTR,
+  ASTRA_TRANSLATION_SELECTOR,
+} from "./inject"
 
 export interface TextBlock {
   element: HTMLElement
@@ -87,12 +91,20 @@ function collectInlineText(node: Node): string {
   if (node.nodeType !== Node.ELEMENT_NODE) return ""
 
   const el = node as HTMLElement
-  if (shouldSkip(el) || !isInline(el) || !isVisible(el)) return ""
+  if (el.hasAttribute(ASTRA_TRANSLATION_ATTR)) return ""
+
+  if (el.hasAttribute(ASTRA_SOURCE_ATTR)) {
+    return Array.from(el.childNodes).map(collectInlineText).join(" ")
+  }
+
+  if (!isVisible(el)) return ""
+
+  if (shouldSkip(el) || !isInline(el)) return ""
 
   return Array.from(el.childNodes).map(collectInlineText).join(" ")
 }
 
-function extractDirectText(el: HTMLElement): string {
+export function extractTextBlockText(el: HTMLElement): string {
   return normalizeWhitespace(Array.from(el.childNodes).map(collectInlineText).join(" "))
 }
 
@@ -137,7 +149,7 @@ export function findClosestTextBlock(
     }
 
     if (!shouldSkip(current) && isVisible(current) && isCandidateElement(current)) {
-      const text = extractDirectText(current)
+      const text = extractTextBlockText(current)
       if (text.length >= minTextLength) {
         return { element: current, text }
       }
@@ -162,7 +174,7 @@ export function collectTextBlocks(
     if (node !== root && !isVisible(node)) return
 
     if (isCandidateElement(node)) {
-      const text = extractDirectText(node)
+      const text = extractTextBlockText(node)
       if (text.length >= minTextLength) {
         blocks.push({ element: node, text })
       }
