@@ -27,6 +27,7 @@ interface HoverOverlayState {
   error: string | null
   theme: "default" | "underline" | "highlight"
   mode: "bilingual" | "translation-only"
+  triggerMode: "alt" | "always"
   explanationStatus: ExplanationStatus
   explanation: string | null
   explanationError: string | null
@@ -79,6 +80,7 @@ function HoverTranslateApp() {
     error: null,
     theme: "default",
     mode: "bilingual",
+    triggerMode: "alt",
     explanationStatus: "idle",
     explanation: null,
     explanationError: null,
@@ -91,6 +93,9 @@ function HoverTranslateApp() {
   const requestSeq = useRef(0)
   const explainRequestSeq = useRef(0)
   const cacheRef = useRef(new WeakMap<HTMLElement, HoverCacheEntry>())
+  const pendingRef = useRef(new Map<HTMLElement, string>())
+  const cooldownRef = useRef(new Map<HTMLElement, number>())
+  const COOLDOWN_MS = 3000
 
   useEffect(() => {
     const clearHoverTimer = () => {
@@ -125,6 +130,7 @@ function HoverTranslateApp() {
       cached: HoverCacheEntry,
       theme: HoverOverlayState["theme"],
       mode: HoverOverlayState["mode"],
+      triggerMode: HoverOverlayState["triggerMode"] = "alt",
     ) => {
       setOverlay({
         visible: true,
@@ -135,6 +141,7 @@ function HoverTranslateApp() {
         error: null,
         theme,
         mode,
+        triggerMode,
         explanationStatus: cached.explanation ? "success" : "idle",
         explanation: cached.explanation ?? null,
         explanationError: null,
@@ -154,11 +161,6 @@ function HoverTranslateApp() {
       }
 
       if (getInteractionSuppressionState().hoverSuppressed || hasActiveTextSelection(document)) {
-        hideOverlay()
-        return
-      }
-
-      if (!event.altKey) {
         hideOverlay()
         return
       }
@@ -183,6 +185,7 @@ function HoverTranslateApp() {
       currentTarget.current = block.element
       currentSourceText.current = block.text
       const rect = block.element.getBoundingClientRect()
+      const altKeyWasPressed = event.altKey
 
       hoverTimer.current = window.setTimeout(() => {
         void (async () => {
@@ -199,6 +202,13 @@ function HoverTranslateApp() {
             return
           }
 
+          if (resolved.hoverTrigger === "alt" && !altKeyWasPressed) {
+            hideOverlay()
+            return
+          }
+
+          const triggerMode = resolved.hoverTrigger === "always" ? "always" as const : "alt" as const
+
           if (!resolved.enabled) {
             setOverlay({
               visible: true,
@@ -209,6 +219,7 @@ function HoverTranslateApp() {
               error: "Astra is disabled on this site.",
               theme: resolved.presentation.theme,
               mode: resolved.presentation.mode,
+              triggerMode,
               explanationStatus: "idle",
               explanation: null,
               explanationError: null,
@@ -225,9 +236,17 @@ function HoverTranslateApp() {
               cached,
               resolved.presentation.theme,
               resolved.presentation.mode,
+              triggerMode,
             )
             return
           }
+
+          if (pendingRef.current.get(block.element) === block.text) return
+
+          const lastFail = cooldownRef.current.get(block.element)
+          if (lastFail && Date.now() - lastFail < COOLDOWN_MS) return
+
+          pendingRef.current.set(block.element, block.text)
 
           const nextRequest = requestSeq.current + 1
           requestSeq.current = nextRequest
@@ -240,6 +259,7 @@ function HoverTranslateApp() {
             error: null,
             theme: resolved.presentation.theme,
             mode: resolved.presentation.mode,
+            triggerMode,
             explanationStatus: "idle",
             explanation: null,
             explanationError: null,
@@ -253,11 +273,14 @@ function HoverTranslateApp() {
             selectionContext: getSelectionContext(block.text),
           })
 
+          pendingRef.current.delete(block.element)
+
           if (requestSeq.current !== nextRequest || currentTarget.current !== block.element) {
             return
           }
 
           if (!result.ok) {
+            cooldownRef.current.set(block.element, Date.now())
             setOverlay({
               visible: true,
               ...getOverlayPosition(rect),
@@ -267,6 +290,7 @@ function HoverTranslateApp() {
               error: result.message,
               theme: resolved.presentation.theme,
               mode: resolved.presentation.mode,
+              triggerMode,
               explanationStatus: "idle",
               explanation: null,
               explanationError: null,
@@ -290,6 +314,7 @@ function HoverTranslateApp() {
             error: null,
             theme: resolved.presentation.theme,
             mode: resolved.presentation.mode,
+            triggerMode,
             explanationStatus: "idle",
             explanation: null,
             explanationError: null,
@@ -451,7 +476,7 @@ function HoverTranslateApp() {
   return (
     <div style={panelStyle}>
       <div style={{ fontSize: 11, color: "#64748b", marginBottom: 4 }}>
-        Alt + Hover
+        {overlay.triggerMode === "always" ? "Hover" : "Alt + Hover"}
       </div>
       {overlay.status === "pending" && <span style={{ color: "#94a3b8" }}>⋯</span>}
       {overlay.status === "error" && <span style={{ color: "#b45309" }}>⚠ {overlay.error}</span>}

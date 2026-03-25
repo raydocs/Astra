@@ -266,6 +266,84 @@ describe("HoverTranslate", () => {
     expect(host.shadowRoot?.textContent ?? "").toContain("这是问候语的解释")
   })
 
+  it("translates on hover without Alt key when hoverTrigger is always", async () => {
+    readConfigMock.mockResolvedValue(createConfig({ hoverTrigger: "always" as any }))
+    const target = document.getElementById("target") as HTMLElement
+    const handleMouseMove = listeners.mousemove as ((event: MouseEvent) => void) | undefined
+    expect(handleMouseMove).toBeTypeOf("function")
+
+    const event = new MouseEvent("mousemove", { altKey: false })
+    Object.defineProperty(event, "target", { value: target })
+
+    await act(async () => {
+      handleMouseMove?.(event)
+      await vi.advanceTimersByTimeAsync(300)
+      await Promise.resolve()
+    })
+
+    expect(translateTextsMock).toHaveBeenCalledTimes(1)
+    expect(getHost().shadowRoot?.textContent ?? "").toContain("Hover")
+    expect(getHost().shadowRoot?.textContent ?? "").not.toContain("Alt + Hover")
+  })
+
+  it("deduplicates concurrent hover requests for the same element", async () => {
+    // Make translateTextsMock return a delayed promise we can control
+    let resolveTranslation: ((value: { ok: true; translations: string[] }) => void) | undefined
+    translateTextsMock.mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          resolveTranslation = resolve
+        }),
+    )
+
+    const target = document.getElementById("target") as HTMLElement
+    const handleMouseMove = listeners.mousemove as ((event: MouseEvent) => void) | undefined
+    expect(handleMouseMove).toBeTypeOf("function")
+
+    // First hover triggers translation request
+    const event1 = new MouseEvent("mousemove", { altKey: true })
+    Object.defineProperty(event1, "target", { value: target })
+
+    await act(async () => {
+      handleMouseMove?.(event1)
+      await vi.advanceTimersByTimeAsync(300)
+      await Promise.resolve()
+    })
+
+    expect(translateTextsMock).toHaveBeenCalledTimes(1)
+
+    // Move away and back to the same element while request is still pending
+    // Simulate moving to a different element first to reset currentTarget
+    findClosestTextBlockMock.mockReturnValueOnce(null)
+    const moveAway = new MouseEvent("mousemove", { altKey: true })
+    Object.defineProperty(moveAway, "target", { value: document.body })
+
+    await act(async () => {
+      handleMouseMove?.(moveAway)
+      await Promise.resolve()
+    })
+
+    // Move back to the same element
+    findClosestTextBlockMock.mockReturnValue({ element: target, text: "Hello world" })
+    const event2 = new MouseEvent("mousemove", { altKey: true })
+    Object.defineProperty(event2, "target", { value: target })
+
+    await act(async () => {
+      handleMouseMove?.(event2)
+      await vi.advanceTimersByTimeAsync(300)
+      await Promise.resolve()
+    })
+
+    // Should NOT have triggered a second translation (deduplication)
+    expect(translateTextsMock).toHaveBeenCalledTimes(1)
+
+    // Resolve the first request so it cleans up
+    await act(async () => {
+      resolveTranslation?.({ ok: true, translations: ["你好，世界"] })
+      await Promise.resolve()
+    })
+  })
+
   it("requests and toggles hover explanations", async () => {
     translateTextsMock
       .mockResolvedValueOnce({ ok: true, translations: ["你好，世界"] })
