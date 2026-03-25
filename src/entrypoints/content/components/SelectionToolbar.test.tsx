@@ -249,4 +249,95 @@ describe("SelectionToolbar interaction suppression", () => {
 
     expect(getInteractionSuppressionState().hoverSuppressed).toBe(false)
   })
+
+  it("calls explain task when explain button is clicked", async () => {
+    const target = document.getElementById("target") as HTMLElement
+    const onMouseDown = documentListeners.mousedown as ((event: MouseEvent) => void) | undefined
+    const onMouseUp = documentListeners.mouseup as ((event: MouseEvent) => void) | undefined
+
+    // Show toolbar via selection
+    const downEvent = new MouseEvent("mousedown", { button: 0 })
+    Object.defineProperty(downEvent, "target", { value: target })
+    onMouseDown?.(downEvent)
+
+    setSelection("Hello world")
+    const upEvent = new MouseEvent("mouseup")
+    Object.defineProperty(upEvent, "target", { value: target })
+
+    await act(async () => {
+      onMouseUp?.(upEvent)
+      await vi.advanceTimersByTimeAsync(20)
+      await Promise.resolve()
+    })
+
+    // The toolbar should be rendered in the shadow root
+    const host = document.getElementById(HOST_ID)!
+    const shadow = host.shadowRoot!
+    const buttons = shadow.querySelectorAll("button")
+    const explainBtn = Array.from(buttons).find((btn) => btn.textContent === "解释")
+
+    expect(explainBtn).toBeDefined()
+
+    translateTextsMock.mockResolvedValueOnce({
+      ok: true,
+      translations: ["This is a greeting in English."],
+    })
+
+    await act(async () => {
+      explainBtn!.click()
+      await Promise.resolve()
+      await Promise.resolve()
+    })
+
+    expect(translateTextsMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        task: "explain",
+        texts: ["Hello world"],
+      }),
+    )
+  })
+
+  it("calls translate task via runInlineAction when translate button is clicked", async () => {
+    const target = document.getElementById("target") as HTMLElement
+    const onMouseDown = documentListeners.mousedown as ((event: MouseEvent) => void) | undefined
+    const onMouseUp = documentListeners.mouseup as ((event: MouseEvent) => void) | undefined
+
+    const downEvent = new MouseEvent("mousedown", { button: 0 })
+    Object.defineProperty(downEvent, "target", { value: target })
+    onMouseDown?.(downEvent)
+
+    setSelection("Hello world")
+    const upEvent = new MouseEvent("mouseup")
+    Object.defineProperty(upEvent, "target", { value: target })
+
+    await act(async () => {
+      onMouseUp?.(upEvent)
+      await vi.advanceTimersByTimeAsync(20)
+      await Promise.resolve()
+    })
+
+    const host = document.getElementById(HOST_ID)!
+    const shadow = host.shadowRoot!
+    const buttons = shadow.querySelectorAll("button")
+    const translateBtn = Array.from(buttons).find((btn) => btn.textContent === "翻译")
+
+    expect(translateBtn).toBeDefined()
+
+    translateTextsMock.mockResolvedValueOnce({
+      ok: true,
+      translations: ["你好世界"],
+    })
+
+    await act(async () => {
+      translateBtn!.click()
+      await Promise.resolve()
+      await Promise.resolve()
+    })
+
+    expect(translateTextsMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        texts: ["Hello world"],
+      }),
+    )
+  })
 })
