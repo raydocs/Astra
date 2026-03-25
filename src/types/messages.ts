@@ -1,8 +1,10 @@
 import { z } from "zod"
 
 import {
+  ContentScopeSchema,
   TranslationModeSchema,
   TranslationThemeSchema,
+  type ContentScope,
   type TranslationMode,
   type TranslationTheme,
 } from "./config"
@@ -21,6 +23,7 @@ export const ContentTranslationOverridesSchema = z.object({
   targetLang: z.string().trim().min(1).optional(),
   translationMode: TranslationModeSchema.optional(),
   translationTheme: TranslationThemeSchema.optional(),
+  contentScope: ContentScopeSchema.optional(),
 })
 
 export const TranslationTaskSchema = z.enum(["translate", "explain"])
@@ -39,6 +42,7 @@ export type ContentTranslationOverrides = {
   targetLang?: string
   translationMode?: TranslationMode
   translationTheme?: TranslationTheme
+  contentScope?: ContentScope
 }
 
 export interface RuntimeTranslateBatchRequest {

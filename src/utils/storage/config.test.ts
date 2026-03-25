@@ -23,6 +23,7 @@ describe("config storage", () => {
       version: 1,
       targetLang: "ja",
       hoverTrigger: "alt",
+      contentScope: "page",
       provider: {
         id: "openai",
         apiKey: "sk-legacy",
@@ -170,6 +171,36 @@ describe("config storage", () => {
         hoverTrigger: "disabled",
       },
     })
+  })
+
+  it("persists contentScope in config", async () => {
+    const config = await saveConfig({
+      contentScope: "article",
+    })
+    expect(config.contentScope).toBe("article")
+  })
+
+  it("persists site-level contentScope overrides", async () => {
+    const config = await saveConfig({
+      sites: {
+        "example.com": {
+          contentScope: "article",
+        },
+      },
+    })
+    expect(config.sites["example.com"]?.contentScope).toBe("article")
+  })
+
+  it("prunes site contentScope when it matches default", async () => {
+    const config = await saveConfig({
+      sites: {
+        "example.com": {
+          enabled: true,
+          alwaysTranslate: false,
+        },
+      },
+    })
+    expect(config.sites).toEqual({})
   })
 
   it("clears site overrides back to inheritance when saving an empty site snapshot", async () => {

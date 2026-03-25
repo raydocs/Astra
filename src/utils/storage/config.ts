@@ -90,6 +90,7 @@ export async function saveConfig(input: AstraConfigInput): Promise<AstraConfig> 
         alwaysTranslate: value.alwaysTranslate ?? false,
         ...(value.targetLang ? { targetLang: value.targetLang } : {}),
         ...(value.hoverTrigger ? { hoverTrigger: value.hoverTrigger } : {}),
+        ...(value.contentScope ? { contentScope: value.contentScope } : {}),
         ...(value.presentation && Object.keys(value.presentation).length > 0
           ? { presentation: value.presentation }
           : {}),
@@ -101,6 +102,7 @@ export async function saveConfig(input: AstraConfigInput): Promise<AstraConfig> 
     ...currentConfig,
     ...(parsedInput.targetLang ? { targetLang: parsedInput.targetLang } : {}),
     ...(parsedInput.hoverTrigger ? { hoverTrigger: parsedInput.hoverTrigger } : {}),
+    ...(parsedInput.contentScope ? { contentScope: parsedInput.contentScope } : {}),
     provider: {
       ...currentConfig.provider,
       ...(parsedInput.provider?.apiKey !== undefined

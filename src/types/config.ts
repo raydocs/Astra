@@ -5,6 +5,7 @@ export const ProviderIdSchema = z.literal("openai")
 export const TranslationModeSchema = z.enum(["bilingual", "translation-only"])
 export const TranslationThemeSchema = z.enum(["default", "underline", "highlight"])
 export const HoverTriggerSchema = z.enum(["alt", "disabled"])
+export const ContentScopeSchema = z.enum(["page", "article"])
 
 export const PresentationSettingsSchema = z.object({
   mode: TranslationModeSchema.default("bilingual"),
@@ -21,6 +22,7 @@ export const SiteConfigSchema = z.object({
   alwaysTranslate: z.boolean().default(false),
   targetLang: z.string().trim().min(1).optional(),
   hoverTrigger: HoverTriggerSchema.optional(),
+  contentScope: ContentScopeSchema.optional(),
   presentation: PresentationSettingsInputSchema.optional(),
 })
 
@@ -29,6 +31,7 @@ export const SiteConfigInputSchema = z.object({
   alwaysTranslate: z.boolean().optional(),
   targetLang: z.string().trim().min(1).optional(),
   hoverTrigger: HoverTriggerSchema.optional(),
+  contentScope: ContentScopeSchema.optional(),
   presentation: PresentationSettingsInputSchema.optional(),
 })
 
@@ -43,6 +46,7 @@ export const AstraConfigSchema = z.object({
   version: z.literal(1).default(1),
   targetLang: z.string().trim().min(1).default("zh-CN"),
   hoverTrigger: HoverTriggerSchema.default("alt"),
+  contentScope: ContentScopeSchema.default("page"),
   provider: OpenAIProviderConfigSchema.default({
     id: "openai",
     apiKey: "",
@@ -58,6 +62,7 @@ export const AstraConfigSchema = z.object({
 export const AstraConfigInputSchema = z.object({
   targetLang: z.string().trim().min(1).optional(),
   hoverTrigger: HoverTriggerSchema.optional(),
+  contentScope: ContentScopeSchema.optional(),
   provider: z.object({
     apiKey: z.string().optional(),
     baseURL: z.string().optional(),
@@ -71,6 +76,7 @@ export type ProviderId = z.infer<typeof ProviderIdSchema>
 export type TranslationMode = z.infer<typeof TranslationModeSchema>
 export type TranslationTheme = z.infer<typeof TranslationThemeSchema>
 export type HoverTrigger = z.infer<typeof HoverTriggerSchema>
+export type ContentScope = z.infer<typeof ContentScopeSchema>
 export type PresentationSettings = z.infer<typeof PresentationSettingsSchema>
 export type SiteConfig = z.infer<typeof SiteConfigSchema>
 export type SiteConfigInput = z.infer<typeof SiteConfigInputSchema>
@@ -82,6 +88,7 @@ export interface TranslationOverrides {
   targetLang?: string
   translationMode?: TranslationMode
   translationTheme?: TranslationTheme
+  contentScope?: ContentScope
 }
 
 export interface ResolvedSiteTranslationSettings {
@@ -90,6 +97,7 @@ export interface ResolvedSiteTranslationSettings {
   alwaysTranslate: boolean
   targetLang: string
   hoverTrigger: HoverTrigger
+  contentScope: ContentScope
   presentation: PresentationSettings
 }
 
@@ -97,6 +105,7 @@ export const DEFAULT_ASTRA_CONFIG: AstraConfig = {
   version: 1,
   targetLang: "zh-CN",
   hoverTrigger: "alt",
+  contentScope: "page" as const,
   provider: {
     id: "openai",
     apiKey: "",
@@ -133,6 +142,7 @@ function normalizeSiteConfig(siteConfig?: Partial<SiteConfig> | null): SiteConfi
     alwaysTranslate: siteConfig?.alwaysTranslate ?? false,
     ...(targetLang ? { targetLang } : {}),
     ...(siteConfig?.hoverTrigger ? { hoverTrigger: siteConfig.hoverTrigger } : {}),
+    ...(siteConfig?.contentScope ? { contentScope: siteConfig.contentScope } : {}),
     ...(normalizedPresentation && Object.keys(normalizedPresentation).length > 0
       ? { presentation: normalizedPresentation }
       : {}),
@@ -144,6 +154,7 @@ export function isDefaultSiteConfig(siteConfig: SiteConfig): boolean {
     && siteConfig.alwaysTranslate === false
     && !siteConfig.targetLang
     && !siteConfig.hoverTrigger
+    && !siteConfig.contentScope
     && (!siteConfig.presentation || Object.keys(siteConfig.presentation).length === 0)
 }
 
@@ -178,6 +189,7 @@ export function resolveSiteTranslationSettings(
       || siteConfig?.targetLang?.trim()
       || config.targetLang,
     hoverTrigger: siteConfig?.hoverTrigger ?? config.hoverTrigger,
+    contentScope: overrides.contentScope ?? siteConfig?.contentScope ?? config.contentScope,
     presentation: {
       mode: overrides.translationMode
         ?? siteConfig?.presentation?.mode
@@ -207,6 +219,7 @@ export function normalizeConfig(config: AstraConfig): AstraConfig {
     version: 1,
     targetLang: config.targetLang.trim() || DEFAULT_ASTRA_CONFIG.targetLang,
     hoverTrigger: config.hoverTrigger ?? DEFAULT_ASTRA_CONFIG.hoverTrigger,
+    contentScope: config.contentScope ?? DEFAULT_ASTRA_CONFIG.contentScope,
     provider: {
       id: "openai",
       apiKey: config.provider.apiKey.trim(),
