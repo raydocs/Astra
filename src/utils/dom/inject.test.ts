@@ -3,6 +3,8 @@ import { describe, expect, it } from "vitest"
 import {
   injectTranslation,
   removeTranslationFor,
+  replaceLoading,
+  showLoading,
 } from "./inject"
 
 describe("inject helpers", () => {
@@ -39,5 +41,23 @@ describe("inject helpers", () => {
 
     expect(parent.querySelector(":scope > [data-astra-translation]")).toBeNull()
     expect(child.querySelector("[data-astra-translation]")).not.toBeNull()
+  })
+
+  it("hides the original content in translation-only mode and restores it on cleanup", () => {
+    document.body.innerHTML = `<p id="target">Hello world</p>`
+    const target = document.getElementById("target") as HTMLElement
+
+    showLoading(target, { mode: "translation-only" })
+    expect(target.querySelector("[data-astra-source]"))?.not.toBeNull()
+    expect(target.textContent).toContain("Hello world")
+
+    replaceLoading(target, "你好世界", { mode: "translation-only" })
+    const source = target.querySelector("[data-astra-source]") as HTMLElement
+    expect(source.getAttribute("data-astra-source-hidden")).toBe("1")
+    expect(target.querySelector("[data-astra-translation='1']")).not.toBeNull()
+
+    removeTranslationFor(target)
+    expect(target.querySelector("[data-astra-source]")).toBeNull()
+    expect(target.textContent).toContain("Hello world")
   })
 })

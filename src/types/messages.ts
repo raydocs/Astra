@@ -1,12 +1,45 @@
 import { z } from "zod"
 
+import {
+  TranslationModeSchema,
+  TranslationThemeSchema,
+  type TranslationMode,
+  type TranslationTheme,
+} from "./config"
 import type { TranslationError, TranslationSnapshot } from "./translation"
+
+export const TranslationRequestContextSchema = z.object({
+  pageTitle: z.string().trim().min(1).optional(),
+  pageUrl: z.string().trim().min(1).optional(),
+  hostname: z.string().trim().min(1).optional(),
+  metaDescription: z.string().trim().min(1).optional(),
+  contentSummary: z.string().trim().min(1).optional(),
+  selectionContext: z.string().trim().min(1).optional(),
+})
+
+export const ContentTranslationOverridesSchema = z.object({
+  targetLang: z.string().trim().min(1).optional(),
+  translationMode: TranslationModeSchema.optional(),
+  translationTheme: TranslationThemeSchema.optional(),
+})
+
+export const TranslationTaskSchema = z.enum(["translate", "explain"])
 
 export const TranslateBatchPayloadSchema = z.object({
   texts: z.array(z.string()),
   targetLang: z.string().min(1),
   sourceLang: z.string().min(1).optional(),
+  context: TranslationRequestContextSchema.optional(),
+  task: TranslationTaskSchema.optional(),
 })
+
+export type TranslationRequestContext = z.infer<typeof TranslationRequestContextSchema>
+export type TranslationTask = z.infer<typeof TranslationTaskSchema>
+export type ContentTranslationOverrides = {
+  targetLang?: string
+  translationMode?: TranslationMode
+  translationTheme?: TranslationTheme
+}
 
 export interface RuntimeTranslateBatchRequest {
   type: "runtime/translate-batch"
@@ -36,9 +69,7 @@ export interface ContentGetTranslationStateCommand {
 
 export interface ContentStartTranslationCommand {
   type: "content/start-translation"
-  payload?: {
-    targetLang?: string
-  }
+  payload?: ContentTranslationOverrides
 }
 
 export interface ContentStopTranslationCommand {
@@ -47,9 +78,7 @@ export interface ContentStopTranslationCommand {
 
 export interface ContentToggleTranslationCommand {
   type: "content/toggle-translation"
-  payload?: {
-    targetLang?: string
-  }
+  payload?: ContentTranslationOverrides
 }
 
 export type ContentCommand =
@@ -90,11 +119,19 @@ export function isRuntimeResponse(value: unknown): value is RuntimeResponse {
 export function isContentCommand(value: unknown): value is ContentCommand {
   if (typeof value !== "object" || value === null) return false
 
-  const type = (value as { type?: string }).type
-  return type === "content/get-translation-state"
-    || type === "content/start-translation"
-    || type === "content/stop-translation"
-    || type === "content/toggle-translation"
+  const candidate = value as { type?: string; payload?: unknown }
+
+  switch (candidate.type) {
+    case "content/get-translation-state":
+    case "content/stop-translation":
+      return true
+    case "content/start-translation":
+    case "content/toggle-translation":
+      return candidate.payload === undefined
+        || ContentTranslationOverridesSchema.safeParse(candidate.payload).success
+    default:
+      return false
+  }
 }
 
 export function isContentCommandResponse(

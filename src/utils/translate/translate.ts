@@ -3,6 +3,7 @@
  */
 
 import { requestTranslationBatch } from "@/utils/extension/messages"
+import type { TranslationRequestContext, TranslationTask } from "@/types/messages"
 import {
   createTranslationError,
   toTranslationError,
@@ -13,6 +14,8 @@ export interface TranslateRequest {
   texts: string[]
   targetLang: string
   sourceLang?: string
+  context?: TranslationRequestContext
+  task?: TranslationTask
 }
 
 export interface TranslateResponse {
@@ -116,7 +119,7 @@ async function withConcurrency<T>(
 export async function translateTexts(
   request: TranslateRequest,
 ): Promise<TranslateResult> {
-  const { texts, targetLang, sourceLang } = request
+  const { texts, targetLang, sourceLang, context, task = "translate" } = request
 
   if (texts.length === 0) {
     return { ok: true, translations: [] }
@@ -130,6 +133,8 @@ export async function translateTexts(
         texts: batch.texts,
         targetLang,
         ...(sourceLang ? { sourceLang } : {}),
+        ...(context ? { context } : {}),
+        ...(task !== "translate" ? { task } : {}),
       })
     } catch (error) {
       return {

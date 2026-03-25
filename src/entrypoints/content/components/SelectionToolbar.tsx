@@ -2,15 +2,20 @@ import { useState, useEffect, useCallback, useRef } from "react"
 import { createRoot } from "react-dom/client"
 import { readConfig } from "@/utils/storage/config"
 import { translateTexts } from "@/utils/translate/translate"
+import { copyTextToClipboard } from "@/utils/dom/clipboard"
+import { resolveSiteTranslationSettings } from "@/types/config"
+import {
+  clearInteractionSuppression,
+  setInteractionSuppressionReason,
+} from "../interaction-coordination"
 
-// ── Types ──────────────────────────────────────────────────────────────
 interface ToolbarPosition {
   top: number
   left: number
 }
 
-// ── Styles ─────────────────────────────────────────────────────────────
 const BRAND_COLOR = "#6366f1"
+const HOST_ID = "astra-selection-toolbar-host"
 
 const styles = {
   toolbar: (pos: ToolbarPosition): React.CSSProperties => ({
@@ -75,51 +80,96 @@ const KEYFRAMES_CSS = `
 }
 `
 
-// ── Component ──────────────────────────────────────────────────────────
+function getSelectionContext(range: Range): string | undefined {
+  const baseNode = range.commonAncestorContainer instanceof HTMLElement
+    ? range.commonAncestorContainer
+    : range.commonAncestorContainer.parentElement
+
+  const contextElement = baseNode?.closest("p, li, blockquote, td, th, article, section, div")
+  const text = contextElement?.textContent?.replace(/\s+/g, " ").trim()
+  if (!text) return undefined
+  return text.length > 400 ? `${text.slice(0, 400).trim()}…` : text
+}
+
+function isEventInsideToolbar(event: Event): boolean {
+  const host = document.getElementById(HOST_ID)
+  if (!host) return false
+
+  const path = typeof event.composedPath === "function" ? event.composedPath() : []
+  if (path.includes(host)) return true
+
+  const target = event.target as Node | null
+  return !!target && (host === target || host.contains(target))
+}
+
 function SelectionToolbarApp() {
   const [visible, setVisible] = useState(false)
   const [position, setPosition] = useState<ToolbarPosition>({ top: 0, left: 0 })
   const [selectedText, setSelectedText] = useState("")
+  const [selectionContext, setSelectionContext] = useState<string | undefined>(undefined)
   const [translating, setTranslating] = useState(false)
   const [translation, setTranslation] = useState<string | null>(null)
   const [hoveredBtn, setHoveredBtn] = useState<string | null>(null)
 
   const toolbarRef = useRef<HTMLDivElement>(null)
   const skipNextMouseUp = useRef(false)
+  const visibleRef = useRef(false)
+
+  visibleRef.current = visible
 
   const dismiss = useCallback(() => {
+    clearInteractionSuppression(["selection-pointer", "selection-toolbar"])
     setVisible(false)
     setTranslation(null)
     setTranslating(false)
     setSelectedText("")
+    setSelectionContext(undefined)
   }, [])
 
-  // mouseup → show toolbar near selection end
   useEffect(() => {
-    const onMouseUp = (e: MouseEvent) => {
+    const onMouseDown = (event: MouseEvent) => {
+      if (isEventInsideToolbar(event) || toolbarRef.current?.contains(event.target as Node)) {
+        return
+      }
+
+      if (visibleRef.current) {
+        dismiss()
+      }
+
+      if (event.button === 0) {
+        setInteractionSuppressionReason("selection-pointer", true)
+      }
+    }
+
+    document.addEventListener("mousedown", onMouseDown, true)
+    return () => document.removeEventListener("mousedown", onMouseDown, true)
+  }, [dismiss])
+
+  useEffect(() => {
+    const onMouseUp = (event: MouseEvent) => {
       if (skipNextMouseUp.current) {
         skipNextMouseUp.current = false
         return
       }
 
-      // Ignore clicks inside the toolbar shadow host
-      const host = document.getElementById("astra-selection-toolbar-host")
-      if (host && (host === e.target || host.contains(e.target as Node))) return
+      if (isEventInsideToolbar(event)) return
 
       setTimeout(() => {
-        const sel = window.getSelection()
-        const text = sel?.toString().trim() ?? ""
-        if (!text || !sel || sel.rangeCount === 0) {
+        const selection = window.getSelection()
+        const text = selection?.toString().trim() ?? ""
+        if (!text || !selection || selection.rangeCount === 0) {
           dismiss()
           return
         }
 
+        const range = selection.getRangeAt(0)
+        setInteractionSuppressionReason("selection-toolbar", true)
+        setInteractionSuppressionReason("selection-pointer", false)
         setSelectedText(text)
+        setSelectionContext(getSelectionContext(range))
         setTranslation(null)
         setTranslating(false)
 
-        // Position near the end of the selection
-        const range = sel.getRangeAt(0)
         const rect = range.getBoundingClientRect()
         const top = rect.bottom + 6
         let left = rect.right - 60
@@ -135,25 +185,6 @@ function SelectionToolbarApp() {
     return () => document.removeEventListener("mouseup", onMouseUp, true)
   }, [dismiss])
 
-  // click outside → dismiss
-  useEffect(() => {
-    if (!visible) return
-
-    const onMouseDown = (e: MouseEvent) => {
-      const host = document.getElementById("astra-selection-toolbar-host")
-      if (host && (host === e.target || host.contains(e.target as Node))) return
-
-      // Check if click is inside shadow DOM
-      if (toolbarRef.current?.contains(e.target as Node)) return
-
-      dismiss()
-    }
-
-    document.addEventListener("mousedown", onMouseDown, true)
-    return () => document.removeEventListener("mousedown", onMouseDown, true)
-  }, [visible, dismiss])
-
-  // scroll / resize → dismiss
   useEffect(() => {
     if (!visible) return
     const onScroll = () => dismiss()
@@ -165,6 +196,29 @@ function SelectionToolbarApp() {
     }
   }, [visible, dismiss])
 
+  useEffect(() => {
+    const clearPointerSuppression = () => {
+      clearInteractionSuppression(["selection-pointer"])
+    }
+
+    const onVisibilityChange = () => {
+      if (document.visibilityState !== "visible") {
+        clearPointerSuppression()
+      }
+    }
+
+    window.addEventListener("blur", clearPointerSuppression)
+    document.addEventListener("visibilitychange", onVisibilityChange, true)
+    return () => {
+      window.removeEventListener("blur", clearPointerSuppression)
+      document.removeEventListener("visibilitychange", onVisibilityChange, true)
+    }
+  }, [])
+
+  useEffect(() => () => {
+    clearInteractionSuppression(["selection-pointer", "selection-toolbar"])
+  }, [])
+
   const handleTranslate = async () => {
     if (!selectedText || translating) return
     setTranslating(true)
@@ -172,9 +226,21 @@ function SelectionToolbarApp() {
 
     try {
       const config = await readConfig()
+      const resolved = resolveSiteTranslationSettings(config, window.location.hostname)
+      if (!resolved.enabled) {
+        setTranslation("⚠ Astra is disabled on this site.")
+        return
+      }
+
       const result = await translateTexts({
         texts: [selectedText],
-        targetLang: config.targetLang,
+        targetLang: resolved.targetLang,
+        context: {
+          ...(document.title.trim() ? { pageTitle: document.title.trim() } : {}),
+          ...(location.origin ? { pageUrl: `${location.origin}${location.pathname}` } : {}),
+          ...(window.location.hostname ? { hostname: window.location.hostname } : {}),
+          ...(selectionContext ? { selectionContext } : {}),
+        },
       })
 
       if (!result.ok) {
@@ -192,20 +258,7 @@ function SelectionToolbarApp() {
   }
 
   const handleCopy = async () => {
-    const textToCopy = translation ?? selectedText
-    try {
-      await navigator.clipboard.writeText(textToCopy)
-    } catch {
-      // fallback
-      const ta = document.createElement("textarea")
-      ta.value = textToCopy
-      ta.style.position = "fixed"
-      ta.style.opacity = "0"
-      document.body.appendChild(ta)
-      ta.select()
-      document.execCommand("copy")
-      document.body.removeChild(ta)
-    }
+    await copyTextToClipboard(translation ?? selectedText)
   }
 
   if (!visible) return null
@@ -214,7 +267,7 @@ function SelectionToolbarApp() {
     <div
       ref={toolbarRef}
       style={styles.toolbar(position)}
-      onMouseDown={(e) => e.stopPropagation()}
+      onMouseDown={(event) => event.stopPropagation()}
     >
       <div style={styles.buttonBar}>
         <button
@@ -224,8 +277,8 @@ function SelectionToolbarApp() {
           }}
           onMouseEnter={() => setHoveredBtn("translate")}
           onMouseLeave={() => setHoveredBtn(null)}
-          onClick={(e) => {
-            e.stopPropagation()
+          onClick={(event) => {
+            event.stopPropagation()
             skipNextMouseUp.current = true
             void handleTranslate()
           }}
@@ -239,8 +292,8 @@ function SelectionToolbarApp() {
           }}
           onMouseEnter={() => setHoveredBtn("copy")}
           onMouseLeave={() => setHoveredBtn(null)}
-          onClick={(e) => {
-            e.stopPropagation()
+          onClick={(event) => {
+            event.stopPropagation()
             skipNextMouseUp.current = true
             void handleCopy()
           }}
@@ -262,9 +315,7 @@ function SelectionToolbarApp() {
   )
 }
 
-// ── Mount helper ───────────────────────────────────────────────────────
 export function mountSelectionToolbar() {
-  const HOST_ID = "astra-selection-toolbar-host"
   if (document.getElementById(HOST_ID)) return
 
   const host = document.createElement("div")
@@ -280,7 +331,6 @@ export function mountSelectionToolbar() {
 
   const shadow = host.attachShadow({ mode: "open" })
 
-  // Inject keyframes into shadow DOM
   const styleEl = document.createElement("style")
   styleEl.textContent = KEYFRAMES_CSS
   shadow.appendChild(styleEl)

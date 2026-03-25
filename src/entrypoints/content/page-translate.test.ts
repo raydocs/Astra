@@ -9,6 +9,11 @@ const { readConfigMock, translateTextsMock } = vi.hoisted(() => ({
       apiKey: "sk-test",
       model: "gpt-4o-mini",
     },
+    presentation: {
+      mode: "bilingual" as const,
+      theme: "default" as const,
+    },
+    sites: {},
   })),
   translateTextsMock: vi.fn(),
 }))
@@ -93,13 +98,32 @@ describe("page translation controller", () => {
   beforeEach(() => {
     MockIntersectionObserver.instances = []
     translateTextsMock.mockReset()
-    readConfigMock.mockClear()
+    readConfigMock.mockReset()
+    readConfigMock.mockResolvedValue({
+      version: 1,
+      targetLang: "zh-CN",
+      provider: {
+        id: "openai",
+        apiKey: "sk-test",
+        model: "gpt-4o-mini",
+      },
+      presentation: {
+        mode: "bilingual",
+        theme: "default",
+      },
+      sites: {},
+    })
+
+    document.title = "Astra Test Page"
+    document.head.innerHTML = '<meta name="description" content="A page about browser translation." />'
     document.body.innerHTML = `
       <main>
         <p id="visible">Visible text</p>
         <p id="offscreen">Offscreen text</p>
       </main>
     `
+
+    window.history.replaceState({}, "", "/article?foo=1#bar")
 
     Object.defineProperty(window, "innerHeight", { configurable: true, value: 600 })
     Object.defineProperty(window, "innerWidth", { configurable: true, value: 1200 })
@@ -118,7 +142,7 @@ describe("page translation controller", () => {
       translations: ["可见文本"],
     })
 
-    await startPageTranslation("zh-CN")
+    await startPageTranslation({ targetLang: "zh-CN" })
     await flushPromises()
 
     const firstSessionId = getPageTranslationState().sessionId
@@ -132,7 +156,7 @@ describe("page translation controller", () => {
       translations: ["再次翻译"],
     })
 
-    await startPageTranslation("zh-CN")
+    await startPageTranslation({ targetLang: "zh-CN" })
     await flushPromises()
 
     expect(getPageTranslationState().sessionId).toBeGreaterThan(firstSessionId)
@@ -146,7 +170,7 @@ describe("page translation controller", () => {
       resolveTranslation = resolve
     }))
 
-    await startPageTranslation("zh-CN")
+    await startPageTranslation({ targetLang: "zh-CN" })
     await flushPromises()
     stopPageTranslation()
 
@@ -157,19 +181,25 @@ describe("page translation controller", () => {
     expect(getPageTranslationState().phase).toBe("idle")
   })
 
-  it("only translates visible blocks immediately", async () => {
+  it("passes page context and only translates visible blocks immediately", async () => {
     translateTextsMock.mockResolvedValue({
       ok: true,
       translations: ["可见文本"],
     })
 
-    await startPageTranslation("zh-CN")
+    await startPageTranslation({ targetLang: "zh-CN" })
     await flushPromises()
 
-    expect(translateTextsMock).toHaveBeenCalledWith({
+    expect(translateTextsMock).toHaveBeenCalledWith(expect.objectContaining({
       texts: ["Visible text"],
       targetLang: "zh-CN",
-    })
+      context: expect.objectContaining({
+        hostname: window.location.hostname,
+        pageUrl: `${window.location.origin}/article`,
+        metaDescription: "A page about browser translation.",
+        contentSummary: expect.stringContaining("Visible text"),
+      }),
+    }))
 
     const observer = MockIntersectionObserver.instances[0]
     translateTextsMock.mockResolvedValueOnce({
@@ -179,10 +209,13 @@ describe("page translation controller", () => {
     observer.trigger(document.getElementById("offscreen")!)
     await flushPromises()
 
-    expect(translateTextsMock).toHaveBeenCalledWith({
+    expect(translateTextsMock).toHaveBeenLastCalledWith(expect.objectContaining({
       texts: ["Offscreen text"],
       targetLang: "zh-CN",
-    })
+      context: expect.objectContaining({
+        pageUrl: `${window.location.origin}/article`,
+      }),
+    }))
   })
 
   it("only scans newly added subtrees during mutation updates", async () => {
@@ -192,7 +225,7 @@ describe("page translation controller", () => {
       translations: ["可见文本"],
     })
 
-    await startPageTranslation("zh-CN")
+    await startPageTranslation({ targetLang: "zh-CN" })
     await flushPromises()
 
     const main = document.querySelector("main")!
@@ -212,10 +245,13 @@ describe("page translation controller", () => {
     vi.advanceTimersByTime(200)
     await flushPromises()
 
-    expect(translateTextsMock).toHaveBeenNthCalledWith(2, {
+    expect(translateTextsMock).toHaveBeenNthCalledWith(2, expect.objectContaining({
       texts: ["Dynamic text"],
       targetLang: "zh-CN",
-    })
+      context: expect.objectContaining({
+        pageUrl: `${window.location.origin}/article`,
+      }),
+    }))
 
     vi.useRealTimers()
   })
@@ -232,6 +268,11 @@ describe("page translation controller", () => {
             apiKey: "sk-test",
             model: "gpt-4o-mini",
           },
+          presentation: {
+            mode: "bilingual",
+            theme: "default",
+          },
+          sites: {},
         })
       }
     }))
@@ -242,7 +283,7 @@ describe("page translation controller", () => {
     })
 
     const firstStart = startPageTranslation()
-    const secondStart = startPageTranslation("ja")
+    const secondStart = startPageTranslation({ targetLang: "ja" })
     resolveConfig()
 
     await Promise.all([firstStart, secondStart])
@@ -253,6 +294,65 @@ describe("page translation controller", () => {
     expect(translateTextsMock).toHaveBeenCalledWith({
       texts: ["Visible text"],
       targetLang: "ja",
+      context: expect.any(Object),
     })
+  })
+
+  it("tracks presentation mode and progress in the translation snapshot", async () => {
+    translateTextsMock.mockResolvedValue({
+      ok: true,
+      translations: ["仅译文"],
+    })
+
+    await startPageTranslation({
+      targetLang: "zh-CN",
+      translationMode: "translation-only",
+      translationTheme: "highlight",
+    })
+    await flushPromises()
+
+    expect(getPageTranslationState()).toMatchObject({
+      phase: "running",
+      presentation: {
+        mode: "translation-only",
+        theme: "highlight",
+      },
+      progress: {
+        totalBlocks: 2,
+        translatedBlocks: 1,
+      },
+      site: {
+        hostname: window.location.hostname,
+        enabled: true,
+      },
+    })
+  })
+
+  it("stops immediately when the current site is disabled", async () => {
+    readConfigMock.mockResolvedValueOnce({
+      version: 1,
+      targetLang: "zh-CN",
+      provider: {
+        id: "openai",
+        apiKey: "sk-test",
+        model: "gpt-4o-mini",
+      },
+      presentation: {
+        mode: "bilingual",
+        theme: "default",
+      },
+      sites: {
+        [window.location.hostname]: {
+          enabled: false,
+          alwaysTranslate: false,
+        },
+      },
+    })
+
+    const state = await startPageTranslation()
+
+    expect(state.phase).toBe("idle")
+    expect(state.lastError?.code).toBe("SITE_DISABLED")
+    expect(translateTextsMock).not.toHaveBeenCalled()
   })
 })

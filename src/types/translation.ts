@@ -1,3 +1,8 @@
+import type {
+  PresentationSettings,
+  ResolvedSiteTranslationSettings,
+} from "./config"
+
 export type TranslationPhase = "idle" | "starting" | "running" | "stopping"
 
 export type TranslationErrorCode =
@@ -6,6 +11,7 @@ export type TranslationErrorCode =
   | "PROVIDER_REQUEST_FAILED"
   | "PROVIDER_PARSE_FAILED"
   | "INVALID_RESPONSE"
+  | "SITE_DISABLED"
   | "UNKNOWN"
 
 export interface TranslationError {
@@ -13,11 +19,47 @@ export interface TranslationError {
   message: string
 }
 
+export interface TranslationProgressSnapshot {
+  totalBlocks: number
+  queuedBlocks: number
+  inFlightBlocks: number
+  translatedBlocks: number
+  failedBlocks: number
+}
+
+export interface TranslationSiteSnapshot {
+  hostname: string | null
+  enabled: boolean
+  alwaysTranslate: boolean
+}
+
 export interface TranslationSnapshot {
   phase: TranslationPhase
   sessionId: number
   targetLang: string | null
   lastError: TranslationError | null
+  progress: TranslationProgressSnapshot
+  presentation: PresentationSettings
+  site: TranslationSiteSnapshot
+}
+
+export const EMPTY_TRANSLATION_PROGRESS: TranslationProgressSnapshot = {
+  totalBlocks: 0,
+  queuedBlocks: 0,
+  inFlightBlocks: 0,
+  translatedBlocks: 0,
+  failedBlocks: 0,
+}
+
+export const DEFAULT_TRANSLATION_PRESENTATION: PresentationSettings = {
+  mode: "bilingual",
+  theme: "default",
+}
+
+export const DEFAULT_TRANSLATION_SITE: TranslationSiteSnapshot = {
+  hostname: null,
+  enabled: true,
+  alwaysTranslate: false,
 }
 
 export const IDLE_TRANSLATION_SNAPSHOT: TranslationSnapshot = {
@@ -25,6 +67,9 @@ export const IDLE_TRANSLATION_SNAPSHOT: TranslationSnapshot = {
   sessionId: 0,
   targetLang: null,
   lastError: null,
+  progress: { ...EMPTY_TRANSLATION_PROGRESS },
+  presentation: { ...DEFAULT_TRANSLATION_PRESENTATION },
+  site: { ...DEFAULT_TRANSLATION_SITE },
 }
 
 export class AstraError extends Error {
@@ -61,4 +106,14 @@ export function toTranslationError(
 
 export function isTranslationActive(snapshot: TranslationSnapshot): boolean {
   return snapshot.phase !== "idle"
+}
+
+export function createSiteSnapshot(
+  resolved: Pick<ResolvedSiteTranslationSettings, "hostname" | "enabled" | "alwaysTranslate">,
+): TranslationSiteSnapshot {
+  return {
+    hostname: resolved.hostname,
+    enabled: resolved.enabled,
+    alwaysTranslate: resolved.alwaysTranslate,
+  }
 }

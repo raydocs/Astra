@@ -2,24 +2,43 @@
  * Page translation orchestration — viewport-first progressive translation.
  */
 
-import { readConfig } from "@/utils/storage/config"
+import {
+  readConfig,
+} from "@/utils/storage/config"
 import {
   clearLoading,
   removeAllTranslations,
   replaceLoading,
   showLoading,
 } from "@/utils/dom/inject"
-import { findContentRoot, collectTextBlocks, type TextBlock } from "@/utils/dom/traversal"
-import { translateTexts } from "@/utils/translate/translate"
 import {
+  buildContentSummary,
+  collectTextBlocks,
+  findContentRoot,
+  type TextBlock,
+} from "@/utils/dom/traversal"
+import { translateTexts } from "@/utils/translate/translate"
+import type { TranslationRequestContext } from "@/types/messages"
+import {
+  createSiteSnapshot,
+  createTranslationError,
+  EMPTY_TRANSLATION_PROGRESS,
   type TranslationError,
+  type TranslationPhase,
+  type TranslationProgressSnapshot,
   type TranslationSnapshot,
 } from "@/types/translation"
+import {
+  resolveSiteTranslationSettings,
+  type ResolvedSiteTranslationSettings,
+  type TranslationOverrides,
+} from "@/types/config"
 import {
   getTranslationState,
   setTranslationState,
   subscribeTranslationState,
 } from "./translation-state"
+import { getDocumentTranslationContext } from "./translation-context"
 
 const INITIAL_VIEWPORT_MARGIN = 200
 const DRAIN_BATCH_SIZE = 12
@@ -27,7 +46,11 @@ const MUTATION_SCAN_DEBOUNCE_MS = 150
 
 interface TranslationSession {
   id: number
+  phase: TranslationPhase
   targetLang: string
+  presentation: ResolvedSiteTranslationSettings["presentation"]
+  site: ReturnType<typeof createSiteSnapshot>
+  context?: TranslationRequestContext
   root: HTMLElement
   queue: TextBlock[]
   queued: WeakSet<HTMLElement>
@@ -40,6 +63,11 @@ interface TranslationSession {
   drainPromise: Promise<void> | null
   mutationScanTimer: number | null
   pendingMutationRoots: Set<HTMLElement>
+  totalBlocks: number
+  queuedBlocks: number
+  inFlightBlocks: number
+  translatedBlocks: number
+  failedBlocks: number
 }
 
 let currentSession: TranslationSession | null = null
@@ -56,22 +84,54 @@ function isNearViewport(el: HTMLElement): boolean {
   )
 }
 
+function getSessionProgress(session: TranslationSession): TranslationProgressSnapshot {
+  return {
+    totalBlocks: session.totalBlocks,
+    queuedBlocks: session.queuedBlocks,
+    inFlightBlocks: session.inFlightBlocks,
+    translatedBlocks: session.translatedBlocks,
+    failedBlocks: session.failedBlocks,
+  }
+}
+
 function updateSnapshot(snapshot: TranslationSnapshot): TranslationSnapshot {
   setTranslationState(snapshot)
   return snapshot
 }
 
 function publishSessionState(
-  phase: TranslationSnapshot["phase"],
-  sessionId: number,
-  targetLang: string | null,
+  session: TranslationSession,
+  phase: TranslationPhase,
   lastError: TranslationError | null = null,
-) {
+): TranslationSnapshot {
+  session.phase = phase
   return updateSnapshot({
     phase,
-    sessionId,
-    targetLang,
+    sessionId: session.id,
+    targetLang: session.targetLang,
     lastError,
+    progress: getSessionProgress(session),
+    presentation: { ...session.presentation },
+    site: { ...session.site },
+  })
+}
+
+function publishIdleState(params: {
+  sessionId: number
+  targetLang: string | null
+  lastError: TranslationError | null
+  progress?: TranslationProgressSnapshot
+  presentation: TranslationSnapshot["presentation"]
+  site: TranslationSnapshot["site"]
+}): TranslationSnapshot {
+  return updateSnapshot({
+    phase: "idle",
+    sessionId: params.sessionId,
+    targetLang: params.targetLang,
+    lastError: params.lastError,
+    progress: params.progress ? { ...params.progress } : { ...EMPTY_TRANSLATION_PROGRESS },
+    presentation: { ...params.presentation },
+    site: { ...params.site },
   })
 }
 
@@ -91,27 +151,38 @@ function cleanupSession(session: TranslationSession) {
 
 function stopSession(
   error: TranslationError | null = null,
-  options: { invalidatePendingStart?: boolean } = {},
+  options: { invalidatePendingStart?: boolean; preserveProgress?: boolean } = {},
 ): TranslationSnapshot {
   if (options.invalidatePendingStart ?? true) {
     sessionLifecycleToken += 1
   }
+
   const session = currentSession
   if (!session) {
-    return updateSnapshot({
-      ...getTranslationState(),
-      phase: "idle",
-      targetLang: null,
+    const previous = getTranslationState()
+    return publishIdleState({
+      sessionId: previous.sessionId,
+      targetLang: error ? previous.targetLang : null,
       lastError: error,
+      progress: error ? previous.progress : { ...EMPTY_TRANSLATION_PROGRESS },
+      presentation: previous.presentation,
+      site: previous.site,
     })
   }
 
-  publishSessionState("stopping", session.id, session.targetLang, error)
+  publishSessionState(session, "stopping", error)
   cleanupSession(session)
   currentSession = null
   removeAllTranslations()
 
-  return publishSessionState("idle", session.id, null, error)
+  return publishIdleState({
+    sessionId: session.id,
+    targetLang: error ? session.targetLang : null,
+    lastError: error,
+    progress: options.preserveProgress ? getSessionProgress(session) : { ...EMPTY_TRANSLATION_PROGRESS },
+    presentation: session.presentation,
+    site: session.site,
+  })
 }
 
 function enqueueBlock(session: TranslationSession, block: TextBlock) {
@@ -124,20 +195,29 @@ function enqueueBlock(session: TranslationSession, block: TextBlock) {
 
   session.queued.add(block.element)
   session.queue.push(block)
+  session.queuedBlocks += 1
 }
 
 function registerBlocks(session: TranslationSession, blocks: TextBlock[]) {
+  let addedCount = 0
+
   blocks.forEach((block) => {
     if (!block.element.isConnected) return
     if (session.knownBlocks.has(block.element)) return
 
     session.knownBlocks.set(block.element, block)
     session.intersectionObserver?.observe(block.element)
+    session.totalBlocks += 1
+    addedCount += 1
 
     if (isNearViewport(block.element)) {
       enqueueBlock(session, block)
     }
   })
+
+  if (addedCount > 0) {
+    publishSessionState(session, session.phase)
+  }
 }
 
 function scheduleDrain(session: TranslationSession) {
@@ -153,6 +233,9 @@ function scheduleDrain(session: TranslationSession) {
           const candidate = session.queue.shift()
           if (!candidate) continue
           session.queued.delete(candidate.element)
+          if (session.queuedBlocks > 0) {
+            session.queuedBlocks -= 1
+          }
           if (!candidate.element.isConnected) continue
           if (session.translated.has(candidate.element)) continue
           if (session.inFlight.has(candidate.element)) continue
@@ -167,8 +250,14 @@ function scheduleDrain(session: TranslationSession) {
 
         batch.forEach((block) => {
           session.inFlight.add(block.element)
-          showLoading(block.element)
+          session.inFlightBlocks += 1
+          showLoading(block.element, {
+            mode: session.presentation.mode,
+            theme: session.presentation.theme,
+            targetLang: session.targetLang,
+          })
         })
+        publishSessionState(session, "running")
 
         let result: Awaited<ReturnType<typeof translateTexts>>
 
@@ -176,18 +265,25 @@ function scheduleDrain(session: TranslationSession) {
           result = await translateTexts({
             texts: batch.map((block) => block.text),
             targetLang: session.targetLang,
+            context: session.context,
           })
         } catch (error) {
           batch.forEach((block) => {
             session.inFlight.delete(block.element)
+            if (session.inFlightBlocks > 0) {
+              session.inFlightBlocks -= 1
+            }
             clearLoading(block.element)
-            session.failed.add(block.element)
+            if (!session.failed.has(block.element)) {
+              session.failed.add(block.element)
+              session.failedBlocks += 1
+            }
           })
 
           stopSession({
             code: "UNKNOWN",
             message: error instanceof Error ? error.message : "Translation failed.",
-          })
+          }, { preserveProgress: true })
           return
         }
 
@@ -198,23 +294,36 @@ function scheduleDrain(session: TranslationSession) {
         if (!result.ok) {
           batch.forEach((block) => {
             session.inFlight.delete(block.element)
+            if (session.inFlightBlocks > 0) {
+              session.inFlightBlocks -= 1
+            }
             clearLoading(block.element)
-            session.failed.add(block.element)
+            if (!session.failed.has(block.element)) {
+              session.failed.add(block.element)
+              session.failedBlocks += 1
+            }
           })
 
-          stopSession(result.error)
+          stopSession(result.error, { preserveProgress: true })
           return
         }
 
         batch.forEach((block, index) => {
           session.inFlight.delete(block.element)
+          if (session.inFlightBlocks > 0) {
+            session.inFlightBlocks -= 1
+          }
           session.translated.add(block.element)
+          session.translatedBlocks += 1
           if (!block.element.isConnected) return
           replaceLoading(block.element, result.translations[index], {
-            theme: "default",
+            mode: session.presentation.mode,
+            theme: session.presentation.theme,
             targetLang: session.targetLang,
           })
         })
+
+        publishSessionState(session, "running")
       }
     })
     .finally(() => {
@@ -272,6 +381,9 @@ function createIntersectionObserver(session: TranslationSession): IntersectionOb
       enqueueBlock(session, block)
     })
 
+    if (session.queue.length > 0) {
+      publishSessionState(session, "running")
+    }
     scheduleDrain(session)
   }, {
     rootMargin: `${INITIAL_VIEWPORT_MARGIN}px 0px`,
@@ -287,8 +399,8 @@ function createMutationObserver(session: TranslationSession): MutationObserver |
     for (const mutation of mutations) {
       for (const addedNode of mutation.addedNodes) {
         if (!(addedNode instanceof HTMLElement)) continue
-        if (addedNode.matches("[data-astra-translation]")) continue
-        if (addedNode.closest("[data-astra-translation]")) continue
+        if (addedNode.matches("[data-astra-translation], [data-astra-source]")) continue
+        if (addedNode.closest("[data-astra-translation], [data-astra-source]")) continue
         if (addedNode.classList.contains("notranslate")) continue
 
         session.pendingMutationRoots.add(addedNode)
@@ -301,10 +413,22 @@ function createMutationObserver(session: TranslationSession): MutationObserver |
   })
 }
 
-async function resolveTargetLang(targetLang?: string): Promise<string> {
-  if (targetLang?.trim()) return targetLang
+function buildPageContext(
+  blocks: TextBlock[],
+  resolved: ResolvedSiteTranslationSettings,
+): TranslationRequestContext {
+  const contentSummary = buildContentSummary(blocks) ?? undefined
+  return {
+    ...getDocumentTranslationContext(),
+    ...(resolved.hostname ? { hostname: resolved.hostname } : {}),
+    ...(contentSummary ? { contentSummary } : {}),
+  }
+}
+
+async function resolveStartSettings(overrides: TranslationOverrides = {}) {
   const config = await readConfig()
-  return config.targetLang
+  const resolved = resolveSiteTranslationSettings(config, window.location.hostname, overrides)
+  return { config, resolved }
 }
 
 export function getPageTranslationState(): TranslationSnapshot {
@@ -318,7 +442,7 @@ export function subscribePageTranslationState(
 }
 
 export async function startPageTranslation(
-  targetLang?: string,
+  overrides: TranslationOverrides = {},
 ): Promise<TranslationSnapshot> {
   const startToken = ++sessionLifecycleToken
 
@@ -326,15 +450,32 @@ export async function startPageTranslation(
     stopSession(null, { invalidatePendingStart: false })
   }
 
-  const resolvedTargetLang = await resolveTargetLang(targetLang)
+  const { resolved } = await resolveStartSettings(overrides)
   if (startToken !== sessionLifecycleToken) {
     return getTranslationState()
   }
 
+  const siteSnapshot = createSiteSnapshot(resolved)
+  if (!resolved.enabled) {
+    return publishIdleState({
+      sessionId: getTranslationState().sessionId,
+      targetLang: resolved.targetLang,
+      lastError: createTranslationError("SITE_DISABLED", "Astra is disabled on this site."),
+      progress: { ...EMPTY_TRANSLATION_PROGRESS },
+      presentation: resolved.presentation,
+      site: siteSnapshot,
+    })
+  }
+
   const root = findContentRoot(document)
+  const blocks = collectTextBlocks(root)
   const session: TranslationSession = {
     id: nextSessionId++,
-    targetLang: resolvedTargetLang,
+    phase: "starting",
+    targetLang: resolved.targetLang,
+    presentation: resolved.presentation,
+    site: siteSnapshot,
+    context: buildPageContext(blocks, resolved),
     root,
     queue: [],
     queued: new WeakSet(),
@@ -347,15 +488,19 @@ export async function startPageTranslation(
     drainPromise: null,
     mutationScanTimer: null,
     pendingMutationRoots: new Set(),
+    totalBlocks: 0,
+    queuedBlocks: 0,
+    inFlightBlocks: 0,
+    translatedBlocks: 0,
+    failedBlocks: 0,
   }
 
   currentSession = session
-  publishSessionState("starting", session.id, session.targetLang)
+  publishSessionState(session, "starting")
 
   session.intersectionObserver = createIntersectionObserver(session)
   session.mutationObserver = createMutationObserver(session)
 
-  const blocks = collectTextBlocks(session.root)
   registerBlocks(session, blocks)
 
   session.mutationObserver?.observe(document.body, {
@@ -364,11 +509,10 @@ export async function startPageTranslation(
   })
 
   if (blocks.length === 0) {
-    currentSession = session
     return stopSession()
   }
 
-  publishSessionState("running", session.id, session.targetLang)
+  publishSessionState(session, "running")
   scheduleDrain(session)
   return getTranslationState()
 }
@@ -378,10 +522,10 @@ export function stopPageTranslation(): TranslationSnapshot {
 }
 
 export async function togglePageTranslation(
-  targetLang?: string,
+  overrides: TranslationOverrides = {},
 ): Promise<TranslationSnapshot> {
   if (getTranslationState().phase === "idle") {
-    return startPageTranslation(targetLang)
+    return startPageTranslation(overrides)
   }
 
   return stopPageTranslation()

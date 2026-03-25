@@ -51,6 +51,15 @@ async function handleTranslate(payload: {
   texts: string[]
   targetLang: string
   sourceLang?: string
+  context?: {
+    pageTitle?: string
+    pageUrl?: string
+    hostname?: string
+    metaDescription?: string
+    contentSummary?: string
+    selectionContext?: string
+  }
+  task?: "translate" | "explain"
 }): Promise<RuntimeResponse> {
   const config = await readConfig()
 
@@ -71,6 +80,8 @@ async function handleTranslate(payload: {
     texts: payload.texts,
     targetLang: payload.targetLang,
     sourceLang: payload.sourceLang,
+    context: payload.context,
+    task: payload.task,
   })
 
   return {

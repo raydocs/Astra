@@ -5,6 +5,7 @@ import {
   AstraConfigSchema,
   DEFAULT_ASTRA_CONFIG,
   normalizeConfig,
+  normalizeSiteKey,
   type AstraConfig,
   type AstraConfigInput,
 } from "@/types/config"
@@ -40,6 +41,7 @@ export async function migrateLegacyConfig(): Promise<AstraConfig> {
       typeof legacy.targetLang === "string" && legacy.targetLang.trim().length > 0
         ? legacy.targetLang
         : DEFAULT_ASTRA_CONFIG.targetLang,
+    hoverTrigger: DEFAULT_ASTRA_CONFIG.hoverTrigger,
     provider: {
       id: "openai",
       apiKey: typeof legacy.apiKey === "string" ? legacy.apiKey : "",
@@ -51,6 +53,8 @@ export async function migrateLegacyConfig(): Promise<AstraConfig> {
         ? { baseURL: legacy.baseURL }
         : {}),
     },
+    presentation: DEFAULT_ASTRA_CONFIG.presentation,
+    sites: {},
   })
 
   await persistConfig(config)
@@ -75,9 +79,28 @@ export async function saveConfig(input: AstraConfigInput): Promise<AstraConfig> 
   const parsedInput = AstraConfigInputSchema.parse(input)
   const currentConfig = await readConfig()
 
+  const mergedSites = { ...currentConfig.sites }
+  if (parsedInput.sites) {
+    Object.entries(parsedInput.sites).forEach(([key, value]) => {
+      const normalizedKey = normalizeSiteKey(key)
+      if (!normalizedKey || !value) return
+
+      mergedSites[normalizedKey] = {
+        enabled: value.enabled ?? true,
+        alwaysTranslate: value.alwaysTranslate ?? false,
+        ...(value.targetLang ? { targetLang: value.targetLang } : {}),
+        ...(value.hoverTrigger ? { hoverTrigger: value.hoverTrigger } : {}),
+        ...(value.presentation && Object.keys(value.presentation).length > 0
+          ? { presentation: value.presentation }
+          : {}),
+      }
+    })
+  }
+
   const nextConfig = normalizeConfig({
     ...currentConfig,
     ...(parsedInput.targetLang ? { targetLang: parsedInput.targetLang } : {}),
+    ...(parsedInput.hoverTrigger ? { hoverTrigger: parsedInput.hoverTrigger } : {}),
     provider: {
       ...currentConfig.provider,
       ...(parsedInput.provider?.apiKey !== undefined
@@ -94,6 +117,11 @@ export async function saveConfig(input: AstraConfigInput): Promise<AstraConfig> 
           }
         : {}),
     },
+    presentation: {
+      ...currentConfig.presentation,
+      ...parsedInput.presentation,
+    },
+    sites: mergedSites,
   })
 
   await persistConfig(nextConfig)

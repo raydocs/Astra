@@ -1,13 +1,17 @@
 /**
- * Bilingual injection — insert translations below original paragraphs.
+ * Translation injection helpers.
  */
+
+import type { TranslationMode, TranslationTheme } from "@/types/config"
 
 export const ASTRA_TRANSLATION_ATTR = "data-astra-translation"
 export const ASTRA_TRANSLATION_SELECTOR = `[${ASTRA_TRANSLATION_ATTR}]`
-
-export type TranslationTheme = "default" | "underline" | "highlight"
+export const ASTRA_SOURCE_ATTR = "data-astra-source"
+export const ASTRA_SOURCE_SELECTOR = `[${ASTRA_SOURCE_ATTR}]`
+export const ASTRA_SOURCE_HIDDEN_ATTR = "data-astra-source-hidden"
 
 export interface InjectOptions {
+  mode?: TranslationMode
   theme?: TranslationTheme
   targetLang?: string
 }
@@ -19,19 +23,30 @@ function getDirectTranslationWrappers(element: HTMLElement): HTMLElement[] {
   )
 }
 
+export function hasInjectedTranslation(element: HTMLElement): boolean {
+  return getDirectTranslationWrappers(element).length > 0
+}
+
 function getDirectLoadingWrapper(element: HTMLElement): HTMLElement | null {
   return getDirectTranslationWrappers(element).find(
     (child) => child.getAttribute(ASTRA_TRANSLATION_ATTR) === "loading",
   ) ?? null
 }
 
+function getDirectSourceWrapper(element: HTMLElement): HTMLElement | null {
+  return Array.from(element.children).find(
+    (child): child is HTMLElement =>
+      child instanceof HTMLElement && child.hasAttribute(ASTRA_SOURCE_ATTR),
+  ) ?? null
+}
+
 function createWrapper(
   state: "loading" | "1",
   text: string,
-  { theme = "default", targetLang = "zh-CN" }: InjectOptions = {},
+  { theme = "default", targetLang = "zh-CN", mode = "bilingual" }: InjectOptions = {},
 ) {
   const wrapper = document.createElement("span")
-  wrapper.className = `notranslate astra-translation astra-theme-${theme}`
+  wrapper.className = `notranslate astra-translation astra-theme-${theme} astra-mode-${mode}`
   wrapper.setAttribute("translate", "no")
   wrapper.setAttribute(ASTRA_TRANSLATION_ATTR, state)
   wrapper.setAttribute("lang", targetLang)
@@ -44,38 +59,90 @@ function createWrapper(
   return wrapper
 }
 
-/**
- * Inject translated text below the original element (bilingual display).
- */
+function shouldUseBlockWrapper(element: HTMLElement): boolean {
+  return Array.from(element.children).some((child) => {
+    if (!(child instanceof HTMLElement)) return false
+    const display = getComputedStyle(child).display
+    return !display.startsWith("inline")
+  })
+}
+
+function ensureSourceWrapper(element: HTMLElement): HTMLElement {
+  const existing = getDirectSourceWrapper(element)
+  if (existing) return existing
+
+  const sourceWrapper = document.createElement(shouldUseBlockWrapper(element) ? "div" : "span")
+  sourceWrapper.className = "astra-source"
+  sourceWrapper.setAttribute(ASTRA_SOURCE_ATTR, "1")
+
+  const nodesToMove = Array.from(element.childNodes).filter((child) => {
+    if (!(child instanceof HTMLElement)) return true
+    return !child.hasAttribute(ASTRA_TRANSLATION_ATTR) && !child.hasAttribute(ASTRA_SOURCE_ATTR)
+  })
+
+  nodesToMove.forEach((node) => {
+    sourceWrapper.appendChild(node)
+  })
+
+  element.insertBefore(sourceWrapper, element.firstChild)
+  return sourceWrapper
+}
+
+function setSourceHidden(element: HTMLElement, hidden: boolean) {
+  const sourceWrapper = getDirectSourceWrapper(element)
+  if (!sourceWrapper) return
+
+  if (hidden) {
+    sourceWrapper.setAttribute(ASTRA_SOURCE_HIDDEN_ATTR, "1")
+    sourceWrapper.setAttribute("aria-hidden", "true")
+  } else {
+    sourceWrapper.removeAttribute(ASTRA_SOURCE_HIDDEN_ATTR)
+    sourceWrapper.removeAttribute("aria-hidden")
+  }
+}
+
+function unwrapSourceWrapper(element: HTMLElement) {
+  const sourceWrapper = getDirectSourceWrapper(element)
+  if (!sourceWrapper) return
+
+  sourceWrapper.removeAttribute(ASTRA_SOURCE_HIDDEN_ATTR)
+  while (sourceWrapper.firstChild) {
+    element.insertBefore(sourceWrapper.firstChild, sourceWrapper)
+  }
+  sourceWrapper.remove()
+}
+
 export function injectTranslation(
   originalElement: HTMLElement,
   translatedText: string,
   options: InjectOptions = {},
 ) {
-  // Skip if already has translation
   if (getDirectTranslationWrappers(originalElement).length > 0) return
 
   const wrapper = createWrapper("1", translatedText, options)
+  if (options.mode === "translation-only") {
+    ensureSourceWrapper(originalElement)
+    setSourceHidden(originalElement, true)
+  }
 
   originalElement.appendChild(wrapper)
 }
 
-/**
- * Show loading state on an element.
- */
-export function showLoading(element: HTMLElement) {
+export function showLoading(element: HTMLElement, options: InjectOptions = {}) {
   if (getDirectTranslationWrappers(element).length > 0) return
 
-  const wrapper = createWrapper("loading", "⋯")
+  if (options.mode === "translation-only") {
+    ensureSourceWrapper(element)
+    setSourceHidden(element, false)
+  }
+
+  const wrapper = createWrapper("loading", "⋯", options)
   wrapper.classList.add("astra-loading")
   wrapper.querySelector(".astra-translation-inner")?.classList.add("astra-loading-dots")
 
   element.appendChild(wrapper)
 }
 
-/**
- * Replace loading state with actual translation.
- */
 export function replaceLoading(
   element: HTMLElement,
   translatedText: string,
@@ -83,9 +150,14 @@ export function replaceLoading(
 ) {
   const existing = getDirectLoadingWrapper(element)
 
+  if (options.mode === "translation-only") {
+    ensureSourceWrapper(element)
+    setSourceHidden(element, true)
+  }
+
   if (existing) {
-    const { theme = "default", targetLang = "zh-CN" } = options
-    existing.className = `notranslate astra-translation astra-theme-${theme}`
+    const { theme = "default", targetLang = "zh-CN", mode = "bilingual" } = options
+    existing.className = `notranslate astra-translation astra-theme-${theme} astra-mode-${mode}`
     existing.setAttribute(ASTRA_TRANSLATION_ATTR, "1")
     existing.setAttribute("lang", targetLang)
     const inner = existing.querySelector(".astra-translation-inner")
@@ -100,15 +172,23 @@ export function replaceLoading(
 
 export function clearLoading(element: HTMLElement) {
   getDirectLoadingWrapper(element)?.remove()
+  setSourceHidden(element, false)
 }
 
 export function removeTranslationFor(element: HTMLElement) {
   getDirectTranslationWrappers(element).forEach((node) => node.remove())
+  unwrapSourceWrapper(element)
 }
 
-/**
- * Remove all Astra translations from the page.
- */
 export function removeAllTranslations() {
   document.querySelectorAll(ASTRA_TRANSLATION_SELECTOR).forEach((el) => el.remove())
+  document.querySelectorAll(ASTRA_SOURCE_SELECTOR).forEach((el) => {
+    if (!(el instanceof HTMLElement)) return
+    const parent = el.parentElement
+    if (!parent) return
+    while (el.firstChild) {
+      parent.insertBefore(el.firstChild, el)
+    }
+    el.remove()
+  })
 }

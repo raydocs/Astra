@@ -9,6 +9,11 @@ export interface CollectOptions {
   minTextLength?: number
 }
 
+export interface BuildContentSummaryOptions {
+  maxBlocks?: number
+  maxChars?: number
+}
+
 const SKIP_TAGS = new Set([
   "SCRIPT", "STYLE", "NOSCRIPT", "IFRAME", "OBJECT", "EMBED",
   "SVG", "CANVAS", "TEMPLATE", "TEXTAREA", "INPUT", "SELECT",
@@ -82,7 +87,7 @@ function collectInlineText(node: Node): string {
   if (node.nodeType !== Node.ELEMENT_NODE) return ""
 
   const el = node as HTMLElement
-  if (shouldSkip(el) || !isInline(el)) return ""
+  if (shouldSkip(el) || !isInline(el) || !isVisible(el)) return ""
 
   return Array.from(el.childNodes).map(collectInlineText).join(" ")
 }
@@ -109,6 +114,40 @@ export function findContentRoot(doc: Document = document): HTMLElement {
   }
 
   return doc.body
+}
+
+export function findClosestTextBlock(
+  startNode: Node | null,
+  root: HTMLElement = findContentRoot(document),
+  options: CollectOptions = {},
+): TextBlock | null {
+  const { minTextLength = 2 } = options
+  const startElement = startNode instanceof HTMLElement
+    ? startNode
+    : startNode?.parentElement ?? null
+
+  if (!startElement || !root.contains(startElement)) {
+    return null
+  }
+
+  let current: HTMLElement | null = startElement
+  while (current && current !== root.parentElement) {
+    if (current !== root && !root.contains(current)) {
+      return null
+    }
+
+    if (!shouldSkip(current) && isVisible(current) && isCandidateElement(current)) {
+      const text = extractDirectText(current)
+      if (text.length >= minTextLength) {
+        return { element: current, text }
+      }
+    }
+
+    if (current === root) break
+    current = current.parentElement
+  }
+
+  return null
 }
 
 export function collectTextBlocks(
@@ -138,4 +177,33 @@ export function collectTextBlocks(
 
   walk(root)
   return blocks
+}
+
+export function buildContentSummary(
+  blocks: TextBlock[],
+  options: BuildContentSummaryOptions = {},
+): string | null {
+  const { maxBlocks = 6, maxChars = 800 } = options
+  const seen = new Set<string>()
+  const parts: string[] = []
+  let charCount = 0
+
+  for (const block of blocks) {
+    const text = normalizeWhitespace(block.text)
+    if (!text || seen.has(text)) continue
+
+    const remaining = maxChars - charCount
+    if (remaining <= 0) break
+
+    const next = text.length > remaining ? `${text.slice(0, remaining).trim()}…` : text
+    parts.push(next)
+    seen.add(text)
+    charCount += next.length + 1
+
+    if (parts.length >= maxBlocks || charCount >= maxChars) {
+      break
+    }
+  }
+
+  return parts.length > 0 ? parts.join(" ") : null
 }

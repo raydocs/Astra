@@ -3,6 +3,9 @@ import { browser } from "#imports"
 import type {
   ContentCommand,
   ContentCommandResponse,
+  ContentTranslationOverrides,
+  TranslationRequestContext,
+  TranslationTask,
 } from "@/types/messages"
 import {
   isContentCommandResponse,
@@ -74,6 +77,8 @@ export async function requestTranslationBatch(payload: {
   texts: string[]
   targetLang: string
   sourceLang?: string
+  context?: TranslationRequestContext
+  task?: TranslationTask
 }): Promise<TranslationBatchRequestResult> {
   try {
     const response = await browser.runtime.sendMessage({
@@ -111,13 +116,13 @@ export async function getActiveTabTranslationState(): Promise<ContentCommandResp
 }
 
 export async function startActiveTabTranslation(
-  targetLang?: string,
+  overrides?: ContentTranslationOverrides,
 ): Promise<ContentCommandResponse> {
   try {
     const tabId = await getActiveTabId()
     return sendContentCommand(tabId, {
       type: "content/start-translation",
-      ...(targetLang ? { payload: { targetLang } } : {}),
+      ...(overrides && Object.keys(overrides).length > 0 ? { payload: overrides } : {}),
     })
   } catch (error) {
     return { ok: false, error: toTranslationError(error, "CONTENT_UNAVAILABLE") }
@@ -135,11 +140,11 @@ export async function stopActiveTabTranslation(): Promise<ContentCommandResponse
 
 export async function toggleTabTranslation(
   tabId: number,
-  targetLang?: string,
+  overrides?: ContentTranslationOverrides,
 ): Promise<ContentCommandResponse> {
   return sendContentCommand(tabId, {
     type: "content/toggle-translation",
-    ...(targetLang ? { payload: { targetLang } } : {}),
+    ...(overrides && Object.keys(overrides).length > 0 ? { payload: overrides } : {}),
   })
 }
 

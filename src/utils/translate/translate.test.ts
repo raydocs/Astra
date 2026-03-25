@@ -35,6 +35,56 @@ describe("translateTexts", () => {
     expect(requestTranslationBatchMock).toHaveBeenCalledTimes(3)
   })
 
+  it("passes translation context through each batch request", async () => {
+    requestTranslationBatchMock.mockResolvedValue({
+      ok: true,
+      translations: ["你好", "世界"],
+    })
+
+    await translateTexts({
+      texts: ["Hello", "World"],
+      targetLang: "zh-CN",
+      context: {
+        pageTitle: "Astra",
+        contentSummary: "Browser translation",
+      },
+    })
+
+    expect(requestTranslationBatchMock).toHaveBeenCalledWith({
+      texts: ["Hello", "World"],
+      targetLang: "zh-CN",
+      context: {
+        pageTitle: "Astra",
+        contentSummary: "Browser translation",
+      },
+    })
+  })
+
+  it("passes explain tasks through each batch request", async () => {
+    requestTranslationBatchMock.mockResolvedValue({
+      ok: true,
+      translations: ["Greeting explanation"],
+    })
+
+    await translateTexts({
+      texts: ["Hello"],
+      targetLang: "zh-CN",
+      task: "explain",
+      context: {
+        pageTitle: "Astra",
+      },
+    })
+
+    expect(requestTranslationBatchMock).toHaveBeenCalledWith({
+      texts: ["Hello"],
+      targetLang: "zh-CN",
+      task: "explain",
+      context: {
+        pageTitle: "Astra",
+      },
+    })
+  })
+
   it("returns a typed error when batch transport fails", async () => {
     requestTranslationBatchMock.mockRejectedValueOnce(new Error("network down"))
 

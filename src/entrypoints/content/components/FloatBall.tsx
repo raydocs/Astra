@@ -5,7 +5,7 @@ import {
   subscribePageTranslationState,
   togglePageTranslation,
 } from "../page-translate"
-import { IDLE_TRANSLATION_SNAPSHOT, isTranslationActive } from "@/types/translation"
+import { IDLE_TRANSLATION_SNAPSHOT } from "@/types/translation"
 
 const STORAGE_KEY = "astra_float_ball_y"
 const DEFAULT_Y = 300
@@ -13,6 +13,40 @@ const BALL_SIZE = 44
 
 const COLOR_IDLE = "#6366f1"
 const COLOR_ACTIVE = "#16c79a"
+const COLOR_BUSY = "#8b5cf6"
+const COLOR_ERROR = "#f59e0b"
+
+function getFloatBallVisualState(snapshot: typeof IDLE_TRANSLATION_SNAPSHOT) {
+  if (snapshot.phase === "starting" || snapshot.phase === "stopping") {
+    return {
+      color: COLOR_BUSY,
+      tooltip: snapshot.phase === "starting" ? "正在准备翻译…" : "正在移除翻译…",
+      disabled: true,
+    }
+  }
+
+  if (snapshot.phase === "running") {
+    return {
+      color: COLOR_ACTIVE,
+      tooltip: `翻译中 ${snapshot.progress.translatedBlocks}/${snapshot.progress.totalBlocks}`,
+      disabled: false,
+    }
+  }
+
+  if (snapshot.lastError) {
+    return {
+      color: COLOR_ERROR,
+      tooltip: `翻译失败：${snapshot.lastError.message}`,
+      disabled: false,
+    }
+  }
+
+  return {
+    color: COLOR_IDLE,
+    tooltip: "翻译此页",
+    disabled: false,
+  }
+}
 
 function FloatBallButton() {
   const [translationState, setTranslationState] = useState(IDLE_TRANSLATION_SNAPSHOT)
@@ -22,7 +56,6 @@ function FloatBallButton() {
   const dragRef = useRef<{ startY: number; startPosY: number } | null>(null)
   const movedRef = useRef(false)
 
-  // Load persisted Y position
   useEffect(() => {
     void browser.storage.local.get(STORAGE_KEY).then((result) => {
       const saved = result[STORAGE_KEY]
@@ -78,20 +111,18 @@ function FloatBallButton() {
       setDragging(false)
       persistY(posY)
 
-      // Only toggle if not dragged
-      if (!movedRef.current) {
+      const visual = getFloatBallVisualState(translationState)
+      if (!movedRef.current && !visual.disabled) {
         void togglePageTranslation().catch((error) => {
           console.error("[Astra] Float ball toggle failed:", error)
         })
       }
       dragRef.current = null
     },
-    [dragging, persistY, posY],
+    [dragging, persistY, posY, translationState],
   )
 
-  const translated = isTranslationActive(translationState)
-  const color = translated ? COLOR_ACTIVE : COLOR_IDLE
-  const tooltip = translated ? "移除翻译" : "翻译此页"
+  const visual = getFloatBallVisualState(translationState)
 
   return (
     <div
@@ -107,21 +138,21 @@ function FloatBallButton() {
         width: BALL_SIZE,
         height: BALL_SIZE,
         zIndex: 2147483647,
-        cursor: dragging ? "grabbing" : "pointer",
+        cursor: dragging ? "grabbing" : visual.disabled ? "progress" : "pointer",
         userSelect: "none",
         touchAction: "none",
         display: "flex",
         alignItems: "center",
         justifyContent: "center",
-        background: color,
+        background: visual.color,
         borderRadius: "50% 0 0 50%",
-        boxShadow: `0 2px 12px ${color}80`,
+        boxShadow: `0 2px 12px ${visual.color}80`,
         transition: dragging ? "none" : "background 0.25s, box-shadow 0.25s, top 0.15s",
         transform: hovered && !dragging ? "scale(1.1)" : "scale(1)",
+        opacity: visual.disabled ? 0.92 : 1,
       }}
-      title={tooltip}
+      title={visual.tooltip}
     >
-      {/* Tooltip */}
       {hovered && !dragging && (
         <div
           style={{
@@ -138,12 +169,14 @@ function FloatBallButton() {
             pointerEvents: "none",
             lineHeight: "1.4",
             fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif",
+            maxWidth: 260,
+            overflow: "hidden",
+            textOverflow: "ellipsis",
           }}
         >
-          {tooltip}
+          {visual.tooltip}
         </div>
       )}
-      {/* Star icon ✦ */}
       <svg
         width="22"
         height="22"
@@ -161,11 +194,13 @@ function FloatBallButton() {
 }
 
 export function mountFloatBall() {
+  const existing = document.getElementById("astra-float-ball-host")
+  if (existing) return
+
   const host = document.createElement("div")
   host.id = "astra-float-ball-host"
   const shadow = host.attachShadow({ mode: "open" })
 
-  // Reset styles inside shadow DOM
   const resetStyle = document.createElement("style")
   resetStyle.textContent = `
     :host {

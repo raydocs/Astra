@@ -12,6 +12,9 @@ function cloneSnapshot(snapshot: TranslationSnapshot): TranslationSnapshot {
   return {
     ...snapshot,
     lastError: snapshot.lastError ? { ...snapshot.lastError } : null,
+    progress: { ...snapshot.progress },
+    presentation: { ...snapshot.presentation },
+    site: { ...snapshot.site },
   }
 }
 
