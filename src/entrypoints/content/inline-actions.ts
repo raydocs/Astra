@@ -7,6 +7,7 @@ export interface InlineActionRequest {
   targetLang: string
   task: TranslationTask
   selectionContext?: string
+  contextElement?: HTMLElement | null
 }
 
 export interface InlineActionSuccess {
@@ -24,6 +25,7 @@ export type InlineActionResult = InlineActionSuccess | InlineActionError
 export async function runInlineAction(request: InlineActionRequest): Promise<InlineActionResult> {
   const context = buildInlineTranslationContext({
     selectionContext: request.selectionContext,
+    contextElement: request.contextElement,
   })
 
   try {

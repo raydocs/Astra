@@ -8,3 +8,9 @@ dist/
 .env.local
 .env.production
 logs/
+DerivedData/
+ios/build/
+*.xcuserstate
+*.xcworkspace/xcuserdata/
+*.xcodeproj/xcuserdata/
+*.xcuserdatad/

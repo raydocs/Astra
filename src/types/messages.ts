@@ -36,6 +36,63 @@ export const TranslateBatchPayloadSchema = z.object({
   task: TranslationTaskSchema.optional(),
 })
 
+const TranslationErrorSchema = z.object({
+  code: z.string().trim().min(1),
+  message: z.string().trim().min(1),
+})
+
+const TranslationProgressSnapshotSchema = z.object({
+  totalBlocks: z.number().int().nonnegative(),
+  queuedBlocks: z.number().int().nonnegative(),
+  inFlightBlocks: z.number().int().nonnegative(),
+  translatedBlocks: z.number().int().nonnegative(),
+  failedBlocks: z.number().int().nonnegative(),
+})
+
+const TranslationSiteSnapshotSchema = z.object({
+  hostname: z.string().trim().min(1).nullable(),
+  enabled: z.boolean(),
+  alwaysTranslate: z.boolean(),
+})
+
+const TranslationSnapshotSchema = z.object({
+  phase: z.enum(["idle", "starting", "running", "stopping"]),
+  sessionId: z.number().int().nonnegative(),
+  targetLang: z.string().trim().min(1).nullable(),
+  lastError: TranslationErrorSchema.nullable(),
+  progress: TranslationProgressSnapshotSchema,
+  presentation: z.object({
+    mode: TranslationModeSchema,
+    theme: TranslationThemeSchema,
+  }),
+  site: TranslationSiteSnapshotSchema,
+})
+
+const RuntimeResponseSchema = z.union([
+  z.object({
+    type: z.literal("runtime/translate-batch:success"),
+    payload: z.object({
+      translations: z.array(z.string()),
+    }),
+  }),
+  z.object({
+    type: z.literal("runtime/translate-batch:error"),
+    error: TranslationErrorSchema,
+  }),
+])
+
+const ContentCommandResponseSchema = z.union([
+  z.object({
+    ok: z.literal(true),
+    state: TranslationSnapshotSchema,
+  }),
+  z.object({
+    ok: z.literal(false),
+    error: TranslationErrorSchema,
+    state: TranslationSnapshotSchema.optional(),
+  }),
+])
+
 export type TranslationRequestContext = z.infer<typeof TranslationRequestContextSchema>
 export type TranslationTask = z.infer<typeof TranslationTaskSchema>
 export type ContentTranslationOverrides = {
@@ -105,19 +162,7 @@ export function isRuntimeTranslateBatchRequest(
 }
 
 export function isRuntimeResponse(value: unknown): value is RuntimeResponse {
-  if (typeof value !== "object" || value === null) return false
-  const candidate = value as Partial<RuntimeResponse>
-
-  if (candidate.type === "runtime/translate-batch:success") {
-    return Array.isArray(candidate.payload?.translations)
-  }
-
-  if (candidate.type === "runtime/translate-batch:error") {
-    return typeof candidate.error?.code === "string"
-      && typeof candidate.error?.message === "string"
-  }
-
-  return false
+  return RuntimeResponseSchema.safeParse(value).success
 }
 
 export function isContentCommand(value: unknown): value is ContentCommand {
@@ -141,17 +186,5 @@ export function isContentCommand(value: unknown): value is ContentCommand {
 export function isContentCommandResponse(
   value: unknown,
 ): value is ContentCommandResponse {
-  if (typeof value !== "object" || value === null) return false
-  const candidate = value as Partial<ContentCommandResponse>
-
-  if (candidate.ok === true) {
-    return typeof candidate.state?.phase === "string"
-  }
-
-  if (candidate.ok === false) {
-    return typeof candidate.error?.code === "string"
-      && typeof candidate.error?.message === "string"
-  }
-
-  return false
+  return ContentCommandResponseSchema.safeParse(value).success
 }

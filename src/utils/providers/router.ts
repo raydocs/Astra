@@ -23,5 +23,12 @@ export async function translateWithProvider(
         model: provider.model,
         ...request,
       })
+    default: {
+      const unsupportedProvider: never = provider.id
+      throw new AstraError(
+        "INVALID_RESPONSE",
+        `Unsupported provider: ${String(unsupportedProvider)}`,
+      )
+    }
   }
 }

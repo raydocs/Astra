@@ -54,8 +54,14 @@ export interface BlockRegistry {
   /** Remove blocks whose elements are no longer connected to the document. Returns removed elements. */
   removeDisconnected(): HTMLElement[]
 
+  /** Remove specific tracked elements. Returns removed elements. */
+  removeElements(elements: HTMLElement[]): HTMLElement[]
+
   /** Get all elements in a given state. */
   getElementsByState(state: BlockState): HTMLElement[]
+
+  /** Get all tracked elements. */
+  getElements(): HTMLElement[]
 
   /** Get current snapshot of counts. */
   getSnapshot(): BlockRegistrySnapshot
@@ -173,12 +179,26 @@ export function createBlockRegistry(): BlockRegistry {
       return removed
     },
 
+    removeElements(elements) {
+      const removed: HTMLElement[] = []
+      for (const element of elements) {
+        if (!blocks.has(element)) continue
+        blocks.delete(element)
+        removed.push(element)
+      }
+      return removed
+    },
+
     getElementsByState(state) {
       const result: HTMLElement[] = []
       for (const [el, block] of blocks) {
         if (block.state === state) result.push(el)
       }
       return result
+    },
+
+    getElements() {
+      return Array.from(blocks.keys())
     },
 
     getSnapshot() {

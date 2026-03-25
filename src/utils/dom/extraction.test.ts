@@ -14,7 +14,7 @@ describe("resolveExtractionPlan", () => {
 
     const plan = resolveExtractionPlan(document, "page")
 
-    expect(plan.root.tagName).toBe("MAIN")
+    expect(plan.root.tagName).toBe("BODY")
     expect(plan.scope).toBe("page")
     expect(plan.blocks.length).toBeGreaterThan(0)
   })
@@ -61,9 +61,8 @@ describe("resolveExtractionPlan", () => {
 
     const plan = resolveExtractionPlan(document, "article")
 
-    // The thin article (1 block, few chars) should be rejected.
-    // main qualifies and should be selected, or it falls back to page via findContentRoot.
-    expect(plan.root.tagName).not.toBe("ARTICLE")
+    expect(plan.scope).toBe("page")
+    expect(plan.root.tagName).toBe("BODY")
   })
 })
 
@@ -107,5 +106,31 @@ describe("resolveArticleRoot", () => {
 
     expect(root).not.toBeNull()
     expect(root!.id).toBe("with-heading")
+  })
+
+  it("does not treat a generic main feed as an article root", () => {
+    document.body.innerHTML = `
+      <main id="feed">
+        <section>
+          <h2>Story one</h2>
+          <p>Paragraph one with enough text to look substantial on its own.</p>
+          <a href="#">Read more</a>
+        </section>
+        <section>
+          <h2>Story two</h2>
+          <p>Another paragraph with enough length to resemble a feed card summary.</p>
+          <a href="#">Read more</a>
+        </section>
+        <section>
+          <h2>Story three</h2>
+          <p>A third summary block that should not make the entire main element look like one article.</p>
+          <a href="#">Read more</a>
+        </section>
+      </main>
+    `
+
+    const root = resolveArticleRoot(document)
+
+    expect(root).toBeNull()
   })
 })

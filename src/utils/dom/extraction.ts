@@ -12,8 +12,6 @@ export interface ExtractionPlan {
 const ARTICLE_ROOT_SELECTORS = [
   "article",
   "[role=\"article\"]",
-  "main",
-  "[role=\"main\"]",
   ".post-content",
   ".article-content",
   ".entry-content",
@@ -68,7 +66,7 @@ export const resolveArticleRoot = (doc: Document): HTMLElement | null => {
 
 export const resolveExtractionPlan = (doc: Document, scope: ContentScope): ExtractionPlan => {
   if (scope === "page") {
-    const root = findContentRoot(doc)
+    const root = doc.body ?? findContentRoot(doc)
     const blocks = collectTextBlocks(root)
     return { root, blocks, scope: "page", summary: buildContentSummary(blocks) }
   }
@@ -81,7 +79,7 @@ export const resolveExtractionPlan = (doc: Document, scope: ContentScope): Extra
     }
   }
 
-  const root = findContentRoot(doc)
+  const root = doc.body ?? findContentRoot(doc)
   const blocks = collectTextBlocks(root)
   return { root, blocks, scope: "page", summary: buildContentSummary(blocks) }
 }

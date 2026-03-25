@@ -1,12 +1,12 @@
 # ✦ Astra
 
-AI-powered bilingual web translation for iOS Safari & desktop browsers.
+AI-powered bilingual web translation for desktop browsers, with an iOS Safari shell project skeleton included in-repo.
 
 ## Features
 
 - 🌐 **双语对照翻译** — 原文下方显示译文，尽量不破坏页面布局
 - 🤖 **AI 翻译引擎** — 当前内置 OpenAI 兼容配置（支持自定义 Base URL）
-- 📱 **iOS Safari 支持** — 通过 Safari Web Extension 在 iPhone/iPad 上使用
+- 📱 **iOS Safari 壳工程骨架** — 仓库内置 Xcode shell project，可把 WXT Safari 构建产物接入 iPhone/iPad
 - 🎨 **多种翻译样式** — 默认 / 下划线 / 高亮
 - ⚡ **渐进式翻译** — 视口优先、批量请求、并发控制、动态内容监听
 - 🧩 **划词翻译** — 选中文本后弹出工具栏即时翻译
@@ -29,6 +29,9 @@ pnpm build
 # Safari 构建
 pnpm build:safari
 
+# 准备 iOS Safari 壳工程资源
+pnpm ios:prepare
+
 # 质量检查
 pnpm type-check
 pnpm lint
@@ -37,10 +40,15 @@ pnpm test
 
 ## iOS Safari 部署
 
-1. `pnpm build:safari` 生成 `.output/safari-mv3/`
-2. 在 Xcode 中创建 Safari Web Extension App 项目
-3. 将构建产物嵌入 Extension target
-4. 真机运行或提交 App Store
+> 当前仓库已包含 **iOS Safari 壳工程骨架与接入流程**，但 **iOS Safari 运行时兼容性仍需真机 / 模拟器验证**。
+
+仓库已经包含基础 iOS shell project：
+
+1. `pnpm ios:prepare`
+2. 打开 `ios/AstraShell.xcodeproj`
+3. 在 Xcode 中为 `AstraShell` 和 `AstraShell Extension` 配置 Team / Bundle Identifier
+4. 运行宿主 App，并在 iOS 设置中启用 Safari 扩展
+5. 详细步骤与注意事项见 `ios/README.md`
 
 ## Architecture
 
@@ -64,6 +72,11 @@ src/
     dom/inject.ts             # 翻译 DOM 注入与清理
     translate/translate.ts    # 批次拆分与并发调度
     providers/openai.ts       # OpenAI JSON 输出解析
+ios/
+  AstraShell.xcodeproj/      # iOS Safari shell project
+  AstraShell/                # 宿主 App
+  AstraShell Extension/      # Safari Web Extension target
+  scripts/                   # iOS 接入辅助脚本
 ```
 
 ## Config Storage
@@ -106,7 +119,7 @@ Astra 现在使用 `browser.storage.local` 中的单一版本化配置对象：
 - [x] OpenAI 翻译引擎
 - [x] Chrome & Safari 构建
 - [x] 划词翻译
-- [ ] Xcode iOS 壳项目
+- [x] Xcode iOS 壳项目骨架 / 接入文档
 - [ ] 更多翻译引擎（DeepSeek, Gemini, DeepL）
 - [ ] PDF 双语翻译
 - [ ] 视频字幕翻译

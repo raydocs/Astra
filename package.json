@@ -9,6 +9,8 @@
     "dev:safari": "wxt -b safari",
     "build": "wxt build",
     "build:safari": "wxt build -b safari",
+    "ios:sync-extension": "bash ./ios/scripts/sync-safari-build.sh",
+    "ios:prepare": "pnpm build:safari && pnpm ios:sync-extension",
     "zip": "wxt zip",
     "zip:safari": "wxt zip -b safari",
     "postinstall": "wxt prepare",

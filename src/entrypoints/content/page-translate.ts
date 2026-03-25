@@ -13,9 +13,9 @@ import {
   showLoading,
 } from "@/utils/dom/inject"
 import {
+  buildContentSummary,
   collectTextBlocks,
   extractTextBlockText,
-  findContentRoot,
   type TextBlock,
 } from "@/utils/dom/traversal"
 import { resolveExtractionPlan } from "@/utils/dom/extraction"
@@ -55,6 +55,7 @@ interface TranslationSession {
   site: ReturnType<typeof createSiteSnapshot>
   context?: TranslationRequestContext
   root: HTMLElement
+  effectiveContentScope: "page" | "article"
   registry: BlockRegistry
   queue: HTMLElement[]
   contentScope: ResolvedSiteTranslationSettings["contentScope"]
@@ -208,6 +209,67 @@ function registerBlocks(session: TranslationSession, blocks: TextBlock[]) {
   }
 }
 
+function cleanupDisconnectedBlocks(session: TranslationSession): boolean {
+  const removed = session.registry.removeDisconnected()
+  if (removed.length === 0) return false
+
+  removed.forEach((element) => {
+    session.intersectionObserver?.unobserve(element)
+  })
+
+  if (session.queue.length > 0) {
+    const removedSet = new Set(removed)
+    session.queue = session.queue.filter(
+      element => !removedSet.has(element) && session.registry.has(element),
+    )
+  }
+
+  return true
+}
+
+function pruneBlocksOutsideRoot(session: TranslationSession, root: HTMLElement): boolean {
+  const outsideRoot = session.registry.getElements().filter(element => !root.contains(element))
+  if (outsideRoot.length === 0) return false
+
+  session.registry.removeElements(outsideRoot)
+  outsideRoot.forEach((element) => {
+    session.intersectionObserver?.unobserve(element)
+    removeTranslationFor(element)
+    clearLoading(element)
+  })
+
+  if (session.queue.length > 0) {
+    const removedSet = new Set(outsideRoot)
+    session.queue = session.queue.filter(element => !removedSet.has(element))
+  }
+
+  return true
+}
+
+function refreshSessionContext(
+  session: TranslationSession,
+  blocks: TextBlock[],
+  summary: string | null = buildContentSummary(blocks),
+) {
+  session.context = buildPageContext(blocks, session.site.hostname, summary)
+}
+
+function applyExtractionPlan(
+  session: TranslationSession,
+  plan: ReturnType<typeof resolveExtractionPlan>,
+): boolean {
+  const rootOrScopeChanged = plan.root !== session.root || plan.scope !== session.effectiveContentScope
+
+  if (rootOrScopeChanged) {
+    pruneBlocksOutsideRoot(session, plan.root)
+  }
+
+  session.root = plan.root
+  session.effectiveContentScope = plan.scope
+  refreshSessionContext(session, plan.blocks, plan.summary)
+  return rootOrScopeChanged
+}
+
 function scheduleDrain(session: TranslationSession) {
   if (currentSession?.id !== session.id) return
   if (session.drainPromise) return
@@ -338,8 +400,13 @@ function scheduleMutationScan(session: TranslationSession) {
 
     if (currentSession?.id !== session.id) return
 
-    if (!session.root.isConnected) {
-      session.root = findContentRoot(document)
+    const removedBlocks = cleanupDisconnectedBlocks(session)
+    let planRefreshed = false
+
+    if (!session.root.isConnected || session.contentScope === "article") {
+      const plan = resolveExtractionPlan(document, session.contentScope)
+      planRefreshed = applyExtractionPlan(session, plan) || planRefreshed
+      registerBlocks(session, plan.blocks)
     }
 
     const roots = Array.from(session.pendingMutationRoots)
@@ -352,6 +419,14 @@ function scheduleMutationScan(session: TranslationSession) {
       const baseRoot = root.contains(session.root) ? session.root : root
       registerBlocks(session, collectTextBlocks(baseRoot))
     })
+
+    if (removedBlocks || planRefreshed) {
+      publishSessionState(session, session.phase)
+    }
+
+    if (removedBlocks || planRefreshed || roots.length > 0) {
+      refreshSessionContext(session, collectTextBlocks(session.root))
+    }
 
     scheduleDrain(session)
   }, MUTATION_SCAN_DEBOUNCE_MS)
@@ -450,7 +525,7 @@ function createMutationObserver(session: TranslationSession): MutationObserver |
   return new MutationObserver((mutations) => {
     if (currentSession?.id !== session.id) return
 
-    let hasNewNodes = false
+    let hasStructuralChanges = false
     const changedTextElements = new Set<HTMLElement>()
 
     for (const mutation of mutations) {
@@ -467,7 +542,11 @@ function createMutationObserver(session: TranslationSession): MutationObserver |
           if (addedNode.classList.contains("notranslate")) continue
 
           session.pendingMutationRoots.add(addedNode)
-          hasNewNodes = true
+          hasStructuralChanges = true
+        }
+
+        if (mutation.removedNodes.length > 0) {
+          hasStructuralChanges = true
         }
       } else if (mutation.type === "characterData") {
         const trackedTarget = findTrackedBlockElement(session, mutation.target)
@@ -482,7 +561,7 @@ function createMutationObserver(session: TranslationSession): MutationObserver |
       handleTextChanges(session, changedTextElements)
     }
 
-    if (hasNewNodes) {
+    if (hasStructuralChanges) {
       scheduleMutationScan(session)
     }
   })
@@ -490,13 +569,13 @@ function createMutationObserver(session: TranslationSession): MutationObserver |
 
 function buildPageContext(
   blocks: TextBlock[],
-  resolved: ResolvedSiteTranslationSettings,
+  hostname: string | null,
   summary: string | null,
 ): TranslationRequestContext {
   const contentSummary = summary ?? undefined
   return {
     ...getDocumentTranslationContext(),
-    ...(resolved.hostname ? { hostname: resolved.hostname } : {}),
+    ...(hostname ? { hostname } : {}),
     ...(contentSummary ? { contentSummary } : {}),
   }
 }
@@ -553,8 +632,9 @@ export async function startPageTranslation(
     targetLang: resolved.targetLang,
     presentation: resolved.presentation,
     site: siteSnapshot,
-    context: buildPageContext(blocks, resolved, summary),
+    context: buildPageContext(blocks, siteSnapshot.hostname, summary),
     root,
+    effectiveContentScope: plan.scope,
     registry,
     queue: [],
     contentScope: resolved.contentScope,

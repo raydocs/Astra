@@ -116,19 +116,27 @@ function SelectionToolbarApp() {
   const toolbarRef = useRef<HTMLDivElement>(null)
   const skipNextMouseUp = useRef(false)
   const visibleRef = useRef(false)
+  const selectionVersionRef = useRef(0)
+  const selectionContextElementRef = useRef<HTMLElement | null>(null)
 
   visibleRef.current = visible
 
-  const dismiss = useCallback(() => {
-    clearInteractionSuppression(["selection-pointer", "selection-toolbar"])
-    setVisible(false)
+  const resetInlineResults = useCallback(() => {
     setTranslation(null)
     setTranslating(false)
     setExplanation(null)
     setExplaining(false)
+  }, [])
+
+  const dismiss = useCallback(() => {
+    selectionVersionRef.current += 1
+    clearInteractionSuppression(["selection-pointer", "selection-toolbar"])
+    setVisible(false)
+    resetInlineResults()
     setSelectedText("")
     setSelectionContext(undefined)
-  }, [])
+    selectionContextElementRef.current = null
+  }, [resetInlineResults])
 
   useEffect(() => {
     const onMouseDown = (event: MouseEvent) => {
@@ -167,12 +175,15 @@ function SelectionToolbarApp() {
         }
 
         const range = selection.getRangeAt(0)
+        selectionVersionRef.current += 1
         setInteractionSuppressionReason("selection-toolbar", true)
         setInteractionSuppressionReason("selection-pointer", false)
         setSelectedText(text)
         setSelectionContext(getSelectionContext(range))
-        setTranslation(null)
-        setTranslating(false)
+        selectionContextElementRef.current = range.commonAncestorContainer instanceof HTMLElement
+          ? range.commonAncestorContainer
+          : range.commonAncestorContainer.parentElement
+        resetInlineResults()
 
         const rect = range.getBoundingClientRect()
         const top = rect.bottom + 6
@@ -231,54 +242,70 @@ function SelectionToolbarApp() {
 
   const handleTranslate = async () => {
     if (!selectedText || translating) return
+    const requestVersion = selectionVersionRef.current
+    const requestText = selectedText
+    const requestContext = selectionContext
     setTranslating(true)
     setTranslation(null)
 
     try {
       const { targetLang, enabled } = await resolveTargetLang()
+      if (requestVersion !== selectionVersionRef.current) return
       if (!enabled) {
         setTranslation("⚠ Astra is disabled on this site.")
         return
       }
 
       const result = await runInlineAction({
-        text: selectedText,
+        text: requestText,
         targetLang,
         task: "translate",
-        selectionContext,
+        selectionContext: requestContext,
+        contextElement: selectionContextElementRef.current,
       })
 
+      if (requestVersion !== selectionVersionRef.current) return
       setTranslation(result.ok ? result.text : `⚠ ${result.message}`)
     } catch (error: unknown) {
+      if (requestVersion !== selectionVersionRef.current) return
       setTranslation(`⚠ ${error instanceof Error ? error.message : "翻译失败"}`)
     } finally {
+      if (requestVersion !== selectionVersionRef.current) return
       setTranslating(false)
     }
   }
 
   const handleExplain = async () => {
     if (!selectedText || explaining) return
+    const requestVersion = selectionVersionRef.current
+    const requestText = selectedText
+    const requestContext = selectionContext
     setExplaining(true)
     setExplanation(null)
 
     try {
       const { targetLang, enabled } = await resolveTargetLang()
+      if (requestVersion !== selectionVersionRef.current) return
       if (!enabled) {
         setExplanation("⚠ Astra is disabled on this site.")
         return
       }
 
       const result = await runInlineAction({
-        text: selectedText,
+        text: requestText,
         targetLang,
         task: "explain",
-        selectionContext,
+        selectionContext: requestContext,
+        contextElement: selectionContextElementRef.current,
       })
 
+      if (requestVersion !== selectionVersionRef.current) return
       setExplanation(result.ok ? result.text : `⚠ ${result.message}`)
     } catch (error: unknown) {
+      if (requestVersion !== selectionVersionRef.current) return
       setExplanation(`⚠ ${error instanceof Error ? error.message : "解释失败"}`)
     } finally {
+      if (requestVersion !== selectionVersionRef.current) return
       setExplaining(false)
     }
   }

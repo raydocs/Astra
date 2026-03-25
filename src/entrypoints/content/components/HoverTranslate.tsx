@@ -271,6 +271,7 @@ function HoverTranslateApp() {
             targetLang: resolved.targetLang,
             task: "translate",
             selectionContext: getSelectionContext(block.text),
+            contextElement: block.element,
           })
 
           pendingRef.current.delete(block.element)
@@ -401,6 +402,7 @@ function HoverTranslateApp() {
       targetLang,
       task: "explain",
       selectionContext,
+      contextElement: targetElement,
     })
 
     if (

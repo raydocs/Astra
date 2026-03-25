@@ -256,6 +256,30 @@ describe("page translation controller", () => {
     vi.useRealTimers()
   })
 
+  it("cleans up disconnected blocks from registry progress and observers", async () => {
+    vi.useFakeTimers()
+    translateTextsMock.mockResolvedValue({
+      ok: true,
+      translations: ["可见文本"],
+    })
+
+    await startPageTranslation({ targetLang: "zh-CN" })
+    await flushPromises()
+
+    const observer = MockIntersectionObserver.instances[0]
+    const offscreen = document.getElementById("offscreen")!
+    offscreen.remove()
+
+    await flushPromises()
+    vi.advanceTimersByTime(200)
+    await flushPromises()
+
+    expect(getPageTranslationState().progress.totalBlocks).toBe(1)
+    expect(observer.observed.has(offscreen)).toBe(false)
+
+    vi.useRealTimers()
+  })
+
   it("cancels stale starts when config resolution races", async () => {
     let resolveConfig!: () => void
     readConfigMock.mockImplementationOnce(() => new Promise((resolve) => {
@@ -461,6 +485,89 @@ describe("page translation controller", () => {
     expect(getPageTranslationState().phase).toBe("running")
     expect(getPageTranslationState().lastError).toBeNull()
     expect(document.querySelector("[data-astra-translation=\"1\"]")?.textContent).toContain("更新后的可见文本")
+
+    vi.useRealTimers()
+  })
+
+  it("switches from fallback page scope to a discovered article root during an article session", async () => {
+    vi.useFakeTimers()
+    document.body.innerHTML = `
+      <main>
+        <p id="outside">Intro text outside article.</p>
+      </main>
+    `
+    setRect(document.getElementById("outside")!, 50)
+
+    translateTextsMock.mockResolvedValueOnce({
+      ok: true,
+      translations: ["页面回退文本"],
+    })
+
+    await startPageTranslation({ targetLang: "zh-CN", contentScope: "article" })
+    await flushPromises()
+
+    const article = document.createElement("article")
+    article.innerHTML = `
+      <p id="article-1">Article paragraph one with enough text to be considered substantive content.</p>
+      <p id="article-2">Article paragraph two adds more body text so the article root can be discovered later.</p>
+      <p id="article-3">Article paragraph three completes the minimum block count for article extraction.</p>
+    `
+    document.body.appendChild(article)
+
+    setRect(document.getElementById("article-1")!, 60)
+    setRect(document.getElementById("article-2")!, 90)
+    setRect(document.getElementById("article-3")!, 120)
+
+    translateTextsMock.mockResolvedValueOnce({
+      ok: true,
+      translations: ["文章段落一", "文章段落二", "文章段落三"],
+    })
+
+    await flushPromises()
+    vi.advanceTimersByTime(200)
+    await flushPromises()
+
+    expect(getPageTranslationState().progress.totalBlocks).toBe(3)
+    expect(document.querySelector("#outside [data-astra-translation]")).toBeNull()
+    expect(document.querySelector("#article-1 [data-astra-translation]")?.textContent).toContain("文章段落一")
+
+    vi.useRealTimers()
+  })
+
+  it("refreshes translation context after structural page changes", async () => {
+    vi.useFakeTimers()
+    translateTextsMock.mockResolvedValueOnce({
+      ok: true,
+      translations: ["可见文本"],
+    })
+
+    document.title = "Original title"
+    await startPageTranslation({ targetLang: "zh-CN" })
+    await flushPromises()
+
+    document.title = "Updated title"
+    const main = document.querySelector("main")!
+    const added = document.createElement("p")
+    added.textContent = "Fresh dynamic text"
+    added.id = "dynamic-context"
+    setRect(added, 85)
+    main.appendChild(added)
+
+    translateTextsMock.mockResolvedValueOnce({
+      ok: true,
+      translations: ["新的动态文本"],
+    })
+
+    await flushPromises()
+    vi.advanceTimersByTime(200)
+    await flushPromises()
+
+    expect(translateTextsMock).toHaveBeenLastCalledWith(expect.objectContaining({
+      texts: ["Fresh dynamic text"],
+      context: expect.objectContaining({
+        pageTitle: "Updated title",
+      }),
+    }))
 
     vi.useRealTimers()
   })

@@ -61,4 +61,23 @@ describe("provider router", () => {
 
     expect(translateWithOpenAIMock).not.toHaveBeenCalled()
   })
+
+  it("fails fast for unsupported providers", async () => {
+    await expect(() =>
+      translateWithProvider(
+        {
+          id: "anthropic",
+          apiKey: "sk-test",
+          model: "claude",
+        } as never,
+        {
+          texts: ["hello"],
+          targetLang: "zh-CN",
+        },
+      )
+    ).rejects.toMatchObject({
+      code: "INVALID_RESPONSE",
+      message: "Unsupported provider: anthropic",
+    })
+  })
 })

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react"
+import { useEffect, useMemo, useRef, useState } from "react"
 import { browser } from "#imports"
 import type {
   AstraConfig,
@@ -31,15 +31,25 @@ async function getActiveSiteKey(): Promise<string | null> {
 
 export default function App() {
   const [configDraft, setConfigDraft] = useState<AstraConfig>(DEFAULT_ASTRA_CONFIG)
+  const [persistedConfig, setPersistedConfig] = useState<AstraConfig>(DEFAULT_ASTRA_CONFIG)
+  const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false)
   const [saved, setSaved] = useState(false)
   const [statusMessage, setStatusMessage] = useState("")
   const [translationState, setTranslationState] = useState<TranslationSnapshot | null>(null)
   const [contentAvailable, setContentAvailable] = useState(true)
   const [activeSiteKey, setActiveSiteKey] = useState<string | null>(null)
+  const hasUnsavedChangesRef = useRef(false)
+
+  hasUnsavedChangesRef.current = hasUnsavedChanges
 
   const resolvedSite = useMemo(
     () => resolveSiteTranslationSettings(configDraft, activeSiteKey),
     [configDraft, activeSiteKey],
+  )
+
+  const persistedResolvedSite = useMemo(
+    () => resolveSiteTranslationSettings(persistedConfig, activeSiteKey),
+    [persistedConfig, activeSiteKey],
   )
 
   const rawSiteRule = useMemo(
@@ -65,7 +75,10 @@ export default function App() {
       readConfig(),
       getActiveSiteKey(),
     ])
-    setConfigDraft(config)
+    if (!hasUnsavedChangesRef.current) {
+      setConfigDraft(config)
+    }
+    setPersistedConfig(config)
     setActiveSiteKey(siteKey)
     await refreshTranslationState()
   }
@@ -100,15 +113,21 @@ export default function App() {
     }
   }, [])
 
+  const updateDraft = (mutate: (current: AstraConfig) => AstraConfig) => {
+    hasUnsavedChangesRef.current = true
+    setHasUnsavedChanges(true)
+    setConfigDraft((current) => mutate(current))
+  }
+
   const updateProvider = (patch: Partial<AstraConfig["provider"]>) => {
-    setConfigDraft((current) => ({
+    updateDraft((current) => ({
       ...current,
       provider: { ...current.provider, ...patch },
     }))
   }
 
   const updatePresentation = (patch: Partial<AstraConfig["presentation"]>) => {
-    setConfigDraft((current) => ({
+    updateDraft((current) => ({
       ...current,
       presentation: { ...current.presentation, ...patch },
     }))
@@ -117,7 +136,7 @@ export default function App() {
   const editActiveSiteRule = (mutate: (current: SiteConfig) => SiteConfig) => {
     if (!activeSiteKey) return
 
-    setConfigDraft((current) => {
+    updateDraft((current) => {
       const baseSiteRule: SiteConfig = current.sites[activeSiteKey]
         ? {
             ...current.sites[activeSiteKey],
@@ -167,6 +186,9 @@ export default function App() {
           : {}),
       })
       setConfigDraft(nextConfig)
+      setPersistedConfig(nextConfig)
+      hasUnsavedChangesRef.current = false
+      setHasUnsavedChanges(false)
       setSaved(true)
       setStatusMessage("")
       setTimeout(() => setSaved(false), 2000)
@@ -184,10 +206,10 @@ export default function App() {
 
   const translate = async () => {
     const response = await startActiveTabTranslation({
-      targetLang: resolvedSite.targetLang,
-      translationMode: resolvedSite.presentation.mode,
-      translationTheme: resolvedSite.presentation.theme,
-      contentScope: resolvedSite.contentScope,
+      targetLang: persistedResolvedSite.targetLang,
+      translationMode: persistedResolvedSite.presentation.mode,
+      translationTheme: persistedResolvedSite.presentation.theme,
+      contentScope: persistedResolvedSite.contentScope,
     })
     if (response.ok) {
       setTranslationState(response.state)
@@ -215,17 +237,20 @@ export default function App() {
 
   const isIdle = translationState?.phase === "idle" || translationState === null
   const contentUnavailable = !contentAvailable
-  const translateDisabled = !isIdle || contentUnavailable || !resolvedSite.enabled
+  const translateDisabled = !isIdle || contentUnavailable || !persistedResolvedSite.enabled
   const removeDisabled = isIdle || contentUnavailable
 
   const currentPhase = translationState?.phase ?? "idle"
   const currentProgress = translationState?.progress
-  const currentPresentation = translationState?.presentation ?? resolvedSite.presentation
+  const currentPresentation = translationState?.presentation ?? persistedResolvedSite.presentation
   const currentSite = translationState?.site ?? {
     hostname: activeSiteKey,
-    enabled: resolvedSite.enabled,
-    alwaysTranslate: resolvedSite.alwaysTranslate,
+    enabled: persistedResolvedSite.enabled,
+    alwaysTranslate: persistedResolvedSite.alwaysTranslate,
   }
+  const statusSiteEnabled = currentPhase === "idle"
+    ? persistedResolvedSite.enabled
+    : currentSite.enabled
 
   return (
     <div style={{ width: 340, padding: 16, fontFamily: "system-ui, sans-serif" }}>
@@ -256,21 +281,21 @@ export default function App() {
 
       <TranslationStatusCard
         phase={currentPhase}
-        targetLang={translationState?.targetLang ?? resolvedSite.targetLang}
+        targetLang={translationState?.targetLang ?? persistedResolvedSite.targetLang}
         presentation={currentPresentation}
         hostname={currentSite.hostname}
         progress={currentProgress ?? null}
         lastError={translationState?.lastError ?? null}
-        siteEnabled={resolvedSite.enabled}
+        siteEnabled={statusSiteEnabled}
       />
 
       <GlobalSettingsSection
         config={configDraft}
         onProviderChange={updateProvider}
         onPresentationChange={updatePresentation}
-        onTargetLangChange={(lang) => setConfigDraft((current) => ({ ...current, targetLang: lang }))}
-        onHoverTriggerChange={(trigger) => setConfigDraft((current) => ({ ...current, hoverTrigger: trigger }))}
-        onContentScopeChange={(scope) => setConfigDraft((current) => ({ ...current, contentScope: scope }))}
+        onTargetLangChange={(lang) => updateDraft((current) => ({ ...current, targetLang: lang }))}
+        onHoverTriggerChange={(trigger) => updateDraft((current) => ({ ...current, hoverTrigger: trigger }))}
+        onContentScopeChange={(scope) => updateDraft((current) => ({ ...current, contentScope: scope }))}
       />
 
       {activeSiteKey && (
