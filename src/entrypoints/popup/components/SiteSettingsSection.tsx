@@ -23,6 +23,7 @@ const LANGUAGE_OPTIONS = [
 
 const HOVER_TRIGGER_OPTIONS = [
   { value: "alt", label: "Alt + 悬停" },
+  { value: "always", label: "始终悬停" },
   { value: "disabled", label: "关闭" },
 ] as const
 
