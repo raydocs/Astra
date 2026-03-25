@@ -1,13 +1,13 @@
 import { useState, useEffect, useCallback, useRef } from "react"
 import { createRoot } from "react-dom/client"
 import { readConfig } from "@/utils/storage/config"
-import { translateTexts } from "@/utils/translate/translate"
 import { copyTextToClipboard } from "@/utils/dom/clipboard"
 import { resolveSiteTranslationSettings } from "@/types/config"
 import {
   clearInteractionSuppression,
   setInteractionSuppressionReason,
 } from "../interaction-coordination"
+import { runInlineAction } from "../inline-actions"
 
 interface ToolbarPosition {
   top: number
@@ -109,6 +109,8 @@ function SelectionToolbarApp() {
   const [selectionContext, setSelectionContext] = useState<string | undefined>(undefined)
   const [translating, setTranslating] = useState(false)
   const [translation, setTranslation] = useState<string | null>(null)
+  const [explaining, setExplaining] = useState(false)
+  const [explanation, setExplanation] = useState<string | null>(null)
   const [hoveredBtn, setHoveredBtn] = useState<string | null>(null)
 
   const toolbarRef = useRef<HTMLDivElement>(null)
@@ -122,6 +124,8 @@ function SelectionToolbarApp() {
     setVisible(false)
     setTranslation(null)
     setTranslating(false)
+    setExplanation(null)
+    setExplaining(false)
     setSelectedText("")
     setSelectionContext(undefined)
   }, [])
@@ -219,41 +223,63 @@ function SelectionToolbarApp() {
     clearInteractionSuppression(["selection-pointer", "selection-toolbar"])
   }, [])
 
+  const resolveTargetLang = async (): Promise<{ targetLang: string; enabled: boolean }> => {
+    const config = await readConfig()
+    const resolved = resolveSiteTranslationSettings(config, window.location.hostname)
+    return { targetLang: resolved.targetLang, enabled: resolved.enabled }
+  }
+
   const handleTranslate = async () => {
     if (!selectedText || translating) return
     setTranslating(true)
     setTranslation(null)
 
     try {
-      const config = await readConfig()
-      const resolved = resolveSiteTranslationSettings(config, window.location.hostname)
-      if (!resolved.enabled) {
+      const { targetLang, enabled } = await resolveTargetLang()
+      if (!enabled) {
         setTranslation("⚠ Astra is disabled on this site.")
         return
       }
 
-      const result = await translateTexts({
-        texts: [selectedText],
-        targetLang: resolved.targetLang,
-        context: {
-          ...(document.title.trim() ? { pageTitle: document.title.trim() } : {}),
-          ...(location.origin ? { pageUrl: `${location.origin}${location.pathname}` } : {}),
-          ...(window.location.hostname ? { hostname: window.location.hostname } : {}),
-          ...(selectionContext ? { selectionContext } : {}),
-        },
+      const result = await runInlineAction({
+        text: selectedText,
+        targetLang,
+        task: "translate",
+        selectionContext,
       })
 
-      if (!result.ok) {
-        setTranslation(`⚠ ${result.error.message}`)
-      } else if (result.translations[0]) {
-        setTranslation(result.translations[0])
-      } else {
-        setTranslation("⚠ 未获取到翻译结果")
-      }
+      setTranslation(result.ok ? result.text : `⚠ ${result.message}`)
     } catch (error: unknown) {
       setTranslation(`⚠ ${error instanceof Error ? error.message : "翻译失败"}`)
     } finally {
       setTranslating(false)
+    }
+  }
+
+  const handleExplain = async () => {
+    if (!selectedText || explaining) return
+    setExplaining(true)
+    setExplanation(null)
+
+    try {
+      const { targetLang, enabled } = await resolveTargetLang()
+      if (!enabled) {
+        setExplanation("⚠ Astra is disabled on this site.")
+        return
+      }
+
+      const result = await runInlineAction({
+        text: selectedText,
+        targetLang,
+        task: "explain",
+        selectionContext,
+      })
+
+      setExplanation(result.ok ? result.text : `⚠ ${result.message}`)
+    } catch (error: unknown) {
+      setExplanation(`⚠ ${error instanceof Error ? error.message : "解释失败"}`)
+    } finally {
+      setExplaining(false)
     }
   }
 
@@ -288,6 +314,21 @@ function SelectionToolbarApp() {
         <button
           style={{
             ...styles.button,
+            ...(hoveredBtn === "explain" ? styles.buttonHover : {}),
+          }}
+          onMouseEnter={() => setHoveredBtn("explain")}
+          onMouseLeave={() => setHoveredBtn(null)}
+          onClick={(event) => {
+            event.stopPropagation()
+            skipNextMouseUp.current = true
+            void handleExplain()
+          }}
+        >
+          解释
+        </button>
+        <button
+          style={{
+            ...styles.button,
             ...(hoveredBtn === "copy" ? styles.buttonHover : {}),
           }}
           onMouseEnter={() => setHoveredBtn("copy")}
@@ -308,6 +349,16 @@ function SelectionToolbarApp() {
             <span style={styles.dots}>⋯</span>
           ) : (
             translation
+          )}
+        </div>
+      )}
+
+      {(explaining || explanation !== null) && (
+        <div style={{ ...styles.resultPanel, borderLeftColor: "#8b5cf6" }}>
+          {explaining ? (
+            <span style={styles.dots}>⋯</span>
+          ) : (
+            explanation
           )}
         </div>
       )}
