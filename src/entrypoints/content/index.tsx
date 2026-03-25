@@ -8,6 +8,8 @@ import {
 import { mountFloatBall } from "./components/FloatBall"
 import { mountSelectionToolbar } from "./components/SelectionToolbar"
 import { mountHoverTranslate } from "./components/HoverTranslate"
+import { mountInputTranslate } from "./components/InputTranslate"
+import { isTopFrame } from "./frame-context"
 import {
   isContentCommand,
   type ContentCommand,
@@ -29,6 +31,7 @@ declare global {
 
 export default defineContentScript({
   matches: ["*://*/*"],
+  allFrames: true,
   cssInjectionMode: "manual",
   async main() {
     if (window.__ASTRA_INJECTED__) return
@@ -63,9 +66,15 @@ export default defineContentScript({
     }
 
     injectStyles()
-    mountFloatBall()
-    mountSelectionToolbar()
-    mountHoverTranslate()
+
+    // Only mount floating UI components in the top frame to avoid duplicates
+    if (isTopFrame()) {
+      mountFloatBall()
+      mountSelectionToolbar()
+      mountHoverTranslate()
+      mountInputTranslate()
+    }
+
 
     if (siteSettings.alwaysTranslate && config.provider.apiKey.trim().length > 0) {
       void startPageTranslation()
