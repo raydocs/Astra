@@ -1,0 +1,189 @@
+import React, { useState, useRef, useCallback, useEffect } from "react"
+import ReactDOM from "react-dom/client"
+import { browser } from "#imports"
+import {
+  subscribePageTranslationState,
+  togglePageTranslation,
+} from "../page-translate"
+import { IDLE_TRANSLATION_SNAPSHOT, isTranslationActive } from "@/types/translation"
+
+const STORAGE_KEY = "astra_float_ball_y"
+const DEFAULT_Y = 300
+const BALL_SIZE = 44
+
+const COLOR_IDLE = "#6366f1"
+const COLOR_ACTIVE = "#16c79a"
+
+function FloatBallButton() {
+  const [translationState, setTranslationState] = useState(IDLE_TRANSLATION_SNAPSHOT)
+  const [posY, setPosY] = useState(DEFAULT_Y)
+  const [dragging, setDragging] = useState(false)
+  const [hovered, setHovered] = useState(false)
+  const dragRef = useRef<{ startY: number; startPosY: number } | null>(null)
+  const movedRef = useRef(false)
+
+  // Load persisted Y position
+  useEffect(() => {
+    void browser.storage.local.get(STORAGE_KEY).then((result) => {
+      const saved = result[STORAGE_KEY]
+      if (typeof saved === "number") {
+        setPosY(clampY(saved))
+      }
+    })
+  }, [])
+
+  useEffect(() => {
+    return subscribePageTranslationState(setTranslationState)
+  }, [])
+
+  const clampY = (y: number) => {
+    const maxY = window.innerHeight - BALL_SIZE - 10
+    return Math.max(10, Math.min(y, maxY))
+  }
+
+  const persistY = useCallback((y: number) => {
+    void browser.storage.local.set({ [STORAGE_KEY]: y })
+  }, [])
+
+  const handlePointerDown = useCallback(
+    (e: React.PointerEvent) => {
+      e.preventDefault()
+      e.stopPropagation()
+      setDragging(true)
+      movedRef.current = false
+      dragRef.current = { startY: e.clientY, startPosY: posY }
+      ;(e.target as HTMLElement).setPointerCapture(e.pointerId)
+    },
+    [posY],
+  )
+
+  const handlePointerMove = useCallback(
+    (e: React.PointerEvent) => {
+      if (!dragging || !dragRef.current) return
+      e.preventDefault()
+      e.stopPropagation()
+      const delta = e.clientY - dragRef.current.startY
+      if (Math.abs(delta) > 3) movedRef.current = true
+      const newY = clampY(dragRef.current.startPosY + delta)
+      setPosY(newY)
+    },
+    [dragging],
+  )
+
+  const handlePointerUp = useCallback(
+    (e: React.PointerEvent) => {
+      if (!dragging) return
+      e.preventDefault()
+      e.stopPropagation()
+      setDragging(false)
+      persistY(posY)
+
+      // Only toggle if not dragged
+      if (!movedRef.current) {
+        void togglePageTranslation().catch((error) => {
+          console.error("[Astra] Float ball toggle failed:", error)
+        })
+      }
+      dragRef.current = null
+    },
+    [dragging, persistY, posY],
+  )
+
+  const translated = isTranslationActive(translationState)
+  const color = translated ? COLOR_ACTIVE : COLOR_IDLE
+  const tooltip = translated ? "移除翻译" : "翻译此页"
+
+  return (
+    <div
+      onPointerDown={handlePointerDown}
+      onPointerMove={handlePointerMove}
+      onPointerUp={handlePointerUp}
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
+      style={{
+        position: "fixed",
+        right: 0,
+        top: posY,
+        width: BALL_SIZE,
+        height: BALL_SIZE,
+        zIndex: 2147483647,
+        cursor: dragging ? "grabbing" : "pointer",
+        userSelect: "none",
+        touchAction: "none",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        background: color,
+        borderRadius: "50% 0 0 50%",
+        boxShadow: `0 2px 12px ${color}80`,
+        transition: dragging ? "none" : "background 0.25s, box-shadow 0.25s, top 0.15s",
+        transform: hovered && !dragging ? "scale(1.1)" : "scale(1)",
+      }}
+      title={tooltip}
+    >
+      {/* Tooltip */}
+      {hovered && !dragging && (
+        <div
+          style={{
+            position: "absolute",
+            right: BALL_SIZE + 8,
+            top: "50%",
+            transform: "translateY(-50%)",
+            background: "rgba(0,0,0,0.78)",
+            color: "#fff",
+            fontSize: "12px",
+            padding: "4px 10px",
+            borderRadius: "6px",
+            whiteSpace: "nowrap",
+            pointerEvents: "none",
+            lineHeight: "1.4",
+            fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif",
+          }}
+        >
+          {tooltip}
+        </div>
+      )}
+      {/* Star icon ✦ */}
+      <svg
+        width="22"
+        height="22"
+        viewBox="0 0 24 24"
+        fill="none"
+        style={{ pointerEvents: "none" }}
+      >
+        <path
+          d="M12 2 L14.5 9 L22 9.5 L16 14.5 L18 22 L12 17.5 L6 22 L8 14.5 L2 9.5 L9.5 9 Z"
+          fill="#fff"
+        />
+      </svg>
+    </div>
+  )
+}
+
+export function mountFloatBall() {
+  const host = document.createElement("div")
+  host.id = "astra-float-ball-host"
+  const shadow = host.attachShadow({ mode: "open" })
+
+  // Reset styles inside shadow DOM
+  const resetStyle = document.createElement("style")
+  resetStyle.textContent = `
+    :host {
+      all: initial;
+      position: fixed;
+      top: 0;
+      right: 0;
+      z-index: 2147483647;
+      pointer-events: none;
+    }
+    div { pointer-events: auto; }
+  `
+  shadow.appendChild(resetStyle)
+
+  const mountPoint = document.createElement("div")
+  shadow.appendChild(mountPoint)
+  document.documentElement.appendChild(host)
+
+  const root = ReactDOM.createRoot(mountPoint)
+  root.render(<FloatBallButton />)
+}

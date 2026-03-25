@@ -1,0 +1,80 @@
+import { defineBackground, browser } from "#imports"
+import { isRuntimeTranslateBatchRequest, type RuntimeResponse } from "@/types/messages"
+import { createTranslationError, toTranslationError } from "@/types/translation"
+import { translateWithOpenAI } from "@/utils/providers/openai"
+import { toggleTabTranslation } from "@/utils/extension/messages"
+import { readConfig } from "@/utils/storage/config"
+
+export default defineBackground({
+  type: "module",
+  main: () => {
+    console.log("[Astra] Background service worker started")
+
+    browser.runtime.onInstalled.addListener((details) => {
+      if (details.reason === "install") {
+        console.log("[Astra] Extension installed")
+      }
+    })
+
+    // Keyboard shortcut: Alt+A toggle translation
+    browser.commands.onCommand.addListener((command) => {
+      if (command === "toggleTranslate") {
+        void (async () => {
+          const [tab] = await browser.tabs.query({ active: true, currentWindow: true })
+          if (tab?.id) {
+            const response = await toggleTabTranslation(tab.id)
+            if (!response.ok && response.error.code !== "CONTENT_UNAVAILABLE") {
+              console.warn("[Astra] Failed to toggle translation:", response.error.message)
+            }
+          }
+        })()
+      }
+    })
+
+    browser.runtime.onMessage.addListener((message, _sender, sendResponse) => {
+      if (isRuntimeTranslateBatchRequest(message)) {
+        handleTranslate(message.payload)
+          .then(sendResponse)
+          .catch((error) => {
+            sendResponse({
+              type: "runtime/translate-batch:error",
+              error: toTranslationError(error, "UNKNOWN"),
+            } satisfies RuntimeResponse)
+          })
+        return true
+      }
+    })
+  },
+})
+
+async function handleTranslate(payload: {
+  texts: string[]
+  targetLang: string
+  sourceLang?: string
+}): Promise<RuntimeResponse> {
+  const config = await readConfig()
+
+  if (!config.provider.apiKey) {
+    return {
+      type: "runtime/translate-batch:error",
+      error: createTranslationError(
+        "CONFIG_MISSING",
+        "No API key configured. Open Astra popup to set your OpenAI API key.",
+      ),
+    }
+  }
+
+  const translations = await translateWithOpenAI({
+    apiKey: config.provider.apiKey,
+    baseURL: config.provider.baseURL,
+    model: config.provider.model,
+    texts: payload.texts,
+    targetLang: payload.targetLang,
+    sourceLang: payload.sourceLang,
+  })
+
+  return {
+    type: "runtime/translate-batch:success",
+    payload: { translations },
+  }
+}
