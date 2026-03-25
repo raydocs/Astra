@@ -12,11 +12,11 @@ import {
   showLoading,
 } from "@/utils/dom/inject"
 import {
-  buildContentSummary,
   collectTextBlocks,
   findContentRoot,
   type TextBlock,
 } from "@/utils/dom/traversal"
+import { resolveExtractionPlan } from "@/utils/dom/extraction"
 import { translateTexts } from "@/utils/translate/translate"
 import type { TranslationRequestContext } from "@/types/messages"
 import {
@@ -39,6 +39,7 @@ import {
   subscribeTranslationState,
 } from "./translation-state"
 import { getDocumentTranslationContext } from "./translation-context"
+import { createBlockRegistry, type BlockRegistry } from "./page-translate-registry"
 
 const INITIAL_VIEWPORT_MARGIN = 200
 const DRAIN_BATCH_SIZE = 12
@@ -52,22 +53,14 @@ interface TranslationSession {
   site: ReturnType<typeof createSiteSnapshot>
   context?: TranslationRequestContext
   root: HTMLElement
-  queue: TextBlock[]
-  queued: WeakSet<HTMLElement>
-  inFlight: WeakSet<HTMLElement>
-  translated: WeakSet<HTMLElement>
-  failed: WeakSet<HTMLElement>
-  knownBlocks: WeakMap<HTMLElement, TextBlock>
+  registry: BlockRegistry
+  queue: HTMLElement[]
+  contentScope: ResolvedSiteTranslationSettings["contentScope"]
   intersectionObserver: IntersectionObserver | null
   mutationObserver: MutationObserver | null
   drainPromise: Promise<void> | null
   mutationScanTimer: number | null
   pendingMutationRoots: Set<HTMLElement>
-  totalBlocks: number
-  queuedBlocks: number
-  inFlightBlocks: number
-  translatedBlocks: number
-  failedBlocks: number
 }
 
 let currentSession: TranslationSession | null = null
@@ -85,13 +78,7 @@ function isNearViewport(el: HTMLElement): boolean {
 }
 
 function getSessionProgress(session: TranslationSession): TranslationProgressSnapshot {
-  return {
-    totalBlocks: session.totalBlocks,
-    queuedBlocks: session.queuedBlocks,
-    inFlightBlocks: session.inFlightBlocks,
-    translatedBlocks: session.translatedBlocks,
-    failedBlocks: session.failedBlocks,
-  }
+  return session.registry.getSnapshot()
 }
 
 function updateSnapshot(snapshot: TranslationSnapshot): TranslationSnapshot {
@@ -185,33 +172,32 @@ function stopSession(
   })
 }
 
-function enqueueBlock(session: TranslationSession, block: TextBlock) {
+function enqueueBlock(session: TranslationSession, element: HTMLElement) {
   if (currentSession?.id !== session.id) return
-  if (!block.element.isConnected) return
-  if (session.translated.has(block.element)) return
-  if (session.inFlight.has(block.element)) return
-  if (session.failed.has(block.element)) return
-  if (session.queued.has(block.element)) return
+  if (!element.isConnected) return
 
-  session.queued.add(block.element)
-  session.queue.push(block)
-  session.queuedBlocks += 1
+  const block = session.registry.getBlock(element)
+  if (!block) return
+  if (block.state !== "idle" && block.state !== "failed") return
+
+  session.registry.markQueued([element])
+  session.queue.push(element)
 }
 
 function registerBlocks(session: TranslationSession, blocks: TextBlock[]) {
-  let addedCount = 0
+  const prevSize = session.registry.size
+  session.registry.registerBlocks(blocks)
+  const addedCount = session.registry.size - prevSize
 
   blocks.forEach((block) => {
-    if (!block.element.isConnected) return
-    if (session.knownBlocks.has(block.element)) return
+    if (!session.registry.has(block.element)) return
+    const tracked = session.registry.getBlock(block.element)
+    if (!tracked) return
 
-    session.knownBlocks.set(block.element, block)
     session.intersectionObserver?.observe(block.element)
-    session.totalBlocks += 1
-    addedCount += 1
 
-    if (isNearViewport(block.element)) {
-      enqueueBlock(session, block)
+    if (tracked.state === "idle" && isNearViewport(block.element)) {
+      enqueueBlock(session, block.element)
     }
   })
 
@@ -227,31 +213,28 @@ function scheduleDrain(session: TranslationSession) {
   session.drainPromise = Promise.resolve()
     .then(async () => {
       while (currentSession?.id === session.id && session.queue.length > 0) {
-        const batch: TextBlock[] = []
+        const batchElements: HTMLElement[] = []
 
-        while (batch.length < DRAIN_BATCH_SIZE && session.queue.length > 0) {
-          const candidate = session.queue.shift()
-          if (!candidate) continue
-          session.queued.delete(candidate.element)
-          if (session.queuedBlocks > 0) {
-            session.queuedBlocks -= 1
-          }
-          if (!candidate.element.isConnected) continue
-          if (session.translated.has(candidate.element)) continue
-          if (session.inFlight.has(candidate.element)) continue
-          if (session.failed.has(candidate.element)) continue
+        while (batchElements.length < DRAIN_BATCH_SIZE && session.queue.length > 0) {
+          const element = session.queue.shift()
+          if (!element) continue
+          if (!element.isConnected) continue
 
-          batch.push(candidate)
+          const block = session.registry.getBlock(element)
+          if (!block) continue
+          if (block.state !== "queued") continue
+
+          batchElements.push(element)
         }
 
-        if (batch.length === 0) {
+        if (batchElements.length === 0) {
           continue
         }
 
-        batch.forEach((block) => {
-          session.inFlight.add(block.element)
-          session.inFlightBlocks += 1
-          showLoading(block.element, {
+        const inFlightInfo = session.registry.markInFlight(batchElements)
+
+        inFlightInfo.forEach(({ element }) => {
+          showLoading(element, {
             mode: session.presentation.mode,
             theme: session.presentation.theme,
             targetLang: session.targetLang,
@@ -263,21 +246,18 @@ function scheduleDrain(session: TranslationSession) {
 
         try {
           result = await translateTexts({
-            texts: batch.map((block) => block.text),
+            texts: inFlightInfo.map(({ element }) => {
+              const block = session.registry.getBlock(element)
+              return block?.sourceText ?? ""
+            }),
             targetLang: session.targetLang,
             context: session.context,
           })
         } catch (error) {
-          batch.forEach((block) => {
-            session.inFlight.delete(block.element)
-            if (session.inFlightBlocks > 0) {
-              session.inFlightBlocks -= 1
-            }
-            clearLoading(block.element)
-            if (!session.failed.has(block.element)) {
-              session.failed.add(block.element)
-              session.failedBlocks += 1
-            }
+          session.registry.markFailed(inFlightInfo.map(({ element, revision }) => ({ element, revision })))
+
+          inFlightInfo.forEach(({ element }) => {
+            clearLoading(element)
           })
 
           stopSession({
@@ -292,31 +272,28 @@ function scheduleDrain(session: TranslationSession) {
         }
 
         if (!result.ok) {
-          batch.forEach((block) => {
-            session.inFlight.delete(block.element)
-            if (session.inFlightBlocks > 0) {
-              session.inFlightBlocks -= 1
-            }
-            clearLoading(block.element)
-            if (!session.failed.has(block.element)) {
-              session.failed.add(block.element)
-              session.failedBlocks += 1
-            }
+          session.registry.markFailed(inFlightInfo.map(({ element, revision }) => ({ element, revision })))
+
+          inFlightInfo.forEach(({ element }) => {
+            clearLoading(element)
           })
 
           stopSession(result.error, { preserveProgress: true })
           return
         }
 
-        batch.forEach((block, index) => {
-          session.inFlight.delete(block.element)
-          if (session.inFlightBlocks > 0) {
-            session.inFlightBlocks -= 1
-          }
-          session.translated.add(block.element)
-          session.translatedBlocks += 1
-          if (!block.element.isConnected) return
-          replaceLoading(block.element, result.translations[index], {
+        const accepted = session.registry.markTranslated(
+          inFlightInfo.map((info, i) => ({
+            element: info.element,
+            revision: info.revision,
+            translation: result.translations[i],
+          })),
+        )
+
+        inFlightInfo.forEach((info, index) => {
+          if (!accepted.includes(info.element)) return
+          if (!info.element.isConnected) return
+          replaceLoading(info.element, result.translations[index], {
             mode: session.presentation.mode,
             theme: session.presentation.theme,
             targetLang: session.targetLang,
@@ -376,9 +353,8 @@ function createIntersectionObserver(session: TranslationSession): IntersectionOb
       const element = entry.target
       if (!(element instanceof HTMLElement)) return
 
-      const block = session.knownBlocks.get(element)
-      if (!block) return
-      enqueueBlock(session, block)
+      if (!session.registry.has(element)) return
+      enqueueBlock(session, element)
     })
 
     if (session.queue.length > 0) {
@@ -416,8 +392,9 @@ function createMutationObserver(session: TranslationSession): MutationObserver |
 function buildPageContext(
   blocks: TextBlock[],
   resolved: ResolvedSiteTranslationSettings,
+  summary: string | null,
 ): TranslationRequestContext {
-  const contentSummary = buildContentSummary(blocks) ?? undefined
+  const contentSummary = summary ?? undefined
   return {
     ...getDocumentTranslationContext(),
     ...(resolved.hostname ? { hostname: resolved.hostname } : {}),
@@ -467,32 +444,26 @@ export async function startPageTranslation(
     })
   }
 
-  const root = findContentRoot(document)
-  const blocks = collectTextBlocks(root)
+  const plan = resolveExtractionPlan(document, resolved.contentScope ?? "page")
+  const { root, blocks, summary } = plan
+  const registry = createBlockRegistry()
+
   const session: TranslationSession = {
     id: nextSessionId++,
     phase: "starting",
     targetLang: resolved.targetLang,
     presentation: resolved.presentation,
     site: siteSnapshot,
-    context: buildPageContext(blocks, resolved),
+    context: buildPageContext(blocks, resolved, summary),
     root,
+    registry,
     queue: [],
-    queued: new WeakSet(),
-    inFlight: new WeakSet(),
-    translated: new WeakSet(),
-    failed: new WeakSet(),
-    knownBlocks: new WeakMap(),
+    contentScope: resolved.contentScope,
     intersectionObserver: null,
     mutationObserver: null,
     drainPromise: null,
     mutationScanTimer: null,
     pendingMutationRoots: new Set(),
-    totalBlocks: 0,
-    queuedBlocks: 0,
-    inFlightBlocks: 0,
-    translatedBlocks: 0,
-    failedBlocks: 0,
   }
 
   currentSession = session
