@@ -133,4 +133,66 @@ describe("resolveArticleRoot", () => {
 
     expect(root).toBeNull()
   })
+
+  it("prefers article element over sidebar nav", () => {
+    document.body.innerHTML = `
+      <aside class="sidebar" role="complementary">
+        <h2>Sidebar</h2>
+        <p>Some sidebar content that is long enough to look like real text content in a sidebar.</p>
+        <p>Another sidebar paragraph with additional filler text to meet length requirements.</p>
+        <p>Third sidebar paragraph with even more text to ensure it would otherwise qualify.</p>
+      </aside>
+      <article id="main-article">
+        <h1>Main Article Title</h1>
+        <p>This is the first paragraph of the main article with enough text to qualify as substantial content.</p>
+        <p>This is the second paragraph providing more content for the article scoring algorithm to evaluate.</p>
+        <p>This is the third paragraph rounding out the minimum block count requirement for article detection.</p>
+      </article>
+    `
+
+    const root = resolveArticleRoot(document)
+
+    expect(root).not.toBeNull()
+    expect(root!.id).toBe("main-article")
+  })
+
+  it("scores paragraph-dense containers higher", () => {
+    document.body.innerHTML = `
+      <div class="content" id="sparse-content">
+        <h2>Sparse Content</h2>
+        <div><div><div><span>Deeply nested text that is long enough to cross the threshold.</span></div></div></div>
+        <div><div><span>More nested content with filler text for the scoring system to evaluate.</span></div></div>
+        <div><span>Extra nested content for block count with additional length for qualification.</span></div>
+      </div>
+      <div class="post" id="dense-paragraphs">
+        <h1>Dense Article</h1>
+        <p>First paragraph of the dense article with sufficient text for the scoring algorithm to work.</p>
+        <p>Second paragraph providing additional paragraph density for the article root detection.</p>
+        <p>Third paragraph ensuring this container has a high ratio of p elements to total elements.</p>
+        <p>Fourth paragraph adding even more paragraph density to clearly win the scoring contest.</p>
+      </div>
+    `
+
+    const root = resolveArticleRoot(document)
+
+    expect(root).not.toBeNull()
+    expect(root!.id).toBe("dense-paragraphs")
+  })
+
+  it("falls back to page scope when article root has too few blocks", () => {
+    document.body.innerHTML = `
+      <article id="thin-article">
+        <p>Short</p>
+      </article>
+      <p>Body paragraph one with enough text to be collected by the page scope traversal.</p>
+      <p>Body paragraph two with additional text content for the page scope fallback.</p>
+      <p>Body paragraph three providing more content for the page scope extraction plan.</p>
+    `
+
+    const root = resolveArticleRoot(document)
+
+    // The article root should be null since the only article candidate
+    // has too few blocks / too little text to qualify
+    expect(root).toBeNull()
+  })
 })

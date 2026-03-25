@@ -17,7 +17,17 @@ const ARTICLE_ROOT_SELECTORS = [
   ".entry-content",
   ".post-body",
   ".article-body",
+  ".content",
+  ".main-content",
+  ".page-content",
+  "#content",
+  "#main",
+  ".story-body",
+  ".post",
 ]
+
+const NAV_SIDEBAR_SELECTOR =
+  'nav, aside, [role="navigation"], [role="complementary"], .sidebar, .nav, .menu, .widget, .footer, .header'
 
 const computeLinkDensity = (element: HTMLElement): number => {
   const totalText = element.textContent?.trim() ?? ""
@@ -45,6 +55,9 @@ export const resolveArticleRoot = (doc: Document): HTMLElement | null => {
   let bestCandidate: HTMLElement | null = null
 
   for (const candidate of candidates) {
+    // Skip elements that are themselves nav/sidebar elements
+    if (candidate.matches(NAV_SIDEBAR_SELECTOR)) continue
+
     const blocks = collectTextBlocks(candidate)
     const blockCount = blocks.length
     const textLength = blocks.reduce((sum, b) => sum + b.text.length, 0)
@@ -53,7 +66,21 @@ export const resolveArticleRoot = (doc: Document): HTMLElement | null => {
 
     const linkDensity = computeLinkDensity(candidate)
     const hasHeading = candidate.querySelector("h1, h2") !== null
-    const score = textLength * (1 - linkDensity) * (hasHeading ? 1.2 : 1.0)
+
+    // Paragraph density: ratio of <p> elements to all descendant elements
+    const paragraphCount = candidate.querySelectorAll("p").length
+    const totalElements = candidate.querySelectorAll("*").length
+    const pDensity = totalElements > 0 ? paragraphCount / totalElements : 0
+
+    // Nav/sidebar containment penalty: if candidate contains many nav/aside
+    // elements relative to its size, penalise the score
+    const navElements = candidate.querySelectorAll(NAV_SIDEBAR_SELECTOR).length
+    const navRatio = totalElements > 0 ? navElements / totalElements : 0
+    const navPenalty = navRatio > 0.1 ? 0.5 : 1.0
+
+    let score = textLength * (1 - linkDensity) * (hasHeading ? 1.2 : 1.0)
+    score *= (1 + pDensity * 2)
+    score *= navPenalty
 
     if (score > bestScore) {
       bestScore = score
