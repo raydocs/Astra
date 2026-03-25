@@ -6,14 +6,13 @@ import { copyTextToClipboard } from "@/utils/dom/clipboard"
 import { hasInjectedTranslation } from "@/utils/dom/inject"
 import { findClosestTextBlock, findContentRoot } from "@/utils/dom/traversal"
 import { readConfig } from "@/utils/storage/config"
-import { translateTexts } from "@/utils/translate/translate"
 
 import {
   getInteractionSuppressionState,
   hasActiveTextSelection,
   subscribeToInteractionSuppression,
 } from "../interaction-coordination"
-import { getDocumentTranslationContext } from "../translation-context"
+import { runInlineAction } from "../inline-actions"
 
 type OverlayStatus = "hidden" | "pending" | "success" | "error"
 type ExplanationStatus = "idle" | "pending" | "success" | "error"
@@ -247,27 +246,25 @@ function HoverTranslateApp() {
             showExplanation: false,
           })
 
-          const result = await translateTexts({
-            texts: [block.text],
+          const result = await runInlineAction({
+            text: block.text,
             targetLang: resolved.targetLang,
-            context: {
-              ...getDocumentTranslationContext(),
-              selectionContext: getSelectionContext(block.text),
-            },
+            task: "translate",
+            selectionContext: getSelectionContext(block.text),
           })
 
           if (requestSeq.current !== nextRequest || currentTarget.current !== block.element) {
             return
           }
 
-          if (!result.ok || !result.translations[0]) {
+          if (!result.ok) {
             setOverlay({
               visible: true,
               ...getOverlayPosition(rect),
               targetLang: resolved.targetLang,
               status: "error",
               translation: null,
-              error: result.ok ? "未获取到翻译结果" : result.error.message,
+              error: result.message,
               theme: resolved.presentation.theme,
               mode: resolved.presentation.mode,
               explanationStatus: "idle",
@@ -281,7 +278,7 @@ function HoverTranslateApp() {
           cacheRef.current.set(block.element, {
             sourceText: block.text,
             targetLang: resolved.targetLang,
-            translation: result.translations[0],
+            translation: result.text,
           })
 
           setOverlay({
@@ -289,7 +286,7 @@ function HoverTranslateApp() {
             ...getOverlayPosition(rect),
             targetLang: resolved.targetLang,
             status: "success",
-            translation: result.translations[0],
+            translation: result.text,
             error: null,
             theme: resolved.presentation.theme,
             mode: resolved.presentation.mode,
@@ -374,14 +371,11 @@ function HoverTranslateApp() {
       showExplanation: true,
     }))
 
-    const result = await translateTexts({
-      task: "explain",
-      texts: [sourceText],
+    const result = await runInlineAction({
+      text: sourceText,
       targetLang,
-      context: {
-        ...getDocumentTranslationContext(),
-        selectionContext,
-      },
+      task: "explain",
+      selectionContext,
     })
 
     if (
@@ -392,12 +386,12 @@ function HoverTranslateApp() {
       return
     }
 
-    if (!result.ok || !result.translations[0]) {
+    if (!result.ok) {
       setOverlay((current) => ({
         ...current,
         explanationStatus: "error",
         explanation: null,
-        explanationError: result.ok ? "未获取到解释结果" : result.error.message,
+        explanationError: result.message,
         showExplanation: true,
       }))
       return
@@ -407,14 +401,14 @@ function HoverTranslateApp() {
     if (cached && cached.sourceText === sourceText && cached.targetLang === targetLang) {
       cacheRef.current.set(targetElement, {
         ...cached,
-        explanation: result.translations[0],
+        explanation: result.text,
       })
     }
 
     setOverlay((current) => ({
       ...current,
       explanationStatus: "success",
-      explanation: result.translations[0],
+      explanation: result.text,
       explanationError: null,
       showExplanation: true,
     }))
