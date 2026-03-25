@@ -1,5 +1,6 @@
 import type {
   AstraConfig,
+  ContentScope,
   HoverTrigger,
   TranslationMode,
   TranslationTheme,
@@ -28,6 +29,7 @@ export interface GlobalSettingsSectionProps {
   onPresentationChange: (patch: Partial<AstraConfig["presentation"]>) => void
   onTargetLangChange: (lang: string) => void
   onHoverTriggerChange: (trigger: HoverTrigger) => void
+  onContentScopeChange: (scope: ContentScope) => void
 }
 
 export default function GlobalSettingsSection({
@@ -36,6 +38,7 @@ export default function GlobalSettingsSection({
   onPresentationChange,
   onTargetLangChange,
   onHoverTriggerChange,
+  onContentScopeChange,
 }: GlobalSettingsSectionProps) {
   return (
     <details open style={{ marginBottom: 12 }}>
@@ -109,6 +112,16 @@ export default function GlobalSettingsSection({
           <option value="default">默认</option>
           <option value="underline">下划线</option>
           <option value="highlight">高亮</option>
+        </select>
+
+        <label style={labelStyle}>翻译范围</label>
+        <select
+          value={config.contentScope}
+          onChange={(e) => onContentScopeChange(e.target.value as ContentScope)}
+          style={inputStyle}
+        >
+          <option value="page">整页翻译</option>
+          <option value="article">文章区域</option>
         </select>
       </div>
     </details>

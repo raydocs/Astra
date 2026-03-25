@@ -1,5 +1,6 @@
 import type {
   AstraConfig,
+  ContentScope,
   HoverTrigger,
   SiteConfig,
   TranslationMode,
@@ -32,7 +33,7 @@ function getHoverTriggerLabel(trigger: HoverTrigger): string {
 export interface SiteSettingsSectionProps {
   activeSiteKey: string
   rawSiteRule: SiteConfig | undefined
-  globalConfig: Pick<AstraConfig, "targetLang" | "hoverTrigger" | "presentation">
+  globalConfig: Pick<AstraConfig, "targetLang" | "hoverTrigger" | "presentation" | "contentScope">
   onSiteRuleChange: (mutate: (current: SiteConfig) => SiteConfig) => void
 }
 
@@ -177,6 +178,30 @@ export default function SiteSettingsSection({
           <option value="default">默认</option>
           <option value="underline">下划线</option>
           <option value="highlight">高亮</option>
+        </select>
+
+        <label style={labelStyle}>站点翻译范围</label>
+        <select
+          value={rawSiteRule?.contentScope ?? INHERIT_VALUE}
+          onChange={(e) => onSiteRuleChange((siteRule) => {
+            const nextSiteRule: SiteConfig = {
+              ...siteRule,
+              ...(siteRule.presentation ? { presentation: { ...siteRule.presentation } } : {}),
+            }
+
+            if (e.target.value === INHERIT_VALUE) {
+              delete nextSiteRule.contentScope
+            } else {
+              nextSiteRule.contentScope = e.target.value as ContentScope
+            }
+
+            return nextSiteRule
+          })}
+          style={inputStyle}
+        >
+          <option value={INHERIT_VALUE}>跟随全局（{globalConfig.contentScope === "article" ? "文章区域" : "整页翻译"}）</option>
+          <option value="page">整页翻译</option>
+          <option value="article">文章区域</option>
         </select>
       </div>
     </details>

@@ -150,6 +150,7 @@ export default function App() {
     try {
       const nextConfig = await persistConfig({
         targetLang: configDraft.targetLang,
+        contentScope: configDraft.contentScope,
         provider: {
           apiKey: configDraft.provider.apiKey,
           baseURL: configDraft.provider.baseURL ?? "",
@@ -186,6 +187,7 @@ export default function App() {
       targetLang: resolvedSite.targetLang,
       translationMode: resolvedSite.presentation.mode,
       translationTheme: resolvedSite.presentation.theme,
+      contentScope: resolvedSite.contentScope,
     })
     if (response.ok) {
       setTranslationState(response.state)
@@ -268,6 +270,7 @@ export default function App() {
         onPresentationChange={updatePresentation}
         onTargetLangChange={(lang) => setConfigDraft((current) => ({ ...current, targetLang: lang }))}
         onHoverTriggerChange={(trigger) => setConfigDraft((current) => ({ ...current, hoverTrigger: trigger }))}
+        onContentScopeChange={(scope) => setConfigDraft((current) => ({ ...current, contentScope: scope }))}
       />
 
       {activeSiteKey && (
