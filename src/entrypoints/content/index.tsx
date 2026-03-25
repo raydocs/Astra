@@ -75,7 +75,7 @@ export default defineContentScript({
       mountInputTranslate()
     }
 
-
+    // Page translation runs in all frames (top + child)
     if (siteSettings.alwaysTranslate && config.provider.apiKey.trim().length > 0) {
       void startPageTranslation()
     }
