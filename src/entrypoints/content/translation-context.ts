@@ -16,3 +16,13 @@ export function getDocumentTranslationContext(): Pick<
     ...(metaDescription ? { metaDescription } : {}),
   }
 }
+
+export function buildInlineTranslationContext(
+  extra: { selectionContext?: string } = {},
+): TranslationRequestContext {
+  const base = getDocumentTranslationContext()
+  return {
+    ...base,
+    ...(extra.selectionContext ? { selectionContext: extra.selectionContext } : {}),
+  }
+}
