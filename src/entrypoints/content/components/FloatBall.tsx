@@ -21,14 +21,16 @@ function getFloatBallVisualState(snapshot: typeof IDLE_TRANSLATION_SNAPSHOT) {
       color: COLOR_BUSY,
       tooltip: snapshot.phase === "starting" ? "正在准备翻译…" : "正在移除翻译…",
       disabled: true,
+      progressText: null,
     }
   }
 
   if (snapshot.phase === "running") {
     return {
       color: COLOR_ACTIVE,
-      tooltip: `翻译中 ${snapshot.progress.translatedBlocks}/${snapshot.progress.totalBlocks}`,
+      tooltip: `Translated: ${snapshot.progress.translatedBlocks}/${snapshot.progress.totalBlocks} | Failed: ${snapshot.progress.failedBlocks}`,
       disabled: false,
+      progressText: `${snapshot.progress.translatedBlocks}/${snapshot.progress.totalBlocks}`,
     }
   }
 
@@ -37,6 +39,7 @@ function getFloatBallVisualState(snapshot: typeof IDLE_TRANSLATION_SNAPSHOT) {
       color: COLOR_ERROR,
       tooltip: `翻译失败：${snapshot.lastError.message}`,
       disabled: false,
+      progressText: null,
     }
   }
 
@@ -44,6 +47,7 @@ function getFloatBallVisualState(snapshot: typeof IDLE_TRANSLATION_SNAPSHOT) {
     color: COLOR_IDLE,
     tooltip: "翻译此页",
     disabled: false,
+    progressText: null,
   }
 }
 
@@ -182,18 +186,33 @@ function FloatBallButton() {
           {visual.tooltip}
         </div>
       )}
-      <svg
-        width="22"
-        height="22"
-        viewBox="0 0 24 24"
-        fill="none"
-        style={{ pointerEvents: "none" }}
-      >
-        <path
-          d="M12 2 L14.5 9 L22 9.5 L16 14.5 L18 22 L12 17.5 L6 22 L8 14.5 L2 9.5 L9.5 9 Z"
-          fill="#fff"
-        />
-      </svg>
+      {visual.progressText ? (
+        <span
+          style={{
+            color: "#fff",
+            fontSize: "11px",
+            fontWeight: "bold",
+            lineHeight: 1,
+            pointerEvents: "none",
+            fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif",
+          }}
+        >
+          {visual.progressText}
+        </span>
+      ) : (
+        <svg
+          width="22"
+          height="22"
+          viewBox="0 0 24 24"
+          fill="none"
+          style={{ pointerEvents: "none" }}
+        >
+          <path
+            d="M12 2 L14.5 9 L22 9.5 L16 14.5 L18 22 L12 17.5 L6 22 L8 14.5 L2 9.5 L9.5 9 Z"
+            fill="#fff"
+          />
+        </svg>
+      )}
     </div>
   )
 }

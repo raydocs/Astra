@@ -1,9 +1,11 @@
 import { defineContentScript, browser } from "#imports"
 import {
   getPageTranslationState,
+  retryFailedBlocks,
   startPageTranslation,
   stopPageTranslation,
 } from "./page-translate"
+import { createSPANavigationWatcher } from "./spa-navigation"
 import { mountFloatBall } from "./components/FloatBall"
 import { mountSelectionToolbar } from "./components/SelectionToolbar"
 import { mountHoverTranslate } from "./components/HoverTranslate"
@@ -40,6 +42,9 @@ let lastAutomationState = {
   alwaysTranslate: false,
   providerReady: false,
 }
+let lastProviderSnapshot: string | null = null
+const spaWatcher = createSPANavigationWatcher()
+let spaRestartTimer: ReturnType<typeof setTimeout> | null = null
 
 export function __resetContentEntrypointForTests() {
   siteUiMounted = false
@@ -50,6 +55,12 @@ export function __resetContentEntrypointForTests() {
     enabled: false,
     alwaysTranslate: false,
     providerReady: false,
+  }
+  lastProviderSnapshot = null
+  spaWatcher.stop()
+  if (spaRestartTimer !== null) {
+    clearTimeout(spaRestartTimer)
+    spaRestartTimer = null
   }
 }
 
@@ -89,6 +100,7 @@ export default defineContentScript({
     browser.storage.onChanged?.addListener((_changes, areaName) => {
       if (areaName !== "local") return
       void reconcileSiteAutomation()
+      void handleProviderHotSwitch()
     })
 
     const [config, session] = await Promise.all([
@@ -100,7 +112,26 @@ export default defineContentScript({
     // PDF auto-detect: show banner for PDF pages
     if (isTopFrame()) {
       detectAndShowPdfBanner()
+
+      // SPA navigation: auto-restart translation on significant URL changes
+      spaWatcher.start((_prevUrl, _newUrl) => {
+        const state = getPageTranslationState()
+        if (state.phase !== "idle") {
+          stopPageTranslation()
+          removeTranslatedSubtitles()
+          if (isVideoPage()) {
+            stopVideoSubtitleTranslation()
+          }
+          spaRestartTimer = setTimeout(() => {
+            spaRestartTimer = null
+            void startPageTranslation()
+          }, 500)
+        }
+      })
     }
+
+    // Initialize provider snapshot for hot-switch detection
+    lastProviderSnapshot = JSON.stringify(config.provider ?? {})
   },
 })
 
@@ -158,6 +189,20 @@ async function reconcileSiteAutomation(
     enabled: siteSettings.enabled,
     alwaysTranslate: siteSettings.alwaysTranslate,
     providerReady,
+  }
+}
+
+async function handleProviderHotSwitch() {
+  const config = await readConfig()
+  const currentProviderSnapshot = JSON.stringify(config.provider ?? {})
+  if (lastProviderSnapshot !== null && currentProviderSnapshot !== lastProviderSnapshot) {
+    lastProviderSnapshot = currentProviderSnapshot
+    const state = getPageTranslationState()
+    if (state.phase !== "idle" && state.progress.failedBlocks > 0) {
+      retryFailedBlocks()
+    }
+  } else {
+    lastProviderSnapshot = currentProviderSnapshot
   }
 }
 
@@ -315,6 +360,17 @@ function injectStyles() {
       background: rgba(99, 102, 241, 0.08);
       padding: 2px 4px;
       border-radius: 3px;
+    }
+    .astra-translation[data-astra-collapsed] .astra-translation-inner {
+      opacity: 0.2;
+      text-decoration: line-through;
+      text-decoration-color: #94a3b8;
+      cursor: pointer;
+      transition: opacity 0.2s ease;
+    }
+    .astra-translation:not([data-astra-collapsed]) .astra-translation-inner {
+      cursor: pointer;
+      transition: opacity 0.2s ease;
     }
     .astra-loading-dots {
       color: #94a3b8;

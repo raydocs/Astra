@@ -128,6 +128,31 @@ function publishIdleState(params: {
   })
 }
 
+let clickToggleHandler: ((e: MouseEvent) => void) | null = null
+
+function installClickToggleHandler() {
+  if (clickToggleHandler) return
+  clickToggleHandler = (e: MouseEvent) => {
+    const target = e.target
+    if (!(target instanceof HTMLElement)) return
+    const translationEl = target.closest("[data-astra-translation=\"1\"]")
+    if (!translationEl || !(translationEl instanceof HTMLElement)) return
+    e.stopPropagation()
+    if (translationEl.hasAttribute("data-astra-collapsed")) {
+      translationEl.removeAttribute("data-astra-collapsed")
+    } else {
+      translationEl.setAttribute("data-astra-collapsed", "")
+    }
+  }
+  document.addEventListener("click", clickToggleHandler, true)
+}
+
+function removeClickToggleHandler() {
+  if (!clickToggleHandler) return
+  document.removeEventListener("click", clickToggleHandler, true)
+  clickToggleHandler = null
+}
+
 function cleanupSession(session: TranslationSession) {
   session.intersectionObserver?.disconnect()
   session.mutationObserver?.disconnect()
@@ -140,6 +165,7 @@ function cleanupSession(session: TranslationSession) {
   session.intersectionObserver = null
   session.mutationObserver = null
   session.mutationScanTimer = null
+  removeClickToggleHandler()
 }
 
 function stopSession(
@@ -723,6 +749,7 @@ export async function startPageTranslation(
 
   session.intersectionObserver = createIntersectionObserver(session)
   session.mutationObserver = createMutationObserver(session)
+  installClickToggleHandler()
 
   registerBlocks(session, blocks)
 
