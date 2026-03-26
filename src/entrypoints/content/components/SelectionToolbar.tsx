@@ -121,6 +121,7 @@ function SelectionToolbarApp() {
   const toolbarRef = useRef<HTMLDivElement>(null)
   const skipNextMouseUp = useRef(false)
   const speakPollRef = useRef<ReturnType<typeof setInterval> | null>(null)
+  const mouseUpTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const visibleRef = useRef(false)
   const selectionVersionRef = useRef(0)
   const selectionContextElementRef = useRef<HTMLElement | null>(null)
@@ -177,7 +178,8 @@ function SelectionToolbarApp() {
 
       if (isEventInsideToolbar(event)) return
 
-      setTimeout(() => {
+      if (mouseUpTimerRef.current) clearTimeout(mouseUpTimerRef.current)
+      mouseUpTimerRef.current = setTimeout(() => {
         const selection = window.getSelection()
         const text = selection?.toString().trim() ?? ""
         if (!text || !selection || selection.rangeCount === 0) {
@@ -243,6 +245,8 @@ function SelectionToolbarApp() {
 
   useEffect(() => () => {
     clearInteractionSuppression(["selection-pointer", "selection-toolbar"])
+    if (mouseUpTimerRef.current) clearTimeout(mouseUpTimerRef.current)
+    if (speakPollRef.current) clearInterval(speakPollRef.current)
   }, [])
 
   useEffect(() => {
