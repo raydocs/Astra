@@ -1,129 +1,91 @@
-# A1: Free Translation Engine (Zero-Config Default)
+# A1: Free Translation Engine (Google Translate — Zero-Config Default)
 
-## Why
-The #1 adoption barrier. Users must have an API key before anything works. Immersive Translate has free engines as default.
+## Overview
+Add `google-free` provider using `translate.googleapis.com`. No API key needed. Default for new installs so the extension works immediately.
 
-## Approach: Google Translate via `translate.googleapis.com`
-This is the unofficial Google Translate API endpoint used by many browser extensions. It's free, requires no API key, and supports all language pairs. Rate-limited but sufficient for personal use.
+## API: `https://translate.googleapis.com/translate_a/single?client=gtx&sl={sl}&tl={tl}&dt=t&q={q}`
+- Response: nested JSON array `[[["translated","source",null,null,N],...]]`
+- Rate limit: ~5 req/s sustained. Retry on 429/503 with exponential backoff.
+- Only supports `task: "translate"`. Explain/custom → `PROVIDER_UNSUPPORTED_TASK` error.
 
 ## Files to Create
 
 ### `src/utils/providers/google-free.ts`
 ```typescript
-import { AstraError } from "@/types/translation"
-import type { ProviderTranslationRequest } from "./types"
-
-const GOOGLE_TRANSLATE_URL = "https://translate.googleapis.com/translate_a/single"
-
-export async function translateWithGoogleFree(
-  request: ProviderTranslationRequest,
-): Promise<string[]> {
-  const { texts, targetLang, sourceLang } = request
-  const results: string[] = []
-
-  for (const text of texts) {
-    const params = new URLSearchParams({
-      client: "gtx",
-      sl: sourceLang ?? "auto",
-      tl: mapLanguageCode(targetLang),
-      dt: "t",
-      q: text,
-    })
-
-    try {
-      const response = await fetch(`${GOOGLE_TRANSLATE_URL}?${params}`)
-      if (!response.ok) {
-        throw new AstraError("PROVIDER_REQUEST_FAILED", `Google Translate returned ${response.status}`)
-      }
-
-      const data = await response.json()
-      // Response format: [[["translated text","source text",null,null,N],...]]
-      const translation = data[0]?.map((segment: any[]) => segment[0]).join("") ?? ""
-      results.push(translation)
-    } catch (error) {
-      if (error instanceof AstraError) throw error
-      throw new AstraError("PROVIDER_REQUEST_FAILED",
-        error instanceof Error ? error.message : "Google Translate request failed")
-    }
-  }
-
-  return results
+export interface GoogleFreeTranslationOptions {
+  texts: string[]
+  targetLang: string
+  sourceLang?: string
 }
 
-function mapLanguageCode(code: string): string {
-  // Astra uses "zh-CN", Google uses "zh-cn" or "zh"
-  const map: Record<string, string> = { "zh-CN": "zh-cn", "zh-TW": "zh-tw" }
-  return map[code] ?? code.toLowerCase()
-}
+export async function translateWithGoogleFree(options: GoogleFreeTranslationOptions): Promise<string[]>
 ```
+Internals:
+- `normalizeGoogleLangCode(lang)` — maps "zh-CN" → "zh-cn" etc.
+- `translateSingle(text, targetLang, sourceLang)` — single text via fetch
+- `fetchWithRetry(url, maxRetries=3)` — exponential backoff (1s→2s→4s + jitter) on 429/503
+- `splitLongText(text, maxChars=4800)` — sentence-boundary split for Google's 5k char limit
+- Max 3 concurrent requests via semaphore
 
 ### `src/utils/providers/google-free.test.ts`
-- Mock fetch
-- Test successful translation parsing
-- Test error handling (429, 500)
-- Test language code mapping
+9 tests: success, batch, retry on 429, max retry exhaust, malformed JSON, wrong shape, long text split, auto-detect lang, standard lang passthrough.
 
 ## Files to Modify
 
 ### `src/types/config.ts`
-Change `ProviderIdSchema`:
-```typescript
-export const ProviderIdSchema = z.enum(["openai", "gemini", "free"])
-```
+- `ProviderIdSchema = z.enum(["google-free", "openai", "gemini"])`
+- Add `GoogleFreeProviderConfigSchema` (id, accessToken, apiKey, model all with defaults)
+- `DEFAULT_ASTRA_CONFIG.provider.id = "google-free"`
+- `getDefaultProviderModel("google-free") → "google-free"`
+- `hasProviderAccess`: return `true` unconditionally for `google-free`
 
-Add to `getDefaultProviderModel`:
-```typescript
-case "free": return "google-translate"
-```
-
-Update `DEFAULT_ASTRA_CONFIG.provider`:
-```typescript
-provider: {
-  id: "free",  // Changed from "openai" — works immediately after install
-  accessToken: "",
-  apiKey: "",
-  model: "google-translate",
-}
-```
+### `src/types/translation.ts` + `src/types/messages.ts`
+- Add `"PROVIDER_UNSUPPORTED_TASK"` to `TranslationErrorCode`
 
 ### `src/utils/providers/router.ts`
-Add free provider routing:
+Add at TOP of `translateWithProvider()`:
 ```typescript
-import { translateWithGoogleFree } from "./google-free"
-
-// In translateWithProvider():
-// Before checking apiKey or accessToken:
-if (provider.id === "free") {
-  return translateWithGoogleFree(request)
+if (provider.id === "google-free") {
+  if (request.task && request.task !== "translate") {
+    throw new AstraError("PROVIDER_UNSUPPORTED_TASK",
+      "Google Translate (Free) only supports translation. Switch to OpenAI or Gemini for explanations.")
+  }
+  return translateWithGoogleFree({ texts: request.texts, targetLang: request.targetLang, sourceLang: request.sourceLang })
 }
 ```
 
+### `src/utils/storage/config.ts`
+Fix `migrateLegacyConfig()`: detect if ANY legacy keys exist.
+- Has legacy keys → migrate to `openai` (preserve existing behavior)
+- No legacy keys (fresh install) → use `DEFAULT_ASTRA_CONFIG` (now `google-free`)
+
 ### `src/entrypoints/popup/components/GlobalSettingsSection.tsx`
-Add to PROVIDER_OPTIONS:
-```typescript
-{ value: "free", label: "Free (Google Translate)" },
-```
+- Add `"google-free"` to PROVIDER_OPTIONS as first option: `{ value: "google-free", label: "Google Translate (Free)" }`
+- Hide API key / relay URL / model fields when `google-free` selected
+- Show info banner: "Uses Google Translate. No API key needed. For AI explanations, switch to OpenAI or Gemini."
 
-## Rate Limiting
-Google Translate API has unofficial rate limits (~100 requests/minute). For page translation with 50+ blocks, this could be hit.
+## Rate Limiting Strategy
+| Parameter | Value |
+|-----------|-------|
+| Max concurrent | 3 |
+| Retry attempts | 3 |
+| Base delay | 1000ms |
+| Backoff | 2x (1s→2s→4s) |
+| Jitter | ±20% |
+| Retryable codes | 429, 503 |
+| Text chunk size | 4800 chars |
 
-Strategy:
-- Add 100ms delay between individual text translations in google-free.ts
-- If 429 response: wait 2 seconds and retry once
-- Cache integration (already done) dramatically reduces API calls on revisits
-
-## Limitations vs Paid Providers
-- No custom system prompts (explain/summarize/grammar won't work)
-- Lower translation quality than GPT/Gemini for nuanced text
-- Rate limited for heavy use
-- Only supports `translate` task (not `explain` or `custom`)
-
-The router should only use the free engine for `task === "translate"`. For explain/custom, it should fall back to showing an error: "This feature requires an AI provider (OpenAI or Gemini). Set up your API key in Settings."
+## Migration Safety
+- Fresh install (no storage) → `google-free` default ✓
+- Existing user with stored config → keeps their provider ✓
+- Legacy keys (apiKey/model/baseURL) → migrates to `openai` ✓
 
 ## Verification
 ```bash
 npx vitest run src/utils/providers/google-free.test.ts
+npx vitest run src/utils/providers/router.test.ts
+npx vitest run src/utils/storage/config.test.ts
 npx tsc --noEmit
 pnpm build
-pnpm bench  # Existing scenarios should still pass
+pnpm bench
 ```
