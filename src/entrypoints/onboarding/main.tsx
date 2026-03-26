@@ -1,0 +1,12 @@
+import React from "react"
+import ReactDOM from "react-dom/client"
+import { ErrorBoundary } from "@/components/ErrorBoundary"
+import OnboardingApp from "./OnboardingApp"
+
+ReactDOM.createRoot(document.getElementById("root")!).render(
+  <React.StrictMode>
+    <ErrorBoundary>
+      <OnboardingApp />
+    </ErrorBoundary>
+  </React.StrictMode>,
+)

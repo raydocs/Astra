@@ -92,6 +92,7 @@ export function createMockBrowser(initialStorage: StorageData = {}) {
     },
     runtime: {
       sendMessage: vi.fn(),
+      getURL: vi.fn((path: string) => `chrome-extension://mock-id${path}`),
       onMessage: {
         addListener: runtimeMessageBus.addListener,
         removeListener: runtimeMessageBus.removeListener,
@@ -104,6 +105,7 @@ export function createMockBrowser(initialStorage: StorageData = {}) {
     tabs: {
       query: vi.fn(() => Promise.resolve([])),
       create: vi.fn(() => Promise.resolve()),
+      remove: vi.fn(() => Promise.resolve()),
       sendMessage: vi.fn(),
       onActivated: {
         addListener: tabActivatedBus.addListener,
