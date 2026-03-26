@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from "react"
 import { createRoot } from "react-dom/client"
+import { ErrorBoundary } from "@/components/ErrorBoundary"
 import { readConfig } from "@/utils/storage/config"
 import { saveVocabularyEntry } from "@/utils/storage/vocabulary"
 import { copyTextToClipboard } from "@/utils/dom/clipboard"
@@ -451,5 +452,5 @@ export function mountSelectionToolbar() {
   const container = document.createElement("div")
   shadow.appendChild(container)
 
-  createRoot(container).render(<SelectionToolbarApp />)
+  createRoot(container).render(<ErrorBoundary><SelectionToolbarApp /></ErrorBoundary>)
 }

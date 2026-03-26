@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react"
 import { createRoot } from "react-dom/client"
+import { ErrorBoundary } from "@/components/ErrorBoundary"
 
 import { resolveSiteTranslationSettings } from "@/types/config"
 import { copyTextToClipboard } from "@/utils/dom/clipboard"
@@ -576,5 +577,5 @@ export function mountHoverTranslate() {
   const shadow = host.attachShadow({ mode: "open" })
   const container = document.createElement("div")
   shadow.appendChild(container)
-  createRoot(container).render(<HoverTranslateApp />)
+  createRoot(container).render(<ErrorBoundary><HoverTranslateApp /></ErrorBoundary>)
 }

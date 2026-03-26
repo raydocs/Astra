@@ -120,6 +120,7 @@ export type TranslationTheme = z.infer<typeof TranslationThemeSchema>
 export type HoverTrigger = z.infer<typeof HoverTriggerSchema>
 export type ContentScope = z.infer<typeof ContentScopeSchema>
 export type InputTranslation = z.infer<typeof InputTranslationSchema>
+export type LanguageLevel = z.infer<typeof LanguageLevelSchema>
 export type PresentationSettings = z.infer<typeof PresentationSettingsSchema>
 export type SiteConfig = z.infer<typeof SiteConfigSchema>
 export type SiteConfigInput = z.infer<typeof SiteConfigInputSchema>

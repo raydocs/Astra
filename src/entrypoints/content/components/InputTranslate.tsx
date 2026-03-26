@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from "react"
 import { createRoot } from "react-dom/client"
+import { ErrorBoundary } from "@/components/ErrorBoundary"
 import { readConfig } from "@/utils/storage/config"
 import { resolveSiteTranslationSettings } from "@/types/config"
 import { isSensitiveInput } from "@/utils/privacy"
@@ -188,5 +189,5 @@ export function mountInputTranslate() {
   const shadow = host.attachShadow({ mode: "open" })
   const container = document.createElement("div")
   shadow.appendChild(container)
-  createRoot(container).render(<InputTranslateApp />)
+  createRoot(container).render(<ErrorBoundary><InputTranslateApp /></ErrorBoundary>)
 }

@@ -1,6 +1,7 @@
 import React, { useState, useRef, useCallback, useEffect } from "react"
 import ReactDOM from "react-dom/client"
 import { browser } from "#imports"
+import { ErrorBoundary } from "@/components/ErrorBoundary"
 import { subscribePageTranslationState } from "../page-translate"
 import { toggleCurrentTabTranslation } from "@/utils/extension/messages"
 import { IDLE_TRANSLATION_SNAPSHOT } from "@/types/translation"
@@ -224,5 +225,5 @@ export function mountFloatBall() {
   document.documentElement.appendChild(host)
 
   const root = ReactDOM.createRoot(mountPoint)
-  root.render(<FloatBallButton />)
+  root.render(<ErrorBoundary><FloatBallButton /></ErrorBoundary>)
 }
