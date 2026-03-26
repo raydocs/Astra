@@ -93,16 +93,25 @@ export default defineBackground({
       })()
     })
 
+    // Badge indicator for active translation
+    let activeTranslations = 0
+    function updateBadge() {
+      if (browser.action?.setBadgeText) {
+        void browser.action.setBadgeText({ text: activeTranslations > 0 ? `${activeTranslations}` : "" })
+        void browser.action.setBadgeBackgroundColor?.({ color: "#6366f1" })
+      }
+    }
+
     browser.runtime.onMessage.addListener((message, _sender, sendResponse) => {
       if (isRuntimeTranslateBatchRequest(message)) {
+        activeTranslations++
+        updateBadge()
         handleTranslate(message.payload)
-          .then(sendResponse)
-          .catch((error) => {
-            sendResponse({
+          .then((r) => { activeTranslations = Math.max(0, activeTranslations - 1); updateBadge(); sendResponse(r) })
+          .catch((error) => { activeTranslations = Math.max(0, activeTranslations - 1); updateBadge(); sendResponse({
               type: "runtime/translate-batch:error",
               error: toTranslationError(error, "UNKNOWN"),
-            } satisfies RuntimeResponse)
-          })
+            } satisfies RuntimeResponse) })
         return true
       }
 

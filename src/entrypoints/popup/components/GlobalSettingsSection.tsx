@@ -8,6 +8,8 @@ import type {
   TranslationTheme,
 } from "@/types/config"
 import { getDefaultProviderModel } from "@/types/config"
+import { browser } from "#imports"
+import { useState } from "react"
 import { labelStyle, inputStyle } from "./styles"
 import { t } from "@/utils/i18n"
 
@@ -58,6 +60,34 @@ export default function GlobalSettingsSection({
   onContentScopeChange,
   onLanguageLevelChange,
 }: GlobalSettingsSectionProps) {
+  const [testStatus, setTestStatus] = useState<"idle" | "testing" | "success" | "error">("idle")
+  const [testError, setTestError] = useState("")
+
+  const handleTestConnection = async () => {
+    setTestStatus("testing")
+    setTestError("")
+    try {
+      const response = await browser.runtime.sendMessage({
+        type: "runtime/translate-batch",
+        payload: {
+          texts: ["hello"],
+          targetLang: config.targetLang,
+          task: "translate",
+        },
+      })
+      if (response?.type === "runtime/translate-batch:success") {
+        setTestStatus("success")
+        setTimeout(() => setTestStatus("idle"), 3000)
+      } else {
+        setTestStatus("error")
+        setTestError(response?.error?.message ?? "Unknown error")
+      }
+    } catch (err) {
+      setTestStatus("error")
+      setTestError(err instanceof Error ? err.message : "Connection failed")
+    }
+  }
+
   return (
     <details open style={{ marginBottom: 12 }}>
       <summary style={{ cursor: "pointer", fontSize: 13, color: "#6366f1" }}>
@@ -92,6 +122,29 @@ export default function GlobalSettingsSection({
         <div style={{ fontSize: 11, color: "#94a3b8", marginTop: 2 }}>
           填写后直连 {config.provider.id === "gemini" ? "Google" : "OpenAI"} API，无需 Astra 账号
         </div>
+
+        <button
+          type="button"
+          onClick={() => void handleTestConnection()}
+          disabled={testStatus === "testing"}
+          style={{
+            marginTop: 4,
+            marginBottom: 8,
+            padding: "4px 12px",
+            fontSize: 11,
+            fontWeight: 600,
+            border: "1px solid #e2e8f0",
+            borderRadius: 4,
+            cursor: testStatus === "testing" ? "wait" : "pointer",
+            background: testStatus === "success" ? "#10b981" : testStatus === "error" ? "#f59e0b" : "#fff",
+            color: testStatus === "success" || testStatus === "error" ? "#fff" : "#334155",
+          }}
+        >
+          {testStatus === "testing" ? "Testing..." : testStatus === "success" ? "Connected!" : testStatus === "error" ? "Failed" : "Test Connection"}
+        </button>
+        {testStatus === "error" && testError && (
+          <div style={{ fontSize: 11, color: "#b45309", marginBottom: 6 }}>{testError}</div>
+        )}
 
         <label style={labelStyle}>{t("relayUrlLabel")}</label>
         <input

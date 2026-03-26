@@ -594,8 +594,24 @@ export default function App() {
         </div>
       )}
 
-      <div style={{ fontSize: 11, color: "#94a3b8", textAlign: "center", marginTop: 10 }}>
-        Astra v0.1.0 · {currentPhase} · AI 双语翻译
+      <div style={{ display: "flex", justifyContent: "center", gap: 12, marginTop: 10 }}>
+        <button
+          type="button"
+          onClick={() => void browser.tabs.create({ url: browser.runtime.getURL("/options.html" as "/popup.html") })}
+          style={{ background: "none", border: "none", color: "#6366f1", fontSize: 11, cursor: "pointer", textDecoration: "underline" }}
+        >
+          Settings
+        </button>
+        <button
+          type="button"
+          onClick={() => void browser.tabs.create({ url: browser.runtime.getURL("/vocabulary.html" as "/popup.html") })}
+          style={{ background: "none", border: "none", color: "#6366f1", fontSize: 11, cursor: "pointer", textDecoration: "underline" }}
+        >
+          Vocabulary
+        </button>
+      </div>
+      <div style={{ fontSize: 11, color: "#94a3b8", textAlign: "center", marginTop: 4 }}>
+        Astra v0.1.0
       </div>
     </div>
   )
