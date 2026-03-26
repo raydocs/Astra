@@ -149,6 +149,7 @@ export async function translateWithOpenAI(
     context,
     task = "translate",
     customSystemPrompt,
+    languageLevel,
   } = options
 
   const openai = createOpenAI({
@@ -163,6 +164,7 @@ export async function translateWithOpenAI(
     context,
     task,
     customSystemPrompt,
+    languageLevel,
   })
 
   const systemMessage = task === "custom" && customSystemPrompt

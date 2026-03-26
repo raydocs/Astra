@@ -208,6 +208,8 @@ function normalizeSiteConfig(siteConfig?: Partial<SiteConfig> | null): SiteConfi
     ? {
         ...(presentation.mode ? { mode: presentation.mode } : {}),
         ...(presentation.theme ? { theme: presentation.theme } : {}),
+        ...(presentation.fontSize != null ? { fontSize: presentation.fontSize } : {}),
+        ...(presentation.translationColor ? { translationColor: presentation.translationColor } : {}),
       }
     : undefined
 
@@ -220,6 +222,9 @@ function normalizeSiteConfig(siteConfig?: Partial<SiteConfig> | null): SiteConfi
     ...(normalizedPresentation && Object.keys(normalizedPresentation).length > 0
       ? { presentation: normalizedPresentation }
       : {}),
+    ...(siteConfig?.selectors ? { selectors: siteConfig.selectors } : {}),
+    ...(siteConfig?.excludeSelectors ? { excludeSelectors: siteConfig.excludeSelectors } : {}),
+    ...(siteConfig?.paragraphMinLength != null ? { paragraphMinLength: siteConfig.paragraphMinLength } : {}),
   }
 }
 
@@ -230,6 +235,9 @@ export function isDefaultSiteConfig(siteConfig: SiteConfig): boolean {
     && !siteConfig.hoverTrigger
     && !siteConfig.contentScope
     && (!siteConfig.presentation || Object.keys(siteConfig.presentation).length === 0)
+    && !siteConfig.selectors?.length
+    && !siteConfig.excludeSelectors?.length
+    && siteConfig.paragraphMinLength == null
 }
 
 export function normalizeSiteKey(hostnameOrUrl: string): string | null {

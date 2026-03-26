@@ -13,12 +13,22 @@ export interface TranslatedBlock {
 }
 
 const BATCH_SIZE = 8
-const TARGET_LANG = "zh-CN" // TODO: read from config
+
+async function getTargetLang(): Promise<string> {
+  try {
+    const result = await browser.storage.local.get("astra.config.v1")
+    const config = result["astra.config.v1"] as { targetLang?: string } | undefined
+    return config?.targetLang ?? "zh-CN"
+  } catch {
+    return "zh-CN"
+  }
+}
 
 export async function translatePdfPage(page: PdfPage): Promise<TranslatedBlock[]> {
   const results: TranslatedBlock[] = []
   const textsToTranslate = page.blocks.filter((b) => b.text.length >= 5)
 
+  const targetLang = await getTargetLang()
   for (let i = 0; i < textsToTranslate.length; i += BATCH_SIZE) {
     const batch = textsToTranslate.slice(i, i + BATCH_SIZE)
     const texts = batch.map((b) => b.text)
@@ -28,7 +38,7 @@ export async function translatePdfPage(page: PdfPage): Promise<TranslatedBlock[]
         type: "runtime/translate-batch",
         payload: {
           texts,
-          targetLang: TARGET_LANG,
+          targetLang,
           task: "translate",
         },
       })

@@ -16,7 +16,16 @@ import {
 type Phase = "idle" | "parsed" | "translating" | "done" | "error"
 
 const BATCH_SIZE = 15
-const TARGET_LANG = "zh-CN"
+
+async function getTargetLang(): Promise<string> {
+  try {
+    const result = await browser.storage.local.get("astra.config.v1")
+    const config = result["astra.config.v1"] as { targetLang?: string } | undefined
+    return config?.targetLang ?? "zh-CN"
+  } catch {
+    return "zh-CN"
+  }
+}
 
 export function SubtitleReaderApp() {
   const [phase, setPhase] = useState<Phase>("idle")
@@ -63,7 +72,7 @@ export function SubtitleReaderApp() {
       try {
         const response: RuntimeResponse = await browser.runtime.sendMessage({
           type: "runtime/translate-batch",
-          payload: { texts, targetLang: TARGET_LANG, task: "translate" },
+          payload: { texts, targetLang: await getTargetLang(), task: "translate" },
         })
 
         if (response.type === "runtime/translate-batch:success") {

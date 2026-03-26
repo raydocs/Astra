@@ -23,7 +23,16 @@ interface ChapterContent {
 }
 
 const BATCH_SIZE = 8
-const TARGET_LANG = "zh-CN"
+
+async function getTargetLang(): Promise<string> {
+  try {
+    const result = await browser.storage.local.get("astra.config.v1")
+    const config = result["astra.config.v1"] as { targetLang?: string } | undefined
+    return config?.targetLang ?? "zh-CN"
+  } catch {
+    return "zh-CN"
+  }
+}
 
 export function EpubReaderApp() {
   const [phase, setPhase] = useState<Phase>("idle")
@@ -90,7 +99,7 @@ export function EpubReaderApp() {
         try {
           const response: RuntimeResponse = await browser.runtime.sendMessage({
             type: "runtime/translate-batch",
-            payload: { texts: batch, targetLang: TARGET_LANG, task: "translate" },
+            payload: { texts: batch, targetLang: await getTargetLang(), task: "translate" },
           })
 
           if (response.type === "runtime/translate-batch:success") {

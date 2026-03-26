@@ -109,6 +109,7 @@ export async function extractPdfPages(data: Uint8Array): Promise<PdfPage[]> {
   const pdf = await getDocument({ data }).promise
   const pages: PdfPage[] = []
 
+  try {
   for (let i = 1; i <= pdf.numPages; i++) {
     const page = await pdf.getPage(i)
     const viewport = page.getViewport({ scale: 1.0 })
@@ -130,4 +131,7 @@ export async function extractPdfPages(data: Uint8Array): Promise<PdfPage[]> {
   }
 
   return pages
+  } finally {
+    await pdf.destroy()
+  }
 }

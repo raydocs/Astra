@@ -143,13 +143,14 @@ export function exportBilingualSrt(cues: SubtitleCue[], translations: Map<number
  * Export bilingual subtitles in VTT format.
  */
 export function exportBilingualVtt(cues: SubtitleCue[], translations: Map<number, string>): string {
+  const toVttTime = (t: string) => t.replace(",", ".")
   const body = cues
     .map((cue, i) => {
       const translation = translations.get(i) ?? ""
       const text = translation
         ? `${cue.text}\n${translation}`
         : cue.text
-      return `${cue.startTime} --> ${cue.endTime}\n${text}`
+      return `${toVttTime(cue.startTime)} --> ${toVttTime(cue.endTime)}\n${text}`
     })
     .join("\n\n")
 
