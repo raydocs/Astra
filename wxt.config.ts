@@ -17,6 +17,7 @@ export default defineConfig({
       "activeTab",
       "webNavigation",
       "contextMenus",
+      "alarms",
     ],
     host_permissions: ["*://*/*"],
     commands: {

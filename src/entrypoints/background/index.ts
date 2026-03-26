@@ -12,6 +12,7 @@ import { toggleTabTranslation } from "@/utils/extension/messages"
 import { translateWithProvider } from "@/utils/providers/router"
 import { readConfig, saveConfig } from "@/utils/storage/config"
 import { cleanExpiredCache } from "@/utils/cache/translation-cache"
+import { getDueVocabularyCount } from "@/utils/storage/vocabulary"
 import { readAstraSession } from "@/utils/storage/auth"
 import { resolveManagedProviderConfig, type HoverTrigger } from "@/types/config"
 
@@ -93,14 +94,47 @@ export default defineBackground({
       })()
     })
 
-    // Badge indicator for active translation
+    // Badge indicator for active translation + SRS due count
     let activeTranslations = 0
+    let srsDueCount = 0
+
     function updateBadge() {
       if (browser.action?.setBadgeText) {
-        void browser.action.setBadgeText({ text: activeTranslations > 0 ? `${activeTranslations}` : "" })
-        void browser.action.setBadgeBackgroundColor?.({ color: "#6366f1" })
+        if (activeTranslations > 0) {
+          void browser.action.setBadgeText({ text: `${activeTranslations}` })
+          void browser.action.setBadgeBackgroundColor?.({ color: "#6366f1" })
+        } else if (srsDueCount > 0) {
+          void browser.action.setBadgeText({ text: `${srsDueCount}` })
+          void browser.action.setBadgeBackgroundColor?.({ color: "#d97706" })
+        } else {
+          void browser.action.setBadgeText({ text: "" })
+        }
       }
     }
+
+    async function refreshSrsBadge() {
+      try {
+        srsDueCount = await getDueVocabularyCount()
+        updateBadge()
+      } catch {
+        // Silently ignore
+      }
+    }
+
+    // Periodic SRS badge refresh
+    if (browser.alarms) {
+      void browser.alarms.create("astra-srs-badge", { periodInMinutes: 30 })
+      browser.alarms.onAlarm?.addListener((alarm) => {
+        if (alarm.name === "astra-srs-badge") void refreshSrsBadge()
+      })
+    }
+
+    // Refresh badge when vocabulary changes
+    browser.storage.onChanged?.addListener((changes, areaName) => {
+      if (areaName === "local" && "astra.vocabulary.v1" in changes) {
+        void refreshSrsBadge()
+      }
+    })
 
     browser.runtime.onMessage.addListener((message, _sender, sendResponse) => {
       if (isRuntimeTranslateBatchRequest(message)) {

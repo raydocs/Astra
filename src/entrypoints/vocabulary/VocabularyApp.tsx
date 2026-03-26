@@ -3,8 +3,11 @@ import type { VocabularyEntry } from "@/utils/storage/vocabulary"
 import {
   getVocabularyEntries,
   removeVocabularyEntry,
+  getDueVocabularyCount,
 } from "@/utils/storage/vocabulary"
+import ReviewMode from "./ReviewMode"
 
+type ActiveTab = "list" | "review"
 type SortMode = "time" | "alpha"
 
 function formatDate(ts: number): string {
@@ -68,22 +71,33 @@ function downloadFile(content: string, filename: string, mimeType: string): void
   URL.revokeObjectURL(url)
 }
 
+function getInitialTab(): ActiveTab {
+  const params = new URLSearchParams(window.location.search)
+  return params.get("tab") === "review" ? "review" : "list"
+}
+
 export default function VocabularyApp() {
+  const [activeTab, setActiveTab] = useState<ActiveTab>(getInitialTab)
   const [entries, setEntries] = useState<VocabularyEntry[]>([])
   const [search, setSearch] = useState("")
   const [sortMode, setSortMode] = useState<SortMode>("time")
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
+  const [dueCount, setDueCount] = useState(0)
 
   const loadEntries = async () => {
-    const data = await getVocabularyEntries()
+    const [data, due] = await Promise.all([
+      getVocabularyEntries(),
+      getDueVocabularyCount(),
+    ])
     setEntries(data)
+    setDueCount(due)
     setLoading(false)
   }
 
   useEffect(() => {
     void loadEntries()
-  }, [])
+  }, [activeTab])
 
   const handleDelete = async (id: string) => {
     await removeVocabularyEntry(id)
@@ -256,6 +270,24 @@ export default function VocabularyApp() {
     fontSize: 15,
   }
 
+  const tabStyle = (active: boolean): React.CSSProperties => ({
+    padding: "8px 20px",
+    fontSize: 14,
+    fontWeight: 600,
+    border: "none",
+    borderBottom: active ? "2px solid #6366f1" : "2px solid transparent",
+    background: "transparent",
+    color: active ? "#6366f1" : "#64748b",
+    cursor: "pointer",
+  })
+
+  const tabBarStyle: React.CSSProperties = {
+    display: "flex",
+    gap: 4,
+    borderBottom: "1px solid #e2e8f0",
+    marginBottom: 20,
+  }
+
   if (loading) {
     return (
       <div style={containerStyle}>
@@ -273,121 +305,136 @@ export default function VocabularyApp() {
         <span style={countBadgeStyle}>{entries.length} {entries.length === 1 ? "word" : "words"}</span>
       </div>
 
-      <div style={{ marginBottom: 12 }}>
-        <input
-          type="text"
-          placeholder="Search words, translations, or context..."
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          style={searchInputStyle}
-        />
-      </div>
-
-      <div style={toolbarStyle}>
-        <span style={{ fontSize: 12, color: "#64748b", marginRight: 4 }}>Sort:</span>
-        <button
-          type="button"
-          style={sortButtonStyle(sortMode === "time")}
-          onClick={() => setSortMode("time")}
-        >
-          Newest first
+      <div style={tabBarStyle}>
+        <button type="button" style={tabStyle(activeTab === "list")} onClick={() => setActiveTab("list")}>
+          Word List
         </button>
-        <button
-          type="button"
-          style={sortButtonStyle(sortMode === "alpha")}
-          onClick={() => setSortMode("alpha")}
-        >
-          A-Z
-        </button>
-        <div style={{ flex: 1 }} />
-        <button
-          type="button"
-          style={exportButtonStyle}
-          onClick={() => exportCSV(sorted)}
-          disabled={sorted.length === 0}
-        >
-          Export CSV
-        </button>
-        <button
-          type="button"
-          style={exportButtonStyle}
-          onClick={() => exportAnkiTSV(sorted)}
-          disabled={sorted.length === 0}
-        >
-          Export Anki TSV
+        <button type="button" style={tabStyle(activeTab === "review")} onClick={() => setActiveTab("review")}>
+          Review {dueCount > 0 ? `(${dueCount})` : ""}
         </button>
       </div>
 
-      {sorted.length === 0 && (
-        <div style={emptyStyle}>
-          {search
-            ? "No words match your search."
-            : "No vocabulary saved yet. Use the Save button when translating to add words here."}
-        </div>
-      )}
+      {activeTab === "review" && <ReviewMode />}
 
-      {sorted.map((entry) => (
-        <div key={entry.id} style={cardStyle}>
-          <div style={wordStyle}>{entry.text}</div>
-          {entry.translation && (
-            <div style={translationStyle}>{entry.translation}</div>
-          )}
-          {entry.context && (
-            <div style={contextStyle}>
-              {entry.context.length > 200
-                ? `${entry.context.slice(0, 200)}...`
-                : entry.context}
-            </div>
-          )}
-          <div style={metaRowStyle}>
-            <div style={metaStyle}>
-              {entry.hostname && (
-                <span>{entry.hostname} &middot; </span>
-              )}
-              {entry.url && (
-                <a
-                  href={entry.url}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  style={{ color: "#94a3b8", textDecoration: "underline" }}
-                >
-                  source
-                </a>
-              )}
-              {(entry.hostname || entry.url) && <span> &middot; </span>}
-              <span>{formatDate(entry.savedAt)}</span>
-            </div>
-            <div style={{ display: "flex", gap: 6 }}>
-              {confirmDeleteId === entry.id ? (
-                <>
-                  <button
-                    type="button"
-                    style={confirmBtnStyle}
-                    onClick={() => void handleDelete(entry.id)}
-                  >
-                    Confirm
-                  </button>
-                  <button
-                    type="button"
-                    style={{ ...deleteBtnStyle, color: "#64748b", background: "rgba(100,116,139,0.08)" }}
-                    onClick={() => setConfirmDeleteId(null)}
-                  >
-                    Cancel
-                  </button>
-                </>
-              ) : (
-                <button
-                  type="button"
-                  style={deleteBtnStyle}
-                  onClick={() => setConfirmDeleteId(entry.id)}
-                >
-                  Delete
-                </button>
-              )}
-            </div>
+      {activeTab === "list" && (
+        <>
+          <div style={{ marginBottom: 12 }}>
+            <input
+              type="text"
+              placeholder="Search words, translations, or context..."
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              style={searchInputStyle}
+            />
           </div>
-        </div>
-      ))}
+
+          <div style={toolbarStyle}>
+            <span style={{ fontSize: 12, color: "#64748b", marginRight: 4 }}>Sort:</span>
+            <button
+              type="button"
+              style={sortButtonStyle(sortMode === "time")}
+              onClick={() => setSortMode("time")}
+            >
+              Newest first
+            </button>
+            <button
+              type="button"
+              style={sortButtonStyle(sortMode === "alpha")}
+              onClick={() => setSortMode("alpha")}
+            >
+              A-Z
+            </button>
+            <div style={{ flex: 1 }} />
+            <button
+              type="button"
+              style={exportButtonStyle}
+              onClick={() => exportCSV(sorted)}
+              disabled={sorted.length === 0}
+            >
+              Export CSV
+            </button>
+            <button
+              type="button"
+              style={exportButtonStyle}
+              onClick={() => exportAnkiTSV(sorted)}
+              disabled={sorted.length === 0}
+            >
+              Export Anki TSV
+            </button>
+          </div>
+
+          {sorted.length === 0 && (
+            <div style={emptyStyle}>
+              {search
+                ? "No words match your search."
+                : "No vocabulary saved yet. Use the Save button when translating to add words here."}
+            </div>
+          )}
+
+          {sorted.map((entry) => (
+            <div key={entry.id} style={cardStyle}>
+              <div style={wordStyle}>{entry.text}</div>
+              {entry.translation && (
+                <div style={translationStyle}>{entry.translation}</div>
+              )}
+              {entry.context && (
+                <div style={contextStyle}>
+                  {entry.context.length > 200
+                    ? `${entry.context.slice(0, 200)}...`
+                    : entry.context}
+                </div>
+              )}
+              <div style={metaRowStyle}>
+                <div style={metaStyle}>
+                  {entry.hostname && (
+                    <span>{entry.hostname} &middot; </span>
+                  )}
+                  {entry.url && (
+                    <a
+                      href={entry.url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      style={{ color: "#94a3b8", textDecoration: "underline" }}
+                    >
+                      source
+                    </a>
+                  )}
+                  {(entry.hostname || entry.url) && <span> &middot; </span>}
+                  <span>{formatDate(entry.savedAt)}</span>
+                </div>
+                <div style={{ display: "flex", gap: 6 }}>
+                  {confirmDeleteId === entry.id ? (
+                    <>
+                      <button
+                        type="button"
+                        style={confirmBtnStyle}
+                        onClick={() => void handleDelete(entry.id)}
+                      >
+                        Confirm
+                      </button>
+                      <button
+                        type="button"
+                        style={{ ...deleteBtnStyle, color: "#64748b", background: "rgba(100,116,139,0.08)" }}
+                        onClick={() => setConfirmDeleteId(null)}
+                      >
+                        Cancel
+                      </button>
+                    </>
+                  ) : (
+                    <button
+                      type="button"
+                      style={deleteBtnStyle}
+                      onClick={() => setConfirmDeleteId(entry.id)}
+                    >
+                      Delete
+                    </button>
+                  )}
+                </div>
+              </div>
+            </div>
+          ))}
+        </>
+      )}
     </div>
   )
 }
