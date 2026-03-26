@@ -12,6 +12,7 @@ export type TranslationErrorCode =
   | "PROVIDER_PARSE_FAILED"
   | "INVALID_RESPONSE"
   | "SITE_DISABLED"
+  | "QUOTA_EXCEEDED"
   | "UNKNOWN"
 
 export interface TranslationError {

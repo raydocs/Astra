@@ -83,9 +83,12 @@ export const CustomActionSchema = z.object({
 
 export type CustomAction = z.infer<typeof CustomActionSchema>
 
+export const ConnectionModeSchema = z.enum(["astra", "custom"])
+
 export const AstraConfigSchema = z.object({
   version: z.literal(1).default(1),
   targetLang: z.string().trim().min(1).default("zh-CN"),
+  connectionMode: ConnectionModeSchema.default("astra"),
   hoverTrigger: HoverTriggerSchema.default("alt"),
   contentScope: ContentScopeSchema.default("page"),
   inputTranslation: InputTranslationSchema.default("enabled"),
@@ -109,6 +112,7 @@ export const AstraConfigSchema = z.object({
 
 export const AstraConfigInputSchema = z.object({
   targetLang: z.string().trim().min(1).optional(),
+  connectionMode: ConnectionModeSchema.optional(),
   hoverTrigger: HoverTriggerSchema.optional(),
   contentScope: ContentScopeSchema.optional(),
   inputTranslation: InputTranslationSchema.optional(),
@@ -127,6 +131,7 @@ export const AstraConfigInputSchema = z.object({
 })
 
 export type ProviderId = z.infer<typeof ProviderIdSchema>
+export type ConnectionMode = z.infer<typeof ConnectionModeSchema>
 export type TranslationMode = z.infer<typeof TranslationModeSchema>
 export type TranslationTheme = z.infer<typeof TranslationThemeSchema>
 export type HoverTrigger = z.infer<typeof HoverTriggerSchema>
@@ -165,6 +170,7 @@ export interface ResolvedSiteTranslationSettings {
 export const DEFAULT_ASTRA_CONFIG: AstraConfig = {
   version: 1,
   targetLang: "zh-CN",
+  connectionMode: "astra",
   hoverTrigger: "alt",
   contentScope: "page" as const,
   inputTranslation: "enabled" as const,
@@ -361,6 +367,7 @@ export function normalizeConfig(config: AstraConfig): AstraConfig {
   return {
     version: 1,
     targetLang: config.targetLang.trim() || DEFAULT_ASTRA_CONFIG.targetLang,
+    connectionMode: config.connectionMode ?? DEFAULT_ASTRA_CONFIG.connectionMode,
     hoverTrigger: config.hoverTrigger ?? DEFAULT_ASTRA_CONFIG.hoverTrigger,
     contentScope: config.contentScope ?? DEFAULT_ASTRA_CONFIG.contentScope,
     inputTranslation: config.inputTranslation ?? DEFAULT_ASTRA_CONFIG.inputTranslation,

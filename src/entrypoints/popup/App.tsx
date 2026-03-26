@@ -2,11 +2,11 @@ import { useEffect, useMemo, useRef, useState } from "react"
 import { browser } from "#imports"
 import type {
   AstraConfig,
-  LanguageLevel,
-  SiteConfig,
+  TranslationMode,
 } from "@/types/config"
 import type { AstraAccount, AstraSession, AstraUsageSnapshot } from "@/types/auth"
 import type { TranslationSnapshot } from "@/types/translation"
+import type { QuotaInfo } from "@/utils/astra/quota"
 import {
   getActiveTabTranslationState,
   startActiveTabTranslation,
@@ -16,7 +16,6 @@ import { readConfig, saveConfig as persistConfig } from "@/utils/storage/config"
 import {
   DEFAULT_ASTRA_CONFIG,
   hasResolvedProviderAccess,
-  isDefaultSiteConfig,
   normalizeSiteKey,
   resolveSiteTranslationSettings,
 } from "@/types/config"
@@ -32,17 +31,14 @@ import {
   revokeAstraSession,
 } from "@/utils/astra/auth"
 import {
-  createAstraCheckoutLink,
-  createAstraPortalLink,
   fetchAstraAccount,
   fetchAstraUsageSnapshot,
-  updateAstraPlan,
 } from "@/utils/astra/account"
+import { getQuotaInfo } from "@/utils/astra/quota"
 import TranslationStatusCard from "./components/TranslationStatusCard"
-import GlobalSettingsSection from "./components/GlobalSettingsSection"
-import SiteSettingsSection from "./components/SiteSettingsSection"
-import AuthSection from "./components/AuthSection"
-import { btnPrimary, btnSecondary, btnDisabled, warningStyle } from "./components/styles"
+import SimpleControls from "./components/SimpleControls"
+import QuotaBar from "./components/QuotaBar"
+import { btnPrimary, btnSecondary, btnDisabled, warningStyle, inputStyle, labelStyle } from "./components/styles"
 
 function formatRelativeTime(timestamp: number): string {
   const diff = Date.now() - timestamp
@@ -64,36 +60,22 @@ async function getActiveSiteKey(): Promise<string | null> {
 export default function App() {
   const [configDraft, setConfigDraft] = useState<AstraConfig>(DEFAULT_ASTRA_CONFIG)
   const [persistedConfig, setPersistedConfig] = useState<AstraConfig>(DEFAULT_ASTRA_CONFIG)
-  const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false)
-  const [saved, setSaved] = useState(false)
   const [statusMessage, setStatusMessage] = useState("")
   const [translationState, setTranslationState] = useState<TranslationSnapshot | null>(null)
   const [contentAvailable, setContentAvailable] = useState(true)
   const [activeSiteKey, setActiveSiteKey] = useState<string | null>(null)
   const [authSession, setAuthSession] = useState<AstraSession | null>(null)
   const [authAccount, setAuthAccount] = useState<AstraAccount | null>(null)
-  const [authUsage, setAuthUsage] = useState<AstraUsageSnapshot | null>(null)
   const [authEmail, setAuthEmail] = useState("")
   const [authPassword, setAuthPassword] = useState("")
   const [authBusy, setAuthBusy] = useState(false)
   const [recentHistory, setRecentHistory] = useState<ReadingHistoryEntry[]>([])
+  const [quotaInfo, setQuotaInfo] = useState<QuotaInfo | null>(null)
   const hasUnsavedChangesRef = useRef(false)
-
-  hasUnsavedChangesRef.current = hasUnsavedChanges
-
-  const resolvedSite = useMemo(
-    () => resolveSiteTranslationSettings(configDraft, activeSiteKey),
-    [configDraft, activeSiteKey],
-  )
 
   const persistedResolvedSite = useMemo(
     () => resolveSiteTranslationSettings(persistedConfig, activeSiteKey),
     [persistedConfig, activeSiteKey],
-  )
-
-  const rawSiteRule = useMemo(
-    () => (activeSiteKey ? configDraft.sites[activeSiteKey] : undefined),
-    [configDraft.sites, activeSiteKey],
   )
 
   const refreshTranslationState = async () => {
@@ -116,10 +98,9 @@ export default function App() {
       readAstraSession(),
       getReadingHistory(),
     ])
-    setRecentHistory(history.slice(0, 5))
+    setRecentHistory(history.slice(0, 3))
     let session = storedSession
     let account: AstraAccount | null = null
-    let usage: AstraUsageSnapshot | null = null
     if (storedSession) {
       try {
         session = await refreshAstraSession({
@@ -128,25 +109,17 @@ export default function App() {
         })
         await saveAstraSession(session)
         try {
-          ;[account, usage] = await Promise.all([
-            fetchAstraAccount({
-              baseURL: session.relayBaseURL,
-              sessionToken: session.sessionToken,
-            }),
-            fetchAstraUsageSnapshot({
-              baseURL: session.relayBaseURL,
-              sessionToken: session.sessionToken,
-            }),
-          ])
+          account = await fetchAstraAccount({
+            baseURL: session.relayBaseURL,
+            sessionToken: session.sessionToken,
+          })
         } catch {
           account = null
-          usage = null
         }
       } catch {
         await clearAstraSession()
         session = null
         account = null
-        usage = null
       }
     }
     if (!hasUnsavedChangesRef.current) {
@@ -156,7 +129,15 @@ export default function App() {
     setActiveSiteKey(siteKey)
     setAuthSession(session)
     setAuthAccount(account)
-    setAuthUsage(usage)
+
+    // Fetch quota info (best-effort)
+    try {
+      const quota = await getQuotaInfo()
+      setQuotaInfo(quota)
+    } catch {
+      setQuotaInfo(null)
+    }
+
     await refreshTranslationState()
   }
 
@@ -190,83 +171,21 @@ export default function App() {
     }
   }, [])
 
-  const updateDraft = (mutate: (current: AstraConfig) => AstraConfig) => {
-    hasUnsavedChangesRef.current = true
-    setHasUnsavedChanges(true)
-    setConfigDraft((current) => mutate(current))
-  }
-
-  const updateProvider = (patch: Partial<AstraConfig["provider"]>) => {
-    updateDraft((current) => ({
-      ...current,
-      provider: { ...current.provider, ...patch },
-    }))
-  }
-
-  const updatePresentation = (patch: Partial<AstraConfig["presentation"]>) => {
-    updateDraft((current) => ({
-      ...current,
-      presentation: { ...current.presentation, ...patch },
-    }))
-  }
-
-  const editActiveSiteRule = (mutate: (current: SiteConfig) => SiteConfig) => {
-    if (!activeSiteKey) return
-
-    updateDraft((current) => {
-      const baseSiteRule: SiteConfig = current.sites[activeSiteKey]
-        ? {
-            ...current.sites[activeSiteKey],
-            ...(current.sites[activeSiteKey].presentation
-              ? { presentation: { ...current.sites[activeSiteKey].presentation } }
-              : {}),
-          }
-        : {
-            enabled: true,
-            alwaysTranslate: false,
-          }
-
-      const nextSiteRule = mutate(baseSiteRule)
-      const nextSites = { ...current.sites }
-
-      if (isDefaultSiteConfig(nextSiteRule)) {
-        delete nextSites[activeSiteKey]
-      } else {
-        nextSites[activeSiteKey] = nextSiteRule
-      }
-
-      return {
-        ...current,
-        sites: nextSites,
-      }
-    })
-  }
-
-  const handleSaveConfig = async () => {
+  const handleSaveConfig = async (patch: Partial<AstraConfig>) => {
     try {
       const nextConfig = await persistConfig({
-        targetLang: configDraft.targetLang,
-        contentScope: configDraft.contentScope,
+        ...patch,
         provider: {
           id: configDraft.provider.id,
           apiKey: configDraft.provider.apiKey,
           relayBaseURL: configDraft.provider.relayBaseURL ?? "",
           model: configDraft.provider.model,
         },
-        presentation: configDraft.presentation,
-        hoverTrigger: configDraft.hoverTrigger,
-        inputTranslation: configDraft.inputTranslation,
-        languageLevel: configDraft.languageLevel,
-        privacyMode: configDraft.privacyMode,
         sites: configDraft.sites,
       })
       setConfigDraft(nextConfig)
       setPersistedConfig(nextConfig)
       hasUnsavedChangesRef.current = false
-      setHasUnsavedChanges(false)
-      setSaved(true)
-      setStatusMessage("")
-      setTimeout(() => setSaved(false), 2000)
 
       if (activeSiteKey && !resolveSiteTranslationSettings(nextConfig, activeSiteKey).enabled) {
         await stopActiveTabTranslation()
@@ -274,9 +193,21 @@ export default function App() {
 
       await refreshTranslationState()
     } catch (error) {
-      setSaved(false)
-      setStatusMessage(error instanceof Error ? error.message : "保存设置失败")
+      setStatusMessage(error instanceof Error ? error.message : "Failed to save settings")
     }
+  }
+
+  const handleTargetLangChange = (lang: string) => {
+    setConfigDraft((current) => ({ ...current, targetLang: lang }))
+    void handleSaveConfig({ targetLang: lang })
+  }
+
+  const handleModeChange = (mode: "bilingual" | "translation-only") => {
+    setConfigDraft((current) => ({
+      ...current,
+      presentation: { ...current.presentation, mode },
+    }))
+    void handleSaveConfig({ presentation: { ...configDraft.presentation, mode } })
   }
 
   const translate = async () => {
@@ -297,7 +228,7 @@ export default function App() {
         setStatusMessage(response.error.message)
       }
     } catch (error) {
-      setStatusMessage(error instanceof Error ? error.message : "翻译请求失败")
+      setStatusMessage(error instanceof Error ? error.message : "Translation request failed")
     }
   }
 
@@ -314,7 +245,7 @@ export default function App() {
         setStatusMessage(response.error.message)
       }
     } catch (error) {
-      setStatusMessage(error instanceof Error ? error.message : "翻译请求失败")
+      setStatusMessage(error instanceof Error ? error.message : "Translation request failed")
     }
   }
 
@@ -336,21 +267,25 @@ export default function App() {
     ? persistedResolvedSite.enabled
     : currentSite.enabled
 
+  // Compute daily words translated from quota/session
+  const wordsTranslated = quotaInfo ? Math.round(quotaInfo.used / 5) : 0
+
+  // Determine plan label
+  const planLabel = authAccount?.plan === "pro"
+    ? "Pro Plan"
+    : quotaInfo?.plan === "custom"
+      ? "Custom"
+      : "Free Plan"
+
   const hydrateAccountState = async (session: AstraSession) => {
     try {
-      const [account, usage] = await Promise.all([
-        fetchAstraAccount({
-          baseURL: session.relayBaseURL,
-          sessionToken: session.sessionToken,
-        }),
-        fetchAstraUsageSnapshot({
-          baseURL: session.relayBaseURL,
-          sessionToken: session.sessionToken,
-        }),
-      ])
-      return { account, usage }
+      const account = await fetchAstraAccount({
+        baseURL: session.relayBaseURL,
+        sessionToken: session.sessionToken,
+      })
+      return { account }
     } catch {
-      return { account: null, usage: null }
+      return { account: null }
     }
   }
 
@@ -363,76 +298,15 @@ export default function App() {
         email: authEmail,
         password: authPassword,
       })
-      const { account, usage } = await hydrateAccountState(session)
+      const { account } = await hydrateAccountState(session)
       await saveAstraSession(session)
       setAuthSession(session)
       setAuthAccount(account)
-      setAuthUsage(usage)
       setAuthPassword("")
       setStatusMessage("")
       await refreshTranslationState()
     } catch (error) {
-      setStatusMessage(error instanceof Error ? error.message : "Astra 登录失败")
-    } finally {
-      setAuthBusy(false)
-    }
-  }
-
-  const handlePlanChange = async (plan: "free" | "pro") => {
-    if (!authSession) return
-
-    try {
-      setAuthBusy(true)
-      setStatusMessage("")
-      await updateAstraPlan({
-        baseURL: authSession.relayBaseURL,
-        sessionToken: authSession.sessionToken,
-        plan,
-      })
-      await refreshAll()
-    } catch (error) {
-      setStatusMessage(error instanceof Error ? error.message : "切换套餐失败")
-    } finally {
-      setAuthBusy(false)
-    }
-  }
-
-  const openBillingUrl = async (url: string) => {
-    await browser.tabs.create({ url })
-  }
-
-  const handleOpenCheckout = async (plan: "free" | "pro") => {
-    if (!authSession) return
-
-    try {
-      setAuthBusy(true)
-      setStatusMessage("")
-      const link = await createAstraCheckoutLink({
-        baseURL: authSession.relayBaseURL,
-        sessionToken: authSession.sessionToken,
-        plan,
-      })
-      await openBillingUrl(link.url)
-    } catch (error) {
-      setStatusMessage(error instanceof Error ? error.message : "创建升级链接失败")
-    } finally {
-      setAuthBusy(false)
-    }
-  }
-
-  const handleOpenPortal = async () => {
-    if (!authSession) return
-
-    try {
-      setAuthBusy(true)
-      setStatusMessage("")
-      const link = await createAstraPortalLink({
-        baseURL: authSession.relayBaseURL,
-        sessionToken: authSession.sessionToken,
-      })
-      await openBillingUrl(link.url)
-    } catch (error) {
-      setStatusMessage(error instanceof Error ? error.message : "打开订阅管理失败")
+      setStatusMessage(error instanceof Error ? error.message : "Sign in failed")
     } finally {
       setAuthBusy(false)
     }
@@ -449,12 +323,11 @@ export default function App() {
         })
       }
     } catch (error) {
-      setStatusMessage(error instanceof Error ? error.message : "Astra 退出登录失败")
+      setStatusMessage(error instanceof Error ? error.message : "Sign out failed")
     } finally {
       await clearAstraSession()
       setAuthSession(null)
       setAuthAccount(null)
-      setAuthUsage(null)
       setAuthPassword("")
       setAuthBusy(false)
       await refreshTranslationState()
@@ -463,95 +336,185 @@ export default function App() {
 
   return (
     <div style={{ width: 340, padding: 16, fontFamily: "system-ui, sans-serif" }}>
-      <h2 style={{ margin: "0 0 12px", fontSize: 18, display: "flex", alignItems: "center", gap: 8 }}>
-        ✦ Astra
-      </h2>
+      {/* Header */}
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
+        <h2 style={{ margin: 0, fontSize: 18, display: "flex", alignItems: "center", gap: 8 }}>
+          Astra
+        </h2>
+        <button
+          type="button"
+          onClick={() => void browser.tabs.create({ url: browser.runtime.getURL("/options.html" as "/popup.html") })}
+          style={{
+            background: "none",
+            border: "none",
+            fontSize: 18,
+            cursor: "pointer",
+            color: "#64748b",
+            padding: 4,
+          }}
+          title="Settings"
+        >
+          &#9881;
+        </button>
+      </div>
 
-      <div style={{ display: "flex", gap: 8, marginBottom: 12 }}>
+      {/* Translate This Page button */}
+      {isIdle ? (
         <button
           onClick={() => {
             void translate()
           }}
-          style={{ ...btnPrimary, ...(translateDisabled ? btnDisabled : {}) }}
+          style={{
+            ...btnPrimary,
+            width: "100%",
+            padding: "10px 12px",
+            fontSize: 15,
+            fontWeight: 600,
+            ...(translateDisabled ? btnDisabled : {}),
+          }}
           disabled={translateDisabled}
         >
-          翻译此页
+          Translate This Page
         </button>
+      ) : (
         <button
           onClick={() => {
             void removeTranslation()
           }}
-          style={{ ...btnSecondary, ...(removeDisabled ? btnDisabled : {}) }}
+          style={{
+            ...btnSecondary,
+            width: "100%",
+            padding: "10px 12px",
+            fontSize: 15,
+            fontWeight: 600,
+            ...(removeDisabled ? btnDisabled : {}),
+          }}
           disabled={removeDisabled}
         >
-          移除翻译
+          Stop Translation
         </button>
-      </div>
-
-      <TranslationStatusCard
-        phase={currentPhase}
-        targetLang={translationState?.targetLang ?? persistedResolvedSite.targetLang}
-        presentation={currentPresentation}
-        hostname={currentSite.hostname}
-        progress={currentProgress ?? null}
-        lastError={translationState?.lastError ?? null}
-        siteEnabled={statusSiteEnabled}
-      />
-
-      <AuthSection
-        session={authSession}
-        account={authAccount}
-        usage={authUsage}
-        email={authEmail}
-        password={authPassword}
-        busy={authBusy}
-        onEmailChange={setAuthEmail}
-        onPasswordChange={setAuthPassword}
-        onSignIn={() => {
-          void handleSignIn()
-        }}
-        onChangePlan={(plan) => {
-          void handlePlanChange(plan)
-        }}
-        onOpenCheckout={(plan) => {
-          void handleOpenCheckout(plan)
-        }}
-        onOpenPortal={() => {
-          void handleOpenPortal()
-        }}
-        onSignOut={() => {
-          void handleSignOut()
-        }}
-      />
-
-      <GlobalSettingsSection
-        config={configDraft}
-        onProviderChange={updateProvider}
-        onPresentationChange={updatePresentation}
-        onTargetLangChange={(lang) => updateDraft((current) => ({ ...current, targetLang: lang }))}
-        onHoverTriggerChange={(trigger) => updateDraft((current) => ({ ...current, hoverTrigger: trigger }))}
-        onContentScopeChange={(scope) => updateDraft((current) => ({ ...current, contentScope: scope }))}
-        onLanguageLevelChange={(level: LanguageLevel) => updateDraft((current) => ({ ...current, languageLevel: level }))}
-      />
-
-      {activeSiteKey && (
-        <SiteSettingsSection
-          activeSiteKey={activeSiteKey}
-          rawSiteRule={rawSiteRule}
-          globalConfig={configDraft}
-          onSiteRuleChange={editActiveSiteRule}
-        />
       )}
 
-      <button
-        onClick={() => {
-          void handleSaveConfig()
-        }}
-        style={{ ...btnPrimary, width: "100%", marginTop: 4 }}
-      >
-        {saved ? "✓ 已保存" : "保存设置"}
-      </button>
+      {/* Status + Quota section */}
+      <div style={{
+        marginTop: 12,
+        background: "#f8fafc",
+        border: "1px solid #e2e8f0",
+        borderRadius: 8,
+        padding: 10,
+      }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12, color: "#334155" }}>
+          <span style={{
+            display: "inline-block",
+            width: 8,
+            height: 8,
+            borderRadius: "50%",
+            background: authSession ? "#22c55e" : "#94a3b8",
+          }} />
+          <span>
+            {authSession ? "Connected" : "Not connected"}
+            {" \u00b7 "}
+            {planLabel}
+          </span>
+        </div>
+        <QuotaBar quota={quotaInfo} />
+        {wordsTranslated > 0 && (
+          <div style={{ fontSize: 11, color: "#94a3b8", marginTop: 4 }}>
+            {wordsTranslated.toLocaleString()} words translated today
+          </div>
+        )}
+      </div>
 
+      {/* Translation Status Card (shown when active) */}
+      {currentPhase !== "idle" && (
+        <div style={{ marginTop: 12 }}>
+          <TranslationStatusCard
+            phase={currentPhase}
+            targetLang={translationState?.targetLang ?? persistedResolvedSite.targetLang}
+            presentation={currentPresentation}
+            hostname={currentSite.hostname}
+            progress={currentProgress ?? null}
+            lastError={translationState?.lastError ?? null}
+            siteEnabled={statusSiteEnabled}
+          />
+        </div>
+      )}
+
+      {/* Target Language + Translation Mode */}
+      <div style={{ marginTop: 12 }}>
+        <SimpleControls
+          targetLang={configDraft.targetLang}
+          translationMode={configDraft.presentation.mode}
+          onTargetLangChange={handleTargetLangChange}
+          onModeChange={handleModeChange}
+        />
+      </div>
+
+      {/* Auth section (simplified) */}
+      {!authSession && (
+        <details style={{ marginTop: 4, marginBottom: 8 }}>
+          <summary style={{ cursor: "pointer", fontSize: 13, color: "#6366f1" }}>
+            Sign in to Astra
+          </summary>
+          <div style={{ marginTop: 8 }}>
+            <label style={labelStyle}>Email</label>
+            <input
+              type="email"
+              value={authEmail}
+              onChange={(e) => setAuthEmail(e.target.value)}
+              placeholder="you@example.com"
+              style={inputStyle}
+            />
+            <label style={labelStyle}>Password</label>
+            <input
+              type="password"
+              value={authPassword}
+              onChange={(e) => setAuthPassword(e.target.value)}
+              placeholder="••••••••"
+              style={inputStyle}
+            />
+            <button
+              onClick={() => {
+                void handleSignIn()
+              }}
+              style={{
+                ...btnPrimary,
+                width: "100%",
+                marginTop: 8,
+                ...(authBusy || authEmail.trim().length === 0 || authPassword.length === 0 ? btnDisabled : {}),
+              }}
+              disabled={authBusy || authEmail.trim().length === 0 || authPassword.length === 0}
+            >
+              Sign In
+            </button>
+          </div>
+        </details>
+      )}
+
+      {authSession && (
+        <div style={{ fontSize: 12, color: "#64748b", marginTop: 4, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+          <span>{authAccount?.email ?? authSession.email}</span>
+          <button
+            onClick={() => {
+              void handleSignOut()
+            }}
+            style={{
+              background: "none",
+              border: "none",
+              color: "#6366f1",
+              fontSize: 11,
+              cursor: "pointer",
+              textDecoration: "underline",
+              ...(authBusy ? btnDisabled : {}),
+            }}
+            disabled={authBusy}
+          >
+            Sign Out
+          </button>
+        </div>
+      )}
+
+      {/* Recent translations */}
       {recentHistory.length > 0 && (
         <details style={{ marginTop: 12, marginBottom: 4 }}>
           <summary style={{ cursor: "pointer", fontSize: 13, color: "#6366f1" }}>
@@ -594,6 +557,7 @@ export default function App() {
         </div>
       )}
 
+      {/* Footer links */}
       <div style={{ display: "flex", justifyContent: "center", gap: 12, marginTop: 10 }}>
         <button
           type="button"
@@ -608,6 +572,13 @@ export default function App() {
           style={{ background: "none", border: "none", color: "#6366f1", fontSize: 11, cursor: "pointer", textDecoration: "underline" }}
         >
           Vocabulary
+        </button>
+        <button
+          type="button"
+          onClick={() => void browser.tabs.create({ url: browser.runtime.getURL("/review.html" as "/popup.html") })}
+          style={{ background: "none", border: "none", color: "#6366f1", fontSize: 11, cursor: "pointer", textDecoration: "underline" }}
+        >
+          Review
         </button>
       </div>
       <div style={{ fontSize: 11, color: "#94a3b8", textAlign: "center", marginTop: 4 }}>

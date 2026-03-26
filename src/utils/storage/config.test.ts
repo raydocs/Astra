@@ -22,6 +22,7 @@ describe("config storage", () => {
     expect(config).toEqual({
       version: 1,
       targetLang: "ja",
+      connectionMode: "astra",
       hoverTrigger: "alt",
       contentScope: "page",
       inputTranslation: "enabled",

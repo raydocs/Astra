@@ -14,12 +14,11 @@ const {
   revokeAstraSessionMock,
   fetchAstraAccountMock,
   fetchAstraUsageSnapshotMock,
-  updateAstraPlanMock,
-  createAstraCheckoutLinkMock,
-  createAstraPortalLinkMock,
   getActiveTabTranslationStateMock,
   startActiveTabTranslationMock,
   stopActiveTabTranslationMock,
+  getQuotaInfoMock,
+  getReadingHistoryMock,
 } = vi.hoisted(() => ({
   readConfigMock: vi.fn(),
   saveConfigMock: vi.fn(),
@@ -31,12 +30,11 @@ const {
   revokeAstraSessionMock: vi.fn(),
   fetchAstraAccountMock: vi.fn(),
   fetchAstraUsageSnapshotMock: vi.fn(),
-  updateAstraPlanMock: vi.fn(),
-  createAstraCheckoutLinkMock: vi.fn(),
-  createAstraPortalLinkMock: vi.fn(),
   getActiveTabTranslationStateMock: vi.fn(),
   startActiveTabTranslationMock: vi.fn(),
   stopActiveTabTranslationMock: vi.fn(),
+  getQuotaInfoMock: vi.fn(),
+  getReadingHistoryMock: vi.fn(),
 }))
 
 vi.mock("@/utils/storage/config", () => ({
@@ -59,15 +57,20 @@ vi.mock("@/utils/astra/auth", () => ({
 vi.mock("@/utils/astra/account", () => ({
   fetchAstraAccount: fetchAstraAccountMock,
   fetchAstraUsageSnapshot: fetchAstraUsageSnapshotMock,
-  updateAstraPlan: updateAstraPlanMock,
-  createAstraCheckoutLink: createAstraCheckoutLinkMock,
-  createAstraPortalLink: createAstraPortalLinkMock,
+}))
+
+vi.mock("@/utils/astra/quota", () => ({
+  getQuotaInfo: getQuotaInfoMock,
 }))
 
 vi.mock("@/utils/extension/messages", () => ({
   getActiveTabTranslationState: getActiveTabTranslationStateMock,
   startActiveTabTranslation: startActiveTabTranslationMock,
   stopActiveTabTranslation: stopActiveTabTranslationMock,
+}))
+
+vi.mock("@/utils/storage/reading-history", () => ({
+  getReadingHistory: getReadingHistoryMock,
 }))
 
 import type { AstraConfig } from "@/types/config"
@@ -152,13 +155,6 @@ function createSession(patch: Partial<AstraSession> = {}): AstraSession {
 
 function createAccount(patch: Partial<AstraAccount> = {}): AstraAccount {
   return {
-    ...createAccountBase(),
-    ...patch,
-  }
-}
-
-function createAccountBase(): AstraAccount {
-  return {
     id: "usr_demo",
     relayBaseURL: "https://astra.example/v1",
     email: "user@example.com",
@@ -167,22 +163,7 @@ function createAccountBase(): AstraAccount {
     plan: "pro" as const,
     subscriptionStatus: "active" as const,
     providerEntitlements: ["openai", "gemini"] as const,
-  }
-}
-
-function createUsage() {
-  return {
-    generatedAt: "2026-03-26T00:01:00.000Z",
-    quota: createSession().quota,
-    usage: {
-      ...createSession().usage,
-      recentEvents: [{
-        timestamp: "2026-03-26T00:00:00.000Z",
-        provider: "openai" as const,
-        requestCount: 1,
-        characterCount: 5,
-      }],
-    },
+    ...patch,
   }
 }
 
@@ -207,23 +188,12 @@ describe("popup App", () => {
     refreshAstraSessionMock.mockResolvedValue(createSession())
     revokeAstraSessionMock.mockResolvedValue(undefined)
     fetchAstraAccountMock.mockResolvedValue(createAccount())
-    fetchAstraUsageSnapshotMock.mockResolvedValue(createUsage())
-    updateAstraPlanMock.mockResolvedValue(createAccount())
-    createAstraCheckoutLinkMock.mockResolvedValue({
-      kind: "checkout",
-      url: "https://billing.example/checkout?plan=pro",
-      generatedAt: "2026-03-26T00:02:00.000Z",
-      plan: "pro",
-    })
-    createAstraPortalLinkMock.mockResolvedValue({
-      kind: "portal",
-      url: "https://billing.example/portal",
-      generatedAt: "2026-03-26T00:02:00.000Z",
-      plan: "pro",
-    })
+    fetchAstraUsageSnapshotMock.mockResolvedValue(undefined)
     getActiveTabTranslationStateMock.mockResolvedValue(createIdleState())
     startActiveTabTranslationMock.mockResolvedValue(createIdleState())
     stopActiveTabTranslationMock.mockResolvedValue(createIdleState())
+    getQuotaInfoMock.mockResolvedValue({ used: 100000, limit: 200000, plan: "free", resetsAt: "" })
+    getReadingHistoryMock.mockResolvedValue([])
 
     container = document.createElement("div")
     document.body.appendChild(container)
@@ -250,10 +220,6 @@ describe("popup App", () => {
     return Array.from(container.querySelectorAll("button")) as HTMLButtonElement[]
   }
 
-  function getSiteEnabledCheckbox() {
-    return container.querySelector('input[type="checkbox"]') as HTMLInputElement
-  }
-
   async function flushApp() {
     await act(async () => {
       await Promise.resolve()
@@ -262,24 +228,14 @@ describe("popup App", () => {
     })
   }
 
-  it("keeps translate enabled until site disable is saved", async () => {
-    const [translateButton] = getButtons()
-    expect(translateButton.textContent).toBe("翻译此页")
+  it("renders the translate button and starts translation", async () => {
+    const translateButton = getButtons().find((button) => button.textContent === "Translate This Page")!
+    expect(translateButton).toBeDefined()
     expect(translateButton.disabled).toBe(false)
-
-    const siteEnabledCheckbox = getSiteEnabledCheckbox()
-    expect(siteEnabledCheckbox.checked).toBe(true)
-
-    await act(async () => {
-      siteEnabledCheckbox.click()
-      await Promise.resolve()
-    })
-
-    expect(translateButton.disabled).toBe(false)
-    expect(container.textContent).not.toContain("Astra 已在此站点禁用")
 
     await act(async () => {
       translateButton.click()
+      await Promise.resolve()
       await Promise.resolve()
     })
 
@@ -291,64 +247,18 @@ describe("popup App", () => {
     })
   })
 
-  it("applies the disabled site state only after save", async () => {
-    saveConfigMock.mockResolvedValueOnce(createConfig({
-      sites: {
-        "example.com": {
-          enabled: false,
-          alwaysTranslate: false,
-        },
-      },
-    }))
-
-    const siteEnabledCheckbox = getSiteEnabledCheckbox()
-    const saveButton = getButtons().find((button) => button.textContent?.includes("保存设置"))!
-    const translateButton = getButtons().find((button) => button.textContent === "翻译此页")!
-
-    await act(async () => {
-      siteEnabledCheckbox.click()
-      await Promise.resolve()
-    })
-
-    await act(async () => {
-      saveButton.click()
-      await Promise.resolve()
-      await Promise.resolve()
-    })
+  it("shows connection status and plan label", async () => {
     await flushApp()
 
-    expect(saveConfigMock).toHaveBeenCalledWith(expect.objectContaining({
-      sites: {
-        "example.com": {
-          enabled: false,
-          alwaysTranslate: false,
-        },
-      },
-    }))
-    expect(stopActiveTabTranslationMock).toHaveBeenCalledTimes(1)
-    expect(translateButton.disabled).toBe(true)
-    expect(container.textContent).toContain("Astra 已在此站点禁用")
+    expect(container.textContent).toContain("Connected")
+    expect(container.textContent).toContain("Pro Plan")
   })
 
-  it("preserves unsaved draft edits when popup refreshes on focus", async () => {
-    const siteEnabledCheckbox = getSiteEnabledCheckbox()
-
-    await act(async () => {
-      siteEnabledCheckbox.click()
-      await Promise.resolve()
-    })
-
-    expect(siteEnabledCheckbox.checked).toBe(false)
-
-    readConfigMock.mockResolvedValue(createConfig())
-
-    await act(async () => {
-      window.dispatchEvent(new Event("focus"))
-      await vi.runAllTimersAsync()
-    })
+  it("shows quota bar with usage info", async () => {
     await flushApp()
 
-    expect(getSiteEnabledCheckbox().checked).toBe(false)
+    expect(container.textContent).toContain("50%")
+    expect(container.textContent).toContain("100k / 200k tokens")
   })
 
   it("creates and stores an Astra session from the popup login flow", async () => {
@@ -359,6 +269,7 @@ describe("popup App", () => {
       },
     }))
     readAstraSessionMock.mockResolvedValue(null)
+    getQuotaInfoMock.mockResolvedValue({ used: 0, limit: 200000, plan: "free", resetsAt: "" })
 
     await act(async () => {
       window.dispatchEvent(new Event("focus"))
@@ -366,10 +277,19 @@ describe("popup App", () => {
     })
     await flushApp()
 
+    // Expand the sign-in section
+    const signInSummary = container.querySelector("summary")
+    if (signInSummary?.textContent?.includes("Sign in")) {
+      await act(async () => {
+        signInSummary.click()
+        await Promise.resolve()
+      })
+    }
+
     const emailInput = container.querySelector('input[type="email"]') as HTMLInputElement
     const passwordInputs = Array.from(container.querySelectorAll('input[type="password"]')) as HTMLInputElement[]
     const authPasswordInput = passwordInputs[0]
-    const signInButton = getButtons().find((button) => button.textContent === "登录 Astra")!
+    const signInButton = getButtons().find((button) => button.textContent === "Sign In")!
     const inputValueSetter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")?.set
 
     await act(async () => {
@@ -394,74 +314,39 @@ describe("popup App", () => {
       password: "secret-pass",
     })
     expect(fetchAstraAccountMock).toHaveBeenCalled()
-    expect(fetchAstraUsageSnapshotMock).toHaveBeenCalled()
     expect(saveAstraSessionMock).toHaveBeenCalled()
   })
 
-  it("switches the Astra plan and refreshes account state", async () => {
-    const proButton = getButtons().find((button) => button.textContent === "切到 Pro")
-    expect(proButton?.disabled).toBe(true)
-
-    const freeButton = getButtons().find((button) => button.textContent === "切到 Free")!
-    await act(async () => {
-      freeButton.click()
-      await Promise.resolve()
-      await Promise.resolve()
-    })
-
-    expect(updateAstraPlanMock).toHaveBeenCalledWith({
-      baseURL: "https://astra.example/v1",
-      sessionToken: "astra-session",
-      plan: "free",
-    })
-    expect(refreshAstraSessionMock).toHaveBeenCalled()
-  })
-
-  it("opens billing checkout and portal links in a new tab", async () => {
-    refreshAstraSessionMock.mockResolvedValue({
-      ...createSession(),
-      plan: "free",
-      providerEntitlements: ["openai"],
-    })
-    fetchAstraAccountMock.mockResolvedValue(createAccount({
-      plan: "free",
-      providerEntitlements: ["openai"],
-    }))
-
-    await act(async () => {
-      window.dispatchEvent(new Event("focus"))
-      await vi.runAllTimersAsync()
-    })
+  it("shows sign out button when logged in and signs out", async () => {
     await flushApp()
 
-    const upgradeButton = getButtons().find((button) => button.textContent === "升级到 Pro")!
-    const portalButton = getButtons().find((button) => button.textContent === "管理订阅")!
+    const signOutButton = getButtons().find((button) => button.textContent === "Sign Out")!
+    expect(signOutButton).toBeDefined()
 
     await act(async () => {
-      upgradeButton.click()
+      signOutButton.click()
+      await Promise.resolve()
       await Promise.resolve()
     })
 
-    expect(createAstraCheckoutLinkMock).toHaveBeenCalledWith({
-      baseURL: "https://astra.example/v1",
-      sessionToken: "astra-session",
-      plan: "pro",
-    })
-    expect(browserMock.tabs.create).toHaveBeenCalledWith({
-      url: "https://billing.example/checkout?plan=pro",
-    })
-
-    await act(async () => {
-      portalButton.click()
-      await Promise.resolve()
-    })
-
-    expect(createAstraPortalLinkMock).toHaveBeenCalledWith({
+    expect(revokeAstraSessionMock).toHaveBeenCalledWith({
       baseURL: "https://astra.example/v1",
       sessionToken: "astra-session",
     })
-    expect(browserMock.tabs.create).toHaveBeenCalledWith({
-      url: "https://billing.example/portal",
-    })
+    expect(clearAstraSessionMock).toHaveBeenCalled()
+  })
+
+  it("shows the version footer", async () => {
+    expect(container.textContent).toContain("Astra v0.1.0")
+  })
+
+  it("shows footer links for settings, vocabulary, and review", async () => {
+    const settingsButton = getButtons().find((button) => button.textContent === "Settings")
+    const vocabButton = getButtons().find((button) => button.textContent === "Vocabulary")
+    const reviewButton = getButtons().find((button) => button.textContent === "Review")
+
+    expect(settingsButton).toBeDefined()
+    expect(vocabButton).toBeDefined()
+    expect(reviewButton).toBeDefined()
   })
 })

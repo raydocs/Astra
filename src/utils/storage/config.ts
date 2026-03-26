@@ -106,6 +106,9 @@ export async function saveConfig(input: AstraConfigInput): Promise<AstraConfig> 
   const nextConfig = normalizeConfig({
     ...currentConfig,
     ...(parsedInput.targetLang ? { targetLang: parsedInput.targetLang } : {}),
+    ...(parsedInput.connectionMode !== undefined
+      ? { connectionMode: parsedInput.connectionMode }
+      : {}),
     ...(parsedInput.hoverTrigger ? { hoverTrigger: parsedInput.hoverTrigger } : {}),
     ...(parsedInput.contentScope ? { contentScope: parsedInput.contentScope } : {}),
     ...(parsedInput.inputTranslation !== undefined

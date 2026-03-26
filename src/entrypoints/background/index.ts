@@ -13,15 +13,41 @@ import { translateWithProvider } from "@/utils/providers/router"
 import { readConfig, saveConfig } from "@/utils/storage/config"
 import { cleanExpiredCache } from "@/utils/cache/translation-cache"
 import { getDueVocabularyCount } from "@/utils/storage/vocabulary"
-import { readAstraSession } from "@/utils/storage/auth"
+import { readAstraSession, saveAstraSession } from "@/utils/storage/auth"
+import { parseAstraSessionPayload } from "@/utils/astra/auth"
 import { resolveManagedProviderConfig, type HoverTrigger } from "@/types/config"
+
+async function tryAnonymousRegistration(): Promise<void> {
+  try {
+    const existingSession = await readAstraSession()
+    if (existingSession) return
+    const config = await readConfig()
+    const relayBaseURL = config.provider.relayBaseURL?.trim()
+    if (!relayBaseURL) return
+    const res = await fetch(`${relayBaseURL.replace(/\/+$/, "")}/auth/anonymous`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+    })
+    if (!res.ok) return
+    const payload = await res.json()
+    const session = parseAstraSessionPayload(payload)
+    await saveAstraSession(session)
+  } catch {
+    // Best-effort — silently ignore failures
+  }
+}
 
 export default defineBackground({
   type: "module",
   main: () => {
-    browser.runtime.onInstalled.addListener(() => {
+    browser.runtime.onInstalled.addListener((details: { reason?: string }) => {
       // Prune expired translation cache entries on install/update
       cleanExpiredCache().catch(() => {})
+
+      // Auto-register anonymous account on first install
+      if (details.reason === "install") {
+        void tryAnonymousRegistration()
+      }
 
       if (browser.contextMenus) {
         browser.contextMenus.create({

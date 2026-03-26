@@ -43,6 +43,7 @@ const TranslationErrorCodeSchema = z.enum([
   "PROVIDER_PARSE_FAILED",
   "INVALID_RESPONSE",
   "SITE_DISABLED",
+  "QUOTA_EXCEEDED",
   "UNKNOWN",
 ])
 

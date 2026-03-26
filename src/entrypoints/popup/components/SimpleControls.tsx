@@ -1,0 +1,52 @@
+import type { TranslationMode } from "@/types/config"
+import { labelStyle, inputStyle } from "./styles"
+
+const LANGUAGE_OPTIONS = [
+  { value: "zh-CN", label: "简体中文" },
+  { value: "zh-TW", label: "繁體中文" },
+  { value: "en", label: "English" },
+  { value: "ja", label: "日本語" },
+  { value: "ko", label: "한국어" },
+  { value: "fr", label: "Français" },
+  { value: "de", label: "Deutsch" },
+  { value: "es", label: "Español" },
+] as const
+
+export interface SimpleControlsProps {
+  targetLang: string
+  translationMode: "bilingual" | "translation-only"
+  onTargetLangChange: (lang: string) => void
+  onModeChange: (mode: "bilingual" | "translation-only") => void
+}
+
+export default function SimpleControls({
+  targetLang,
+  translationMode,
+  onTargetLangChange,
+  onModeChange,
+}: SimpleControlsProps) {
+  return (
+    <div style={{ marginBottom: 12 }}>
+      <label style={labelStyle}>Target Language</label>
+      <select
+        value={targetLang}
+        onChange={(e) => onTargetLangChange(e.target.value)}
+        style={inputStyle}
+      >
+        {LANGUAGE_OPTIONS.map((option) => (
+          <option key={option.value} value={option.value}>{option.label}</option>
+        ))}
+      </select>
+
+      <label style={{ ...labelStyle, marginTop: 8 }}>Translation Mode</label>
+      <select
+        value={translationMode}
+        onChange={(e) => onModeChange(e.target.value as TranslationMode)}
+        style={inputStyle}
+      >
+        <option value="bilingual">双语对照</option>
+        <option value="translation-only">仅译文</option>
+      </select>
+    </div>
+  )
+}
