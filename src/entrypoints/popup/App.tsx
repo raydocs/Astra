@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react"
 import { browser } from "#imports"
+import { t } from "@/utils/i18n"
 import type {
   AstraConfig,
   TranslationMode,
@@ -374,7 +375,7 @@ export default function App() {
           }}
           disabled={translateDisabled}
         >
-          Translate This Page
+          {t("popup_translateThisPage")}
         </button>
       ) : (
         <button
@@ -391,7 +392,7 @@ export default function App() {
           }}
           disabled={removeDisabled}
         >
-          Stop Translation
+          {t("popup_stopTranslation")}
         </button>
       )}
 
@@ -412,7 +413,7 @@ export default function App() {
             background: authSession ? "#22c55e" : "#94a3b8",
           }} />
           <span>
-            {authSession ? "Connected" : "Not connected"}
+            {authSession ? t("popup_connected") : t("popup_notConnected")}
             {" \u00b7 "}
             {planLabel}
           </span>
@@ -420,7 +421,7 @@ export default function App() {
         <QuotaBar quota={quotaInfo} />
         {wordsTranslated > 0 && (
           <div style={{ fontSize: 11, color: "#94a3b8", marginTop: 4 }}>
-            {wordsTranslated.toLocaleString()} words translated today
+            {t("popup_wordsTranslatedToday", wordsTranslated.toLocaleString())}
           </div>
         )}
       </div>
@@ -454,10 +455,10 @@ export default function App() {
       {!authSession && (
         <details style={{ marginTop: 4, marginBottom: 8 }}>
           <summary style={{ cursor: "pointer", fontSize: 13, color: "#6366f1" }}>
-            Sign in to Astra
+            {t("popup_signInToAstra")}
           </summary>
           <div style={{ marginTop: 8 }}>
-            <label style={labelStyle}>Email</label>
+            <label style={labelStyle}>{t("label_email")}</label>
             <input
               type="email"
               value={authEmail}
@@ -465,7 +466,7 @@ export default function App() {
               placeholder="you@example.com"
               style={inputStyle}
             />
-            <label style={labelStyle}>Password</label>
+            <label style={labelStyle}>{t("label_password")}</label>
             <input
               type="password"
               value={authPassword}
@@ -485,7 +486,7 @@ export default function App() {
               }}
               disabled={authBusy || authEmail.trim().length === 0 || authPassword.length === 0}
             >
-              Sign In
+              {t("popup_signIn")}
             </button>
           </div>
         </details>
@@ -509,7 +510,7 @@ export default function App() {
             }}
             disabled={authBusy}
           >
-            Sign Out
+            {t("popup_signOut")}
           </button>
         </div>
       )}
@@ -518,7 +519,7 @@ export default function App() {
       {recentHistory.length > 0 && (
         <details style={{ marginTop: 12, marginBottom: 4 }}>
           <summary style={{ cursor: "pointer", fontSize: 13, color: "#6366f1" }}>
-            Recent Translations
+            {t("popup_recentTranslations")}
           </summary>
           <div style={{ marginTop: 6 }}>
             {recentHistory.map((entry) => (
@@ -539,7 +540,7 @@ export default function App() {
                     {entry.title.length > 40 ? `${entry.title.slice(0, 40)}...` : entry.title}
                   </div>
                   <div style={{ fontSize: 11, color: "#94a3b8" }}>
-                    {entry.hostname} · {entry.wordsTranslated} words
+                    {entry.hostname} · {entry.wordsTranslated} {t("popup_words")}
                   </div>
                 </div>
                 <div style={{ fontSize: 11, color: "#94a3b8", whiteSpace: "nowrap", marginLeft: 8 }}>
@@ -564,21 +565,21 @@ export default function App() {
           onClick={() => void browser.tabs.create({ url: browser.runtime.getURL("/options.html" as "/popup.html") })}
           style={{ background: "none", border: "none", color: "#6366f1", fontSize: 11, cursor: "pointer", textDecoration: "underline" }}
         >
-          Settings
+          {t("popup_settings")}
         </button>
         <button
           type="button"
           onClick={() => void browser.tabs.create({ url: browser.runtime.getURL("/vocabulary.html" as "/popup.html") })}
           style={{ background: "none", border: "none", color: "#6366f1", fontSize: 11, cursor: "pointer", textDecoration: "underline" }}
         >
-          Vocabulary
+          {t("popup_vocabulary")}
         </button>
         <button
           type="button"
           onClick={() => void browser.tabs.create({ url: browser.runtime.getURL("/review.html" as "/popup.html") })}
           style={{ background: "none", border: "none", color: "#6366f1", fontSize: 11, cursor: "pointer", textDecoration: "underline" }}
         >
-          Review
+          {t("popup_review")}
         </button>
       </div>
       <div style={{ fontSize: 11, color: "#94a3b8", textAlign: "center", marginTop: 4 }}>

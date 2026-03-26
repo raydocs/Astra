@@ -86,10 +86,225 @@
   "actionSpeak": {
     "message": "朗读"
   },
+  "actionStop": {
+    "message": "停止"
+  },
+  "actionOperationFailed": {
+    "message": "操作失败"
+  },
+  "actionExplaining": {
+    "message": "解释中…"
+  },
+  "actionHideExplanation": {
+    "message": "隐藏解释"
+  },
+  "actionSaving": {
+    "message": "保存中..."
+  },
   "inputTranslateButton": {
     "message": "译"
   },
   "translateButton": {
     "message": "译"
+  },
+  "popup_translateThisPage": {
+    "message": "翻译此页"
+  },
+  "popup_stopTranslation": {
+    "message": "停止翻译"
+  },
+  "popup_connected": {
+    "message": "已连接"
+  },
+  "popup_notConnected": {
+    "message": "未连接"
+  },
+  "popup_wordsTranslatedToday": {
+    "message": "今日已翻译 $1 个词",
+    "placeholders": {
+      "1": { "content": "$1" }
+    }
+  },
+  "popup_signInToAstra": {
+    "message": "登录 Astra"
+  },
+  "popup_signIn": {
+    "message": "登录"
+  },
+  "popup_signOut": {
+    "message": "退出登录"
+  },
+  "popup_recentTranslations": {
+    "message": "最近翻译"
+  },
+  "popup_words": {
+    "message": "词"
+  },
+  "popup_settings": {
+    "message": "设置"
+  },
+  "popup_vocabulary": {
+    "message": "词汇表"
+  },
+  "popup_review": {
+    "message": "复习"
+  },
+  "label_targetLanguage": {
+    "message": "目标语言"
+  },
+  "label_translationMode": {
+    "message": "翻译模式"
+  },
+  "label_email": {
+    "message": "邮箱"
+  },
+  "label_password": {
+    "message": "密码"
+  },
+  "label_hover": {
+    "message": "悬停"
+  },
+  "label_altHover": {
+    "message": "Alt + 悬停"
+  },
+  "label_languageLevel": {
+    "message": "语言水平"
+  },
+  "label_beginner": {
+    "message": "初学者"
+  },
+  "label_intermediate": {
+    "message": "中级"
+  },
+  "label_advanced": {
+    "message": "高级"
+  },
+  "label_apiKeyDirectConnect": {
+    "message": "填写后直连 $1 API，无需 Astra 账号",
+    "placeholders": {
+      "1": { "content": "$1" }
+    }
+  },
+  "label_enableAstra": {
+    "message": "在此站点启用 Astra"
+  },
+  "label_autoTranslate": {
+    "message": "打开页面时自动翻译"
+  },
+  "label_siteTargetLang": {
+    "message": "站点目标语言"
+  },
+  "label_siteHoverTrigger": {
+    "message": "站点悬停触发"
+  },
+  "label_siteTranslationMode": {
+    "message": "站点翻译模式"
+  },
+  "label_siteTranslationTheme": {
+    "message": "站点翻译主题"
+  },
+  "label_siteTranslationScope": {
+    "message": "站点翻译范围"
+  },
+  "label_inheritGlobal": {
+    "message": "跟随全局（$1）",
+    "placeholders": {
+      "1": { "content": "$1" }
+    }
+  },
+  "popup_quotaToday": {
+    "message": "今日：$1% 已用（$2 / $3 tokens）",
+    "placeholders": {
+      "1": { "content": "$1" },
+      "2": { "content": "$2" },
+      "3": { "content": "$3" }
+    }
+  },
+  "status_status": {
+    "message": "状态"
+  },
+  "status_targetLang": {
+    "message": "目标语言"
+  },
+  "status_modeTheme": {
+    "message": "模式 / 主题"
+  },
+  "status_site": {
+    "message": "站点"
+  },
+  "status_currentPage": {
+    "message": "当前页面"
+  },
+  "status_progress": {
+    "message": "进度"
+  },
+  "status_siteDisabled": {
+    "message": "Astra 已在此站点禁用。"
+  },
+  "floatball_preparingTranslation": {
+    "message": "正在准备翻译…"
+  },
+  "floatball_removingTranslation": {
+    "message": "正在移除翻译…"
+  },
+  "floatball_translationFailed": {
+    "message": "翻译失败：$1",
+    "placeholders": {
+      "1": { "content": "$1" }
+    }
+  },
+  "floatball_translatePage": {
+    "message": "翻译此页"
+  },
+  "popup_astraAccount": {
+    "message": "Astra 账号"
+  },
+  "popup_currentPlan": {
+    "message": "当前套餐"
+  },
+  "popup_planStatus": {
+    "message": "状态"
+  },
+  "popup_todayRequests": {
+    "message": "今日请求"
+  },
+  "popup_todayCharacters": {
+    "message": "今日字符"
+  },
+  "popup_remainingRequests": {
+    "message": "剩余请求"
+  },
+  "popup_remainingCharacters": {
+    "message": "剩余字符"
+  },
+  "popup_perMinuteLimit": {
+    "message": "每分钟上限"
+  },
+  "popup_lastCall": {
+    "message": "最近一次调用"
+  },
+  "popup_usageRefreshTime": {
+    "message": "Usage 刷新时间"
+  },
+  "popup_recentUsage": {
+    "message": "最近用量"
+  },
+  "popup_expiresAt": {
+    "message": "过期时间"
+  },
+  "popup_upgradeToPro": {
+    "message": "升级到 Pro"
+  },
+  "popup_manageSubscription": {
+    "message": "管理订阅"
+  },
+  "popup_switchToFree": {
+    "message": "切到 Free"
+  },
+  "popup_switchToPro": {
+    "message": "切到 Pro"
+  },
+  "popup_currentSite": {
+    "message": "当前站点"
   }
 }

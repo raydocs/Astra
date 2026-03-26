@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from "react"
 import { createRoot } from "react-dom/client"
 import { ErrorBoundary } from "@/components/ErrorBoundary"
+import { t } from "@/utils/i18n"
 import { readConfig } from "@/utils/storage/config"
 import { saveVocabularyEntry } from "@/utils/storage/vocabulary"
 import { copyTextToClipboard } from "@/utils/dom/clipboard"
@@ -295,7 +296,7 @@ function SelectionToolbarApp() {
       if (requestVersion !== selectionVersionRef.current) return
       setActionResult({
         actionId: action.id,
-        text: `⚠ ${error instanceof Error ? error.message : "操作失败"}`,
+        text: `⚠ ${error instanceof Error ? error.message : t("actionOperationFailed")}`,
       })
     } finally {
       if (requestVersion === selectionVersionRef.current) {
@@ -369,7 +370,9 @@ function SelectionToolbarApp() {
               void handleAction(action)
             }}
           >
-            {action.labelZh}
+            {action.id === "translate" ? t("actionTranslate")
+              : action.id === "explain" ? t("actionExplain")
+              : action.labelZh}
           </button>
         ))}
         <button
@@ -386,7 +389,7 @@ function SelectionToolbarApp() {
             void handleCopy()
           }}
         >
-          复制
+          {t("actionCopy")}
         </button>
         <button
           type="button"
@@ -403,7 +406,7 @@ function SelectionToolbarApp() {
             void handleSave()
           }}
         >
-          {saved ? "✓ 已收藏" : "收藏"}
+          {saved ? t("actionSaved") : t("actionSave")}
         </button>
         <button
           type="button"
@@ -419,7 +422,7 @@ function SelectionToolbarApp() {
             handleSpeak()
           }}
         >
-          {speaking ? "停止" : "朗读"}
+          {speaking ? t("actionStop") : t("actionSpeak")}
         </button>
       </div>
 

@@ -1,4 +1,5 @@
 import type { TranslationProgressSnapshot, TranslationError } from "@/types/translation"
+import { t } from "@/utils/i18n"
 import { statusCardStyle, statusRowStyle, warningStyle } from "./styles"
 
 export interface TranslationStatusCardProps {
@@ -23,23 +24,23 @@ export default function TranslationStatusCard({
   return (
     <div style={statusCardStyle}>
       <div style={statusRowStyle}>
-        <span>状态</span>
+        <span>{t("status_status")}</span>
         <strong>{phase}</strong>
       </div>
       <div style={statusRowStyle}>
-        <span>目标语言</span>
+        <span>{t("status_targetLang")}</span>
         <strong>{targetLang}</strong>
       </div>
       <div style={statusRowStyle}>
-        <span>模式 / 主题</span>
+        <span>{t("status_modeTheme")}</span>
         <strong>{presentation.mode} / {presentation.theme}</strong>
       </div>
       <div style={statusRowStyle}>
-        <span>站点</span>
-        <strong>{hostname ?? "当前页面"}</strong>
+        <span>{t("status_site")}</span>
+        <strong>{hostname ?? t("status_currentPage")}</strong>
       </div>
       <div style={statusRowStyle}>
-        <span>进度</span>
+        <span>{t("status_progress")}</span>
         <strong>
           {progress
             ? `${progress.translatedBlocks}/${progress.totalBlocks}`
@@ -55,7 +56,7 @@ export default function TranslationStatusCard({
         <div style={warningStyle}>{lastError.message}</div>
       )}
       {!siteEnabled && (
-        <div style={warningStyle}>Astra 已在此站点禁用。</div>
+        <div style={warningStyle}>{t("status_siteDisabled")}</div>
       )}
     </div>
   )

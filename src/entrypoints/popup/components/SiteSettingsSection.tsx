@@ -6,6 +6,7 @@ import type {
   TranslationMode,
   TranslationTheme,
 } from "@/types/config"
+import { t } from "@/utils/i18n"
 import { labelStyle, inputStyle, checkboxRowStyle } from "./styles"
 
 const INHERIT_VALUE = "__inherit__"
@@ -22,13 +23,14 @@ const LANGUAGE_OPTIONS = [
 ] as const
 
 const HOVER_TRIGGER_OPTIONS = [
-  { value: "alt", label: "Alt + 悬停" },
-  { value: "always", label: "始终悬停" },
-  { value: "disabled", label: "关闭" },
+  { value: "alt", labelKey: "hoverTriggerAlt" },
+  { value: "always", labelKey: "hoverTriggerAlways" },
+  { value: "disabled", labelKey: "hoverTriggerDisabled" },
 ] as const
 
 function getHoverTriggerLabel(trigger: HoverTrigger): string {
-  return HOVER_TRIGGER_OPTIONS.find((option) => option.value === trigger)?.label ?? trigger
+  const option = HOVER_TRIGGER_OPTIONS.find((o) => o.value === trigger)
+  return option ? t(option.labelKey) : trigger
 }
 
 export interface SiteSettingsSectionProps {
@@ -52,7 +54,7 @@ export default function SiteSettingsSection({
   return (
     <details open style={{ marginBottom: 12 }}>
       <summary style={{ cursor: "pointer", fontSize: 13, color: "#6366f1" }}>
-        🌐 当前站点
+        {t("popup_currentSite")}
       </summary>
       <div style={{ marginTop: 8 }}>
         <div style={{ fontSize: 12, color: "#64748b", marginBottom: 8 }}>{activeSiteKey}</div>
@@ -65,7 +67,7 @@ export default function SiteSettingsSection({
               enabled: e.target.checked,
             }))}
           />
-          <span>在此站点启用 Astra</span>
+          <span>{t("label_enableAstra")}</span>
         </label>
         <label style={checkboxRowStyle}>
           <input
@@ -77,10 +79,10 @@ export default function SiteSettingsSection({
             }))}
             disabled={!(rawSiteRule?.enabled ?? true)}
           />
-          <span>打开页面时自动翻译</span>
+          <span>{t("label_autoTranslate")}</span>
         </label>
 
-        <label style={labelStyle}>站点目标语言</label>
+        <label style={labelStyle}>{t("label_siteTargetLang")}</label>
         <select
           value={siteTargetLangValue}
           onChange={(e) => onSiteRuleChange((siteRule) => {
@@ -99,13 +101,13 @@ export default function SiteSettingsSection({
           })}
           style={inputStyle}
         >
-          <option value={INHERIT_VALUE}>跟随全局（{globalConfig.targetLang}）</option>
+          <option value={INHERIT_VALUE}>{t("label_inheritGlobal", globalConfig.targetLang)}</option>
           {LANGUAGE_OPTIONS.map((option) => (
             <option key={option.value} value={option.value}>{option.label}</option>
           ))}
         </select>
 
-        <label style={labelStyle}>站点悬停触发</label>
+        <label style={labelStyle}>{t("label_siteHoverTrigger")}</label>
         <select
           value={siteHoverTriggerValue}
           onChange={(e) => onSiteRuleChange((siteRule) => {
@@ -124,13 +126,13 @@ export default function SiteSettingsSection({
           })}
           style={inputStyle}
         >
-          <option value={INHERIT_VALUE}>跟随全局（{getHoverTriggerLabel(globalConfig.hoverTrigger)}）</option>
+          <option value={INHERIT_VALUE}>{t("label_inheritGlobal", getHoverTriggerLabel(globalConfig.hoverTrigger))}</option>
           {HOVER_TRIGGER_OPTIONS.map((option) => (
-            <option key={option.value} value={option.value}>{option.label}</option>
+            <option key={option.value} value={option.value}>{t(option.labelKey)}</option>
           ))}
         </select>
 
-        <label style={labelStyle}>站点翻译模式</label>
+        <label style={labelStyle}>{t("label_siteTranslationMode")}</label>
         <select
           value={siteModeValue}
           onChange={(e) => onSiteRuleChange((siteRule) => {
@@ -150,12 +152,12 @@ export default function SiteSettingsSection({
           })}
           style={inputStyle}
         >
-          <option value={INHERIT_VALUE}>跟随全局（{globalConfig.presentation.mode}）</option>
-          <option value="bilingual">双语对照</option>
-          <option value="translation-only">仅译文</option>
+          <option value={INHERIT_VALUE}>{t("label_inheritGlobal", globalConfig.presentation.mode)}</option>
+          <option value="bilingual">{t("modeBilingual")}</option>
+          <option value="translation-only">{t("modeTranslationOnly")}</option>
         </select>
 
-        <label style={labelStyle}>站点翻译主题</label>
+        <label style={labelStyle}>{t("label_siteTranslationTheme")}</label>
         <select
           value={siteThemeValue}
           onChange={(e) => onSiteRuleChange((siteRule) => {
@@ -175,13 +177,13 @@ export default function SiteSettingsSection({
           })}
           style={inputStyle}
         >
-          <option value={INHERIT_VALUE}>跟随全局（{globalConfig.presentation.theme}）</option>
-          <option value="default">默认</option>
-          <option value="underline">下划线</option>
-          <option value="highlight">高亮</option>
+          <option value={INHERIT_VALUE}>{t("label_inheritGlobal", globalConfig.presentation.theme)}</option>
+          <option value="default">{t("themeDefault")}</option>
+          <option value="underline">{t("themeUnderline")}</option>
+          <option value="highlight">{t("themeHighlight")}</option>
         </select>
 
-        <label style={labelStyle}>站点翻译范围</label>
+        <label style={labelStyle}>{t("label_siteTranslationScope")}</label>
         <select
           value={rawSiteRule?.contentScope ?? INHERIT_VALUE}
           onChange={(e) => onSiteRuleChange((siteRule) => {
@@ -200,9 +202,9 @@ export default function SiteSettingsSection({
           })}
           style={inputStyle}
         >
-          <option value={INHERIT_VALUE}>跟随全局（{globalConfig.contentScope === "article" ? "文章区域" : "整页翻译"}）</option>
-          <option value="page">整页翻译</option>
-          <option value="article">文章区域</option>
+          <option value={INHERIT_VALUE}>{t("label_inheritGlobal", globalConfig.contentScope === "article" ? t("scopeArticle") : t("scopePage"))}</option>
+          <option value="page">{t("scopePage")}</option>
+          <option value="article">{t("scopeArticle")}</option>
         </select>
       </div>
     </details>

@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from "react"
 import { createRoot } from "react-dom/client"
 import { ErrorBoundary } from "@/components/ErrorBoundary"
+import { t } from "@/utils/i18n"
 import { readConfig } from "@/utils/storage/config"
 import { resolveSiteTranslationSettings } from "@/types/config"
 import { isSensitiveInput } from "@/utils/privacy"
@@ -167,7 +168,7 @@ function InputTranslateApp() {
       }}
       onClick={() => void handleTranslate()}
     >
-      {overlay.error ? "\u26A0" : overlay.translating ? "\u22EF" : "\u8BD1"}
+      {overlay.error ? "\u26A0" : overlay.translating ? "\u22EF" : t("inputTranslateButton")}
     </button>
   )
 }

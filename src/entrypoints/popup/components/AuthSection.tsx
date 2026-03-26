@@ -1,5 +1,5 @@
 import type { AstraAccount, AstraPlan, AstraSession, AstraUsageSnapshot } from "@/types/auth"
-
+import { t } from "@/utils/i18n"
 import { btnDisabled, btnPrimary, btnSecondary, inputStyle, labelStyle, statusCardStyle } from "./styles"
 
 export interface AuthSectionProps {
@@ -52,16 +52,16 @@ export default function AuthSection({
   return (
     <details open style={{ marginBottom: 12 }}>
       <summary style={{ cursor: "pointer", fontSize: 13, color: "#6366f1" }}>
-        🔐 Astra 账号
+        {t("popup_astraAccount")}
       </summary>
       <div style={{ marginTop: 8 }}>
         {session ? (
           <div style={statusCardStyle}>
             <div style={{ fontSize: 13, color: "#0f172a", fontWeight: 600 }}>{resolvedAccount?.email ?? session.email}</div>
             <div style={{ fontSize: 12, color: "#475569", marginTop: 4 }}>
-              当前套餐：{resolvedAccount?.plan ?? session.plan}
+              {t("popup_currentPlan")}：{resolvedAccount?.plan ?? session.plan}
               {" · "}
-              状态：{resolvedAccount?.subscriptionStatus ?? session.subscriptionStatus}
+              {t("popup_planStatus")}：{resolvedAccount?.subscriptionStatus ?? session.subscriptionStatus}
               {" · "}
               Providers：{resolvedAccount?.providerEntitlements.join(", ") ?? session.providerEntitlements.join(", ")}
             </div>
@@ -74,30 +74,30 @@ export default function AuthSection({
               Billing：{resolvedAccount?.billingEmail ?? session.email}
             </div>
             <div style={{ fontSize: 12, color: "#64748b", marginTop: 4 }}>
-              今日请求：{resolvedUsage?.usage.dailyRequestsUsed ?? session.usage.dailyRequestsUsed}/{resolvedUsage?.quota.dailyRequestsLimit ?? session.quota.dailyRequestsLimit}
+              {t("popup_todayRequests")}：{resolvedUsage?.usage.dailyRequestsUsed ?? session.usage.dailyRequestsUsed}/{resolvedUsage?.quota.dailyRequestsLimit ?? session.quota.dailyRequestsLimit}
               {" · "}
-              今日字符：{resolvedUsage?.usage.dailyCharactersUsed ?? session.usage.dailyCharactersUsed}/{resolvedUsage?.quota.dailyCharactersLimit ?? session.quota.dailyCharactersLimit}
+              {t("popup_todayCharacters")}：{resolvedUsage?.usage.dailyCharactersUsed ?? session.usage.dailyCharactersUsed}/{resolvedUsage?.quota.dailyCharactersLimit ?? session.quota.dailyCharactersLimit}
             </div>
             <div style={{ fontSize: 12, color: "#64748b", marginTop: 4 }}>
-              剩余请求：{resolvedUsage?.quota.remainingDailyRequests ?? session.quota.remainingDailyRequests}
+              {t("popup_remainingRequests")}：{resolvedUsage?.quota.remainingDailyRequests ?? session.quota.remainingDailyRequests}
               {" · "}
-              剩余字符：{resolvedUsage?.quota.remainingDailyCharacters ?? session.quota.remainingDailyCharacters}
+              {t("popup_remainingCharacters")}：{resolvedUsage?.quota.remainingDailyCharacters ?? session.quota.remainingDailyCharacters}
               {" · "}
-              每分钟上限：{resolvedUsage?.quota.requestsPerMinuteLimit ?? session.quota.requestsPerMinuteLimit}
+              {t("popup_perMinuteLimit")}：{resolvedUsage?.quota.requestsPerMinuteLimit ?? session.quota.requestsPerMinuteLimit}
             </div>
             {resolvedUsage?.usage.lastRequestAt && (
               <div style={{ fontSize: 12, color: "#64748b", marginTop: 4 }}>
-                最近一次调用：{resolvedUsage.usage.lastRequestAt}
+                {t("popup_lastCall")}：{resolvedUsage.usage.lastRequestAt}
               </div>
             )}
             {resolvedUsage?.generatedAt && (
               <div style={{ fontSize: 12, color: "#64748b", marginTop: 4 }}>
-                Usage 刷新时间：{resolvedUsage.generatedAt}
+                {t("popup_usageRefreshTime")}：{resolvedUsage.generatedAt}
               </div>
             )}
             {resolvedUsage?.usage.recentEvents.length ? (
               <div style={{ fontSize: 12, color: "#64748b", marginTop: 6 }}>
-                最近用量：
+                {t("popup_recentUsage")}：
                 {resolvedUsage.usage.recentEvents.slice(0, 3).map((event) => (
                   <div key={`${event.timestamp}-${event.provider}`} style={{ marginTop: 2 }}>
                     {event.provider} · {event.characterCount} chars · {event.timestamp}
@@ -107,13 +107,13 @@ export default function AuthSection({
             ) : null}
             {session.expiresAt && (
               <div style={{ fontSize: 12, color: "#64748b", marginTop: 4 }}>
-                过期时间：{session.expiresAt}
+                {t("popup_expiresAt")}：{session.expiresAt}
               </div>
             )}
           </div>
         ) : (
           <>
-            <label style={labelStyle}>邮箱</label>
+            <label style={labelStyle}>{t("label_email")}</label>
             <input
               type="email"
               value={email}
@@ -122,7 +122,7 @@ export default function AuthSection({
               style={inputStyle}
             />
 
-            <label style={labelStyle}>密码</label>
+            <label style={labelStyle}>{t("label_password")}</label>
             <input
               type="password"
               value={password}
@@ -142,7 +142,7 @@ export default function AuthSection({
                   style={{ ...btnPrimary, ...(busy ? btnDisabled : {}) }}
                   disabled={busy}
                 >
-                  升级到 Pro
+                  {t("popup_upgradeToPro")}
                 </button>
               )}
               <button
@@ -150,28 +150,28 @@ export default function AuthSection({
                 style={{ ...btnSecondary, ...(busy ? btnDisabled : {}) }}
                 disabled={busy}
               >
-                管理订阅
+                {t("popup_manageSubscription")}
               </button>
               <button
                 onClick={() => onChangePlan("free")}
                 style={{ ...btnSecondary, ...(busy || resolvedAccount?.plan === "free" ? btnDisabled : {}) }}
                 disabled={busy || resolvedAccount?.plan === "free"}
               >
-                切到 Free
+                {t("popup_switchToFree")}
               </button>
               <button
                 onClick={() => onChangePlan("pro")}
                 style={{ ...btnPrimary, ...(busy || resolvedAccount?.plan === "pro" ? btnDisabled : {}) }}
                 disabled={busy || resolvedAccount?.plan === "pro"}
               >
-                切到 Pro
+                {t("popup_switchToPro")}
               </button>
               <button
                 onClick={onSignOut}
                 style={{ ...btnSecondary, ...(busy ? btnDisabled : {}) }}
                 disabled={busy}
               >
-                退出登录
+                {t("popup_signOut")}
               </button>
             </>
           ) : (
@@ -180,7 +180,7 @@ export default function AuthSection({
               style={{ ...btnPrimary, ...(busy ? btnDisabled : {}) }}
               disabled={busy || email.trim().length === 0 || password.length === 0}
             >
-              登录 Astra
+              {t("popup_signInToAstra")}
             </button>
           )}
         </div>

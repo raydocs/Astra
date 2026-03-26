@@ -1,4 +1,5 @@
 import { vi } from "vitest"
+import zhMessages from "../../public/_locales/zh_CN/messages.json"
 
 type StorageData = Record<string, unknown>
 type Listener<TArgs extends unknown[]> = (...args: TArgs) => unknown
@@ -92,7 +93,6 @@ export function createMockBrowser(initialStorage: StorageData = {}) {
     },
     runtime: {
       sendMessage: vi.fn(),
-      getURL: vi.fn((path: string) => `chrome-extension://mock-id${path}`),
       onMessage: {
         addListener: runtimeMessageBus.addListener,
         removeListener: runtimeMessageBus.removeListener,
@@ -105,12 +105,25 @@ export function createMockBrowser(initialStorage: StorageData = {}) {
     tabs: {
       query: vi.fn(() => Promise.resolve([])),
       create: vi.fn(() => Promise.resolve()),
-      remove: vi.fn(() => Promise.resolve()),
       sendMessage: vi.fn(),
       onActivated: {
         addListener: tabActivatedBus.addListener,
         removeListener: tabActivatedBus.removeListener,
       },
+    },
+    i18n: {
+      getMessage: vi.fn((key: string, substitutions?: string | string[]) => {
+        const entry = (zhMessages as Record<string, { message: string }>)[key]
+        if (!entry) return key
+        let msg = entry.message
+        if (substitutions) {
+          const subs = Array.isArray(substitutions) ? substitutions : [substitutions]
+          subs.forEach((sub, i) => {
+            msg = msg.replace(`$${i + 1}`, sub)
+          })
+        }
+        return msg
+      }),
     },
     commands: {
       onCommand: {

@@ -48,6 +48,7 @@ vi.mock("../translation-context", () => ({
 }))
 
 import { DEFAULT_ASTRA_CONFIG, type AstraConfig } from "@/types/config"
+import { t } from "@/utils/i18n"
 import { setInteractionSuppressionReason } from "../interaction-coordination"
 import { mountHoverTranslate } from "./HoverTranslate"
 
@@ -177,7 +178,7 @@ describe("HoverTranslate", () => {
     })
 
     expect(translateTextsMock).not.toHaveBeenCalled()
-    expect(getHost().shadowRoot?.textContent ?? "").not.toContain("Alt + Hover")
+    expect(getHost().shadowRoot?.textContent ?? "").not.toContain(t("label_altHover"))
   })
 
   it("suppresses hover translation while selection toolbar interaction is active", async () => {
@@ -215,7 +216,7 @@ describe("HoverTranslate", () => {
     })
 
     const [copyButton] = getButtons()
-    expect(copyButton?.textContent).toContain("Copy")
+    expect(copyButton?.textContent).toContain(t("actionCopy"))
 
     await act(async () => {
       copyButton.dispatchEvent(new MouseEvent("click", { bubbles: true, composed: true }))
@@ -255,7 +256,7 @@ describe("HoverTranslate", () => {
 
     expect(host.shadowRoot?.textContent ?? "").toContain("你好，世界")
 
-    const explainButton = getButtons().find((button) => button.textContent?.includes("Explain"))
+    const explainButton = getButtons().find((button) => button.textContent?.includes(t("actionExplain")))
     expect(explainButton).toBeDefined()
 
     await act(async () => {
@@ -282,8 +283,8 @@ describe("HoverTranslate", () => {
     })
 
     expect(translateTextsMock).toHaveBeenCalledTimes(1)
-    expect(getHost().shadowRoot?.textContent ?? "").toContain("Hover")
-    expect(getHost().shadowRoot?.textContent ?? "").not.toContain("Alt + Hover")
+    expect(getHost().shadowRoot?.textContent ?? "").toContain(t("label_hover"))
+    expect(getHost().shadowRoot?.textContent ?? "").not.toContain(t("label_altHover"))
   })
 
   it("deduplicates concurrent hover requests for the same element", async () => {
@@ -361,7 +362,7 @@ describe("HoverTranslate", () => {
     })
 
     let buttons = getButtons()
-    const explainButton = buttons.find((button) => button.textContent?.includes("Explain"))
+    const explainButton = buttons.find((button) => button.textContent?.includes(t("actionExplain")))
     expect(explainButton).toBeDefined()
 
     await act(async () => {
@@ -380,7 +381,7 @@ describe("HoverTranslate", () => {
     })
     expect(getHost().shadowRoot?.textContent ?? "").toContain("这是问候语的解释")
 
-    const copyButton = getButtons().find((button) => button.textContent?.includes("Copy"))
+    const copyButton = getButtons().find((button) => button.textContent?.includes(t("actionCopy")))
     await act(async () => {
       copyButton?.dispatchEvent(new MouseEvent("click", { bubbles: true, composed: true }))
       await Promise.resolve()
@@ -388,7 +389,7 @@ describe("HoverTranslate", () => {
     expect(copyTextToClipboardMock).toHaveBeenLastCalledWith("你好，世界")
 
     buttons = getButtons()
-    const hideButton = buttons.find((button) => button.textContent?.includes("Hide explanation"))
+    const hideButton = buttons.find((button) => button.textContent?.includes(t("actionHideExplanation")))
     expect(hideButton).toBeDefined()
 
     await act(async () => {

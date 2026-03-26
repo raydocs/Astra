@@ -75,6 +75,7 @@ vi.mock("@/utils/storage/reading-history", () => ({
 
 import type { AstraConfig } from "@/types/config"
 import { DEFAULT_ASTRA_CONFIG } from "@/types/config"
+import { t } from "@/utils/i18n"
 import App from "./App"
 
 function createConfig(patch: Partial<AstraConfig> = {}): AstraConfig {
@@ -229,7 +230,7 @@ describe("popup App", () => {
   }
 
   it("renders the translate button and starts translation", async () => {
-    const translateButton = getButtons().find((button) => button.textContent === "Translate This Page")!
+    const translateButton = getButtons().find((button) => button.textContent === t("popup_translateThisPage"))!
     expect(translateButton).toBeDefined()
     expect(translateButton.disabled).toBe(false)
 
@@ -250,7 +251,7 @@ describe("popup App", () => {
   it("shows connection status and plan label", async () => {
     await flushApp()
 
-    expect(container.textContent).toContain("Connected")
+    expect(container.textContent).toContain(t("popup_connected"))
     expect(container.textContent).toContain("Pro Plan")
   })
 
@@ -279,7 +280,7 @@ describe("popup App", () => {
 
     // Expand the sign-in section
     const signInSummary = container.querySelector("summary")
-    if (signInSummary?.textContent?.includes("Sign in")) {
+    if (signInSummary?.textContent?.includes(t("popup_signInToAstra"))) {
       await act(async () => {
         signInSummary.click()
         await Promise.resolve()
@@ -289,7 +290,7 @@ describe("popup App", () => {
     const emailInput = container.querySelector('input[type="email"]') as HTMLInputElement
     const passwordInputs = Array.from(container.querySelectorAll('input[type="password"]')) as HTMLInputElement[]
     const authPasswordInput = passwordInputs[0]
-    const signInButton = getButtons().find((button) => button.textContent === "Sign In")!
+    const signInButton = getButtons().find((button) => button.textContent === t("popup_signIn"))!
     const inputValueSetter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")?.set
 
     await act(async () => {
@@ -320,7 +321,7 @@ describe("popup App", () => {
   it("shows sign out button when logged in and signs out", async () => {
     await flushApp()
 
-    const signOutButton = getButtons().find((button) => button.textContent === "Sign Out")!
+    const signOutButton = getButtons().find((button) => button.textContent === t("popup_signOut"))!
     expect(signOutButton).toBeDefined()
 
     await act(async () => {
@@ -341,9 +342,9 @@ describe("popup App", () => {
   })
 
   it("shows footer links for settings, vocabulary, and review", async () => {
-    const settingsButton = getButtons().find((button) => button.textContent === "Settings")
-    const vocabButton = getButtons().find((button) => button.textContent === "Vocabulary")
-    const reviewButton = getButtons().find((button) => button.textContent === "Review")
+    const settingsButton = getButtons().find((button) => button.textContent === t("popup_settings"))
+    const vocabButton = getButtons().find((button) => button.textContent === t("popup_vocabulary"))
+    const reviewButton = getButtons().find((button) => button.textContent === t("popup_review"))
 
     expect(settingsButton).toBeDefined()
     expect(vocabButton).toBeDefined()

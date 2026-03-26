@@ -25,15 +25,15 @@ const LANGUAGE_OPTIONS = [
 ] as const
 
 const HOVER_TRIGGER_OPTIONS = [
-  { value: "alt", label: "Alt + 悬停" },
-  { value: "always", label: "始终悬停" },
-  { value: "disabled", label: "关闭" },
+  { value: "alt", labelKey: "hoverTriggerAlt" },
+  { value: "always", labelKey: "hoverTriggerAlways" },
+  { value: "disabled", labelKey: "hoverTriggerDisabled" },
 ] as const
 
 const LANGUAGE_LEVEL_OPTIONS = [
-  { value: "beginner", label: "初学者" },
-  { value: "intermediate", label: "中级" },
-  { value: "advanced", label: "高级" },
+  { value: "beginner", labelKey: "label_beginner" },
+  { value: "intermediate", labelKey: "label_intermediate" },
+  { value: "advanced", labelKey: "label_advanced" },
 ] as const
 
 const PROVIDER_OPTIONS = [
@@ -120,7 +120,7 @@ export default function GlobalSettingsSection({
           style={inputStyle}
         />
         <div style={{ fontSize: 11, color: "#94a3b8", marginTop: 2 }}>
-          填写后直连 {config.provider.id === "gemini" ? "Google" : "OpenAI"} API，无需 Astra 账号
+          {t("label_apiKeyDirectConnect", config.provider.id === "gemini" ? "Google" : "OpenAI")}
         </div>
 
         <button
@@ -180,50 +180,50 @@ export default function GlobalSettingsSection({
           style={inputStyle}
         >
           {HOVER_TRIGGER_OPTIONS.map((option) => (
-            <option key={option.value} value={option.value}>{option.label}</option>
+            <option key={option.value} value={option.value}>{t(option.labelKey)}</option>
           ))}
         </select>
 
-        <label style={labelStyle}>语言水平</label>
+        <label style={labelStyle}>{t("label_languageLevel")}</label>
         <select
           value={config.languageLevel}
           onChange={(e) => onLanguageLevelChange(e.target.value as LanguageLevel)}
           style={inputStyle}
         >
           {LANGUAGE_LEVEL_OPTIONS.map((option) => (
-            <option key={option.value} value={option.value}>{option.label}</option>
+            <option key={option.value} value={option.value}>{t(option.labelKey)}</option>
           ))}
         </select>
 
-        <label style={labelStyle}>翻译模式</label>
+        <label style={labelStyle}>{t("translationModeLabel")}</label>
         <select
           value={config.presentation.mode}
           onChange={(e) => onPresentationChange({ mode: e.target.value as TranslationMode })}
           style={inputStyle}
         >
-          <option value="bilingual">双语对照</option>
-          <option value="translation-only">仅译文</option>
+          <option value="bilingual">{t("modeBilingual")}</option>
+          <option value="translation-only">{t("modeTranslationOnly")}</option>
         </select>
 
-        <label style={labelStyle}>翻译主题</label>
+        <label style={labelStyle}>{t("translationThemeLabel")}</label>
         <select
           value={config.presentation.theme}
           onChange={(e) => onPresentationChange({ theme: e.target.value as TranslationTheme })}
           style={inputStyle}
         >
-          <option value="default">默认</option>
-          <option value="underline">下划线</option>
-          <option value="highlight">高亮</option>
+          <option value="default">{t("themeDefault")}</option>
+          <option value="underline">{t("themeUnderline")}</option>
+          <option value="highlight">{t("themeHighlight")}</option>
         </select>
 
-        <label style={labelStyle}>翻译范围</label>
+        <label style={labelStyle}>{t("scopeLabel")}</label>
         <select
           value={config.contentScope}
           onChange={(e) => onContentScopeChange(e.target.value as ContentScope)}
           style={inputStyle}
         >
-          <option value="page">整页翻译</option>
-          <option value="article">文章区域</option>
+          <option value="page">{t("scopePage")}</option>
+          <option value="article">{t("scopeArticle")}</option>
         </select>
       </div>
     </details>

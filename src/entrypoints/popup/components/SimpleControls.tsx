@@ -1,4 +1,5 @@
 import type { TranslationMode } from "@/types/config"
+import { t } from "@/utils/i18n"
 import { labelStyle, inputStyle } from "./styles"
 
 const LANGUAGE_OPTIONS = [
@@ -27,7 +28,7 @@ export default function SimpleControls({
 }: SimpleControlsProps) {
   return (
     <div style={{ marginBottom: 12 }}>
-      <label style={labelStyle}>Target Language</label>
+      <label style={labelStyle}>{t("label_targetLanguage")}</label>
       <select
         value={targetLang}
         onChange={(e) => onTargetLangChange(e.target.value)}
@@ -38,14 +39,14 @@ export default function SimpleControls({
         ))}
       </select>
 
-      <label style={{ ...labelStyle, marginTop: 8 }}>Translation Mode</label>
+      <label style={{ ...labelStyle, marginTop: 8 }}>{t("label_translationMode")}</label>
       <select
         value={translationMode}
         onChange={(e) => onModeChange(e.target.value as TranslationMode)}
         style={inputStyle}
       >
-        <option value="bilingual">双语对照</option>
-        <option value="translation-only">仅译文</option>
+        <option value="bilingual">{t("modeBilingual")}</option>
+        <option value="translation-only">{t("modeTranslationOnly")}</option>
       </select>
     </div>
   )

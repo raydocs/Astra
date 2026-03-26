@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react"
 import { createRoot } from "react-dom/client"
 import { ErrorBoundary } from "@/components/ErrorBoundary"
+import { t } from "@/utils/i18n"
 
 import { resolveSiteTranslationSettings } from "@/types/config"
 import { copyTextToClipboard } from "@/utils/dom/clipboard"
@@ -509,7 +510,7 @@ function HoverTranslateApp() {
   return (
     <div style={panelStyle}>
       <div style={{ fontSize: 11, color: "#64748b", marginBottom: 4 }}>
-        {overlay.triggerMode === "always" ? "Hover" : "Alt + Hover"}
+        {overlay.triggerMode === "always" ? t("label_hover") : t("label_altHover")}
       </div>
       {overlay.status === "pending" && <span style={{ color: "#94a3b8" }}>⋯</span>}
       {overlay.status === "error" && <span style={{ color: "#b45309" }}>⚠ {overlay.error}</span>}
@@ -518,14 +519,14 @@ function HoverTranslateApp() {
           <div>{overlay.translation}</div>
           <div style={{ display: "flex", gap: 6, marginTop: 8 }}>
             <button type="button" style={actionButtonStyle} onClick={() => void handleCopy()}>
-              Copy
+              {t("actionCopy")}
             </button>
             <button type="button" style={actionButtonStyle} onClick={() => void handleExplain()}>
               {overlay.explanationStatus === "pending"
-                ? "Explaining…"
+                ? t("actionExplaining")
                 : overlay.showExplanation
-                  ? "Hide explanation"
-                  : "Explain"}
+                  ? t("actionHideExplanation")
+                  : t("actionExplain")}
             </button>
             <button
               type="button"
@@ -533,7 +534,7 @@ function HoverTranslateApp() {
               onClick={() => void handleSave()}
               disabled={saveStatus === "saving"}
             >
-              {saveStatus === "saved" ? "Saved \u2713" : saveStatus === "saving" ? "Saving..." : "Save"}
+              {saveStatus === "saved" ? t("actionSaved") : saveStatus === "saving" ? t("actionSaving") : t("actionSave")}
             </button>
           </div>
           {overlay.showExplanation && (

@@ -2,6 +2,7 @@ import React, { useState, useRef, useCallback, useEffect } from "react"
 import ReactDOM from "react-dom/client"
 import { browser } from "#imports"
 import { ErrorBoundary } from "@/components/ErrorBoundary"
+import { t } from "@/utils/i18n"
 import { subscribePageTranslationState } from "../page-translate"
 import { toggleCurrentTabTranslation } from "@/utils/extension/messages"
 import { IDLE_TRANSLATION_SNAPSHOT } from "@/types/translation"
@@ -19,7 +20,7 @@ function getFloatBallVisualState(snapshot: typeof IDLE_TRANSLATION_SNAPSHOT) {
   if (snapshot.phase === "starting" || snapshot.phase === "stopping") {
     return {
       color: COLOR_BUSY,
-      tooltip: snapshot.phase === "starting" ? "正在准备翻译…" : "正在移除翻译…",
+      tooltip: snapshot.phase === "starting" ? t("floatball_preparingTranslation") : t("floatball_removingTranslation"),
       disabled: true,
       progressText: null,
     }
@@ -37,7 +38,7 @@ function getFloatBallVisualState(snapshot: typeof IDLE_TRANSLATION_SNAPSHOT) {
   if (snapshot.lastError) {
     return {
       color: COLOR_ERROR,
-      tooltip: `翻译失败：${snapshot.lastError.message}`,
+      tooltip: t("floatball_translationFailed", snapshot.lastError.message),
       disabled: false,
       progressText: null,
     }
@@ -45,7 +46,7 @@ function getFloatBallVisualState(snapshot: typeof IDLE_TRANSLATION_SNAPSHOT) {
 
   return {
     color: COLOR_IDLE,
-    tooltip: "翻译此页",
+    tooltip: t("floatball_translatePage"),
     disabled: false,
     progressText: null,
   }

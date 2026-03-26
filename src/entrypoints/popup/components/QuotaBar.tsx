@@ -1,4 +1,5 @@
 import type { QuotaInfo } from "@/utils/astra/quota"
+import { t } from "@/utils/i18n"
 
 function formatTokenCount(n: number): string {
   if (n >= 1000000) return `${(n / 1000000).toFixed(1)}M`
@@ -43,7 +44,7 @@ export default function QuotaBar({ quota }: QuotaBarProps) {
         />
       </div>
       <div style={{ fontSize: 11, color: "#64748b", marginTop: 3 }}>
-        Today: {pct}% used ({formatTokenCount(quota.used)} / {formatTokenCount(quota.limit)} tokens)
+        {t("popup_quotaToday", [`${pct}`, formatTokenCount(quota.used), formatTokenCount(quota.limit)])}
       </div>
     </div>
   )
