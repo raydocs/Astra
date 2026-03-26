@@ -118,6 +118,7 @@ function SelectionToolbarApp() {
 
   const toolbarRef = useRef<HTMLDivElement>(null)
   const skipNextMouseUp = useRef(false)
+  const speakPollRef = useRef<ReturnType<typeof setInterval> | null>(null)
   const visibleRef = useRef(false)
   const selectionVersionRef = useRef(0)
   const selectionContextElementRef = useRef<HTMLElement | null>(null)
@@ -137,6 +138,10 @@ function SelectionToolbarApp() {
     setSaved(false)
     setSpeaking(false)
     stopSpeaking()
+    if (speakPollRef.current) {
+      clearInterval(speakPollRef.current)
+      speakPollRef.current = null
+    }
     setSelectedText("")
     setSelectionContext(undefined)
     selectionContextElementRef.current = null
@@ -291,16 +296,23 @@ function SelectionToolbarApp() {
   }
 
   const handleSpeak = () => {
+    if (speakPollRef.current) {
+      clearInterval(speakPollRef.current)
+      speakPollRef.current = null
+    }
     if (isSpeaking()) {
       stopSpeaking()
       setSpeaking(false)
     } else if (selectedText) {
       speak(selectedText)
       setSpeaking(true)
-      const poll = setInterval(() => {
+      speakPollRef.current = setInterval(() => {
         if (!isSpeaking()) {
           setSpeaking(false)
-          clearInterval(poll)
+          if (speakPollRef.current) {
+            clearInterval(speakPollRef.current)
+            speakPollRef.current = null
+          }
         }
       }, 200)
     }

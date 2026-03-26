@@ -52,10 +52,10 @@ export default function GlobalSettingsSection({
   return (
     <details open style={{ marginBottom: 12 }}>
       <summary style={{ cursor: "pointer", fontSize: 13, color: "#6366f1" }}>
-        ⚙ 全局设置
+        ⚙ {t("settingsTitle")}
       </summary>
       <div style={{ marginTop: 8 }}>
-        <label style={labelStyle}>模型提供方</label>
+        <label style={labelStyle}>{t("providerLabel")}</label>
         <select
           value={config.provider.id}
           onChange={(e) => {
@@ -72,7 +72,7 @@ export default function GlobalSettingsSection({
           ))}
         </select>
 
-        <label style={labelStyle}>API Key（直连模式，选填）</label>
+        <label style={labelStyle}>{t("apiKeyLabel")}</label>
         <input
           type="password"
           value={config.provider.apiKey ?? ""}
@@ -84,7 +84,7 @@ export default function GlobalSettingsSection({
           填写后直连 {config.provider.id === "gemini" ? "Google" : "OpenAI"} API，无需 Astra 账号
         </div>
 
-        <label style={labelStyle}>Astra Relay URL（托管模式，选填）</label>
+        <label style={labelStyle}>{t("relayUrlLabel")}</label>
         <input
           value={config.provider.relayBaseURL ?? ""}
           onChange={(e) => onProviderChange({ relayBaseURL: e.target.value })}
@@ -92,7 +92,7 @@ export default function GlobalSettingsSection({
           style={inputStyle}
         />
 
-        <label style={labelStyle}>模型</label>
+        <label style={labelStyle}>{t("modelLabel")}</label>
         <input
           value={config.provider.model}
           onChange={(e) => onProviderChange({ model: e.target.value })}
@@ -100,7 +100,7 @@ export default function GlobalSettingsSection({
           style={inputStyle}
         />
 
-        <label style={labelStyle}>目标语言</label>
+        <label style={labelStyle}>{t("targetLangLabel")}</label>
         <select
           value={config.targetLang}
           onChange={(e) => onTargetLangChange(e.target.value)}
@@ -111,7 +111,7 @@ export default function GlobalSettingsSection({
           ))}
         </select>
 
-        <label style={labelStyle}>悬停翻译触发</label>
+        <label style={labelStyle}>{t("hoverTriggerLabel")}</label>
         <select
           value={config.hoverTrigger}
           onChange={(e) => onHoverTriggerChange(e.target.value as HoverTrigger)}

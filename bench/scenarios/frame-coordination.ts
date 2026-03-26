@@ -32,6 +32,18 @@ import {
 import { mountFixture } from "../runtime/fixtures"
 import type { BenchmarkScenario } from "../types"
 
+type ScenarioCodeHint = {
+  suspectedFiles?: string[]
+  suspectedSymbols?: string[]
+  suspectedKeywords?: string[]
+  fallbackSurfaceFiles?: string[]
+  risk?: "local" | "cross-module"
+}
+
+type BenchmarkScenarioWithHint = BenchmarkScenario<FrameCoordinationExecution> & {
+  codeHint: ScenarioCodeHint
+}
+
 const SESSION: AstraSession = {
   version: 1,
   sessionToken: "astra-bench-session",
@@ -193,6 +205,16 @@ export const frameCoordinationScenarios: BenchmarkScenario<FrameCoordinationExec
     surface: "frame-coordination",
     fixture: "article-basic",
     task: "Ensure top-frame content scripts mount all site-level UI, including the float ball, when Always Translate auto-starts.",
+    codeHint: {
+      suspectedFiles: [
+        "src/entrypoints/content/index.tsx",
+        "src/entrypoints/content/frame-context.ts",
+        "src/entrypoints/content/page-translate.ts",
+      ],
+      suspectedSymbols: ["main", "__setTopFrameOverrideForTests", "getPageTranslationState"],
+      suspectedKeywords: ["__ASTRA_INJECTED__", "alwaysTranslate", "floatBall"],
+      risk: "cross-module",
+    },
     run: () => executeContentFrameScenario("top"),
     evaluate: (execution) => evaluateFrameCoordination(execution, {
       shouldMountFloatBall: true,
@@ -207,6 +229,15 @@ export const frameCoordinationScenarios: BenchmarkScenario<FrameCoordinationExec
     surface: "frame-coordination",
     fixture: "article-basic",
     task: "Ensure child-frame content scripts do not mount the float ball while still supporting auto-start and inline tools.",
+    codeHint: {
+      suspectedFiles: [
+        "src/entrypoints/content/frame-context.ts",
+        "src/entrypoints/content/index.tsx",
+      ],
+      suspectedSymbols: ["__setTopFrameOverrideForTests", "main"],
+      suspectedKeywords: ["floatBall", "top-frame", "siteUiMounted"],
+      risk: "cross-module",
+    },
     run: () => executeContentFrameScenario("child"),
     evaluate: (execution) => evaluateFrameCoordination(execution, {
       shouldMountFloatBall: false,
@@ -221,6 +252,16 @@ export const frameCoordinationScenarios: BenchmarkScenario<FrameCoordinationExec
     surface: "frame-coordination",
     fixture: "frame-list:top+child",
     task: "Aggregate translation state across multiple HTTP frames and keep the top-frame metadata.",
+    codeHint: {
+      suspectedFiles: [
+        "src/entrypoints/background/frame-coordinator.ts",
+        "src/entrypoints/content/index.tsx",
+        "src/utils/extension/messages.ts",
+      ],
+      suspectedSymbols: ["executeTabCommand", "main"],
+      suspectedKeywords: ["framesTotal", "framesTranslating", "sendMessageFrameIds"],
+      risk: "cross-module",
+    },
     run: () => executeBackgroundFrameScenario(async () => {
       const sendMessageFrameIds: number[] = []
       const frames: BenchFrameEntry[] = [
@@ -305,6 +346,15 @@ export const frameCoordinationScenarios: BenchmarkScenario<FrameCoordinationExec
     surface: "frame-coordination",
     fixture: "frame-list:top+child",
     task: "Do not trust child-frame metadata when the top frame is unavailable; keep top-frame hostname and null target language fallback.",
+    codeHint: {
+      suspectedFiles: [
+        "src/entrypoints/background/frame-coordinator.ts",
+        "src/entrypoints/content/frame-context.ts",
+      ],
+      suspectedSymbols: ["executeTabCommand", "__setTopFrameOverrideForTests"],
+      suspectedKeywords: ["top frame unavailable", "aggregateHostname", "aggregateTargetLang"],
+      risk: "cross-module",
+    },
     run: () => executeBackgroundFrameScenario(async () => {
       const sendMessageFrameIds: number[] = []
       const frames: BenchFrameEntry[] = [
@@ -369,4 +419,4 @@ export const frameCoordinationScenarios: BenchmarkScenario<FrameCoordinationExec
       expectedSendFrameIds: [0, 5],
     }),
   },
-]
+] as BenchmarkScenario<FrameCoordinationExecution>[]

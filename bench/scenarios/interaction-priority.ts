@@ -25,6 +25,18 @@ import {
 import { mountFixture } from "../runtime/fixtures"
 import type { BenchmarkScenario } from "../types"
 
+type ScenarioCodeHint = {
+  suspectedFiles?: string[]
+  suspectedSymbols?: string[]
+  suspectedKeywords?: string[]
+  fallbackSurfaceFiles?: string[]
+  risk?: "local" | "cross-module"
+}
+
+type BenchmarkScenarioWithHint = BenchmarkScenario<InteractionPriorityExecution> & {
+  codeHint: ScenarioCodeHint
+}
+
 const HOST_IDS = {
   selection: "astra-selection-toolbar-host",
   hover: "astra-hover-translate-host",
@@ -225,6 +237,21 @@ export const interactionPriorityScenarios: BenchmarkScenario<InteractionPriority
     surface: "interaction-priority",
     fixture: "inline:interaction-priority",
     task: "Prevent hover translation from firing while the selection toolbar is active.",
+    codeHint: {
+      suspectedFiles: [
+        "src/entrypoints/content/interaction-coordination.ts",
+        "src/entrypoints/content/components/HoverTranslate.tsx",
+        "src/entrypoints/content/components/SelectionToolbar.tsx",
+      ],
+      suspectedSymbols: [
+        "getInteractionSuppressionState",
+        "clearInteractionSuppression",
+        "mountHoverTranslate",
+        "mountSelectionToolbar",
+      ],
+      suspectedKeywords: ["hoverSuppressed", "selection"],
+      risk: "cross-module",
+    },
     run: () => executeInteractionPriorityScenario(async () => {
       const { browser, target } = await mountInteractionScenario()
       await dispatchPointerSelection(target, "Hello world")
@@ -257,6 +284,15 @@ export const interactionPriorityScenarios: BenchmarkScenario<InteractionPriority
     surface: "interaction-priority",
     fixture: "inline:interaction-priority",
     task: "Allow hover translation to resume after the blocking selection toolbar is dismissed.",
+    codeHint: {
+      suspectedFiles: [
+        "src/entrypoints/content/interaction-coordination.ts",
+        "src/entrypoints/content/components/HoverTranslate.tsx",
+      ],
+      suspectedSymbols: ["getInteractionSuppressionState", "clearInteractionSuppression"],
+      suspectedKeywords: ["hoverSuppressed", "scroll", "selection"],
+      risk: "cross-module",
+    },
     run: () => executeInteractionPriorityScenario(async () => {
       const { browser, target } = await mountInteractionScenario()
       await dispatchPointerSelection(target, "Hello world")
@@ -296,6 +332,15 @@ export const interactionPriorityScenarios: BenchmarkScenario<InteractionPriority
     surface: "interaction-priority",
     fixture: "inline:interaction-priority",
     task: "Show only the input translation affordance when a text field is focused.",
+    codeHint: {
+      suspectedFiles: [
+        "src/entrypoints/content/components/InputTranslate.tsx",
+        "src/entrypoints/content/interaction-coordination.ts",
+      ],
+      suspectedSymbols: ["mountInputTranslate", "getInteractionSuppressionState"],
+      suspectedKeywords: ["focusin", "inputOverlayVisible", "hoverSuppressed"],
+      risk: "cross-module",
+    },
     run: () => executeInteractionPriorityScenario(async () => {
       const { browser, input } = await mountInteractionScenario()
       await focusInput(input)
@@ -327,6 +372,16 @@ export const interactionPriorityScenarios: BenchmarkScenario<InteractionPriority
     surface: "interaction-priority",
     fixture: "inline:interaction-priority",
     task: "Keep the float ball action independent from hover, selection, and input overlays.",
+    codeHint: {
+      suspectedFiles: [
+        "src/entrypoints/content/components/FloatBall.tsx",
+        "src/entrypoints/content/interaction-coordination.ts",
+        "src/entrypoints/content/components/SelectionToolbar.tsx",
+      ],
+      suspectedSymbols: ["mountFloatBall", "getInteractionSuppressionState"],
+      suspectedKeywords: ["pointerdown", "toggleCommandCount", "floatBallMounted"],
+      risk: "cross-module",
+    },
     run: () => executeInteractionPriorityScenario(async () => {
       const { browser } = await mountInteractionScenario()
       await clickFloatBall()
@@ -353,4 +408,4 @@ export const interactionPriorityScenarios: BenchmarkScenario<InteractionPriority
       requireFloatBallMounted: true,
     }),
   },
-]
+] as BenchmarkScenario<InteractionPriorityExecution>[]

@@ -106,6 +106,7 @@ export const AstraConfigInputSchema = z.object({
   provider: z.object({
     id: ProviderIdSchema.optional(),
     accessToken: z.string().optional(),
+    apiKey: z.string().optional(),
     relayBaseURL: z.string().optional(),
     model: z.string().trim().min(1).optional(),
   }).optional(),
@@ -280,6 +281,9 @@ export function resolveSiteTranslationSettings(
 }
 
 export function hasProviderAccess(provider: ProviderConfig): boolean {
+  // Direct mode: apiKey is sufficient
+  if ((provider.apiKey ?? "").trim().length > 0) return true
+  // Relay mode: need both accessToken and relayBaseURL
   return provider.accessToken.trim().length > 0 && (provider.relayBaseURL?.trim().length ?? 0) > 0
 }
 

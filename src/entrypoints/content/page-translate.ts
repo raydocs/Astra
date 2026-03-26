@@ -214,13 +214,17 @@ function applySiteRuleFilters(blocks: TextBlock[], siteRules: {
 
   if (selectors && selectors.length > 0) {
     filtered = filtered.filter((b) =>
-      selectors.some((sel: string) => b.element.closest(sel) !== null),
+      selectors.some((sel: string) => {
+        try { return b.element.closest(sel) !== null } catch { return false }
+      }),
     )
   }
 
   if (excludeSelectors && excludeSelectors.length > 0) {
     filtered = filtered.filter((b) =>
-      !excludeSelectors.some((sel: string) => b.element.closest(sel) !== null),
+      !excludeSelectors.some((sel: string) => {
+        try { return b.element.closest(sel) !== null } catch { return false }
+      }),
     )
   }
 
@@ -752,8 +756,8 @@ export function retryFailedBlocks(): void {
   currentSession.registry.markQueued(reset)
   currentSession.queue.push(...reset)
   publishSessionState(currentSession, "running")
-  // Clear drainPromise so scheduleDrain will start a new loop
-  currentSession.drainPromise = null
+  // scheduleDrain is a no-op if a drain loop is already running;
+  // the existing loop's .finally() will re-schedule when it sees queue items.
   scheduleDrain(currentSession)
 }
 

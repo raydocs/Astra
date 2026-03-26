@@ -25,12 +25,39 @@ export interface ScoreBreakdown {
   [key: string]: number
 }
 
+export interface ScenarioCodeHint {
+  suspectedFiles?: string[]
+  suspectedSymbols?: string[]
+  suspectedKeywords?: string[]
+  fallbackSurfaceFiles?: string[]
+  risk?: "local" | "cross-module"
+}
+
+export interface PatchHintArtifact {
+  suspectedFiles?: string[]
+  suspectedSymbols?: string[]
+  suspectedKeywords?: string[]
+  failingSignals?: string[]
+  confidence?: "low" | "medium" | "high"
+}
+
+export interface RepairHintSummary {
+  suspectedFiles: string[]
+  suspectedSymbols: string[]
+  suspectedKeywords: string[]
+  failingSignals: string[]
+  confidence: "low" | "medium" | "high" | null
+  risk: "local" | "cross-module" | null
+}
+
 export interface EvaluationResult {
   scores: ScoreBreakdown
   total: number
   pass: boolean
   issues: BenchmarkIssue[]
-  artifacts: Record<string, unknown>
+  artifacts: Record<string, unknown> & {
+    patchHints?: PatchHintArtifact
+  }
   nextActions: string[]
 }
 
@@ -47,6 +74,7 @@ export interface BenchmarkScenario<TExecution = unknown> {
   task: string
   run: () => Promise<TExecution>
   evaluate: (execution: TExecution) => EvaluationResult
+  codeHint?: ScenarioCodeHint
 }
 
 export interface SurfaceSummary {
@@ -65,6 +93,8 @@ export interface ScenarioReport<TExecution = unknown> {
   task: string
   execution: TExecution
   evaluation: EvaluationResult
+  codeHint?: ScenarioCodeHint
+  repairHints?: RepairHintSummary
 }
 
 export interface ScenarioDelta {
@@ -96,6 +126,11 @@ export interface BenchmarkComparison {
   added: number
 }
 
+export interface BenchmarkInventory {
+  totalScenarios: number
+  bySurface: Record<string, number>
+}
+
 export interface BenchmarkReport {
   schemaVersion: 1
   runId: string
@@ -110,6 +145,7 @@ export interface BenchmarkReport {
     averageTotal: number
     surfaces: SurfaceSummary[]
   }
+  inventory?: BenchmarkInventory
   comparison: BenchmarkComparison
   scenarios: ScenarioReport[]
 }
@@ -134,6 +170,7 @@ export interface GeneratorHandoffItem {
     delta: number | null
   }>
   suggestedPrompt: string
+  repairHints?: RepairHintSummary
 }
 
 export interface GeneratorHandoff {
@@ -181,8 +218,16 @@ export interface LoopPlan {
   selectedItems: GeneratorHandoffItem[]
 }
 
+export interface PatchTaskCandidateFile {
+  path: string
+  reasons: string[]
+  symbols: string[]
+  keywords: string[]
+  priority: number
+}
+
 export interface PatchTask {
-  schemaVersion: 1
+  schemaVersion: 2
   runId: string
   generatedAt: string
   sourceArtifacts: {
@@ -197,10 +242,18 @@ export interface PatchTask {
     scenarioIds: string[]
     scenarioCount: number
   }
+  candidateFiles: PatchTaskCandidateFile[]
   relevantFiles: string[]
   validationCommands: string[]
   instructions: string[]
   prompt: string
+}
+
+export interface PatchContextSlice {
+  startLine: number
+  endLine: number
+  reason: string
+  strategy: "symbol" | "keyword" | "import-neighbor" | "fallback-head" | "fallback-tail"
 }
 
 export interface PatchContextFile {
@@ -209,11 +262,12 @@ export interface PatchContextFile {
   lineCount: number
   includedLines: number
   truncated: boolean
+  slices: PatchContextSlice[]
   content: string
 }
 
 export interface PatchContextPack {
-  schemaVersion: 1
+  schemaVersion: 2
   runId: string
   generatedAt: string
   sourceArtifacts: {
@@ -222,6 +276,11 @@ export interface PatchContextPack {
     latestHandoff: string
     latestFeedback: string
     latestJson: string
+  }
+  budget: {
+    maxFiles: number
+    maxLinesPerFile: number
+    maxTotalLines: number
   }
   files: PatchContextFile[]
 }
