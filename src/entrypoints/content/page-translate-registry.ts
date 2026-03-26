@@ -10,11 +10,14 @@ import type { TextBlock } from "@/utils/dom/traversal"
 
 export type BlockState = "idle" | "queued" | "in-flight" | "translated" | "failed"
 
+export const MAX_BLOCK_RETRIES = 2
+
 export interface TrackedBlock {
   element: HTMLElement
   sourceText: string
   revision: number
   state: BlockState
+  retryCount: number
   lastTranslation?: string
 }
 
@@ -48,6 +51,12 @@ export interface BlockRegistry {
   /** Transition blocks to failed state. Rejects if revision doesn't match. Returns accepted elements. */
   markFailed(entries: Array<{ element: HTMLElement; revision: number }>): HTMLElement[]
 
+  /** Retry failed in-flight blocks: re-queue if under retry limit, else mark failed. Returns { requeued, exhausted }. */
+  markForRetry(entries: Array<{ element: HTMLElement; revision: number }>): { requeued: HTMLElement[]; exhausted: HTMLElement[] }
+
+  /** Reset retry counts on failed blocks and move them back to idle. Returns elements that were reset. */
+  resetRetryCount(elements: HTMLElement[]): HTMLElement[]
+
   /** Mark that a block's source text has changed. Increments revision, clears lastTranslation, resets state to idle. */
   markSourceChanged(element: HTMLElement, nextText: string): boolean
 
@@ -75,13 +84,16 @@ export interface BlockRegistry {
 
 export function createBlockRegistry(): BlockRegistry {
   const blocks = new Map<HTMLElement, TrackedBlock>()
+  let queuedCount = 0
+  let inFlightCount = 0
+  let translatedCount = 0
+  let failedCount = 0
 
-  function countByState(state: BlockState): number {
-    let count = 0
-    for (const block of blocks.values()) {
-      if (block.state === state) count++
-    }
-    return count
+  function decrementStateCounter(state: BlockState): void {
+    if (state === "queued") queuedCount--
+    else if (state === "in-flight") inFlightCount--
+    else if (state === "translated") translatedCount--
+    else if (state === "failed") failedCount--
   }
 
   return {
@@ -95,6 +107,7 @@ export function createBlockRegistry(): BlockRegistry {
           sourceText: tb.text,
           revision: 0,
           state: "idle",
+          retryCount: 0,
         })
         added++
       }
@@ -114,7 +127,9 @@ export function createBlockRegistry(): BlockRegistry {
         const block = blocks.get(el)
         if (!block) continue
         if (block.state !== "idle" && block.state !== "failed") continue
+        if (block.state === "failed") failedCount--
         block.state = "queued"
+        queuedCount++
       }
     },
 
@@ -124,7 +139,9 @@ export function createBlockRegistry(): BlockRegistry {
         const block = blocks.get(el)
         if (!block) continue
         if (block.state !== "queued") continue
+        queuedCount--
         block.state = "in-flight"
+        inFlightCount++
         result.push({ element: el, revision: block.revision })
       }
       return result
@@ -136,8 +153,10 @@ export function createBlockRegistry(): BlockRegistry {
         const block = blocks.get(element)
         if (!block) continue
         if (block.state !== "in-flight") continue
-        if (block.revision !== revision) continue // stale
+        if (block.revision !== revision) continue
+        inFlightCount--
         block.state = "translated"
+        translatedCount++
         block.lastTranslation = translation
         accepted.push(element)
       }
@@ -151,27 +170,69 @@ export function createBlockRegistry(): BlockRegistry {
         if (!block) continue
         if (block.state !== "in-flight") continue
         if (block.revision !== revision) continue
+        inFlightCount--
         block.state = "failed"
+        failedCount++
         accepted.push(element)
       }
       return accepted
+    },
+
+    markForRetry(entries) {
+      const requeued: HTMLElement[] = []
+      const exhausted: HTMLElement[] = []
+      for (const { element, revision } of entries) {
+        const block = blocks.get(element)
+        if (!block) continue
+        if (block.state !== "in-flight") continue
+        if (block.revision !== revision) continue
+        inFlightCount--
+        block.retryCount++
+        if (block.retryCount <= MAX_BLOCK_RETRIES) {
+          block.state = "queued"
+          queuedCount++
+          requeued.push(element)
+        } else {
+          block.state = "failed"
+          failedCount++
+          exhausted.push(element)
+        }
+      }
+      return { requeued, exhausted }
+    },
+
+    resetRetryCount(elements) {
+      const reset: HTMLElement[] = []
+      for (const el of elements) {
+        const block = blocks.get(el)
+        if (!block) continue
+        if (block.state !== "failed") continue
+        failedCount--
+        block.retryCount = 0
+        block.state = "idle"
+        reset.push(el)
+      }
+      return reset
     },
 
     markSourceChanged(element, nextText) {
       const block = blocks.get(element)
       if (!block) return false
       if (block.sourceText === nextText) return false
+      decrementStateCounter(block.state)
       block.sourceText = nextText
       block.revision++
       block.lastTranslation = undefined
+      block.retryCount = 0
       block.state = "idle"
       return true
     },
 
     removeDisconnected() {
       const removed: HTMLElement[] = []
-      for (const [el] of blocks) {
+      for (const [el, block] of blocks) {
         if (!el.isConnected) {
+          decrementStateCounter(block.state)
           blocks.delete(el)
           removed.push(el)
         }
@@ -182,7 +243,9 @@ export function createBlockRegistry(): BlockRegistry {
     removeElements(elements) {
       const removed: HTMLElement[] = []
       for (const element of elements) {
-        if (!blocks.has(element)) continue
+        const block = blocks.get(element)
+        if (!block) continue
+        decrementStateCounter(block.state)
         blocks.delete(element)
         removed.push(element)
       }
@@ -204,10 +267,10 @@ export function createBlockRegistry(): BlockRegistry {
     getSnapshot() {
       return {
         totalBlocks: blocks.size,
-        queuedBlocks: countByState("queued"),
-        inFlightBlocks: countByState("in-flight"),
-        translatedBlocks: countByState("translated"),
-        failedBlocks: countByState("failed"),
+        queuedBlocks: queuedCount,
+        inFlightBlocks: inFlightCount,
+        translatedBlocks: translatedCount,
+        failedBlocks: failedCount,
       }
     },
 
@@ -217,6 +280,10 @@ export function createBlockRegistry(): BlockRegistry {
 
     clear() {
       blocks.clear()
+      queuedCount = 0
+      inFlightCount = 0
+      translatedCount = 0
+      failedCount = 0
     },
   }
 }

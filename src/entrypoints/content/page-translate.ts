@@ -5,6 +5,7 @@
 import {
   readConfig,
 } from "@/utils/storage/config"
+import { recordPageTranslation } from "@/utils/storage/reading-history"
 import {
   clearLoading,
   removeAllTranslations,
@@ -40,7 +41,7 @@ import {
   setTranslationState,
   subscribeTranslationState,
 } from "./translation-state"
-import { getDocumentTranslationContext } from "./translation-context"
+import { disconnectInlineSummaryObserver, getDocumentTranslationContext } from "./translation-context"
 import { createBlockRegistry, type BlockRegistry } from "./page-translate-registry"
 
 const INITIAL_VIEWPORT_MARGIN = 200
@@ -59,6 +60,8 @@ interface TranslationSession {
   registry: BlockRegistry
   queue: HTMLElement[]
   contentScope: ResolvedSiteTranslationSettings["contentScope"]
+  privacyMode: boolean
+  siteRules?: { selectors?: string[]; excludeSelectors?: string[]; paragraphMinLength?: number }
   intersectionObserver: IntersectionObserver | null
   mutationObserver: MutationObserver | null
   drainPromise: Promise<void> | null
@@ -161,7 +164,21 @@ function stopSession(
   }
 
   publishSessionState(session, "stopping", error)
+
+  // Record reading history if at least 1 block was translated
+  const progress = getSessionProgress(session)
+  if (progress.translatedBlocks > 0) {
+    void recordPageTranslation({
+      url: window.location.href,
+      hostname: window.location.hostname,
+      title: document.title || window.location.hostname,
+      wordsTranslated: progress.translatedBlocks,
+      visitedAt: Date.now(),
+    })
+  }
+
   cleanupSession(session)
+  disconnectInlineSummaryObserver()
   currentSession = null
   removeAllTranslations()
 
@@ -187,9 +204,37 @@ function enqueueBlock(session: TranslationSession, element: HTMLElement) {
   session.queue.push(element)
 }
 
+function applySiteRuleFilters(blocks: TextBlock[], siteRules: {
+  selectors?: string[]
+  excludeSelectors?: string[]
+  paragraphMinLength?: number
+}): TextBlock[] {
+  const { selectors, excludeSelectors, paragraphMinLength } = siteRules
+  let filtered = blocks
+
+  if (selectors && selectors.length > 0) {
+    filtered = filtered.filter((b) =>
+      selectors.some((sel: string) => b.element.closest(sel) !== null),
+    )
+  }
+
+  if (excludeSelectors && excludeSelectors.length > 0) {
+    filtered = filtered.filter((b) =>
+      !excludeSelectors.some((sel: string) => b.element.closest(sel) !== null),
+    )
+  }
+
+  if (paragraphMinLength && paragraphMinLength > 0) {
+    filtered = filtered.filter((b) => b.text.length >= paragraphMinLength)
+  }
+
+  return filtered
+}
+
 function registerBlocks(session: TranslationSession, blocks: TextBlock[]) {
+  const filtered = applySiteRuleFilters(blocks, session.siteRules ?? {})
   const prevSize = session.registry.size
-  session.registry.registerBlocks(blocks)
+  session.registry.registerBlocks(filtered)
   const addedCount = session.registry.size - prevSize
 
   blocks.forEach((block) => {
@@ -251,7 +296,7 @@ function refreshSessionContext(
   blocks: TextBlock[],
   summary: string | null = buildContentSummary(blocks),
 ) {
-  session.context = buildPageContext(blocks, session.site.hostname, summary)
+  session.context = buildPageContext(blocks, session.site.hostname, summary, session.privacyMode)
 }
 
 function applyExtractionPlan(
@@ -318,15 +363,22 @@ function scheduleDrain(session: TranslationSession) {
             context: session.context,
           })
         } catch (error) {
-          const accepted = session.registry.markFailed(
+          const { requeued, exhausted } = session.registry.markForRetry(
             inFlightInfo.map(({ element, revision }) => ({ element, revision })),
           )
 
-          accepted.forEach((element) => {
+          exhausted.forEach((element) => {
             clearLoading(element)
           })
 
-          if (accepted.length > 0) {
+          // Re-add requeued blocks to the session queue
+          if (requeued.length > 0) {
+            session.queue.push(...requeued)
+          }
+
+          // Check if everything is done (no more work)
+          const snapshot = session.registry.getSnapshot()
+          if (snapshot.queuedBlocks === 0 && snapshot.inFlightBlocks === 0 && exhausted.length > 0) {
             stopSession({
               code: "UNKNOWN",
               message: error instanceof Error ? error.message : "Translation failed.",
@@ -343,15 +395,20 @@ function scheduleDrain(session: TranslationSession) {
         }
 
         if (!result.ok) {
-          const accepted = session.registry.markFailed(
+          const { requeued, exhausted } = session.registry.markForRetry(
             inFlightInfo.map(({ element, revision }) => ({ element, revision })),
           )
 
-          accepted.forEach((element) => {
+          exhausted.forEach((element) => {
             clearLoading(element)
           })
 
-          if (accepted.length > 0) {
+          if (requeued.length > 0) {
+            session.queue.push(...requeued)
+          }
+
+          const snapshot = session.registry.getSnapshot()
+          if (snapshot.queuedBlocks === 0 && snapshot.inFlightBlocks === 0 && exhausted.length > 0) {
             stopSession(result.error, { preserveProgress: true })
             return
           }
@@ -568,10 +625,16 @@ function createMutationObserver(session: TranslationSession): MutationObserver |
 }
 
 function buildPageContext(
-  blocks: TextBlock[],
+  _blocks: TextBlock[],
   hostname: string | null,
   summary: string | null,
+  privacyMode = false,
 ): TranslationRequestContext {
+  if (privacyMode) {
+    return {
+      ...(hostname ? { hostname } : {}),
+    }
+  }
   const contentSummary = summary ?? undefined
   return {
     ...getDocumentTranslationContext(),
@@ -583,7 +646,7 @@ function buildPageContext(
 async function resolveStartSettings(overrides: TranslationOverrides = {}) {
   const config = await readConfig()
   const resolved = resolveSiteTranslationSettings(config, window.location.hostname, overrides)
-  return { config, resolved }
+  return { config, resolved, privacyMode: config.privacyMode ?? false }
 }
 
 export function getPageTranslationState(): TranslationSnapshot {
@@ -605,7 +668,7 @@ export async function startPageTranslation(
     stopSession(null, { invalidatePendingStart: false })
   }
 
-  const { resolved } = await resolveStartSettings(overrides)
+  const { resolved, privacyMode } = await resolveStartSettings(overrides)
   if (startToken !== sessionLifecycleToken) {
     return getTranslationState()
   }
@@ -632,12 +695,18 @@ export async function startPageTranslation(
     targetLang: resolved.targetLang,
     presentation: resolved.presentation,
     site: siteSnapshot,
-    context: buildPageContext(blocks, siteSnapshot.hostname, summary),
+    context: buildPageContext(blocks, siteSnapshot.hostname, summary, privacyMode),
     root,
     effectiveContentScope: plan.scope,
     registry,
     queue: [],
     contentScope: resolved.contentScope,
+    privacyMode,
+    siteRules: {
+      selectors: resolved.selectors,
+      excludeSelectors: resolved.excludeSelectors,
+      paragraphMinLength: resolved.paragraphMinLength,
+    },
     intersectionObserver: null,
     mutationObserver: null,
     drainPromise: null,
@@ -670,6 +739,22 @@ export async function startPageTranslation(
 
 export function stopPageTranslation(): TranslationSnapshot {
   return stopSession()
+}
+
+export function retryFailedBlocks(): void {
+  if (!currentSession) return
+  const failedElements = currentSession.registry.getElementsByState("failed")
+  if (failedElements.length === 0) return
+
+  const reset = currentSession.registry.resetRetryCount(failedElements)
+  if (reset.length === 0) return
+
+  currentSession.registry.markQueued(reset)
+  currentSession.queue.push(...reset)
+  publishSessionState(currentSession, "running")
+  // Clear drainPromise so scheduleDrain will start a new loop
+  currentSession.drainPromise = null
+  scheduleDrain(currentSession)
 }
 
 export async function togglePageTranslation(

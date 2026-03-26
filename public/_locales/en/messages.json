@@ -1,0 +1,95 @@
+{
+  "extName": {
+    "message": "Astra"
+  },
+  "extDescription": {
+    "message": "AI language learning assistant"
+  },
+  "settingsTitle": {
+    "message": "Global Settings"
+  },
+  "providerLabel": {
+    "message": "Provider"
+  },
+  "apiKeyLabel": {
+    "message": "API Key"
+  },
+  "baseUrlLabel": {
+    "message": "Base URL (optional)"
+  },
+  "relayUrlLabel": {
+    "message": "Astra Relay URL (managed mode, optional)"
+  },
+  "modelLabel": {
+    "message": "Model"
+  },
+  "targetLangLabel": {
+    "message": "Target Language"
+  },
+  "hoverTriggerLabel": {
+    "message": "Hover Translation Trigger"
+  },
+  "hoverTriggerAlt": {
+    "message": "Alt + Hover"
+  },
+  "hoverTriggerAlways": {
+    "message": "Always on Hover"
+  },
+  "hoverTriggerDisabled": {
+    "message": "Disabled"
+  },
+  "translationModeLabel": {
+    "message": "Translation Mode"
+  },
+  "modeBilingual": {
+    "message": "Bilingual"
+  },
+  "modeTranslationOnly": {
+    "message": "Translation Only"
+  },
+  "translationThemeLabel": {
+    "message": "Translation Theme"
+  },
+  "themeDefault": {
+    "message": "Default"
+  },
+  "themeUnderline": {
+    "message": "Underline"
+  },
+  "themeHighlight": {
+    "message": "Highlight"
+  },
+  "scopeLabel": {
+    "message": "Translation Scope"
+  },
+  "scopePage": {
+    "message": "Full Page"
+  },
+  "scopeArticle": {
+    "message": "Article Area"
+  },
+  "actionTranslate": {
+    "message": "Translate"
+  },
+  "actionExplain": {
+    "message": "Explain"
+  },
+  "actionCopy": {
+    "message": "Copy"
+  },
+  "actionSave": {
+    "message": "Save"
+  },
+  "actionSaved": {
+    "message": "✓ Saved"
+  },
+  "actionSpeak": {
+    "message": "Speak"
+  },
+  "inputTranslateButton": {
+    "message": "Tr"
+  },
+  "translateButton": {
+    "message": "Tr"
+  }
+}

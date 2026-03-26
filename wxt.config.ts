@@ -7,18 +7,29 @@ export default defineConfig({
   modules: ["@wxt-dev/module-react"],
   manifestVersion: 3,
   manifest: ({ browser }) => ({
-    name: "Astra",
-    description: "AI-powered bilingual web translation",
+    name: "__MSG_extName__",
+    description: "__MSG_extDescription__",
+    default_locale: "zh_CN",
     permissions: [
       "storage",
       "tabs",
       "activeTab",
+      "webNavigation",
+      "contextMenus",
     ],
     host_permissions: ["*://*/*"],
     commands: {
       toggleTranslate: {
         suggested_key: { default: "Alt+A", mac: "Alt+A" },
         description: "Toggle page translation",
+      },
+      translatePage: {
+        suggested_key: { default: "Alt+W", mac: "Alt+W" },
+        description: "Translate entire page",
+      },
+      toggleHover: {
+        suggested_key: { default: "Alt+H", mac: "Alt+H" },
+        description: "Cycle hover translation mode",
       },
     },
     ...(browser === "safari" && {

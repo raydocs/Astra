@@ -1,4 +1,10 @@
+let topFrameOverride: boolean | null = null
+
 export function isTopFrame(): boolean {
+  if (topFrameOverride !== null) {
+    return topFrameOverride
+  }
+
   try {
     return window === window.top
   } catch {
@@ -15,4 +21,8 @@ export function getFrameId(): string {
   } catch {
     return `frame-${Math.random().toString(36).slice(2, 10)}`
   }
+}
+
+export function __setTopFrameOverrideForTests(value: boolean | null): void {
+  topFrameOverride = value
 }

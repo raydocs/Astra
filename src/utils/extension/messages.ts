@@ -55,7 +55,36 @@ async function sendContentCommand(
   command: ContentCommand,
 ): Promise<ContentCommandResponse> {
   try {
-    const response = await browser.tabs.sendMessage(tabId, command) as unknown
+    const response = await browser.runtime.sendMessage({
+      type: "runtime/tab-command",
+      tabId,
+      command,
+    }) as unknown
+
+    if (!isContentCommandResponse(response)) {
+      return {
+        ok: false,
+        error: createTranslationError(
+          "UNKNOWN",
+          "Received an unexpected response from the page translator.",
+        ),
+      }
+    }
+
+    return response
+  } catch (error) {
+    return { ok: false, error: mapContentMessagingError(error) }
+  }
+}
+
+async function sendCurrentTabCommand(
+  command: ContentCommand,
+): Promise<ContentCommandResponse> {
+  try {
+    const response = await browser.runtime.sendMessage({
+      type: "runtime/current-tab-command",
+      command,
+    }) as unknown
 
     if (!isContentCommandResponse(response)) {
       return {
@@ -144,6 +173,15 @@ export async function toggleTabTranslation(
   overrides?: ContentTranslationOverrides,
 ): Promise<ContentCommandResponse> {
   return sendContentCommand(tabId, {
+    type: "content/toggle-translation",
+    ...(overrides && Object.keys(overrides).length > 0 ? { payload: overrides } : {}),
+  })
+}
+
+export async function toggleCurrentTabTranslation(
+  overrides?: ContentTranslationOverrides,
+): Promise<ContentCommandResponse> {
+  return sendCurrentTabCommand({
     type: "content/toggle-translation",
     ...(overrides && Object.keys(overrides).length > 0 ? { payload: overrides } : {}),
   })

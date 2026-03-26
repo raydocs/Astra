@@ -2,6 +2,7 @@ import { useState, useEffect, useRef, useCallback } from "react"
 import { createRoot } from "react-dom/client"
 import { readConfig } from "@/utils/storage/config"
 import { resolveSiteTranslationSettings } from "@/types/config"
+import { isSensitiveInput } from "@/utils/privacy"
 import { runInlineAction } from "../inline-actions"
 
 const HOST_ID = "astra-input-translate-host"
@@ -12,6 +13,7 @@ interface InputOverlayState {
   top: number
   left: number
   translating: boolean
+  error: string | null
 }
 
 function InputTranslateApp() {
@@ -20,8 +22,10 @@ function InputTranslateApp() {
     top: 0,
     left: 0,
     translating: false,
+    error: null,
   })
   const activeInput = useRef<HTMLInputElement | HTMLTextAreaElement | null>(null)
+  const translatingRef = useRef(false)
 
   useEffect(() => {
     const handleFocusIn = (event: FocusEvent) => {
@@ -29,20 +33,22 @@ function InputTranslateApp() {
       if (!(target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement)) return
       // Skip password, hidden, and non-text inputs
       if (target instanceof HTMLInputElement && !["text", "search", "url", "email", ""].includes(target.type)) return
+      if (isSensitiveInput(target)) return
+
+      activeInput.current = target
 
       const value = target.value.trim()
       if (!value) {
         setOverlay(prev => ({ ...prev, visible: false }))
         return
       }
-
-      activeInput.current = target
       const rect = target.getBoundingClientRect()
       setOverlay({
         visible: true,
         top: rect.top - 30,
         left: rect.right - 60,
         translating: false,
+        error: null,
       })
     }
 
@@ -89,17 +95,28 @@ function InputTranslateApp() {
 
   const handleTranslate = useCallback(async () => {
     const input = activeInput.current
-    if (!input || overlay.translating) return
+    if (!input || translatingRef.current) return
 
     const text = input.value.trim()
     if (!text) return
 
-    setOverlay(prev => ({ ...prev, translating: true }))
+    translatingRef.current = true
+    setOverlay(prev => ({ ...prev, translating: true, error: null }))
 
     try {
       const config = await readConfig()
+      if (config.inputTranslation === "disabled") {
+        setOverlay(prev => ({ ...prev, error: "Input translation disabled" }))
+        setTimeout(() => setOverlay(prev => ({ ...prev, error: null })), 2000)
+        return
+      }
+
       const resolved = resolveSiteTranslationSettings(config, window.location.hostname)
-      if (!resolved.enabled) return
+      if (!resolved.enabled) {
+        setOverlay(prev => ({ ...prev, error: "Astra disabled on this site" }))
+        setTimeout(() => setOverlay(prev => ({ ...prev, error: null })), 2000)
+        return
+      }
 
       const result = await runInlineAction({
         text,
@@ -115,11 +132,16 @@ function InputTranslateApp() {
         )?.set
         nativeInputValueSetter?.call(input, result.text)
         input.dispatchEvent(new Event("input", { bubbles: true }))
+      } else {
+        const msg = result.message || "Translation failed"
+        setOverlay(prev => ({ ...prev, error: msg }))
+        setTimeout(() => setOverlay(prev => ({ ...prev, error: null })), 3000)
       }
     } finally {
+      translatingRef.current = false
       setOverlay(prev => ({ ...prev, translating: false }))
     }
-  }, [overlay.translating])
+  }, [])
 
   if (!overlay.visible) return null
 
@@ -131,7 +153,7 @@ function InputTranslateApp() {
         top: overlay.top,
         left: overlay.left,
         zIndex: 2147483644,
-        background: BRAND_COLOR,
+        background: overlay.error ? "#f59e0b" : BRAND_COLOR,
         color: "#fff",
         border: "none",
         borderRadius: 4,
@@ -144,7 +166,7 @@ function InputTranslateApp() {
       }}
       onClick={() => void handleTranslate()}
     >
-      {overlay.translating ? "\u22EF" : "\u8BD1"}
+      {overlay.error ? "\u26A0" : overlay.translating ? "\u22EF" : "\u8BD1"}
     </button>
   )
 }

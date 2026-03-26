@@ -34,6 +34,17 @@ describe("SelectionToolbar interaction suppression", () => {
     document.getElementById(HOST_ID)?.remove()
     document.body.innerHTML = `<main><p id="target">Hello world</p></main>`
 
+    Object.defineProperty(globalThis, "speechSynthesis", {
+      value: { speak: vi.fn(), cancel: vi.fn(), speaking: false },
+      writable: true,
+      configurable: true,
+    })
+    Object.defineProperty(globalThis, "SpeechSynthesisUtterance", {
+      value: vi.fn(),
+      writable: true,
+      configurable: true,
+    })
+
     vi.spyOn(document, "addEventListener").mockImplementation(((type: string | symbol, listener: EventListenerOrEventListenerObject) => {
       documentListeners[String(type)] = listener
     }) as typeof document.addEventListener)

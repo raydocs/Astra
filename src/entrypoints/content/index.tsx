@@ -3,12 +3,19 @@ import {
   getPageTranslationState,
   startPageTranslation,
   stopPageTranslation,
-  togglePageTranslation,
 } from "./page-translate"
 import { mountFloatBall } from "./components/FloatBall"
 import { mountSelectionToolbar } from "./components/SelectionToolbar"
 import { mountHoverTranslate } from "./components/HoverTranslate"
 import { mountInputTranslate } from "./components/InputTranslate"
+import { translatePageSubtitles, removeTranslatedSubtitles } from "./subtitle-translate"
+import {
+  isVideoPage,
+  startVideoSubtitleTranslation,
+  stopVideoSubtitleTranslation,
+  setupVideoNavigationHandler,
+} from "./video-platforms"
+import { detectAndShowPdfBanner } from "./pdf-detect"
 import { isTopFrame } from "./frame-context"
 import {
   isContentCommand,
@@ -21,7 +28,30 @@ import {
   type TranslationSnapshot,
 } from "@/types/translation"
 import { readConfig } from "@/utils/storage/config"
-import { resolveSiteTranslationSettings } from "@/types/config"
+import { hasResolvedProviderAccess, resolveSiteTranslationSettings } from "@/types/config"
+import { readAstraSession } from "@/utils/storage/auth"
+
+let siteUiMounted = false
+let inputUiMounted = false
+let stylesInjected = false
+let autoTranslateSuppressedForPage = false
+let lastAutomationState = {
+  enabled: false,
+  alwaysTranslate: false,
+  providerReady: false,
+}
+
+export function __resetContentEntrypointForTests() {
+  siteUiMounted = false
+  inputUiMounted = false
+  stylesInjected = false
+  autoTranslateSuppressedForPage = false
+  lastAutomationState = {
+    enabled: false,
+    alwaysTranslate: false,
+    providerReady: false,
+  }
+}
 
 declare global {
   interface Window {
@@ -36,8 +66,6 @@ export default defineContentScript({
   async main() {
     if (window.__ASTRA_INJECTED__) return
     window.__ASTRA_INJECTED__ = true
-
-    console.log("[Astra] Content script loaded on:", window.location.href)
 
     browser.runtime.onMessage.addListener((message, _sender, sendResponse) => {
       if (!isContentCommand(message)) return
@@ -58,29 +86,101 @@ export default defineContentScript({
       return true
     })
 
-    const config = await readConfig()
-    const siteSettings = resolveSiteTranslationSettings(config, window.location.hostname)
+    browser.storage.onChanged?.addListener((_changes, areaName) => {
+      if (areaName !== "local") return
+      void reconcileSiteAutomation()
+    })
 
-    if (!siteSettings.enabled) {
-      return
-    }
+    const [config, session] = await Promise.all([
+      readConfig(),
+      readAstraSession(),
+    ])
+    await reconcileSiteAutomation(config, session)
 
-    injectStyles()
-
-    // Only mount floating UI components in the top frame to avoid duplicates
+    // PDF auto-detect: show banner for PDF pages
     if (isTopFrame()) {
-      mountFloatBall()
-      mountSelectionToolbar()
-      mountHoverTranslate()
-      mountInputTranslate()
-    }
-
-    // Page translation runs in all frames (top + child)
-    if (siteSettings.alwaysTranslate && config.provider.apiKey.trim().length > 0) {
-      void startPageTranslation()
+      detectAndShowPdfBanner()
     }
   },
 })
+
+async function reconcileSiteAutomation(
+  configOverride?: Awaited<ReturnType<typeof readConfig>>,
+  sessionOverride?: Awaited<ReturnType<typeof readAstraSession>>,
+) {
+  const [config, session] = configOverride && sessionOverride !== undefined
+    ? [configOverride, sessionOverride]
+    : await Promise.all([
+        configOverride ? Promise.resolve(configOverride) : readConfig(),
+        sessionOverride !== undefined ? Promise.resolve(sessionOverride) : readAstraSession(),
+      ])
+
+  const siteSettings = resolveSiteTranslationSettings(config, window.location.hostname)
+  const providerReady = hasResolvedProviderAccess(config.provider, session)
+  const currentState = getPageTranslationState()
+  const automationEligible = siteSettings.enabled && siteSettings.alwaysTranslate && providerReady
+  const previousAutomationEligible = lastAutomationState.enabled
+    && lastAutomationState.alwaysTranslate
+    && lastAutomationState.providerReady
+
+  if (automationEligible && !previousAutomationEligible) {
+    autoTranslateSuppressedForPage = false
+  }
+
+  if (siteSettings.enabled) {
+    ensureSiteUiMounted(config)
+  }
+
+  if (!siteSettings.enabled || !providerReady) {
+    if (currentState.phase !== "idle") {
+      stopPageTranslation()
+      removeTranslatedSubtitles()
+      if (isVideoPage()) {
+        stopVideoSubtitleTranslation()
+      }
+    }
+    lastAutomationState = {
+      enabled: siteSettings.enabled,
+      alwaysTranslate: siteSettings.alwaysTranslate,
+      providerReady,
+    }
+    return
+  }
+
+  if (siteSettings.alwaysTranslate && currentState.phase === "idle" && !autoTranslateSuppressedForPage) {
+    await startPageTranslation()
+    if (isVideoPage()) {
+      void startVideoSubtitleTranslation()
+    }
+  }
+
+  lastAutomationState = {
+    enabled: siteSettings.enabled,
+    alwaysTranslate: siteSettings.alwaysTranslate,
+    providerReady,
+  }
+}
+
+function ensureSiteUiMounted(config: Awaited<ReturnType<typeof readConfig>>) {
+  injectStyles()
+
+  if (!siteUiMounted) {
+    mountSelectionToolbar()
+    mountHoverTranslate()
+
+    if (isTopFrame()) {
+      mountFloatBall()
+      setupVideoNavigationHandler()
+    }
+
+    siteUiMounted = true
+  }
+
+  if (!inputUiMounted && config.inputTranslation !== "disabled") {
+    mountInputTranslate()
+    inputUiMounted = true
+  }
+}
 
 function mergeIdleStateForSite(snapshot: TranslationSnapshot, hostname: string) {
   if (snapshot.phase !== "idle") return snapshot
@@ -109,6 +209,7 @@ async function handleContentCommand(
       return { ok: true, state: currentState }
 
     case "content/start-translation":
+      autoTranslateSuppressedForPage = false
       if (!siteSettings.enabled) {
         return {
           ok: false,
@@ -121,12 +222,17 @@ async function handleContentCommand(
           },
         }
       }
-      return {
-        ok: true,
-        state: await startPageTranslation(message.payload),
+      {
+        const state = await startPageTranslation(message.payload)
+        void translatePageSubtitles()
+        if (isVideoPage()) void startVideoSubtitleTranslation()
+        return { ok: true, state }
       }
 
     case "content/stop-translation":
+      autoTranslateSuppressedForPage = true
+      removeTranslatedSubtitles()
+      stopVideoSubtitleTranslation()
       return { ok: true, state: stopPageTranslation() }
 
     case "content/toggle-translation":
@@ -142,15 +248,34 @@ async function handleContentCommand(
           },
         }
       }
+
+      if (currentState.phase === "idle") {
+        autoTranslateSuppressedForPage = false
+        const state = await startPageTranslation(message.payload)
+        void translatePageSubtitles()
+        if (isVideoPage()) void startVideoSubtitleTranslation()
+        return {
+          ok: true,
+          state,
+        }
+      }
+
+      autoTranslateSuppressedForPage = true
+      removeTranslatedSubtitles()
+      stopVideoSubtitleTranslation()
       return {
         ok: true,
-        state: await togglePageTranslation(message.payload),
+        state: stopPageTranslation(),
       }
   }
 }
 
 function injectStyles() {
+  if (stylesInjected) return
+  stylesInjected = true
+
   const style = document.createElement("style")
+  style.dataset.astraContentStyles = "1"
   style.textContent = `
     .astra-translation {
       display: block;

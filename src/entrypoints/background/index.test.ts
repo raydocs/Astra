@@ -4,14 +4,24 @@ import { AstraError } from "@/types/translation"
 import { createMockBrowser, setMockBrowser } from "../../../test/utils/mockBrowser"
 
 const readConfigMock = vi.fn()
+const readAstraSessionMock = vi.fn()
 const translateWithProviderMock = vi.fn()
+const executeTabCommandMock = vi.fn()
 
 vi.mock("@/utils/storage/config", () => ({
   readConfig: readConfigMock,
 }))
 
+vi.mock("@/utils/storage/auth", () => ({
+  readAstraSession: readAstraSessionMock,
+}))
+
 vi.mock("@/utils/providers/router", () => ({
   translateWithProvider: translateWithProviderMock,
+}))
+
+vi.mock("./frame-coordinator", () => ({
+  executeTabCommand: executeTabCommandMock,
 }))
 
 function getMockBrowser(): ReturnType<typeof createMockBrowser> {
@@ -22,8 +32,12 @@ function getMockBrowser(): ReturnType<typeof createMockBrowser> {
 describe("background runtime translation routing", () => {
   beforeEach(() => {
     setMockBrowser(createMockBrowser())
+    vi.resetModules()
     readConfigMock.mockReset()
+    readAstraSessionMock.mockReset()
     translateWithProviderMock.mockReset()
+    executeTabCommandMock.mockReset()
+    readAstraSessionMock.mockResolvedValue(null)
   })
 
   it("returns a success response for translate batch requests", async () => {
@@ -33,9 +47,18 @@ describe("background runtime translation routing", () => {
     readConfigMock.mockResolvedValue({
       provider: {
         id: "openai",
-        apiKey: "sk-test",
-        model: "gpt-4o-mini",
+        relayBaseURL: "https://astra.example/v1",
+        model: "gpt-5.4-nano",
       },
+    })
+    readAstraSessionMock.mockResolvedValue({
+      version: 1,
+      sessionToken: "astra-session",
+      relayBaseURL: "https://astra.example/v1",
+      email: "user@example.com",
+      plan: "pro",
+      providerEntitlements: ["openai", "gemini"],
+      expiresAt: null,
     })
     translateWithProviderMock.mockResolvedValue(["你好"])
 
@@ -62,8 +85,9 @@ describe("background runtime translation routing", () => {
     expect(translateWithProviderMock).toHaveBeenCalledWith(
       {
         id: "openai",
-        apiKey: "sk-test",
-        model: "gpt-4o-mini",
+        accessToken: "astra-session",
+        relayBaseURL: "https://astra.example/v1",
+        model: "gpt-5.4-nano",
       },
       {
         texts: ["hello"],
@@ -85,8 +109,8 @@ describe("background runtime translation routing", () => {
     readConfigMock.mockResolvedValue({
       provider: {
         id: "openai",
-        apiKey: "",
-        model: "gpt-4o-mini",
+        relayBaseURL: "https://astra.example/v1",
+        model: "gpt-5.4-nano",
       },
     })
     translateWithProviderMock.mockRejectedValue(
@@ -110,13 +134,55 @@ describe("background runtime translation routing", () => {
 
     await Promise.resolve()
     await Promise.resolve()
+    await Promise.resolve()
 
     expect(sendResponse).toHaveBeenCalledWith({
       type: "runtime/translate-batch:error",
       error: {
-        code: "CONFIG_MISSING",
+        code: "UNKNOWN",
         message: "No API key configured.",
       },
     })
+  })
+
+  it("routes current-tab commands through the sender tab id", async () => {
+    const browser = getMockBrowser()
+    const sendResponse = vi.fn()
+    executeTabCommandMock.mockResolvedValue({
+      ok: true,
+      state: {
+        phase: "idle",
+        sessionId: 1,
+        targetLang: "zh-CN",
+        lastError: null,
+        progress: {
+          totalBlocks: 0,
+          queuedBlocks: 0,
+          inFlightBlocks: 0,
+          translatedBlocks: 0,
+          failedBlocks: 0,
+        },
+        presentation: { mode: "bilingual", theme: "default" },
+        site: { hostname: "example.com", enabled: true, alwaysTranslate: false },
+      },
+    })
+
+    const background = (await import("./index")).default
+    background.main()
+
+    await browser.__emitRuntimeMessage(
+      {
+        type: "runtime/current-tab-command",
+        command: { type: "content/toggle-translation" },
+      },
+      { tab: { id: 42 } },
+      sendResponse,
+    )
+
+    await Promise.resolve()
+    await Promise.resolve()
+
+    expect(executeTabCommandMock).toHaveBeenCalledWith(42, { type: "content/toggle-translation" })
+    expect(sendResponse).toHaveBeenCalled()
   })
 })

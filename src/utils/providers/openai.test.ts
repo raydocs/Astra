@@ -60,4 +60,39 @@ describe("openai provider helpers", () => {
       parseTranslationsResponse("not json", 1)
     }).toThrow(AstraError)
   })
+
+  it("rejects empty translations array", () => {
+    expect(() => {
+      parseTranslationsResponse('{"translations":[]}', 2)
+    }).toThrow(AstraError)
+  })
+
+  it("rejects response with wrong schema shape", () => {
+    expect(() => {
+      parseTranslationsResponse('{"results":["hello"]}', 1)
+    }).toThrow(AstraError)
+  })
+
+  it("rejects double-fenced responses as invalid JSON", () => {
+    const raw = "```json\n```json\n{\"translations\":[\"test\"]}\n```\n```"
+    expect(() => parseTranslationsResponse(raw, 1)).toThrow(AstraError)
+  })
+
+  it("strips whitespace from translation entries", () => {
+    const result = parseTranslationsResponse(
+      '{"translations":["  你好世界  ", " Bonjour "]}',
+      2,
+    )
+    expect(result).toEqual(["你好世界", "Bonjour"])
+  })
+
+  it("preserves AstraError code PROVIDER_PARSE_FAILED on invalid JSON", () => {
+    try {
+      parseTranslationsResponse("{invalid", 1)
+      expect.unreachable("should have thrown")
+    } catch (error) {
+      expect(error).toBeInstanceOf(AstraError)
+      expect((error as AstraError).code).toBe("PROVIDER_PARSE_FAILED")
+    }
+  })
 })

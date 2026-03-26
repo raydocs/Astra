@@ -1,0 +1,41 @@
+<header>
+  <nav aria-label="Top navigation">
+    <a href="/docs">Docs</a>
+    <a href="/guides">Guides</a>
+    <a href="/api">API</a>
+  </nav>
+</header>
+
+<div class="docs-shell">
+  <aside class="sidebar" aria-label="Documentation navigation">
+    <h2>On this page</h2>
+    <ul>
+      <li><a href="#overview">Overview</a></li>
+      <li><a href="#routing">Routing</a></li>
+      <li><a href="#streaming">Streaming</a></li>
+      <li><a href="#errors">Errors</a></li>
+    </ul>
+  </aside>
+
+  <main>
+    <article id="docs-article" class="article-content">
+      <h1>Contextual translation pipeline</h1>
+      <p>
+        Astra processes each visible text block through a translation pipeline that preserves
+        local formatting while attaching contextual metadata for better model disambiguation.
+      </p>
+      <p>
+        The content script collects stable blocks, batches them conservatively, and sends each
+        batch through a background runtime bridge so provider secrets never leave extension storage.
+      </p>
+      <p>
+        Documentation pages often contain sidebars and utility chrome, so the extraction layer
+        must prefer longform instructional content over navigation labels or page furniture.
+      </p>
+      <p>
+        When a user asks for an inline explanation, Astra should reuse page summary context to
+        clarify terminology, pronouns, and the tone of the surrounding article.
+      </p>
+    </article>
+  </main>
+</div>

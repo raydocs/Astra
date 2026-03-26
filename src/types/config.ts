@@ -1,19 +1,26 @@
 import { z } from "zod"
+import type { AstraSession } from "./auth"
 
-export const ProviderIdSchema = z.literal("openai")
+export const ProviderIdSchema = z.enum(["openai", "gemini"])
 
 export const TranslationModeSchema = z.enum(["bilingual", "translation-only"])
 export const TranslationThemeSchema = z.enum(["default", "underline", "highlight"])
 export const HoverTriggerSchema = z.enum(["alt", "always", "disabled"])
 export const ContentScopeSchema = z.enum(["page", "article"])
+export const InputTranslationSchema = z.enum(["enabled", "disabled"])
+export const LanguageLevelSchema = z.enum(["beginner", "intermediate", "advanced"])
 
 export const PresentationSettingsSchema = z.object({
   mode: TranslationModeSchema.default("bilingual"),
   theme: TranslationThemeSchema.default("default"),
+  fontSize: z.number().min(0.5).max(2.0).default(0.92),
+  translationColor: z.string().regex(/^#[0-9a-fA-F]{3,8}$|^rgb(a)?\(|^hsl(a)?\(/).default("#64748b"),
 })
 
 export const PresentationSettingsInputSchema = z.object({
   mode: TranslationModeSchema.optional(),
+  fontSize: z.number().min(0.5).max(2.0).optional(),
+  translationColor: z.string().optional(),
   theme: TranslationThemeSchema.optional(),
 })
 
@@ -24,6 +31,12 @@ export const SiteConfigSchema = z.object({
   hoverTrigger: HoverTriggerSchema.optional(),
   contentScope: ContentScopeSchema.optional(),
   presentation: PresentationSettingsInputSchema.optional(),
+  /** CSS selectors limiting translation scope to matching elements. */
+  selectors: z.array(z.string()).optional(),
+  /** CSS selectors for elements to exclude from translation. */
+  excludeSelectors: z.array(z.string()).optional(),
+  /** Minimum text length for a block to be translated. */
+  paragraphMinLength: z.number().int().min(0).optional(),
 })
 
 export const SiteConfigInputSchema = z.object({
@@ -33,28 +46,52 @@ export const SiteConfigInputSchema = z.object({
   hoverTrigger: HoverTriggerSchema.optional(),
   contentScope: ContentScopeSchema.optional(),
   presentation: PresentationSettingsInputSchema.optional(),
+  selectors: z.array(z.string()).optional(),
+  excludeSelectors: z.array(z.string()).optional(),
+  paragraphMinLength: z.number().int().min(0).optional(),
 })
 
-export const OpenAIProviderConfigSchema = z.object({
-  id: ProviderIdSchema.default("openai"),
+const ManagedProviderBaseSchema = z.object({
+  accessToken: z.string().default(""),
   apiKey: z.string().default(""),
-  baseURL: z.string().optional(),
-  model: z.string().trim().min(1).default("gpt-4o-mini"),
+  relayBaseURL: z.string().url().optional(),
+  model: z.string().trim().min(1),
 })
+
+export const OpenAIProviderConfigSchema = ManagedProviderBaseSchema.extend({
+  id: z.literal("openai").default("openai"),
+  model: z.string().trim().min(1).default("gpt-5.4-nano"),
+})
+
+export const GeminiProviderConfigSchema = ManagedProviderBaseSchema.extend({
+  id: z.literal("gemini"),
+  model: z.string().trim().min(1).default("gemini-3.1-flash-lite-preview"),
+})
+
+export const ProviderConfigSchema = z.discriminatedUnion("id", [
+  OpenAIProviderConfigSchema,
+  GeminiProviderConfigSchema,
+])
 
 export const AstraConfigSchema = z.object({
   version: z.literal(1).default(1),
   targetLang: z.string().trim().min(1).default("zh-CN"),
   hoverTrigger: HoverTriggerSchema.default("alt"),
   contentScope: ContentScopeSchema.default("page"),
-  provider: OpenAIProviderConfigSchema.default({
+  inputTranslation: InputTranslationSchema.default("enabled"),
+  languageLevel: LanguageLevelSchema.default("intermediate"),
+  privacyMode: z.boolean().default(false),
+  provider: ProviderConfigSchema.default({
     id: "openai",
+    accessToken: "",
     apiKey: "",
-    model: "gpt-4o-mini",
+    model: "gpt-5.4-nano",
   }),
   presentation: PresentationSettingsSchema.default({
     mode: "bilingual",
     theme: "default",
+    fontSize: 0.92,
+    translationColor: "#64748b",
   }),
   sites: z.record(z.string(), SiteConfigSchema).default({}),
 })
@@ -63,9 +100,13 @@ export const AstraConfigInputSchema = z.object({
   targetLang: z.string().trim().min(1).optional(),
   hoverTrigger: HoverTriggerSchema.optional(),
   contentScope: ContentScopeSchema.optional(),
+  inputTranslation: InputTranslationSchema.optional(),
+  languageLevel: LanguageLevelSchema.optional(),
+  privacyMode: z.boolean().optional(),
   provider: z.object({
-    apiKey: z.string().optional(),
-    baseURL: z.string().optional(),
+    id: ProviderIdSchema.optional(),
+    accessToken: z.string().optional(),
+    relayBaseURL: z.string().optional(),
     model: z.string().trim().min(1).optional(),
   }).optional(),
   presentation: PresentationSettingsInputSchema.optional(),
@@ -77,10 +118,13 @@ export type TranslationMode = z.infer<typeof TranslationModeSchema>
 export type TranslationTheme = z.infer<typeof TranslationThemeSchema>
 export type HoverTrigger = z.infer<typeof HoverTriggerSchema>
 export type ContentScope = z.infer<typeof ContentScopeSchema>
+export type InputTranslation = z.infer<typeof InputTranslationSchema>
 export type PresentationSettings = z.infer<typeof PresentationSettingsSchema>
 export type SiteConfig = z.infer<typeof SiteConfigSchema>
 export type SiteConfigInput = z.infer<typeof SiteConfigInputSchema>
 export type OpenAIProviderConfig = z.infer<typeof OpenAIProviderConfigSchema>
+export type GeminiProviderConfig = z.infer<typeof GeminiProviderConfigSchema>
+export type ProviderConfig = z.infer<typeof ProviderConfigSchema>
 export type AstraConfig = z.infer<typeof AstraConfigSchema>
 export type AstraConfigInput = z.infer<typeof AstraConfigInputSchema>
 
@@ -99,6 +143,9 @@ export interface ResolvedSiteTranslationSettings {
   hoverTrigger: HoverTrigger
   contentScope: ContentScope
   presentation: PresentationSettings
+  selectors?: string[]
+  excludeSelectors?: string[]
+  paragraphMinLength?: number
 }
 
 export const DEFAULT_ASTRA_CONFIG: AstraConfig = {
@@ -106,16 +153,40 @@ export const DEFAULT_ASTRA_CONFIG: AstraConfig = {
   targetLang: "zh-CN",
   hoverTrigger: "alt",
   contentScope: "page" as const,
+  inputTranslation: "enabled" as const,
+  languageLevel: "intermediate" as const,
+  privacyMode: false,
   provider: {
     id: "openai",
+    accessToken: "",
     apiKey: "",
-    model: "gpt-4o-mini",
+    model: "gpt-5.4-nano",
   },
   presentation: {
     mode: "bilingual",
     theme: "default",
+    fontSize: 0.92,
+    translationColor: "#64748b",
   },
   sites: {},
+}
+
+export function getDefaultProviderModel(providerId: ProviderId): string {
+  switch (providerId) {
+    case "openai":
+      return "gpt-5.4-nano"
+    case "gemini":
+      return "gemini-3.1-flash-lite-preview"
+  }
+}
+
+export function createDefaultProviderConfig(providerId: ProviderId = "openai"): ProviderConfig {
+  return {
+    id: providerId,
+    accessToken: "",
+    apiKey: "",
+    model: getDefaultProviderModel(providerId),
+  }
 }
 
 function normalizePresentation(
@@ -124,6 +195,8 @@ function normalizePresentation(
   return {
     mode: presentation?.mode ?? DEFAULT_ASTRA_CONFIG.presentation.mode,
     theme: presentation?.theme ?? DEFAULT_ASTRA_CONFIG.presentation.theme,
+    fontSize: presentation?.fontSize ?? DEFAULT_ASTRA_CONFIG.presentation.fontSize,
+    translationColor: presentation?.translationColor ?? DEFAULT_ASTRA_CONFIG.presentation.translationColor,
   }
 }
 
@@ -197,12 +270,56 @@ export function resolveSiteTranslationSettings(
       theme: overrides.translationTheme
         ?? siteConfig?.presentation?.theme
         ?? basePresentation.theme,
+      fontSize: siteConfig?.presentation?.fontSize ?? basePresentation.fontSize,
+      translationColor: siteConfig?.presentation?.translationColor ?? basePresentation.translationColor,
     },
+    selectors: siteConfig?.selectors,
+    excludeSelectors: siteConfig?.excludeSelectors,
+    paragraphMinLength: siteConfig?.paragraphMinLength,
+  }
+}
+
+export function hasProviderAccess(provider: ProviderConfig): boolean {
+  return provider.accessToken.trim().length > 0 && (provider.relayBaseURL?.trim().length ?? 0) > 0
+}
+
+export function resolveManagedProviderConfig(
+  provider: ProviderConfig,
+  session?: AstraSession | null,
+): ProviderConfig {
+  const sessionToken = session?.sessionToken?.trim()
+  const relayBaseURL = session?.relayBaseURL?.trim() || provider.relayBaseURL?.trim()
+
+  return {
+    ...provider,
+    accessToken: sessionToken && sessionToken.length > 0
+      ? sessionToken
+      : provider.accessToken,
+    ...(relayBaseURL ? { relayBaseURL } : {}),
+  }
+}
+
+export function hasResolvedProviderAccess(
+  provider: ProviderConfig,
+  session?: AstraSession | null,
+): boolean {
+  return hasProviderAccess(resolveManagedProviderConfig(provider, session))
+}
+
+function normalizeProviderConfig(provider?: Partial<ProviderConfig> | null): ProviderConfig {
+  const providerId = provider?.id ?? DEFAULT_ASTRA_CONFIG.provider.id
+  const relayBaseURL = provider?.relayBaseURL?.trim()
+
+  return {
+    id: providerId,
+    accessToken: provider?.accessToken?.trim() ?? "",
+    apiKey: provider?.apiKey?.trim() ?? "",
+    model: provider?.model?.trim() || getDefaultProviderModel(providerId),
+    ...(relayBaseURL ? { relayBaseURL } : {}),
   }
 }
 
 export function normalizeConfig(config: AstraConfig): AstraConfig {
-  const baseURL = config.provider.baseURL?.trim()
   const sites = Object.fromEntries(
     Object.entries(config.sites ?? {}).flatMap(([key, siteConfig]) => {
       const normalizedKey = normalizeSiteKey(key)
@@ -220,12 +337,10 @@ export function normalizeConfig(config: AstraConfig): AstraConfig {
     targetLang: config.targetLang.trim() || DEFAULT_ASTRA_CONFIG.targetLang,
     hoverTrigger: config.hoverTrigger ?? DEFAULT_ASTRA_CONFIG.hoverTrigger,
     contentScope: config.contentScope ?? DEFAULT_ASTRA_CONFIG.contentScope,
-    provider: {
-      id: "openai",
-      apiKey: config.provider.apiKey.trim(),
-      model: config.provider.model.trim() || DEFAULT_ASTRA_CONFIG.provider.model,
-      ...(baseURL ? { baseURL } : {}),
-    },
+    inputTranslation: config.inputTranslation ?? DEFAULT_ASTRA_CONFIG.inputTranslation,
+    languageLevel: config.languageLevel ?? DEFAULT_ASTRA_CONFIG.languageLevel,
+    privacyMode: config.privacyMode ?? DEFAULT_ASTRA_CONFIG.privacyMode,
+    provider: normalizeProviderConfig(config.provider),
     presentation: normalizePresentation(config.presentation),
     sites,
   }

@@ -6,8 +6,9 @@ const { readConfigMock, translateTextsMock } = vi.hoisted(() => ({
     targetLang: "zh-CN",
     provider: {
       id: "openai" as const,
-      apiKey: "sk-test",
-      model: "gpt-4o-mini",
+      accessToken: "astra-token",
+      relayBaseURL: "https://astra.example/v1",
+      model: "gpt-5.4-nano",
     },
     presentation: {
       mode: "bilingual" as const,
@@ -104,8 +105,9 @@ describe("page translation controller", () => {
       targetLang: "zh-CN",
       provider: {
         id: "openai",
-        apiKey: "sk-test",
-        model: "gpt-4o-mini",
+        accessToken: "astra-token",
+        relayBaseURL: "https://astra.example/v1",
+        model: "gpt-5.4-nano",
       },
       presentation: {
         mode: "bilingual",
@@ -289,8 +291,9 @@ describe("page translation controller", () => {
           targetLang: "zh-CN",
           provider: {
             id: "openai",
-            apiKey: "sk-test",
-            model: "gpt-4o-mini",
+            accessToken: "astra-token",
+            relayBaseURL: "https://astra.example/v1",
+            model: "gpt-5.4-nano",
           },
           presentation: {
             mode: "bilingual",
@@ -358,8 +361,9 @@ describe("page translation controller", () => {
       targetLang: "zh-CN",
       provider: {
         id: "openai",
-        apiKey: "sk-test",
-        model: "gpt-4o-mini",
+        accessToken: "astra-token",
+        relayBaseURL: "https://astra.example/v1",
+        model: "gpt-5.4-nano",
       },
       presentation: {
         mode: "bilingual",

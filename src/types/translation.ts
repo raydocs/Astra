@@ -41,6 +41,10 @@ export interface TranslationSnapshot {
   progress: TranslationProgressSnapshot
   presentation: PresentationSettings
   site: TranslationSiteSnapshot
+  /** Total number of translatable frames in the tab (set by background aggregation) */
+  framesTotal?: number
+  /** Number of frames currently translating (set by background aggregation) */
+  framesTranslating?: number
 }
 
 export const EMPTY_TRANSLATION_PROGRESS: TranslationProgressSnapshot = {
@@ -54,6 +58,8 @@ export const EMPTY_TRANSLATION_PROGRESS: TranslationProgressSnapshot = {
 export const DEFAULT_TRANSLATION_PRESENTATION: PresentationSettings = {
   mode: "bilingual",
   theme: "default",
+  fontSize: 0.92,
+  translationColor: "#64748b",
 }
 
 export const DEFAULT_TRANSLATION_SITE: TranslationSiteSnapshot = {

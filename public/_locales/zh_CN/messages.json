@@ -1,0 +1,95 @@
+{
+  "extName": {
+    "message": "Astra"
+  },
+  "extDescription": {
+    "message": "AI 语言学习助手"
+  },
+  "settingsTitle": {
+    "message": "全局设置"
+  },
+  "providerLabel": {
+    "message": "模型提供方"
+  },
+  "apiKeyLabel": {
+    "message": "API Key"
+  },
+  "baseUrlLabel": {
+    "message": "Base URL (可选)"
+  },
+  "relayUrlLabel": {
+    "message": "Astra Relay URL（托管模式，选填）"
+  },
+  "modelLabel": {
+    "message": "模型"
+  },
+  "targetLangLabel": {
+    "message": "目标语言"
+  },
+  "hoverTriggerLabel": {
+    "message": "悬停翻译触发"
+  },
+  "hoverTriggerAlt": {
+    "message": "Alt + 悬停"
+  },
+  "hoverTriggerAlways": {
+    "message": "始终悬停"
+  },
+  "hoverTriggerDisabled": {
+    "message": "关闭"
+  },
+  "translationModeLabel": {
+    "message": "翻译模式"
+  },
+  "modeBilingual": {
+    "message": "双语对照"
+  },
+  "modeTranslationOnly": {
+    "message": "仅译文"
+  },
+  "translationThemeLabel": {
+    "message": "翻译主题"
+  },
+  "themeDefault": {
+    "message": "默认"
+  },
+  "themeUnderline": {
+    "message": "下划线"
+  },
+  "themeHighlight": {
+    "message": "高亮"
+  },
+  "scopeLabel": {
+    "message": "翻译范围"
+  },
+  "scopePage": {
+    "message": "整页翻译"
+  },
+  "scopeArticle": {
+    "message": "文章区域"
+  },
+  "actionTranslate": {
+    "message": "翻译"
+  },
+  "actionExplain": {
+    "message": "解释"
+  },
+  "actionCopy": {
+    "message": "复制"
+  },
+  "actionSave": {
+    "message": "收藏"
+  },
+  "actionSaved": {
+    "message": "✓ 已收藏"
+  },
+  "actionSpeak": {
+    "message": "朗读"
+  },
+  "inputTranslateButton": {
+    "message": "译"
+  },
+  "translateButton": {
+    "message": "译"
+  }
+}

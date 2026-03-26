@@ -82,3 +82,8 @@ export function hasActiveTextSelection(doc: Document = document): boolean {
 
   return selection.toString().trim().length > 0
 }
+
+export function __resetInteractionCoordinationForTests(): void {
+  activeReasons.clear()
+  listeners.clear()
+}

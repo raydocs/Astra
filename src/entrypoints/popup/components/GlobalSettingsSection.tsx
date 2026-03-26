@@ -2,10 +2,13 @@ import type {
   AstraConfig,
   ContentScope,
   HoverTrigger,
+  ProviderId,
   TranslationMode,
   TranslationTheme,
 } from "@/types/config"
+import { getDefaultProviderModel } from "@/types/config"
 import { labelStyle, inputStyle } from "./styles"
+import { t } from "@/utils/i18n"
 
 const LANGUAGE_OPTIONS = [
   { value: "zh-CN", label: "简体中文" },
@@ -22,6 +25,11 @@ const HOVER_TRIGGER_OPTIONS = [
   { value: "alt", label: "Alt + 悬停" },
   { value: "always", label: "始终悬停" },
   { value: "disabled", label: "关闭" },
+] as const
+
+const PROVIDER_OPTIONS = [
+  { value: "openai", label: "OpenAI" },
+  { value: "gemini", label: "Gemini" },
 ] as const
 
 export interface GlobalSettingsSectionProps {
@@ -47,20 +55,40 @@ export default function GlobalSettingsSection({
         ⚙ 全局设置
       </summary>
       <div style={{ marginTop: 8 }}>
-        <label style={labelStyle}>API Key</label>
+        <label style={labelStyle}>模型提供方</label>
+        <select
+          value={config.provider.id}
+          onChange={(e) => {
+            const providerId = e.target.value as ProviderId
+            onProviderChange({
+              id: providerId,
+              model: getDefaultProviderModel(providerId),
+            })
+          }}
+          style={inputStyle}
+        >
+          {PROVIDER_OPTIONS.map((option) => (
+            <option key={option.value} value={option.value}>{option.label}</option>
+          ))}
+        </select>
+
+        <label style={labelStyle}>API Key（直连模式，选填）</label>
         <input
           type="password"
-          value={config.provider.apiKey}
+          value={config.provider.apiKey ?? ""}
           onChange={(e) => onProviderChange({ apiKey: e.target.value })}
-          placeholder="sk-..."
+          placeholder={config.provider.id === "gemini" ? "AIzaSy..." : "sk-..."}
           style={inputStyle}
         />
+        <div style={{ fontSize: 11, color: "#94a3b8", marginTop: 2 }}>
+          填写后直连 {config.provider.id === "gemini" ? "Google" : "OpenAI"} API，无需 Astra 账号
+        </div>
 
-        <label style={labelStyle}>Base URL (可选)</label>
+        <label style={labelStyle}>Astra Relay URL（托管模式，选填）</label>
         <input
-          value={config.provider.baseURL ?? ""}
-          onChange={(e) => onProviderChange({ baseURL: e.target.value })}
-          placeholder="https://api.openai.com/v1"
+          value={config.provider.relayBaseURL ?? ""}
+          onChange={(e) => onProviderChange({ relayBaseURL: e.target.value })}
+          placeholder="https://api.astra.example/v1"
           style={inputStyle}
         />
 
@@ -68,7 +96,7 @@ export default function GlobalSettingsSection({
         <input
           value={config.provider.model}
           onChange={(e) => onProviderChange({ model: e.target.value })}
-          placeholder="gpt-4o-mini"
+          placeholder={getDefaultProviderModel(config.provider.id)}
           style={inputStyle}
         />
 

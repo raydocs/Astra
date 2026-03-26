@@ -2,6 +2,7 @@ import { vi } from "vitest"
 
 type StorageData = Record<string, unknown>
 type Listener<TArgs extends unknown[]> = (...args: TArgs) => unknown
+type StorageChangeRecord = Record<string, { oldValue?: unknown; newValue?: unknown }>
 
 function cloneStorageSubset(storage: StorageData, keys?: string | string[]) {
   if (typeof keys === "string") {
@@ -47,6 +48,7 @@ export function createMockBrowser(initialStorage: StorageData = {}) {
   const installedBus = createListenerBus<[unknown]>()
   const commandBus = createListenerBus<[string]>()
   const tabActivatedBus = createListenerBus<[unknown]>()
+  const storageChangedBus = createListenerBus<[StorageChangeRecord, string]>()
 
   return {
     __storage: storage,
@@ -54,17 +56,30 @@ export function createMockBrowser(initialStorage: StorageData = {}) {
     __emitInstalled: installedBus.emit,
     __emitCommand: commandBus.emit,
     __emitTabActivated: tabActivatedBus.emit,
+    __emitStorageChange: storageChangedBus.emit,
     __resetListeners: () => {
       runtimeMessageBus.clear()
       installedBus.clear()
       commandBus.clear()
       tabActivatedBus.clear()
+      storageChangedBus.clear()
     },
     storage: {
+      onChanged: {
+        addListener: storageChangedBus.addListener,
+        removeListener: storageChangedBus.removeListener,
+      },
       local: {
         get: vi.fn((keys?: string | string[]) => Promise.resolve(cloneStorageSubset(storage, keys))),
         set: vi.fn((values: StorageData) => {
           Object.assign(storage, values)
+          return Promise.resolve()
+        }),
+        remove: vi.fn((keys: string | string[]) => {
+          const keysToRemove = Array.isArray(keys) ? keys : [keys]
+          keysToRemove.forEach((key) => {
+            delete storage[key]
+          })
           return Promise.resolve()
         }),
         clear: vi.fn(() => {
@@ -88,6 +103,7 @@ export function createMockBrowser(initialStorage: StorageData = {}) {
     },
     tabs: {
       query: vi.fn(() => Promise.resolve([])),
+      create: vi.fn(() => Promise.resolve()),
       sendMessage: vi.fn(),
       onActivated: {
         addListener: tabActivatedBus.addListener,

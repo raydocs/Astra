@@ -1,9 +1,17 @@
-import { beforeEach, describe, expect, it } from "vitest"
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 
+import { DEFAULT_ASTRA_CONFIG } from "@/types/config"
 import {
   buildInlineTranslationContext,
+  disconnectInlineSummaryObserver,
   getDocumentTranslationContext,
 } from "./translation-context"
+
+const readConfigMock = vi.hoisted(() => vi.fn())
+
+vi.mock("@/utils/storage/config", () => ({
+  readConfig: readConfigMock,
+}))
 
 describe("translation-context", () => {
   beforeEach(() => {
@@ -11,6 +19,12 @@ describe("translation-context", () => {
     document.head.innerHTML = ""
     document.body.innerHTML = ""
     window.history.replaceState({}, "", "/article?query=1#hash")
+    readConfigMock.mockResolvedValue(DEFAULT_ASTRA_CONFIG)
+  })
+
+  afterEach(() => {
+    disconnectInlineSummaryObserver()
+    vi.restoreAllMocks()
   })
 
   it("captures document-level metadata", () => {
@@ -25,7 +39,7 @@ describe("translation-context", () => {
     })
   })
 
-  it("includes page content summary and selection context for inline actions", () => {
+  it("includes page content summary and selection context for inline actions", async () => {
     document.title = "Inline explain page"
     document.body.innerHTML = `
       <main>
@@ -35,7 +49,7 @@ describe("translation-context", () => {
       </main>
     `
 
-    const context = buildInlineTranslationContext({
+    const context = await buildInlineTranslationContext({
       selectionContext: "Selected sentence",
     })
 
@@ -49,15 +63,15 @@ describe("translation-context", () => {
     expect(context.contentSummary).toContain("Second paragraph")
   })
 
-  it("omits contentSummary when the page has no extractable text blocks", () => {
+  it("omits contentSummary when the page has no extractable text blocks", async () => {
     document.body.innerHTML = '<div><button>Click me</button><nav><a href="#">Link</a></nav></div>'
 
-    const context = buildInlineTranslationContext()
+    const context = await buildInlineTranslationContext()
 
     expect(context.contentSummary).toBeUndefined()
   })
 
-  it("omits page summary when the inline action target is outside the main content root", () => {
+  it("omits page summary when the inline action target is outside the main content root", async () => {
     document.body.innerHTML = `
       <aside id="sidebar">
         <p>Sidebar helper text.</p>
@@ -70,12 +84,48 @@ describe("translation-context", () => {
     `
 
     const sidebar = document.getElementById("sidebar")
-    const context = buildInlineTranslationContext({
+    const context = await buildInlineTranslationContext({
       selectionContext: "Sidebar helper text.",
       contextElement: sidebar,
     })
 
     expect(context.selectionContext).toBe("Sidebar helper text.")
     expect(context.contentSummary).toBeUndefined()
+  })
+
+  it("strips context fields when privacy mode is enabled", async () => {
+    readConfigMock.mockResolvedValue({ ...DEFAULT_ASTRA_CONFIG, privacyMode: true })
+    document.title = "Secret page"
+    document.head.innerHTML = '<meta name="description" content="Private description." />'
+    document.body.innerHTML = `
+      <main>
+        <p>First paragraph with enough text to represent the first important idea in the page summary.</p>
+        <p>Second paragraph with more detail so the inline context can provide broader article understanding.</p>
+      </main>
+    `
+
+    const context = await buildInlineTranslationContext({
+      selectionContext: "Selected sentence",
+    })
+
+    expect(context.pageTitle).toBeUndefined()
+    expect(context.metaDescription).toBeUndefined()
+    expect(context.contentSummary).toBeUndefined()
+    expect(context.selectionContext).toBeUndefined()
+    expect(context.hostname).toBe(window.location.hostname)
+  })
+
+  it("removes the popstate listener when the inline summary observer disconnects", async () => {
+    const addEventListenerSpy = vi.spyOn(window, "addEventListener")
+    const removeEventListenerSpy = vi.spyOn(window, "removeEventListener")
+
+    await buildInlineTranslationContext()
+
+    const popstateRegistration = addEventListenerSpy.mock.calls.find(([eventName]) => eventName === "popstate")
+    expect(popstateRegistration?.[1]).toBeTypeOf("function")
+
+    disconnectInlineSummaryObserver()
+
+    expect(removeEventListenerSpy).toHaveBeenCalledWith("popstate", popstateRegistration?.[1])
   })
 })

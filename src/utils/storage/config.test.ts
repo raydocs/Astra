@@ -9,7 +9,7 @@ describe("config storage", () => {
     setMockBrowser(createMockBrowser())
   })
 
-  it("migrates legacy flat keys into astra.config.v1 with new defaults", async () => {
+  it("migrates legacy flat keys into astra.config.v1 with new defaults and clears legacy keys", async () => {
     const browser = setMockBrowser(createMockBrowser({
       apiKey: "sk-legacy",
       baseURL: "https://example.com/v1",
@@ -24,19 +24,29 @@ describe("config storage", () => {
       targetLang: "ja",
       hoverTrigger: "alt",
       contentScope: "page",
+      inputTranslation: "enabled",
+      languageLevel: "intermediate",
+      privacyMode: false,
       provider: {
         id: "openai",
-        apiKey: "sk-legacy",
-        baseURL: "https://example.com/v1",
+        accessToken: "sk-legacy",
+        apiKey: "",
+        relayBaseURL: "https://example.com/v1",
         model: "gpt-4.1-mini",
       },
       presentation: {
         mode: "bilingual",
         theme: "default",
+        fontSize: 0.92,
+        translationColor: "#64748b",
       },
       sites: {},
     })
     expect(browser.__storage[ASTRA_CONFIG_STORAGE_KEY]).toEqual(config)
+    expect(browser.__storage.apiKey).toBeUndefined()
+    expect(browser.__storage.baseURL).toBeUndefined()
+    expect(browser.__storage.model).toBeUndefined()
+    expect(browser.__storage.targetLang).toBeUndefined()
   })
 
   it("falls back to defaults when stored config is invalid", async () => {
@@ -53,16 +63,16 @@ describe("config storage", () => {
     expect(browser.__storage[ASTRA_CONFIG_STORAGE_KEY]).toEqual(DEFAULT_ASTRA_CONFIG)
   })
 
-  it("dual-writes v1 config and legacy keys on save", async () => {
+  it("stores only v1 config and removes legacy keys on save", async () => {
     const browser = setMockBrowser(createMockBrowser()) as ReturnType<typeof createMockBrowser>
 
     const config = await saveConfig({
       targetLang: "fr",
       hoverTrigger: "disabled",
       provider: {
-        apiKey: "sk-new",
-        baseURL: "https://proxy.example/v1",
-        model: "gpt-4o-mini",
+        accessToken: "astra-live-token",
+        relayBaseURL: "https://proxy.example/v1",
+        model: "gpt-5.4-nano",
       },
       presentation: {
         mode: "translation-only",
@@ -81,6 +91,8 @@ describe("config storage", () => {
     expect(config.presentation).toEqual({
       mode: "translation-only",
       theme: "highlight",
+      fontSize: 0.92,
+      translationColor: "#64748b",
     })
     expect(config.sites).toEqual({
       "example.com": {
@@ -89,10 +101,38 @@ describe("config storage", () => {
       },
     })
     expect(browser.__storage[ASTRA_CONFIG_STORAGE_KEY]).toEqual(config)
-    expect(browser.__storage.apiKey).toBe("sk-new")
-    expect(browser.__storage.baseURL).toBe("https://proxy.example/v1")
-    expect(browser.__storage.model).toBe("gpt-4o-mini")
-    expect(browser.__storage.targetLang).toBe("fr")
+    expect(browser.__storage.apiKey).toBeUndefined()
+    expect(browser.__storage.baseURL).toBeUndefined()
+    expect(browser.__storage.model).toBeUndefined()
+    expect(browser.__storage.targetLang).toBeUndefined()
+  })
+
+  it("switches provider defaults when saving a new provider id", async () => {
+    const config = await saveConfig({
+      provider: {
+        id: "gemini",
+      },
+    })
+
+    expect(config.provider).toEqual({
+      id: "gemini",
+      accessToken: "",
+      apiKey: "",
+      model: "gemini-3.1-flash-lite-preview",
+    })
+  })
+
+  it("persists inputTranslation and privacyMode settings", async () => {
+    const browser = setMockBrowser(createMockBrowser()) as ReturnType<typeof createMockBrowser>
+
+    const config = await saveConfig({
+      inputTranslation: "disabled",
+      privacyMode: true,
+    })
+
+    expect(config.inputTranslation).toBe("disabled")
+    expect(config.privacyMode).toBe(true)
+    expect(browser.__storage[ASTRA_CONFIG_STORAGE_KEY]).toEqual(config)
   })
 
   it("prunes default site rules when saving", async () => {

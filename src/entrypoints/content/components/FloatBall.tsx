@@ -1,10 +1,8 @@
 import React, { useState, useRef, useCallback, useEffect } from "react"
 import ReactDOM from "react-dom/client"
 import { browser } from "#imports"
-import {
-  subscribePageTranslationState,
-  togglePageTranslation,
-} from "../page-translate"
+import { subscribePageTranslationState } from "../page-translate"
+import { toggleCurrentTabTranslation } from "@/utils/extension/messages"
 import { IDLE_TRANSLATION_SNAPSHOT } from "@/types/translation"
 
 const STORAGE_KEY = "astra_float_ball_y"
@@ -48,6 +46,11 @@ function getFloatBallVisualState(snapshot: typeof IDLE_TRANSLATION_SNAPSHOT) {
   }
 }
 
+function clampY(y: number): number {
+  const maxY = window.innerHeight - BALL_SIZE - 10
+  return Math.max(10, Math.min(y, maxY))
+}
+
 function FloatBallButton() {
   const [translationState, setTranslationState] = useState(IDLE_TRANSLATION_SNAPSHOT)
   const [posY, setPosY] = useState(DEFAULT_Y)
@@ -55,6 +58,7 @@ function FloatBallButton() {
   const [hovered, setHovered] = useState(false)
   const dragRef = useRef<{ startY: number; startPosY: number } | null>(null)
   const movedRef = useRef(false)
+  const posYRef = useRef(posY)
 
   useEffect(() => {
     void browser.storage.local.get(STORAGE_KEY).then((result) => {
@@ -66,13 +70,12 @@ function FloatBallButton() {
   }, [])
 
   useEffect(() => {
+    posYRef.current = posY
+  }, [posY])
+
+  useEffect(() => {
     return subscribePageTranslationState(setTranslationState)
   }, [])
-
-  const clampY = (y: number) => {
-    const maxY = window.innerHeight - BALL_SIZE - 10
-    return Math.max(10, Math.min(y, maxY))
-  }
 
   const persistY = useCallback((y: number) => {
     void browser.storage.local.set({ [STORAGE_KEY]: y })
@@ -84,10 +87,10 @@ function FloatBallButton() {
       e.stopPropagation()
       setDragging(true)
       movedRef.current = false
-      dragRef.current = { startY: e.clientY, startPosY: posY }
+      dragRef.current = { startY: e.clientY, startPosY: posYRef.current }
       ;(e.target as HTMLElement).setPointerCapture(e.pointerId)
     },
-    [posY],
+    [],
   )
 
   const handlePointerMove = useCallback(
@@ -98,6 +101,7 @@ function FloatBallButton() {
       const delta = e.clientY - dragRef.current.startY
       if (Math.abs(delta) > 3) movedRef.current = true
       const newY = clampY(dragRef.current.startPosY + delta)
+      posYRef.current = newY
       setPosY(newY)
     },
     [dragging],
@@ -109,11 +113,11 @@ function FloatBallButton() {
       e.preventDefault()
       e.stopPropagation()
       setDragging(false)
-      persistY(posY)
+      persistY(posYRef.current)
 
       const visual = getFloatBallVisualState(translationState)
       if (!movedRef.current && !visual.disabled) {
-        void togglePageTranslation().catch((error) => {
+        void toggleCurrentTabTranslation().catch((error) => {
           console.error("[Astra] Float ball toggle failed:", error)
         })
       }

@@ -4,9 +4,6 @@ import {
   ContentScopeSchema,
   TranslationModeSchema,
   TranslationThemeSchema,
-  type ContentScope,
-  type TranslationMode,
-  type TranslationTheme,
 } from "./config"
 import type { TranslationError, TranslationSnapshot } from "./translation"
 
@@ -17,6 +14,8 @@ export const TranslationRequestContextSchema = z.object({
   metaDescription: z.string().trim().min(1).optional(),
   contentSummary: z.string().trim().min(1).optional(),
   selectionContext: z.string().trim().min(1).optional(),
+  /** Terminology glossary for consistent translation of domain-specific terms. */
+  terminologyGlossary: z.string().trim().min(1).optional(),
 })
 
 export const ContentTranslationOverridesSchema = z.object({
@@ -34,11 +33,21 @@ export const TranslateBatchPayloadSchema = z.object({
   sourceLang: z.string().min(1).optional(),
   context: TranslationRequestContextSchema.optional(),
   task: TranslationTaskSchema.optional(),
-  customSystemPrompt: z.string().optional(),
+  customSystemPrompt: z.string().max(2000).optional(),
 })
 
+const TranslationErrorCodeSchema = z.enum([
+  "CONFIG_MISSING",
+  "CONTENT_UNAVAILABLE",
+  "PROVIDER_REQUEST_FAILED",
+  "PROVIDER_PARSE_FAILED",
+  "INVALID_RESPONSE",
+  "SITE_DISABLED",
+  "UNKNOWN",
+])
+
 const TranslationErrorSchema = z.object({
-  code: z.string().trim().min(1),
+  code: TranslationErrorCodeSchema,
   message: z.string().trim().min(1),
 })
 
@@ -67,6 +76,8 @@ const TranslationSnapshotSchema = z.object({
     theme: TranslationThemeSchema,
   }),
   site: TranslationSiteSnapshotSchema,
+  framesTotal: z.number().int().nonnegative().optional(),
+  framesTranslating: z.number().int().nonnegative().optional(),
 })
 
 const RuntimeResponseSchema = z.union([
@@ -96,12 +107,7 @@ const ContentCommandResponseSchema = z.union([
 
 export type TranslationRequestContext = z.infer<typeof TranslationRequestContextSchema>
 export type TranslationTask = z.infer<typeof TranslationTaskSchema>
-export type ContentTranslationOverrides = {
-  targetLang?: string
-  translationMode?: TranslationMode
-  translationTheme?: TranslationTheme
-  contentScope?: ContentScope
-}
+export type ContentTranslationOverrides = z.infer<typeof ContentTranslationOverridesSchema>
 
 export interface RuntimeTranslateBatchRequest {
   type: "runtime/translate-batch"
@@ -120,7 +126,21 @@ export interface RuntimeTranslateBatchErrorResponse {
   error: TranslationError
 }
 
-export type RuntimeRequest = RuntimeTranslateBatchRequest
+export interface RuntimeTabCommandRequest {
+  type: "runtime/tab-command"
+  tabId: number
+  command: ContentCommand
+}
+
+export interface RuntimeCurrentTabCommandRequest {
+  type: "runtime/current-tab-command"
+  command: ContentCommand
+}
+
+export type RuntimeRequest =
+  | RuntimeTranslateBatchRequest
+  | RuntimeTabCommandRequest
+  | RuntimeCurrentTabCommandRequest
 export type RuntimeResponse =
   | RuntimeTranslateBatchSuccessResponse
   | RuntimeTranslateBatchErrorResponse
@@ -160,6 +180,25 @@ export function isRuntimeTranslateBatchRequest(
   const candidate = value as Partial<RuntimeTranslateBatchRequest>
   return candidate.type === "runtime/translate-batch"
     && TranslateBatchPayloadSchema.safeParse(candidate.payload).success
+}
+
+export function isRuntimeTabCommandRequest(
+  value: unknown,
+): value is RuntimeTabCommandRequest {
+  if (typeof value !== "object" || value === null) return false
+  const candidate = value as Partial<RuntimeTabCommandRequest>
+  return candidate.type === "runtime/tab-command"
+    && typeof candidate.tabId === "number"
+    && isContentCommand(candidate.command)
+}
+
+export function isRuntimeCurrentTabCommandRequest(
+  value: unknown,
+): value is RuntimeCurrentTabCommandRequest {
+  if (typeof value !== "object" || value === null) return false
+  const candidate = value as Partial<RuntimeCurrentTabCommandRequest>
+  return candidate.type === "runtime/current-tab-command"
+    && isContentCommand(candidate.command)
 }
 
 export function isRuntimeResponse(value: unknown): value is RuntimeResponse {

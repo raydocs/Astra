@@ -1,12 +1,14 @@
 import { z } from "zod"
 
+import { TranslationTaskSchema } from "./messages"
+
 export const ActionIdSchema = z.string().min(1)
 
 export const BuiltinActionSchema = z.object({
   id: ActionIdSchema,
   label: z.string(),
   labelZh: z.string(),
-  task: z.enum(["translate", "explain", "custom"]),
+  task: TranslationTaskSchema,
   /** For custom actions, the system prompt template. Use {{text}} and {{targetLang}} as placeholders. */
   systemPrompt: z.string().optional(),
   /** Icon hint for UI rendering */

@@ -6,6 +6,7 @@ import { copyTextToClipboard } from "@/utils/dom/clipboard"
 import { hasInjectedTranslation } from "@/utils/dom/inject"
 import { findClosestTextBlock, findContentRoot } from "@/utils/dom/traversal"
 import { readConfig } from "@/utils/storage/config"
+import { saveVocabularyEntry } from "@/utils/storage/vocabulary"
 
 import {
   getInteractionSuppressionState,
@@ -16,6 +17,7 @@ import { runInlineAction } from "../inline-actions"
 
 type OverlayStatus = "hidden" | "pending" | "success" | "error"
 type ExplanationStatus = "idle" | "pending" | "success" | "error"
+type SaveStatus = "idle" | "saving" | "saved"
 
 interface HoverOverlayState {
   visible: boolean
@@ -93,9 +95,14 @@ function HoverTranslateApp() {
   const requestSeq = useRef(0)
   const explainRequestSeq = useRef(0)
   const cacheRef = useRef(new WeakMap<HTMLElement, HoverCacheEntry>())
-  const pendingRef = useRef(new Map<HTMLElement, string>())
-  const cooldownRef = useRef(new Map<HTMLElement, number>())
+  const overlayVisibleRef = useRef(false)
+  const pendingRef = useRef(new WeakMap<HTMLElement, string>())
+  const cooldownRef = useRef(new WeakMap<HTMLElement, number>())
   const COOLDOWN_MS = 3000
+
+  const [saveStatus, setSaveStatus] = useState<SaveStatus>("idle")
+
+  overlayVisibleRef.current = overlay.visible
 
   useEffect(() => {
     const clearHoverTimer = () => {
@@ -111,6 +118,7 @@ function HoverTranslateApp() {
       currentSourceText.current = ""
       requestSeq.current += 1
       explainRequestSeq.current += 1
+      setSaveStatus("idle")
       setOverlay((current) => ({
         ...current,
         visible: false,
@@ -172,7 +180,7 @@ function HoverTranslateApp() {
         return
       }
 
-      if (currentTarget.current === block.element && overlay.visible) {
+      if (currentTarget.current === block.element && overlayVisibleRef.current) {
         const rect = block.element.getBoundingClientRect()
         setOverlay((current) => ({
           ...current,
@@ -354,7 +362,7 @@ function HoverTranslateApp() {
       window.removeEventListener("keydown", handleKeyDown, true)
       document.removeEventListener("selectionchange", handleSelectionChange, true)
     }
-  }, [overlay.visible])
+  }, [])
 
   const handleCopy = async () => {
     if (!overlay.translation) return
@@ -441,6 +449,26 @@ function HoverTranslateApp() {
     }))
   }
 
+  const handleSave = async () => {
+    if (!currentSourceText.current || !overlay.translation) return
+    if (saveStatus === "saving") return
+
+    setSaveStatus("saving")
+    try {
+      await saveVocabularyEntry({
+        text: currentSourceText.current,
+        translation: overlay.translation ?? undefined,
+        explanation: overlay.explanation ?? undefined,
+        context: getSelectionContext(currentSourceText.current),
+        url: window.location.href,
+        hostname: window.location.hostname,
+      })
+      setSaveStatus("saved")
+    } catch {
+      setSaveStatus("idle")
+    }
+  }
+
   if (!overlay.visible) return null
 
   const panelStyle: React.CSSProperties = {
@@ -454,6 +482,8 @@ function HoverTranslateApp() {
     borderRadius: 10,
     boxShadow: "0 10px 25px rgba(15, 23, 42, 0.18)",
     padding: "10px 12px",
+    maxHeight: "60vh",
+    overflowY: "auto",
     lineHeight: 1.55,
     fontSize: 13,
     borderLeft: overlay.theme === "default" && overlay.mode === "bilingual"
@@ -495,6 +525,14 @@ function HoverTranslateApp() {
                 : overlay.showExplanation
                   ? "Hide explanation"
                   : "Explain"}
+            </button>
+            <button
+              type="button"
+              style={actionButtonStyle}
+              onClick={() => void handleSave()}
+              disabled={saveStatus === "saving"}
+            >
+              {saveStatus === "saved" ? "Saved \u2713" : saveStatus === "saving" ? "Saving..." : "Save"}
             </button>
           </div>
           {overlay.showExplanation && (

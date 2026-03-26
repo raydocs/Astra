@@ -4,6 +4,7 @@ import type {
   AstraConfig,
   SiteConfig,
 } from "@/types/config"
+import type { AstraAccount, AstraSession, AstraUsageSnapshot } from "@/types/auth"
 import type { TranslationSnapshot } from "@/types/translation"
 import {
   getActiveTabTranslationState,
@@ -13,13 +14,32 @@ import {
 import { readConfig, saveConfig as persistConfig } from "@/utils/storage/config"
 import {
   DEFAULT_ASTRA_CONFIG,
+  hasResolvedProviderAccess,
   isDefaultSiteConfig,
   normalizeSiteKey,
   resolveSiteTranslationSettings,
 } from "@/types/config"
+import {
+  clearAstraSession,
+  readAstraSession,
+  saveAstraSession,
+} from "@/utils/storage/auth"
+import {
+  createAstraSession,
+  refreshAstraSession,
+  revokeAstraSession,
+} from "@/utils/astra/auth"
+import {
+  createAstraCheckoutLink,
+  createAstraPortalLink,
+  fetchAstraAccount,
+  fetchAstraUsageSnapshot,
+  updateAstraPlan,
+} from "@/utils/astra/account"
 import TranslationStatusCard from "./components/TranslationStatusCard"
 import GlobalSettingsSection from "./components/GlobalSettingsSection"
 import SiteSettingsSection from "./components/SiteSettingsSection"
+import AuthSection from "./components/AuthSection"
 import { btnPrimary, btnSecondary, btnDisabled, warningStyle } from "./components/styles"
 
 async function getActiveSiteKey(): Promise<string | null> {
@@ -38,6 +58,12 @@ export default function App() {
   const [translationState, setTranslationState] = useState<TranslationSnapshot | null>(null)
   const [contentAvailable, setContentAvailable] = useState(true)
   const [activeSiteKey, setActiveSiteKey] = useState<string | null>(null)
+  const [authSession, setAuthSession] = useState<AstraSession | null>(null)
+  const [authAccount, setAuthAccount] = useState<AstraAccount | null>(null)
+  const [authUsage, setAuthUsage] = useState<AstraUsageSnapshot | null>(null)
+  const [authEmail, setAuthEmail] = useState("")
+  const [authPassword, setAuthPassword] = useState("")
+  const [authBusy, setAuthBusy] = useState(false)
   const hasUnsavedChangesRef = useRef(false)
 
   hasUnsavedChangesRef.current = hasUnsavedChanges
@@ -71,15 +97,51 @@ export default function App() {
   }
 
   const refreshAll = async () => {
-    const [config, siteKey] = await Promise.all([
+    const [config, siteKey, storedSession] = await Promise.all([
       readConfig(),
       getActiveSiteKey(),
+      readAstraSession(),
     ])
+    let session = storedSession
+    let account: AstraAccount | null = null
+    let usage: AstraUsageSnapshot | null = null
+    if (storedSession) {
+      try {
+        session = await refreshAstraSession({
+          baseURL: storedSession.relayBaseURL,
+          sessionToken: storedSession.sessionToken,
+        })
+        await saveAstraSession(session)
+        try {
+          ;[account, usage] = await Promise.all([
+            fetchAstraAccount({
+              baseURL: session.relayBaseURL,
+              sessionToken: session.sessionToken,
+            }),
+            fetchAstraUsageSnapshot({
+              baseURL: session.relayBaseURL,
+              sessionToken: session.sessionToken,
+            }),
+          ])
+        } catch {
+          account = null
+          usage = null
+        }
+      } catch {
+        await clearAstraSession()
+        session = null
+        account = null
+        usage = null
+      }
+    }
     if (!hasUnsavedChangesRef.current) {
       setConfigDraft(config)
     }
     setPersistedConfig(config)
     setActiveSiteKey(siteKey)
+    setAuthSession(session)
+    setAuthAccount(account)
+    setAuthUsage(usage)
     await refreshTranslationState()
   }
 
@@ -171,12 +233,14 @@ export default function App() {
         targetLang: configDraft.targetLang,
         contentScope: configDraft.contentScope,
         provider: {
-          apiKey: configDraft.provider.apiKey,
-          baseURL: configDraft.provider.baseURL ?? "",
+          id: configDraft.provider.id,
+          relayBaseURL: configDraft.provider.relayBaseURL ?? "",
           model: configDraft.provider.model,
         },
         presentation: configDraft.presentation,
         hoverTrigger: configDraft.hoverTrigger,
+        inputTranslation: configDraft.inputTranslation,
+        privacyMode: configDraft.privacyMode,
         sites: configDraft.sites,
       })
       setConfigDraft(nextConfig)
@@ -199,39 +263,48 @@ export default function App() {
   }
 
   const translate = async () => {
-    const response = await startActiveTabTranslation({
-      targetLang: persistedResolvedSite.targetLang,
-      translationMode: persistedResolvedSite.presentation.mode,
-      translationTheme: persistedResolvedSite.presentation.theme,
-      contentScope: persistedResolvedSite.contentScope,
-    })
-    if (response.ok) {
-      setTranslationState(response.state)
-      setContentAvailable(true)
-      setStatusMessage("")
-    } else {
-      setTranslationState(response.state ?? null)
-      setContentAvailable(response.error.code !== "CONTENT_UNAVAILABLE")
-      setStatusMessage(response.error.message)
+    try {
+      const response = await startActiveTabTranslation({
+        targetLang: persistedResolvedSite.targetLang,
+        translationMode: persistedResolvedSite.presentation.mode,
+        translationTheme: persistedResolvedSite.presentation.theme,
+        contentScope: persistedResolvedSite.contentScope,
+      })
+      if (response.ok) {
+        setTranslationState(response.state)
+        setContentAvailable(true)
+        setStatusMessage("")
+      } else {
+        setTranslationState(response.state ?? null)
+        setContentAvailable(response.error.code !== "CONTENT_UNAVAILABLE")
+        setStatusMessage(response.error.message)
+      }
+    } catch (error) {
+      setStatusMessage(error instanceof Error ? error.message : "翻译请求失败")
     }
   }
 
   const removeTranslation = async () => {
-    const response = await stopActiveTabTranslation()
-    if (response.ok) {
-      setTranslationState(response.state)
-      setContentAvailable(true)
-      setStatusMessage("")
-    } else {
-      setTranslationState(response.state ?? null)
-      setContentAvailable(response.error.code !== "CONTENT_UNAVAILABLE")
-      setStatusMessage(response.error.message)
+    try {
+      const response = await stopActiveTabTranslation()
+      if (response.ok) {
+        setTranslationState(response.state)
+        setContentAvailable(true)
+        setStatusMessage("")
+      } else {
+        setTranslationState(response.state ?? null)
+        setContentAvailable(response.error.code !== "CONTENT_UNAVAILABLE")
+        setStatusMessage(response.error.message)
+      }
+    } catch (error) {
+      setStatusMessage(error instanceof Error ? error.message : "翻译请求失败")
     }
   }
 
   const isIdle = translationState?.phase === "idle" || translationState === null
   const contentUnavailable = !contentAvailable
-  const translateDisabled = !isIdle || contentUnavailable || !persistedResolvedSite.enabled
+  const providerReady = hasResolvedProviderAccess(persistedConfig.provider, authSession)
+  const translateDisabled = !isIdle || contentUnavailable || !persistedResolvedSite.enabled || !providerReady
   const removeDisabled = isIdle || contentUnavailable
 
   const currentPhase = translationState?.phase ?? "idle"
@@ -245,6 +318,131 @@ export default function App() {
   const statusSiteEnabled = currentPhase === "idle"
     ? persistedResolvedSite.enabled
     : currentSite.enabled
+
+  const hydrateAccountState = async (session: AstraSession) => {
+    try {
+      const [account, usage] = await Promise.all([
+        fetchAstraAccount({
+          baseURL: session.relayBaseURL,
+          sessionToken: session.sessionToken,
+        }),
+        fetchAstraUsageSnapshot({
+          baseURL: session.relayBaseURL,
+          sessionToken: session.sessionToken,
+        }),
+      ])
+      return { account, usage }
+    } catch {
+      return { account: null, usage: null }
+    }
+  }
+
+  const handleSignIn = async () => {
+    try {
+      setAuthBusy(true)
+      setStatusMessage("")
+      const session = await createAstraSession({
+        baseURL: configDraft.provider.relayBaseURL ?? "",
+        email: authEmail,
+        password: authPassword,
+      })
+      const { account, usage } = await hydrateAccountState(session)
+      await saveAstraSession(session)
+      setAuthSession(session)
+      setAuthAccount(account)
+      setAuthUsage(usage)
+      setAuthPassword("")
+      setStatusMessage("")
+      await refreshTranslationState()
+    } catch (error) {
+      setStatusMessage(error instanceof Error ? error.message : "Astra 登录失败")
+    } finally {
+      setAuthBusy(false)
+    }
+  }
+
+  const handlePlanChange = async (plan: "free" | "pro") => {
+    if (!authSession) return
+
+    try {
+      setAuthBusy(true)
+      setStatusMessage("")
+      await updateAstraPlan({
+        baseURL: authSession.relayBaseURL,
+        sessionToken: authSession.sessionToken,
+        plan,
+      })
+      await refreshAll()
+    } catch (error) {
+      setStatusMessage(error instanceof Error ? error.message : "切换套餐失败")
+    } finally {
+      setAuthBusy(false)
+    }
+  }
+
+  const openBillingUrl = async (url: string) => {
+    await browser.tabs.create({ url })
+  }
+
+  const handleOpenCheckout = async (plan: "free" | "pro") => {
+    if (!authSession) return
+
+    try {
+      setAuthBusy(true)
+      setStatusMessage("")
+      const link = await createAstraCheckoutLink({
+        baseURL: authSession.relayBaseURL,
+        sessionToken: authSession.sessionToken,
+        plan,
+      })
+      await openBillingUrl(link.url)
+    } catch (error) {
+      setStatusMessage(error instanceof Error ? error.message : "创建升级链接失败")
+    } finally {
+      setAuthBusy(false)
+    }
+  }
+
+  const handleOpenPortal = async () => {
+    if (!authSession) return
+
+    try {
+      setAuthBusy(true)
+      setStatusMessage("")
+      const link = await createAstraPortalLink({
+        baseURL: authSession.relayBaseURL,
+        sessionToken: authSession.sessionToken,
+      })
+      await openBillingUrl(link.url)
+    } catch (error) {
+      setStatusMessage(error instanceof Error ? error.message : "打开订阅管理失败")
+    } finally {
+      setAuthBusy(false)
+    }
+  }
+
+  const handleSignOut = async () => {
+    try {
+      setAuthBusy(true)
+      setStatusMessage("")
+      if (authSession) {
+        await revokeAstraSession({
+          baseURL: authSession.relayBaseURL,
+          sessionToken: authSession.sessionToken,
+        })
+      }
+    } catch (error) {
+      setStatusMessage(error instanceof Error ? error.message : "Astra 退出登录失败")
+    } finally {
+      await clearAstraSession()
+      setAuthSession(null)
+      setAuthAccount(null)
+      setAuthUsage(null)
+      setAuthPassword("")
+      setAuthBusy(false)
+      await refreshTranslationState()
+    }
+  }
 
   return (
     <div style={{ width: 340, padding: 16, fontFamily: "system-ui, sans-serif" }}>
@@ -281,6 +479,32 @@ export default function App() {
         progress={currentProgress ?? null}
         lastError={translationState?.lastError ?? null}
         siteEnabled={statusSiteEnabled}
+      />
+
+      <AuthSection
+        session={authSession}
+        account={authAccount}
+        usage={authUsage}
+        email={authEmail}
+        password={authPassword}
+        busy={authBusy}
+        onEmailChange={setAuthEmail}
+        onPasswordChange={setAuthPassword}
+        onSignIn={() => {
+          void handleSignIn()
+        }}
+        onChangePlan={(plan) => {
+          void handlePlanChange(plan)
+        }}
+        onOpenCheckout={(plan) => {
+          void handleOpenCheckout(plan)
+        }}
+        onOpenPortal={() => {
+          void handleOpenPortal()
+        }}
+        onSignOut={() => {
+          void handleSignOut()
+        }}
       />
 
       <GlobalSettingsSection

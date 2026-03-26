@@ -4,6 +4,7 @@ import {
   AstraConfigInputSchema,
   AstraConfigSchema,
   DEFAULT_ASTRA_CONFIG,
+  getDefaultProviderModel,
   normalizeConfig,
   normalizeSiteKey,
   type AstraConfig,
@@ -20,16 +21,19 @@ function buildConfigFromUnknown(value: unknown): AstraConfig | null {
   return normalizeConfig(parsed.data)
 }
 
+async function clearLegacyConfigKeys(): Promise<void> {
+  if (typeof browser.storage.local.remove === "function") {
+    await browser.storage.local.remove([...LEGACY_KEYS])
+  }
+}
+
 async function persistConfig(config: AstraConfig): Promise<void> {
   const normalized = normalizeConfig(config)
 
   await browser.storage.local.set({
     [ASTRA_CONFIG_STORAGE_KEY]: normalized,
-    apiKey: normalized.provider.apiKey,
-    baseURL: normalized.provider.baseURL ?? "",
-    model: normalized.provider.model,
-    targetLang: normalized.targetLang,
   })
+  await clearLegacyConfigKeys()
 }
 
 export async function migrateLegacyConfig(): Promise<AstraConfig> {
@@ -44,13 +48,14 @@ export async function migrateLegacyConfig(): Promise<AstraConfig> {
     hoverTrigger: DEFAULT_ASTRA_CONFIG.hoverTrigger,
     provider: {
       id: "openai",
-      apiKey: typeof legacy.apiKey === "string" ? legacy.apiKey : "",
+      accessToken: typeof legacy.apiKey === "string" ? legacy.apiKey : "",
+      apiKey: "",
       model:
         typeof legacy.model === "string" && legacy.model.trim().length > 0
           ? legacy.model
           : DEFAULT_ASTRA_CONFIG.provider.model,
       ...(typeof legacy.baseURL === "string" && legacy.baseURL.trim().length > 0
-        ? { baseURL: legacy.baseURL }
+        ? { relayBaseURL: legacy.baseURL }
         : {}),
     },
     presentation: DEFAULT_ASTRA_CONFIG.presentation,
@@ -103,19 +108,34 @@ export async function saveConfig(input: AstraConfigInput): Promise<AstraConfig> 
     ...(parsedInput.targetLang ? { targetLang: parsedInput.targetLang } : {}),
     ...(parsedInput.hoverTrigger ? { hoverTrigger: parsedInput.hoverTrigger } : {}),
     ...(parsedInput.contentScope ? { contentScope: parsedInput.contentScope } : {}),
+    ...(parsedInput.inputTranslation !== undefined
+      ? { inputTranslation: parsedInput.inputTranslation }
+      : {}),
+    ...(parsedInput.privacyMode !== undefined
+      ? { privacyMode: parsedInput.privacyMode }
+      : {}),
     provider: {
       ...currentConfig.provider,
-      ...(parsedInput.provider?.apiKey !== undefined
-        ? { apiKey: parsedInput.provider.apiKey }
+      ...(parsedInput.provider?.id !== undefined
+        ? {
+            id: parsedInput.provider.id,
+            model:
+              currentConfig.provider.id === parsedInput.provider.id
+                ? currentConfig.provider.model
+                : getDefaultProviderModel(parsedInput.provider.id),
+          }
+        : {}),
+      ...(parsedInput.provider?.accessToken !== undefined
+        ? { accessToken: parsedInput.provider.accessToken }
         : {}),
       ...(parsedInput.provider?.model !== undefined
         ? { model: parsedInput.provider.model }
         : {}),
-      ...(parsedInput.provider?.baseURL !== undefined
+      ...(parsedInput.provider?.relayBaseURL !== undefined
         ? {
-            ...(parsedInput.provider.baseURL.trim().length > 0
-              ? { baseURL: parsedInput.provider.baseURL }
-              : { baseURL: undefined }),
+            ...(parsedInput.provider.relayBaseURL.trim().length > 0
+              ? { relayBaseURL: parsedInput.provider.relayBaseURL }
+              : { relayBaseURL: undefined }),
           }
         : {}),
     },

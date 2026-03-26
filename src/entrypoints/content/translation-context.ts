@@ -8,6 +8,8 @@ import {
   collectTextBlocks,
   findContentRoot,
 } from "@/utils/dom/traversal"
+import { sanitizeTranslationContext } from "@/utils/privacy"
+import { readConfig } from "@/utils/storage/config"
 
 let cachedInlineSummary:
   | {
@@ -20,6 +22,7 @@ let cachedInlineSummary:
   | null = null
 let inlineSummaryMutationVersion = 0
 let inlineSummaryObserver: MutationObserver | null = null
+let inlineSummaryPopstateListener: (() => void) | null = null
 
 function getElementForNode(node: Node | null): HTMLElement | null {
   if (!node) return null
@@ -66,6 +69,22 @@ function ensureInlineSummaryObserver() {
     subtree: true,
     characterData: true,
   })
+
+  inlineSummaryPopstateListener = () => {
+    inlineSummaryMutationVersion += 1
+  }
+  window.addEventListener("popstate", inlineSummaryPopstateListener)
+}
+
+export function disconnectInlineSummaryObserver(): void {
+  inlineSummaryObserver?.disconnect()
+  inlineSummaryObserver = null
+  if (inlineSummaryPopstateListener) {
+    window.removeEventListener("popstate", inlineSummaryPopstateListener)
+    inlineSummaryPopstateListener = null
+  }
+  cachedInlineSummary = null
+  inlineSummaryMutationVersion = 0
 }
 
 export function getDocumentTranslationContext(): Pick<
@@ -85,9 +104,9 @@ export function getDocumentTranslationContext(): Pick<
   }
 }
 
-export function buildInlineTranslationContext(
+export async function buildInlineTranslationContext(
   extra: { selectionContext?: string; contextElement?: HTMLElement | null } = {},
-): TranslationRequestContext {
+): Promise<TranslationRequestContext> {
   ensureInlineSummaryObserver()
 
   const base = getDocumentTranslationContext()
@@ -121,9 +140,16 @@ export function buildInlineTranslationContext(
     }
   }
 
-  return {
+  const fullContext: TranslationRequestContext = {
     ...base,
     ...(contentSummary ? { contentSummary } : {}),
     ...(extra.selectionContext ? { selectionContext: extra.selectionContext } : {}),
   }
+
+  const config = await readConfig()
+  if (config.privacyMode) {
+    return sanitizeTranslationContext(fullContext)
+  }
+
+  return fullContext
 }

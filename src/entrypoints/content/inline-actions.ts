@@ -7,6 +7,7 @@ export interface InlineActionRequest {
   text: string
   targetLang: string
   task: TranslationTask
+  customSystemPrompt?: string
   selectionContext?: string
   contextElement?: HTMLElement | null
 }
@@ -31,10 +32,36 @@ export interface RunActionByIdRequest {
   contextElement?: HTMLElement | null
 }
 
+function renderCustomSystemPrompt(
+  template: string,
+  request: RunActionByIdRequest,
+): string {
+  return template
+    .replaceAll("{{text}}", request.text)
+    .replaceAll("{{targetLang}}", request.targetLang)
+    .replaceAll("{{selectionContext}}", request.selectionContext ?? "")
+}
+
 export async function runActionById(request: RunActionByIdRequest): Promise<InlineActionResult> {
   const action = getActionById(request.actionId)
   if (!action) {
     return { ok: false, message: `Unknown action: ${request.actionId}` }
+  }
+
+  if (action.task === "custom") {
+    const template = action.systemPrompt?.trim()
+    if (!template) {
+      return { ok: false, message: `Action ${request.actionId} is missing a prompt.` }
+    }
+
+    return runInlineAction({
+      text: request.text,
+      targetLang: request.targetLang,
+      task: "custom",
+      customSystemPrompt: renderCustomSystemPrompt(template, request),
+      selectionContext: request.selectionContext,
+      contextElement: request.contextElement,
+    })
   }
 
   return runInlineAction({
@@ -47,7 +74,7 @@ export async function runActionById(request: RunActionByIdRequest): Promise<Inli
 }
 
 export async function runInlineAction(request: InlineActionRequest): Promise<InlineActionResult> {
-  const context = buildInlineTranslationContext({
+  const context = await buildInlineTranslationContext({
     selectionContext: request.selectionContext,
     contextElement: request.contextElement,
   })
@@ -58,6 +85,7 @@ export async function runInlineAction(request: InlineActionRequest): Promise<Inl
       targetLang: request.targetLang,
       context,
       ...(request.task !== "translate" ? { task: request.task } : {}),
+      ...(request.customSystemPrompt ? { customSystemPrompt: request.customSystemPrompt } : {}),
     })
 
     if (!result.ok) {

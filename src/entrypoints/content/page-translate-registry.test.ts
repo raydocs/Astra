@@ -280,4 +280,61 @@ describe("page-translate-registry", () => {
       expect(registry.getSnapshot().totalBlocks).toBe(0)
     })
   })
+
+  describe("markForRetry", () => {
+    it("re-queues blocks under the retry limit", () => {
+      const block = createBlock("retry-1")
+      registry.registerBlocks([block])
+      registry.markQueued([block.element])
+      const [inFlight] = registry.markInFlight([block.element])
+
+      const { requeued, exhausted } = registry.markForRetry([inFlight])
+
+      expect(requeued).toEqual([block.element])
+      expect(exhausted).toEqual([])
+      expect(registry.getBlock(block.element)?.state).toBe("queued")
+      expect(registry.getBlock(block.element)?.retryCount).toBe(1)
+      expect(registry.getSnapshot().queuedBlocks).toBe(1)
+    })
+
+    it("marks blocks as failed after exceeding MAX_RETRIES", () => {
+      const block = createBlock("retry-exhaust")
+      registry.registerBlocks([block])
+
+      // Retry twice (under limit)
+      for (let i = 0; i < 2; i++) {
+        registry.markQueued([block.element])
+        const [inFlight] = registry.markInFlight([block.element])
+        registry.markForRetry([inFlight])
+      }
+
+      expect(registry.getBlock(block.element)?.retryCount).toBe(2)
+
+      // Third attempt — now at limit, should be re-queued one more time
+      registry.markQueued([block.element])
+      const [inFlight] = registry.markInFlight([block.element])
+      const { requeued, exhausted } = registry.markForRetry([inFlight])
+
+      expect(requeued).toEqual([])
+      expect(exhausted).toEqual([block.element])
+      expect(registry.getBlock(block.element)?.state).toBe("failed")
+      expect(registry.getSnapshot().failedBlocks).toBe(1)
+    })
+
+    it("resetRetryCount moves failed blocks back to idle", () => {
+      const block = createBlock("retry-reset")
+      registry.registerBlocks([block])
+      registry.markQueued([block.element])
+      const [inFlight] = registry.markInFlight([block.element])
+      registry.markFailed([inFlight])
+
+      expect(registry.getBlock(block.element)?.state).toBe("failed")
+
+      const reset = registry.resetRetryCount([block.element])
+      expect(reset).toEqual([block.element])
+      expect(registry.getBlock(block.element)?.state).toBe("idle")
+      expect(registry.getBlock(block.element)?.retryCount).toBe(0)
+      expect(registry.getSnapshot().failedBlocks).toBe(0)
+    })
+  })
 })

@@ -8,6 +8,7 @@ export interface ProviderTranslationRequest {
   context?: TranslationRequestContext
   task?: TranslationTask
   customSystemPrompt?: string
+  languageLevel?: "beginner" | "intermediate" | "advanced"
 }
 
 export type ConfiguredProvider = AstraConfig["provider"]

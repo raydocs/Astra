@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from "react"
 import { createRoot } from "react-dom/client"
 import { readConfig } from "@/utils/storage/config"
+import { saveVocabularyEntry } from "@/utils/storage/vocabulary"
 import { copyTextToClipboard } from "@/utils/dom/clipboard"
 import { resolveSiteTranslationSettings } from "@/types/config"
 import { getEnabledActions, type BuiltinAction } from "@/types/actions"
@@ -9,6 +10,7 @@ import {
   setInteractionSuppressionReason,
 } from "../interaction-coordination"
 import { runActionById } from "../inline-actions"
+import { speak, stopSpeaking, isSpeaking } from "@/utils/tts"
 
 interface ToolbarPosition {
   top: number
@@ -111,6 +113,8 @@ function SelectionToolbarApp() {
   const [runningAction, setRunningAction] = useState<string | null>(null)
   const [actionResult, setActionResult] = useState<{ actionId: string; text: string } | null>(null)
   const [hoveredBtn, setHoveredBtn] = useState<string | null>(null)
+  const [saved, setSaved] = useState(false)
+  const [speaking, setSpeaking] = useState(false)
 
   const toolbarRef = useRef<HTMLDivElement>(null)
   const skipNextMouseUp = useRef(false)
@@ -130,6 +134,9 @@ function SelectionToolbarApp() {
     clearInteractionSuppression(["selection-pointer", "selection-toolbar"])
     setVisible(false)
     resetInlineResults()
+    setSaved(false)
+    setSpeaking(false)
+    stopSpeaking()
     setSelectedText("")
     setSelectionContext(undefined)
     selectionContextElementRef.current = null
@@ -273,13 +280,43 @@ function SelectionToolbarApp() {
         text: `⚠ ${error instanceof Error ? error.message : "操作失败"}`,
       })
     } finally {
-      if (requestVersion !== selectionVersionRef.current) return
-      setRunningAction(null)
+      if (requestVersion === selectionVersionRef.current) {
+        setRunningAction(null)
+      }
     }
   }
 
   const handleCopy = async () => {
     await copyTextToClipboard(actionResult?.text ?? selectedText)
+  }
+
+  const handleSpeak = () => {
+    if (isSpeaking()) {
+      stopSpeaking()
+      setSpeaking(false)
+    } else if (selectedText) {
+      speak(selectedText)
+      setSpeaking(true)
+      const poll = setInterval(() => {
+        if (!isSpeaking()) {
+          setSpeaking(false)
+          clearInterval(poll)
+        }
+      }, 200)
+    }
+  }
+
+  const handleSave = async () => {
+    if (!selectedText || saved) return
+    await saveVocabularyEntry({
+      text: selectedText,
+      translation: actionResult?.actionId === "translate" ? actionResult.text : undefined,
+      explanation: actionResult?.actionId === "explain" ? actionResult.text : undefined,
+      context: selectionContext,
+      url: window.location.href,
+      hostname: window.location.hostname,
+    })
+    setSaved(true)
   }
 
   const actions = getEnabledActions()
@@ -295,6 +332,7 @@ function SelectionToolbarApp() {
       <div style={styles.buttonBar}>
         {actions.map((action) => (
           <button
+            type="button"
             key={action.id}
             style={{
               ...styles.button,
@@ -312,6 +350,7 @@ function SelectionToolbarApp() {
           </button>
         ))}
         <button
+          type="button"
           style={{
             ...styles.button,
             ...(hoveredBtn === "copy" ? styles.buttonHover : {}),
@@ -325,6 +364,39 @@ function SelectionToolbarApp() {
           }}
         >
           复制
+        </button>
+        <button
+          type="button"
+          style={{
+            ...styles.button,
+            ...(hoveredBtn === "save" ? styles.buttonHover : {}),
+            ...(saved ? { color: "#10b981" } : {}),
+          }}
+          onMouseEnter={() => setHoveredBtn("save")}
+          onMouseLeave={() => setHoveredBtn(null)}
+          onClick={(event) => {
+            event.stopPropagation()
+            skipNextMouseUp.current = true
+            void handleSave()
+          }}
+        >
+          {saved ? "✓ 已收藏" : "收藏"}
+        </button>
+        <button
+          type="button"
+          style={{
+            ...styles.button,
+            ...(hoveredBtn === "speak" ? styles.buttonHover : {}),
+          }}
+          onMouseEnter={() => setHoveredBtn("speak")}
+          onMouseLeave={() => setHoveredBtn(null)}
+          onClick={(event) => {
+            event.stopPropagation()
+            skipNextMouseUp.current = true
+            handleSpeak()
+          }}
+        >
+          {speaking ? "停止" : "朗读"}
         </button>
       </div>
 

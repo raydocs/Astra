@@ -7,8 +7,9 @@ const { readConfigMock, translateTextsMock } = vi.hoisted(() => ({
     hoverTrigger: "alt" as const,
     provider: {
       id: "openai" as const,
-      apiKey: "sk-test",
-      model: "gpt-4o-mini",
+      accessToken: "astra-token",
+      relayBaseURL: "https://astra.example/v1",
+      model: "gpt-5.4-nano",
     },
     presentation: {
       mode: "bilingual" as const,
@@ -44,8 +45,9 @@ describe("page translation fixtures", () => {
       hoverTrigger: "alt",
       provider: {
         id: "openai",
-        apiKey: "sk-test",
-        model: "gpt-4o-mini",
+        accessToken: "astra-token",
+        relayBaseURL: "https://astra.example/v1",
+        model: "gpt-5.4-nano",
       },
       presentation: {
         mode: "bilingual",

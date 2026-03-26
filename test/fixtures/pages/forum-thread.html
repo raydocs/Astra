@@ -1,0 +1,33 @@
+<main class="thread-layout">
+  <header>
+    <h1>How do you debug flaky translation requests?</h1>
+  </header>
+
+  <section class="thread-post">
+    <h2>Original post</h2>
+    <p>
+      I am seeing intermittent request failures in a browser extension and want advice on whether
+      to retry in content scripts or keep the retry logic in the background worker.
+    </p>
+    <p>
+      My current setup uses several short posts in a thread rather than one coherent article, so
+      this page should not be treated as a single longform reading surface.
+    </p>
+  </section>
+
+  <section class="thread-post">
+    <h2>Reply one</h2>
+    <p>
+      Keep retries centralised and typed so popup state and inline actions can surface the same
+      failure semantics.
+    </p>
+  </section>
+
+  <section class="thread-post">
+    <h2>Reply two</h2>
+    <p>
+      Add more test fixtures before changing readability heuristics, otherwise every future tweak
+      becomes guesswork.
+    </p>
+  </section>
+</main>

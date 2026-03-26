@@ -2,11 +2,40 @@ import { describe, expect, it } from "vitest"
 
 import {
   DEFAULT_ASTRA_CONFIG,
+  hasResolvedProviderAccess,
+  resolveManagedProviderConfig,
   resolveSiteTranslationSettings,
   type AstraConfig,
 } from "./config"
+import type { AstraSession } from "./auth"
 
 describe("resolveSiteTranslationSettings", () => {
+  const session: AstraSession = {
+    version: 1 as const,
+    sessionToken: "astra-session",
+    relayBaseURL: "https://astra.example/v1",
+    email: "user@example.com",
+    plan: "pro" as const,
+    subscriptionStatus: "active" as const,
+    providerEntitlements: ["openai", "gemini"],
+    quota: {
+      dailyRequestsLimit: 2000,
+      dailyCharactersLimit: 500000,
+      requestsPerMinuteLimit: 120,
+      remainingDailyRequests: 1999,
+      remainingDailyCharacters: 499995,
+    },
+    usage: {
+      totalRequests: 1,
+      totalCharacters: 5,
+      dailyRequestsUsed: 1,
+      dailyCharactersUsed: 5,
+      lastRequestAt: "2026-03-26T00:00:00.000Z",
+      recentEvents: [],
+    },
+    expiresAt: null,
+  }
+
   it("defaults hover trigger to alt", () => {
     const resolved = resolveSiteTranslationSettings(DEFAULT_ASTRA_CONFIG, "example.com")
 
@@ -127,5 +156,13 @@ describe("resolveSiteTranslationSettings", () => {
     }
     const resolved = resolveSiteTranslationSettings(config, "example.com", { contentScope: "article" })
     expect(resolved.contentScope).toBe("article")
+  })
+
+  it("injects the Astra session token into the resolved provider config", () => {
+    const provider = resolveManagedProviderConfig(DEFAULT_ASTRA_CONFIG.provider, session)
+
+    expect(provider.accessToken).toBe("astra-session")
+    expect(provider.relayBaseURL).toBe("https://astra.example/v1")
+    expect(hasResolvedProviderAccess(DEFAULT_ASTRA_CONFIG.provider, session)).toBe(true)
   })
 })

@@ -1,0 +1,29 @@
+<div class="kb-layout">
+  <aside aria-label="Knowledge base navigation">
+    <a href="/kb/getting-started">Getting started</a>
+    <a href="/kb/providers">Providers</a>
+    <a href="/kb/privacy">Privacy</a>
+  </aside>
+
+  <main>
+    <section id="guide-body" class="post-body">
+      <h1>Troubleshooting provider failures</h1>
+      <p>
+        Provider failures are usually caused by malformed credentials, temporary upstream
+        throttling, or invalid JSON returned by a model that ignored the requested response shape.
+      </p>
+      <p>
+        The recommended recovery path is to keep the batch small, preserve deterministic prompt
+        instructions, and surface a typed translation error so the popup can explain what failed.
+      </p>
+      <p>
+        Long knowledge-base entries should still resolve as a single article root even when the
+        page includes side navigation, related links, and multiple utility callouts.
+      </p>
+      <p>
+        Regression fixtures for readability extraction help ensure future algorithm changes do not
+        accidentally classify support content as a generic page or choose a navigation wrapper.
+      </p>
+    </section>
+  </main>
+</div>

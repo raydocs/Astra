@@ -2,26 +2,27 @@ import { describe, expect, it, vi } from "vitest"
 
 import { AstraError } from "@/types/translation"
 
-const { translateWithOpenAIMock } = vi.hoisted(() => ({
-  translateWithOpenAIMock: vi.fn(),
+const { translateWithRelayMock } = vi.hoisted(() => ({
+  translateWithRelayMock: vi.fn(),
 }))
 
-vi.mock("./openai", () => ({
-  translateWithOpenAI: translateWithOpenAIMock,
+vi.mock("./relay", () => ({
+  translateWithRelay: translateWithRelayMock,
 }))
 
 import { translateWithProvider } from "./router"
 
 describe("provider router", () => {
-  it("routes openai providers through the openai adapter", async () => {
-    translateWithOpenAIMock.mockResolvedValue(["你好"])
+  it("routes openai providers through the Astra relay adapter", async () => {
+    translateWithRelayMock.mockResolvedValue(["你好"])
 
     const translations = await translateWithProvider(
       {
         id: "openai",
-        apiKey: "sk-test",
-        model: "gpt-4o-mini",
-        baseURL: "https://api.openai.com/v1",
+        accessToken: "astra-token",
+        apiKey: "",
+        model: "gpt-5.4-nano",
+        relayBaseURL: "https://astra.example/v1",
       },
       {
         texts: ["hello"],
@@ -31,23 +32,52 @@ describe("provider router", () => {
     )
 
     expect(translations).toEqual(["你好"])
-    expect(translateWithOpenAIMock).toHaveBeenCalledWith({
-      apiKey: "sk-test",
-      baseURL: "https://api.openai.com/v1",
-      model: "gpt-4o-mini",
+    expect(translateWithRelayMock).toHaveBeenCalledWith({
+      providerId: "openai",
+      accessToken: "astra-token",
+      relayBaseURL: "https://astra.example/v1",
+      model: "gpt-5.4-nano",
       texts: ["hello"],
       targetLang: "zh-CN",
       task: "translate",
     })
   })
 
-  it("rejects providers without an API key before dispatch", async () => {
+  it("routes gemini providers through the Astra relay adapter", async () => {
+    translateWithRelayMock.mockResolvedValue(["你好"])
+
+    await translateWithProvider(
+      {
+        id: "gemini",
+        accessToken: "astra-token",
+        apiKey: "",
+        relayBaseURL: "https://astra.example/v1",
+        model: "gemini-3.1-flash-lite-preview",
+      },
+      {
+        texts: ["hello"],
+        targetLang: "zh-CN",
+      },
+    )
+
+    expect(translateWithRelayMock).toHaveBeenCalledWith({
+      providerId: "gemini",
+      accessToken: "astra-token",
+      relayBaseURL: "https://astra.example/v1",
+      model: "gemini-3.1-flash-lite-preview",
+      texts: ["hello"],
+      targetLang: "zh-CN",
+    })
+  })
+
+  it("rejects providers without an Astra access token before dispatch", async () => {
     await expect(() =>
       translateWithProvider(
         {
           id: "openai",
-          apiKey: "   ",
-          model: "gpt-4o-mini",
+          accessToken: "   ",
+          apiKey: "",
+          model: "gpt-5.4-nano",
         },
         {
           texts: ["hello"],
@@ -56,28 +86,9 @@ describe("provider router", () => {
       )
     ).rejects.toMatchObject({
       code: "CONFIG_MISSING",
-      message: "No API key configured. Open Astra popup to set your OpenAI API key.",
+      message: "No API key or Astra access token configured. Open Astra popup to configure your provider.",
     })
 
-    expect(translateWithOpenAIMock).not.toHaveBeenCalled()
-  })
-
-  it("fails fast for unsupported providers", async () => {
-    await expect(() =>
-      translateWithProvider(
-        {
-          id: "anthropic",
-          apiKey: "sk-test",
-          model: "claude",
-        } as never,
-        {
-          texts: ["hello"],
-          targetLang: "zh-CN",
-        },
-      )
-    ).rejects.toMatchObject({
-      code: "INVALID_RESPONSE",
-      message: "Unsupported provider: anthropic",
-    })
+    expect(translateWithRelayMock).not.toHaveBeenCalled()
   })
 })
