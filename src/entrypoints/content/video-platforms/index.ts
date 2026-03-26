@@ -6,6 +6,7 @@
  */
 
 import { runInlineAction } from "../inline-actions"
+import { translateTexts } from "@/utils/translate/translate"
 import { readConfig } from "@/utils/storage/config"
 import { resolveSiteTranslationSettings } from "@/types/config"
 
@@ -48,6 +49,9 @@ function cacheGet(key: string): string | undefined {
 
 let observer: MutationObserver | null = null
 let activePlatform: VideoPlatformConfig | null = null
+let preloadAbort: AbortController | null = null
+
+const PRELOAD_BATCH_SIZE = 15
 
 function detectPlatform(): VideoPlatformConfig | null {
   const hostname = window.location.hostname
@@ -206,6 +210,162 @@ function waitForElement(selector: string, timeoutMs = 10000): Promise<Element | 
   })
 }
 
+/**
+ * Best-effort extraction of caption texts from YouTube's embedded player data.
+ * YouTube stores caption track URLs in ytInitialPlayerResponse; we cannot fetch
+ * the actual timed-text payloads cross-origin, but the page sometimes exposes
+ * pre-rendered caption segments in the DOM or in script data.  Returns whatever
+ * texts can be scraped without a network request.
+ */
+function tryCollectYouTubeCaptions(): string[] {
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const playerResponse = (window as any).ytInitialPlayerResponse
+    if (!playerResponse) return []
+
+    const captionTracks =
+      playerResponse?.captions?.playerCaptionsTracklistRenderer?.captionTracks
+    if (!Array.isArray(captionTracks) || captionTracks.length === 0) return []
+
+    // The playerResponse only contains track *metadata* (URLs, language codes),
+    // not the actual cue texts.  However, YouTube's timedtext endpoint sometimes
+    // injects cue data into `window.ytcfg` or into script tags.  Attempt to
+    // scrape any pre-rendered caption JSON that may be embedded in the page.
+    const scripts = document.querySelectorAll("script")
+    const cueTexts: string[] = []
+
+    for (const script of scripts) {
+      const content = script.textContent
+      if (!content || !content.includes('"segs"')) continue
+
+      // Look for timed-text JSON blobs with segments.
+      // Format: {"segs":[{"utf8":"Hello "},{"utf8":"world"}]}
+      const segRegex = /"segs"\s*:\s*\[([^\]]+)\]/g
+      let match: RegExpExecArray | null
+      while ((match = segRegex.exec(content)) !== null) {
+        try {
+          const segs = JSON.parse(`[${match[1]}]`) as Array<{ utf8?: string }>
+          const line = segs
+            .map((s) => s.utf8 ?? "")
+            .join("")
+            .trim()
+          if (line && line.length >= 2) {
+            cueTexts.push(line)
+          }
+        } catch {
+          // Malformed JSON segment — skip
+        }
+      }
+    }
+
+    return [...new Set(cueTexts)]
+  } catch {
+    return []
+  }
+}
+
+/**
+ * Pre-load subtitle translations by collecting caption texts over a time window,
+ * then batch-translating them.  After this runs, the MutationObserver handler
+ * will find cache hits and display translations instantly.
+ *
+ * For YouTube, also attempts to extract captions from embedded page data
+ * before falling back to observing DOM mutations.
+ */
+async function preloadSubtitleBatch(
+  platform: VideoPlatformConfig,
+  targetLang: string,
+  durationMs = 5000,
+): Promise<void> {
+  const collected = new Set<string>()
+
+  // YouTube-specific: try to grab captions from embedded player data
+  if (platform.id === "youtube") {
+    const ytCaptions = tryCollectYouTubeCaptions()
+    for (const text of ytCaptions) {
+      collected.add(text)
+    }
+  }
+
+  // Observe DOM mutations to collect caption texts as they appear
+  const container = document.querySelector(platform.captionContainerSelector)
+  if (!container) return
+
+  const abort = new AbortController()
+  preloadAbort = abort
+
+  const collectFromContainer = (): void => {
+    const children = container.children
+    for (let i = 0; i < children.length; i++) {
+      const child = children[i] as HTMLElement
+      if (child.classList.contains(ASTRA_SUBTITLE_CLASS)) continue
+      const text = getCaptionText(platform, child).trim()
+      if (text && text.length >= 2) {
+        collected.add(text)
+      }
+    }
+    // Also check the container itself
+    const containerText = getCaptionText(platform, container as HTMLElement).trim()
+    if (containerText && containerText.length >= 2) {
+      collected.add(containerText)
+    }
+  }
+
+  // Collect whatever is already in the DOM
+  collectFromContainer()
+
+  // Observe for new captions over the collection window
+  const collectObserver = new MutationObserver(() => {
+    if (abort.signal.aborted) return
+    collectFromContainer()
+  })
+  collectObserver.observe(container, { childList: true, subtree: true, characterData: true })
+
+  // Wait for the collection window to expire or until aborted
+  await new Promise<void>((resolve) => {
+    const timer = setTimeout(() => {
+      resolve()
+    }, durationMs)
+    abort.signal.addEventListener("abort", () => {
+      clearTimeout(timer)
+      resolve()
+    })
+  })
+
+  collectObserver.disconnect()
+
+  if (abort.signal.aborted) return
+
+  // Filter out texts that are already cached
+  const texts = Array.from(collected).filter((t) => !cacheGet(`${t}|${targetLang}`))
+  if (texts.length === 0) return
+
+  // Batch translate in groups of PRELOAD_BATCH_SIZE
+  for (let i = 0; i < texts.length; i += PRELOAD_BATCH_SIZE) {
+    if (abort.signal.aborted) return
+
+    const batch = texts.slice(i, i + PRELOAD_BATCH_SIZE)
+    try {
+      const result = await translateTexts({
+        texts: batch,
+        targetLang,
+        task: "translate",
+      })
+
+      if (result.ok) {
+        for (let j = 0; j < batch.length; j++) {
+          if (result.translations[j]) {
+            cachePut(`${batch[j]}|${targetLang}`, result.translations[j])
+          }
+        }
+      }
+    } catch {
+      // Batch translation failed — the per-cue fallback will handle these
+      console.warn("[Astra] Subtitle preload batch failed, falling back to per-cue translation")
+    }
+  }
+}
+
 export function isVideoPage(): boolean {
   const platform = detectPlatform()
   return platform !== null && platform.isVideoPage()
@@ -227,11 +387,18 @@ export async function startVideoSubtitleTranslation(): Promise<void> {
   })
   observer.observe(container, { childList: true, subtree: true, characterData: true })
   handleCaptionMutation(platform, targetLang)
+
+  // Fire-and-forget: preload subtitle translations in the background.
+  // The MutationObserver above continues to handle per-cue translation as a
+  // fallback; preloading just warms the cache so subsequent cues are instant.
+  void preloadSubtitleBatch(platform, targetLang)
 }
 
 export function stopVideoSubtitleTranslation(): void {
   if (!activePlatform) return
   activePlatform = null
+  preloadAbort?.abort()
+  preloadAbort = null
   observer?.disconnect()
   observer = null
   document.querySelectorAll(`.${ASTRA_SUBTITLE_CLASS}`).forEach((el) => el.remove())

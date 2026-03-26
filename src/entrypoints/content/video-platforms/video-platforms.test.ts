@@ -2,9 +2,10 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 
 import { createMockBrowser, setMockBrowser } from "../../../../test/utils/mockBrowser"
 
-const { runInlineActionMock, readConfigMock } = vi.hoisted(() => ({
+const { runInlineActionMock, readConfigMock, translateTextsMock } = vi.hoisted(() => ({
   runInlineActionMock: vi.fn(),
   readConfigMock: vi.fn(),
+  translateTextsMock: vi.fn(),
 }))
 
 vi.mock("../inline-actions", () => ({
@@ -13,6 +14,10 @@ vi.mock("../inline-actions", () => ({
 
 vi.mock("@/utils/storage/config", () => ({
   readConfig: readConfigMock,
+}))
+
+vi.mock("@/utils/translate/translate", () => ({
+  translateTexts: translateTextsMock,
 }))
 
 import { DEFAULT_ASTRA_CONFIG } from "@/types/config"
@@ -42,6 +47,10 @@ describe("video platform subtitle translation", () => {
     setMockBrowser(createMockBrowser())
     readConfigMock.mockResolvedValue(DEFAULT_ASTRA_CONFIG)
     runInlineActionMock.mockResolvedValue({ ok: true, text: "翻译结果" })
+    translateTextsMock.mockImplementation(async (req: { texts: string[] }) => ({
+      ok: true,
+      translations: req.texts.map((t: string) => `[translated] ${t}`),
+    }))
     document.body.innerHTML = ""
   })
 
@@ -203,5 +212,146 @@ describe("video platform subtitle translation", () => {
 
     expect(document.getElementById("astra-video-subtitle-styles")).toBeNull()
     expect(document.querySelectorAll(".astra-video-subtitle").length).toBe(0)
+  })
+
+  describe("preload batch translation", () => {
+    it("collects captions during preload window and batch-translates them", async () => {
+      setLocation("www.youtube.com", "/watch")
+
+      // Make per-cue handler never resolve so it does not cache results
+      // before the preload window finishes
+      runInlineActionMock.mockReturnValue(new Promise(() => {}))
+
+      document.body.innerHTML = `
+        <div class="ytp-caption-window-container">
+          <div class="ytp-caption-window-bottom">
+            <span class="ytp-caption-segment">First line</span>
+          </div>
+        </div>
+      `
+      await startVideoSubtitleTranslation()
+
+      // Simulate new captions appearing during the collection window
+      const container = document.querySelector(".ytp-caption-window-container")!
+      container.innerHTML = `
+        <div class="ytp-caption-window-bottom">
+          <span class="ytp-caption-segment">Second line</span>
+        </div>
+      `
+      await vi.advanceTimersByTimeAsync(2000)
+
+      container.innerHTML = `
+        <div class="ytp-caption-window-bottom">
+          <span class="ytp-caption-segment">Third line</span>
+        </div>
+      `
+      await vi.advanceTimersByTimeAsync(3100)
+
+      // After 5s window, preload should have called translateTexts with collected captions
+      await Promise.resolve()
+      await Promise.resolve()
+      await Promise.resolve()
+
+      expect(translateTextsMock).toHaveBeenCalled()
+      const callArgs = translateTextsMock.mock.calls[0][0]
+      expect(callArgs.task).toBe("translate")
+      // Should contain at least one of the caption texts
+      expect(callArgs.texts.length).toBeGreaterThan(0)
+    })
+
+    it("does not batch-translate texts already in cache", async () => {
+      setLocation("www.youtube.com", "/watch")
+      document.body.innerHTML = `
+        <div class="ytp-caption-window-container">
+          <div class="ytp-caption-window-bottom">
+            <span class="ytp-caption-segment">Cached line</span>
+          </div>
+        </div>
+      `
+      // Start and let the first per-cue translation cache the result
+      await startVideoSubtitleTranslation()
+      await vi.advanceTimersByTimeAsync(100)
+      await Promise.resolve()
+      await Promise.resolve()
+
+      // The per-cue handler (runInlineAction) should have cached "Cached line"
+      translateTextsMock.mockClear()
+
+      // Advance past the 5s preload window
+      await vi.advanceTimersByTimeAsync(5000)
+      await Promise.resolve()
+      await Promise.resolve()
+
+      // translateTexts should not be called because the only caption was already cached
+      expect(translateTextsMock).not.toHaveBeenCalled()
+    })
+
+    it("stops preload when translation is stopped", async () => {
+      setLocation("www.youtube.com", "/watch")
+      document.body.innerHTML = `
+        <div class="ytp-caption-window-container">
+          <div class="ytp-caption-window-bottom">
+            <span class="ytp-caption-segment">Line A</span>
+          </div>
+        </div>
+      `
+      await startVideoSubtitleTranslation()
+
+      // Stop before the 5s collection window completes
+      await vi.advanceTimersByTimeAsync(1000)
+      stopVideoSubtitleTranslation()
+
+      translateTextsMock.mockClear()
+
+      // Advance past when preload would have fired
+      await vi.advanceTimersByTimeAsync(5000)
+      await Promise.resolve()
+
+      // translateTexts should not be called after stop
+      expect(translateTextsMock).not.toHaveBeenCalled()
+    })
+
+    it("preloaded translations serve as cache hits for per-cue handler", async () => {
+      setLocation("www.youtube.com", "/watch")
+      document.body.innerHTML = `
+        <div class="ytp-caption-window-container">
+          <div class="ytp-caption-window-bottom">
+            <span class="ytp-caption-segment">Preloaded text</span>
+          </div>
+        </div>
+      `
+
+      // Make per-cue handler slow so preload finishes first
+      runInlineActionMock.mockImplementation(
+        () => new Promise((resolve) => setTimeout(() => resolve({ ok: true, text: "slow result" }), 10000)),
+      )
+
+      await startVideoSubtitleTranslation()
+
+      // Advance past preload window
+      await vi.advanceTimersByTimeAsync(5100)
+      await Promise.resolve()
+      await Promise.resolve()
+
+      // Preload should have cached the text via translateTexts
+      expect(translateTextsMock).toHaveBeenCalled()
+
+      // Now trigger a new mutation with the same text — should use cache
+      runInlineActionMock.mockClear()
+      const container = document.querySelector(".ytp-caption-window-container")!
+      container.innerHTML = `
+        <div class="ytp-caption-window-bottom">
+          <span class="ytp-caption-segment">Preloaded text</span>
+        </div>
+      `
+      await vi.advanceTimersByTimeAsync(100)
+      await Promise.resolve()
+      await Promise.resolve()
+
+      // The translation should be injected from cache, not via runInlineAction
+      const subtitle = document.querySelector(".astra-video-subtitle")
+      expect(subtitle).not.toBeNull()
+      expect(subtitle?.textContent).toBe("[translated] Preloaded text")
+    })
   })
 })
