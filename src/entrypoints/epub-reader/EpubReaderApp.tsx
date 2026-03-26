@@ -42,10 +42,12 @@ export function EpubReaderApp() {
   const [chapter, setChapter] = useState<ChapterContent | null>(null)
   const bookRef = useRef<Book | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
+  const chapterGenRef = useRef(0)
 
   const loadBook = async (data: ArrayBuffer) => {
     try {
       setPhase("loading")
+      bookRef.current?.destroy()
       const book = ePub(data)
       bookRef.current = book
 
@@ -68,6 +70,9 @@ export function EpubReaderApp() {
 
   const openChapter = async (book: Book, item: NavItem) => {
     try {
+      chapterGenRef.current += 1
+      const gen = chapterGenRef.current
+
       const section = book.spine.get(item.href)
       if (!section) return
 
@@ -93,8 +98,9 @@ export function EpubReaderApp() {
       }
       setChapter(chapterContent)
 
-      // Translate in batches
+      // Translate in batches (abort if chapter changed)
       for (let i = 0; i < paragraphs.length; i += BATCH_SIZE) {
+        if (chapterGenRef.current !== gen) return
         const batch = paragraphs.slice(i, i + BATCH_SIZE)
         try {
           const response: RuntimeResponse = await browser.runtime.sendMessage({
@@ -102,9 +108,9 @@ export function EpubReaderApp() {
             payload: { texts: batch, targetLang: await getTargetLang(), task: "translate" },
           })
 
-          if (response.type === "runtime/translate-batch:success") {
+          if (response.type === "runtime/translate-batch:success" && chapterGenRef.current === gen) {
             setChapter((prev) => {
-              if (!prev) return prev
+              if (!prev || prev.href !== item.href) return prev
               const next = new Map(prev.translations)
               batch.forEach((_, j) => {
                 next.set(i + j, response.payload.translations[j])

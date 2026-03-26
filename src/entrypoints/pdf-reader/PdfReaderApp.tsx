@@ -27,6 +27,7 @@ export function PdfReaderApp() {
   const [fileName, setFileName] = useState<string>("")
   const [progress, setProgress] = useState({ current: 0, total: 0 })
   const fileInputRef = useRef<HTMLInputElement>(null)
+  const loadGenRef = useRef(0)
 
   // Check for URL parameter on mount
   useEffect(() => {
@@ -78,8 +79,11 @@ export function PdfReaderApp() {
 
   const processPdf = async (data: Uint8Array) => {
     try {
+      loadGenRef.current += 1
+      const gen = loadGenRef.current
+
       const pdfPages = await extractPdfPages(data)
-      const pageStates: PageState[] = pdfPages.map((page) => ({
+      const pageStates: PageState[] = pdfPages.map((page: PdfPage) => ({
         page,
         translations: [],
         phase: "pending",
@@ -88,8 +92,9 @@ export function PdfReaderApp() {
       setProgress({ current: 0, total: pdfPages.length })
       setPhase("translating")
 
-      // Translate pages sequentially
+      // Translate pages sequentially (abort if a new PDF is loaded)
       for (let i = 0; i < pdfPages.length; i++) {
+        if (loadGenRef.current !== gen) return
         setProgress({ current: i + 1, total: pdfPages.length })
 
         try {

@@ -468,6 +468,28 @@ function TranslationSection({
   )
 }
 
+const textareaStyle: React.CSSProperties = {
+  ...inputStyle,
+  minHeight: 72,
+  resize: "vertical",
+  fontFamily: 'ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace',
+  fontSize: 13,
+  lineHeight: 1.5,
+}
+
+const advancedToggleStyle: React.CSSProperties = {
+  display: "flex",
+  alignItems: "center",
+  gap: 6,
+  background: "none",
+  border: "none",
+  padding: "8px 0",
+  cursor: "pointer",
+  fontSize: 13,
+  fontWeight: 600,
+  color: BRAND_COLOR,
+}
+
 function SitesSection({
   config,
   onChange,
@@ -477,6 +499,7 @@ function SitesSection({
 }) {
   const siteEntries = Object.entries(config.sites)
   const [editingSite, setEditingSite] = useState<string | null>(null)
+  const [advancedOpen, setAdvancedOpen] = useState<Record<string, boolean>>({})
   const [newSiteKey, setNewSiteKey] = useState("")
 
   const deleteSite = (hostname: string) => {
@@ -509,6 +532,14 @@ function SitesSection({
     setEditingSite(key)
   }
 
+  const selectorsToText = (selectors?: string[]): string =>
+    selectors?.join("\n") ?? ""
+
+  const textToSelectors = (text: string): string[] | undefined => {
+    const lines = text.split("\n").map((l) => l.trim()).filter(Boolean)
+    return lines.length > 0 ? lines : undefined
+  }
+
   return (
     <div>
       <h2 style={sectionTitle}>Sites</h2>
@@ -531,90 +562,229 @@ function SitesSection({
         </div>
       )}
 
-      {siteEntries.map(([hostname, siteConfig]) => (
-        <div key={hostname} style={cardStyle}>
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: editingSite === hostname ? 12 : 0 }}>
-            <div>
-              <span style={{ fontWeight: 600, fontSize: 14 }}>{hostname}</span>
-              {!siteConfig.enabled && (
-                <span style={{ marginLeft: 8, fontSize: 11, color: "#dc2626", background: "#fef2f2", padding: "2px 6px", borderRadius: 4 }}>
-                  disabled
-                </span>
-              )}
-              {siteConfig.alwaysTranslate && (
-                <span style={{ marginLeft: 8, fontSize: 11, color: "#059669", background: "#ecfdf5", padding: "2px 6px", borderRadius: 4 }}>
-                  auto-translate
-                </span>
-              )}
-            </div>
-            <div style={{ display: "flex", gap: 6 }}>
-              <button
-                type="button"
-                style={{ ...btnSecondary, padding: "4px 12px", fontSize: 12 }}
-                onClick={() => setEditingSite(editingSite === hostname ? null : hostname)}
-              >
-                {editingSite === hostname ? "Close" : "Edit"}
-              </button>
-              <button
-                type="button"
-                style={{ ...btnDanger, padding: "4px 12px", fontSize: 12 }}
-                onClick={() => deleteSite(hostname)}
-              >
-                Delete
-              </button>
-            </div>
-          </div>
+      {siteEntries.map(([hostname, siteConfig]) => {
+        const isAdvancedOpen = advancedOpen[hostname] ?? false
+        const hasAdvancedRules = !!(
+          siteConfig.selectors?.length
+          || siteConfig.excludeSelectors?.length
+          || siteConfig.paragraphMinLength != null
+        )
 
-          {editingSite === hostname && (
-            <div style={{ borderTop: "1px solid #e2e8f0", paddingTop: 12 }}>
-              <div style={checkboxRow}>
-                <input
-                  type="checkbox"
-                  id={`site-enabled-${hostname}`}
-                  checked={siteConfig.enabled}
-                  onChange={(e) => updateSite(hostname, { enabled: e.target.checked })}
-                />
-                <label htmlFor={`site-enabled-${hostname}`}>Enabled</label>
+        return (
+          <div key={hostname} style={cardStyle}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: editingSite === hostname ? 12 : 0 }}>
+              <div>
+                <span style={{ fontWeight: 600, fontSize: 14 }}>{hostname}</span>
+                {!siteConfig.enabled && (
+                  <span style={{ marginLeft: 8, fontSize: 11, color: "#dc2626", background: "#fef2f2", padding: "2px 6px", borderRadius: 4 }}>
+                    disabled
+                  </span>
+                )}
+                {siteConfig.alwaysTranslate && (
+                  <span style={{ marginLeft: 8, fontSize: 11, color: "#059669", background: "#ecfdf5", padding: "2px 6px", borderRadius: 4 }}>
+                    auto-translate
+                  </span>
+                )}
+                {hasAdvancedRules && (
+                  <span style={{ marginLeft: 8, fontSize: 11, color: BRAND_COLOR, background: `${BRAND_COLOR}14`, padding: "2px 6px", borderRadius: 4 }}>
+                    advanced
+                  </span>
+                )}
               </div>
-              <div style={checkboxRow}>
-                <input
-                  type="checkbox"
-                  id={`site-auto-${hostname}`}
-                  checked={siteConfig.alwaysTranslate}
-                  onChange={(e) => updateSite(hostname, { alwaysTranslate: e.target.checked })}
-                />
-                <label htmlFor={`site-auto-${hostname}`}>Auto-translate on load</label>
-              </div>
-              <div style={fieldGroup}>
-                <label style={labelStyle}>Target language override</label>
-                <select
-                  style={{ ...selectStyle, maxWidth: 220 }}
-                  value={siteConfig.targetLang ?? ""}
-                  onChange={(e) => updateSite(hostname, { targetLang: e.target.value || undefined })}
+              <div style={{ display: "flex", gap: 6 }}>
+                <button
+                  type="button"
+                  style={{ ...btnSecondary, padding: "4px 12px", fontSize: 12 }}
+                  onClick={() => setEditingSite(editingSite === hostname ? null : hostname)}
                 >
-                  <option value="">Use global default</option>
-                  {LANGUAGE_OPTIONS.map((o) => (
-                    <option key={o.value} value={o.value}>{o.label}</option>
-                  ))}
-                </select>
-              </div>
-              <div style={fieldGroup}>
-                <label style={labelStyle}>Hover trigger override</label>
-                <select
-                  style={{ ...selectStyle, maxWidth: 220 }}
-                  value={siteConfig.hoverTrigger ?? ""}
-                  onChange={(e) => updateSite(hostname, { hoverTrigger: (e.target.value || undefined) as HoverTrigger | undefined })}
+                  {editingSite === hostname ? "Close" : "Edit"}
+                </button>
+                <button
+                  type="button"
+                  style={{ ...btnDanger, padding: "4px 12px", fontSize: 12 }}
+                  onClick={() => deleteSite(hostname)}
                 >
-                  <option value="">Use global default</option>
-                  {HOVER_TRIGGER_OPTIONS.map((o) => (
-                    <option key={o.value} value={o.value}>{o.label}</option>
-                  ))}
-                </select>
+                  Delete
+                </button>
               </div>
             </div>
-          )}
-        </div>
-      ))}
+
+            {editingSite === hostname && (
+              <div style={{ borderTop: "1px solid #e2e8f0", paddingTop: 12 }}>
+                <div style={checkboxRow}>
+                  <input
+                    type="checkbox"
+                    id={`site-enabled-${hostname}`}
+                    checked={siteConfig.enabled}
+                    onChange={(e) => updateSite(hostname, { enabled: e.target.checked })}
+                  />
+                  <label htmlFor={`site-enabled-${hostname}`}>Enabled</label>
+                </div>
+                <div style={checkboxRow}>
+                  <input
+                    type="checkbox"
+                    id={`site-auto-${hostname}`}
+                    checked={siteConfig.alwaysTranslate}
+                    onChange={(e) => updateSite(hostname, { alwaysTranslate: e.target.checked })}
+                  />
+                  <label htmlFor={`site-auto-${hostname}`}>Auto-translate on load</label>
+                </div>
+                <div style={fieldGroup}>
+                  <label style={labelStyle}>Target language override</label>
+                  <select
+                    style={{ ...selectStyle, maxWidth: 220 }}
+                    value={siteConfig.targetLang ?? ""}
+                    onChange={(e) => updateSite(hostname, { targetLang: e.target.value || undefined })}
+                  >
+                    <option value="">Use global default</option>
+                    {LANGUAGE_OPTIONS.map((o) => (
+                      <option key={o.value} value={o.value}>{o.label}</option>
+                    ))}
+                  </select>
+                </div>
+                <div style={fieldGroup}>
+                  <label style={labelStyle}>Hover trigger override</label>
+                  <select
+                    style={{ ...selectStyle, maxWidth: 220 }}
+                    value={siteConfig.hoverTrigger ?? ""}
+                    onChange={(e) => updateSite(hostname, { hoverTrigger: (e.target.value || undefined) as HoverTrigger | undefined })}
+                  >
+                    <option value="">Use global default</option>
+                    {HOVER_TRIGGER_OPTIONS.map((o) => (
+                      <option key={o.value} value={o.value}>{o.label}</option>
+                    ))}
+                  </select>
+                </div>
+                <div style={fieldGroup}>
+                  <label style={labelStyle}>Content scope override</label>
+                  <select
+                    style={{ ...selectStyle, maxWidth: 220 }}
+                    value={siteConfig.contentScope ?? ""}
+                    onChange={(e) => updateSite(hostname, { contentScope: (e.target.value || undefined) as ContentScope | undefined })}
+                  >
+                    <option value="">Use global default</option>
+                    {CONTENT_SCOPE_OPTIONS.map((o) => (
+                      <option key={o.value} value={o.value}>{o.label}</option>
+                    ))}
+                  </select>
+                </div>
+                <div style={fieldGroup}>
+                  <label style={labelStyle}>Presentation mode override</label>
+                  <select
+                    style={{ ...selectStyle, maxWidth: 220 }}
+                    value={siteConfig.presentation?.mode ?? ""}
+                    onChange={(e) => {
+                      const mode = e.target.value as TranslationMode | ""
+                      const currentPres = siteConfig.presentation ?? {}
+                      const nextPres = mode ? { ...currentPres, mode } : (() => {
+                        const { mode: _m, ...rest } = currentPres
+                        return Object.keys(rest).length > 0 ? rest : undefined
+                      })()
+                      updateSite(hostname, { presentation: nextPres })
+                    }}
+                  >
+                    <option value="">Use global default</option>
+                    {MODE_OPTIONS.map((o) => (
+                      <option key={o.value} value={o.value}>{o.label}</option>
+                    ))}
+                  </select>
+                </div>
+                <div style={fieldGroup}>
+                  <label style={labelStyle}>Theme override</label>
+                  <select
+                    style={{ ...selectStyle, maxWidth: 220 }}
+                    value={siteConfig.presentation?.theme ?? ""}
+                    onChange={(e) => {
+                      const theme = e.target.value as TranslationTheme | ""
+                      const currentPres = siteConfig.presentation ?? {}
+                      const nextPres = theme ? { ...currentPres, theme } : (() => {
+                        const { theme: _t, ...rest } = currentPres
+                        return Object.keys(rest).length > 0 ? rest : undefined
+                      })()
+                      updateSite(hostname, { presentation: nextPres })
+                    }}
+                  >
+                    <option value="">Use global default</option>
+                    {THEME_OPTIONS.map((o) => (
+                      <option key={o.value} value={o.value}>{o.label}</option>
+                    ))}
+                  </select>
+                </div>
+
+                {/* Advanced Rules collapsible sub-section */}
+                <button
+                  type="button"
+                  style={advancedToggleStyle}
+                  onClick={() => setAdvancedOpen((prev) => ({ ...prev, [hostname]: !isAdvancedOpen }))}
+                  aria-expanded={isAdvancedOpen}
+                  data-testid={`advanced-toggle-${hostname}`}
+                >
+                  <span style={{ display: "inline-block", transform: isAdvancedOpen ? "rotate(90deg)" : "rotate(0deg)", transition: "transform 0.15s" }}>
+                    &#9654;
+                  </span>
+                  Advanced Rules
+                  {hasAdvancedRules && (
+                    <span style={{ fontSize: 11, fontWeight: 400, color: "#94a3b8", marginLeft: 4 }}>(configured)</span>
+                  )}
+                </button>
+
+                {isAdvancedOpen && (
+                  <div
+                    style={{ paddingLeft: 12, borderLeft: `2px solid ${BRAND_COLOR}22`, marginBottom: 8 }}
+                    data-testid={`advanced-rules-${hostname}`}
+                  >
+                    <div style={fieldGroup}>
+                      <label style={labelStyle}>Selectors</label>
+                      <textarea
+                        style={textareaStyle}
+                        value={selectorsToText(siteConfig.selectors)}
+                        onChange={(e) => updateSite(hostname, { selectors: textToSelectors(e.target.value) })}
+                        placeholder={"article\nmain .content\n.post-body"}
+                        rows={3}
+                      />
+                      <div style={hintStyle}>Limit translation to elements matching these selectors (one per line).</div>
+                    </div>
+                    <div style={fieldGroup}>
+                      <label style={labelStyle}>Exclude selectors</label>
+                      <textarea
+                        style={textareaStyle}
+                        value={selectorsToText(siteConfig.excludeSelectors)}
+                        onChange={(e) => updateSite(hostname, { excludeSelectors: textToSelectors(e.target.value) })}
+                        placeholder={"nav\nfooter\n.sidebar"}
+                        rows={3}
+                      />
+                      <div style={hintStyle}>Skip elements matching these selectors (one per line).</div>
+                    </div>
+                    <div style={fieldGroup}>
+                      <label style={labelStyle}>Paragraph minimum length</label>
+                      <input
+                        type="number"
+                        min={0}
+                        step={1}
+                        style={{ ...inputStyle, maxWidth: 160 }}
+                        value={siteConfig.paragraphMinLength ?? ""}
+                        onChange={(e) => {
+                          const raw = e.target.value
+                          if (raw === "") {
+                            updateSite(hostname, { paragraphMinLength: undefined })
+                          } else {
+                            const num = parseInt(raw, 10)
+                            if (!Number.isNaN(num) && num >= 0) {
+                              updateSite(hostname, { paragraphMinLength: num })
+                            }
+                          }
+                        }}
+                        placeholder="0"
+                      />
+                      <div style={hintStyle}>Minimum text length to translate (default: 0).</div>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        )
+      })}
     </div>
   )
 }
