@@ -73,6 +73,16 @@ export const ProviderConfigSchema = z.discriminatedUnion("id", [
   GeminiProviderConfigSchema,
 ])
 
+export const CustomActionSchema = z.object({
+  id: z.string().min(1),
+  label: z.string().min(1),
+  labelZh: z.string().min(1),
+  systemPrompt: z.string().min(1),
+  enabled: z.boolean().default(true),
+})
+
+export type CustomAction = z.infer<typeof CustomActionSchema>
+
 export const AstraConfigSchema = z.object({
   version: z.literal(1).default(1),
   targetLang: z.string().trim().min(1).default("zh-CN"),
@@ -94,6 +104,7 @@ export const AstraConfigSchema = z.object({
     translationColor: "#64748b",
   }),
   sites: z.record(z.string(), SiteConfigSchema).default({}),
+  customActions: z.array(CustomActionSchema).default([]),
 })
 
 export const AstraConfigInputSchema = z.object({
@@ -112,6 +123,7 @@ export const AstraConfigInputSchema = z.object({
   }).optional(),
   presentation: PresentationSettingsInputSchema.optional(),
   sites: z.record(z.string(), SiteConfigInputSchema).optional(),
+  customActions: z.array(CustomActionSchema).optional(),
 })
 
 export type ProviderId = z.infer<typeof ProviderIdSchema>
@@ -171,6 +183,7 @@ export const DEFAULT_ASTRA_CONFIG: AstraConfig = {
     translationColor: "#64748b",
   },
   sites: {},
+  customActions: [],
 }
 
 export function getDefaultProviderModel(providerId: ProviderId): string {
@@ -356,5 +369,6 @@ export function normalizeConfig(config: AstraConfig): AstraConfig {
     provider: normalizeProviderConfig(config.provider),
     presentation: normalizePresentation(config.presentation),
     sites,
+    customActions: config.customActions ?? [],
   }
 }

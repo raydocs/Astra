@@ -41,6 +41,7 @@ describe("config storage", () => {
         translationColor: "#64748b",
       },
       sites: {},
+      customActions: [],
     })
     expect(browser.__storage[ASTRA_CONFIG_STORAGE_KEY]).toEqual(config)
     expect(browser.__storage.apiKey).toBeUndefined()

@@ -4,7 +4,7 @@ import { ErrorBoundary } from "@/components/ErrorBoundary"
 import { readConfig } from "@/utils/storage/config"
 import { saveVocabularyEntry } from "@/utils/storage/vocabulary"
 import { copyTextToClipboard } from "@/utils/dom/clipboard"
-import { resolveSiteTranslationSettings } from "@/types/config"
+import { resolveSiteTranslationSettings, type AstraConfig } from "@/types/config"
 import { getEnabledActions, type BuiltinAction } from "@/types/actions"
 import {
   clearInteractionSuppression,
@@ -116,6 +116,7 @@ function SelectionToolbarApp() {
   const [hoveredBtn, setHoveredBtn] = useState<string | null>(null)
   const [saved, setSaved] = useState(false)
   const [speaking, setSpeaking] = useState(false)
+  const [actions, setActions] = useState<BuiltinAction[]>(() => getEnabledActions())
 
   const toolbarRef = useRef<HTMLDivElement>(null)
   const skipNextMouseUp = useRef(false)
@@ -244,10 +245,16 @@ function SelectionToolbarApp() {
     clearInteractionSuppression(["selection-pointer", "selection-toolbar"])
   }, [])
 
-  const resolveTargetLang = async (): Promise<{ targetLang: string; enabled: boolean }> => {
+  useEffect(() => {
+    void readConfig().then((config) => {
+      setActions(getEnabledActions({ customActions: config.customActions }))
+    })
+  }, [])
+
+  const resolveConfig = async (): Promise<{ config: AstraConfig; targetLang: string; enabled: boolean }> => {
     const config = await readConfig()
     const resolved = resolveSiteTranslationSettings(config, window.location.hostname)
-    return { targetLang: resolved.targetLang, enabled: resolved.enabled }
+    return { config, targetLang: resolved.targetLang, enabled: resolved.enabled }
   }
 
   const handleAction = async (action: BuiltinAction) => {
@@ -259,7 +266,7 @@ function SelectionToolbarApp() {
     setActionResult(null)
 
     try {
-      const { targetLang, enabled } = await resolveTargetLang()
+      const { config, targetLang, enabled } = await resolveConfig()
       if (requestVersion !== selectionVersionRef.current) return
       if (!enabled) {
         setActionResult({ actionId: action.id, text: "⚠ Astra is disabled on this site." })
@@ -272,6 +279,7 @@ function SelectionToolbarApp() {
         targetLang,
         selectionContext: requestContext,
         contextElement: selectionContextElementRef.current,
+        customActions: config.customActions,
       })
 
       if (requestVersion !== selectionVersionRef.current) return
@@ -331,8 +339,6 @@ function SelectionToolbarApp() {
     })
     setSaved(true)
   }
-
-  const actions = getEnabledActions()
 
   if (!visible) return null
 

@@ -1,5 +1,6 @@
 import { translateTexts } from "@/utils/translate/translate"
 import type { TranslationTask } from "@/types/messages"
+import type { CustomAction } from "@/types/config"
 import { getActionById } from "@/types/actions"
 import { buildInlineTranslationContext } from "./translation-context"
 
@@ -30,6 +31,7 @@ export interface RunActionByIdRequest {
   targetLang: string
   selectionContext?: string
   contextElement?: HTMLElement | null
+  customActions?: CustomAction[]
 }
 
 function renderCustomSystemPrompt(
@@ -43,7 +45,7 @@ function renderCustomSystemPrompt(
 }
 
 export async function runActionById(request: RunActionByIdRequest): Promise<InlineActionResult> {
-  const action = getActionById(request.actionId)
+  const action = getActionById(request.actionId, { customActions: request.customActions })
   if (!action) {
     return { ok: false, message: `Unknown action: ${request.actionId}` }
   }

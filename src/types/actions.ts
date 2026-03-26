@@ -1,6 +1,7 @@
 import { z } from "zod"
 
 import { TranslationTaskSchema } from "./messages"
+import type { CustomAction } from "./config"
 
 export const ActionIdSchema = z.string().min(1)
 
@@ -65,13 +66,42 @@ export const BUILTIN_ACTIONS: BuiltinAction[] = [
   },
 ]
 
-export function getEnabledActions(enabledIds?: string[]): BuiltinAction[] {
-  if (!enabledIds) {
-    return BUILTIN_ACTIONS.filter(a => a.enabledByDefault)
-  }
-  return BUILTIN_ACTIONS.filter(a => enabledIds.includes(a.id))
+function customActionsToBuiltin(customActions: CustomAction[]): BuiltinAction[] {
+  return customActions
+    .filter(a => a.enabled)
+    .map(a => ({
+      id: a.id,
+      label: a.label,
+      labelZh: a.labelZh,
+      task: "custom" as const,
+      systemPrompt: a.systemPrompt,
+      icon: "custom" as const,
+      enabledByDefault: true,
+    }))
 }
 
-export function getActionById(id: string): BuiltinAction | undefined {
-  return BUILTIN_ACTIONS.find(a => a.id === id)
+export function getEnabledActions(config?: { customActions?: CustomAction[] }): BuiltinAction[] {
+  const builtins = BUILTIN_ACTIONS.filter(a => a.enabledByDefault)
+  if (!config?.customActions?.length) return builtins
+
+  return [...builtins, ...customActionsToBuiltin(config.customActions)]
+}
+
+export function getActionById(id: string, config?: { customActions?: CustomAction[] }): BuiltinAction | undefined {
+  const builtin = BUILTIN_ACTIONS.find(a => a.id === id)
+  if (builtin) return builtin
+
+  if (!config?.customActions) return undefined
+  const custom = config.customActions.find(a => a.id === id && a.enabled)
+  if (!custom) return undefined
+
+  return {
+    id: custom.id,
+    label: custom.label,
+    labelZh: custom.labelZh,
+    task: "custom" as const,
+    systemPrompt: custom.systemPrompt,
+    icon: "custom" as const,
+    enabledByDefault: true,
+  }
 }

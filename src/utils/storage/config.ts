@@ -150,6 +150,9 @@ export async function saveConfig(input: AstraConfigInput): Promise<AstraConfig> 
       ...parsedInput.presentation,
     },
     sites: mergedSites,
+    ...(parsedInput.customActions !== undefined
+      ? { customActions: parsedInput.customActions }
+      : {}),
   })
 
   await persistConfig(nextConfig)
