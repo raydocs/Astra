@@ -336,6 +336,8 @@ function injectStyles() {
       border-left: 2px solid #6366f1;
       padding-left: 8px;
       display: block;
+      user-select: text;
+      -webkit-user-select: text;
     }
     .astra-mode-translation-only {
       margin-top: 0;
