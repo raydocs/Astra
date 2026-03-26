@@ -111,6 +111,9 @@ export async function saveConfig(input: AstraConfigInput): Promise<AstraConfig> 
     ...(parsedInput.inputTranslation !== undefined
       ? { inputTranslation: parsedInput.inputTranslation }
       : {}),
+    ...(parsedInput.languageLevel !== undefined
+      ? { languageLevel: parsedInput.languageLevel }
+      : {}),
     ...(parsedInput.privacyMode !== undefined
       ? { privacyMode: parsedInput.privacyMode }
       : {}),
@@ -127,6 +130,9 @@ export async function saveConfig(input: AstraConfigInput): Promise<AstraConfig> 
         : {}),
       ...(parsedInput.provider?.accessToken !== undefined
         ? { accessToken: parsedInput.provider.accessToken }
+        : {}),
+      ...(parsedInput.provider?.apiKey !== undefined
+        ? { apiKey: parsedInput.provider.apiKey }
         : {}),
       ...(parsedInput.provider?.model !== undefined
         ? { model: parsedInput.provider.model }

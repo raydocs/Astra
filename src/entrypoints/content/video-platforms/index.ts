@@ -23,8 +23,28 @@ const ALL_PLATFORMS: VideoPlatformConfig[] = [
 const ASTRA_SUBTITLE_CLASS = "astra-video-subtitle"
 const STYLE_ID = "astra-video-subtitle-styles"
 
+const MAX_CACHE_SIZE = 500
 const translationCache = new Map<string, string>()
 const pendingTranslations = new Set<string>()
+
+function cachePut(key: string, value: string): void {
+  // LRU eviction: delete oldest entries when over limit
+  if (translationCache.size >= MAX_CACHE_SIZE) {
+    const firstKey = translationCache.keys().next().value
+    if (firstKey !== undefined) translationCache.delete(firstKey)
+  }
+  translationCache.set(key, value)
+}
+
+function cacheGet(key: string): string | undefined {
+  const value = translationCache.get(key)
+  if (value !== undefined) {
+    // Move to end (most recently used)
+    translationCache.delete(key)
+    translationCache.set(key, value)
+  }
+  return value
+}
 
 let observer: MutationObserver | null = null
 let activePlatform: VideoPlatformConfig | null = null
@@ -111,7 +131,7 @@ async function translateAndInject(
   const cacheKey = `${sourceText}|${targetLang}`
 
   // Cache hit
-  const cached = translationCache.get(cacheKey)
+  const cached = cacheGet(cacheKey)
   if (cached) {
     injectTranslation(captionWindow, cached, sourceText)
     return
@@ -129,7 +149,7 @@ async function translateAndInject(
     })
 
     if (result.ok) {
-      translationCache.set(cacheKey, result.text)
+      cachePut(cacheKey, result.text)
       const currentText = getCaptionText(platform, captionWindow).trim()
       if (currentText === sourceText) {
         injectTranslation(captionWindow, result.text, sourceText)

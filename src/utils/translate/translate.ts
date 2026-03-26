@@ -9,6 +9,10 @@ import {
   toTranslationError,
   type TranslationError,
 } from "@/types/translation"
+import {
+  getCachedTranslations,
+  setCachedTranslation,
+} from "@/utils/cache/translation-cache"
 
 export interface TranslateRequest {
   texts: string[]
@@ -117,6 +121,11 @@ async function withConcurrency<T>(
   return results
 }
 
+/** Cache is only used for standard translate tasks without custom prompts. */
+function isCacheable(task: TranslationTask, customSystemPrompt?: string): boolean {
+  return task === "translate" && !customSystemPrompt
+}
+
 export async function translateTexts(
   request: TranslateRequest,
 ): Promise<TranslateResult> {
@@ -126,7 +135,36 @@ export async function translateTexts(
     return { ok: true, translations: [] }
   }
 
-  const segments = splitIntoSegments(texts)
+  const cacheable = isCacheable(task, customSystemPrompt)
+
+  // --- cache lookup ---
+  let cachedResults = new Map<number, string>()
+  if (cacheable) {
+    try {
+      cachedResults = await getCachedTranslations(
+        texts.map((text) => ({ text, targetLang })),
+      )
+    } catch {
+      // Cache read failure is non-fatal — proceed without cache.
+    }
+  }
+
+  // Determine which texts still need translation
+  const uncachedEntries: Array<{ originalIndex: number; text: string }> = []
+  for (let i = 0; i < texts.length; i++) {
+    if (!cachedResults.has(i)) {
+      uncachedEntries.push({ originalIndex: i, text: texts[i] })
+    }
+  }
+
+  // If everything was cached, return immediately
+  if (uncachedEntries.length === 0) {
+    return { ok: true, translations: texts.map((_, i) => cachedResults.get(i)!) }
+  }
+
+  // --- translate uncached texts ---
+  const uncachedTexts = uncachedEntries.map((e) => e.text)
+  const segments = splitIntoSegments(uncachedTexts)
   const batches = createBatches(segments)
   const tasks = batches.map((batch) => async () => {
     try {
@@ -147,7 +185,7 @@ export async function translateTexts(
   })
 
   const batchResults = await withConcurrency(tasks, MAX_CONCURRENCY)
-  const translations = Array.from({ length: texts.length }, () => "")
+  const uncachedTranslations = Array.from({ length: uncachedTexts.length }, () => "")
 
   for (const [index, batchResult] of batchResults.entries()) {
     const batch = batches[index]
@@ -167,11 +205,11 @@ export async function translateTexts(
     }
 
     batch.originalIndices.forEach((originalIndex, translationIndex) => {
-      translations[originalIndex] += batchResult.translations[translationIndex]
+      uncachedTranslations[originalIndex] += batchResult.translations[translationIndex]
     })
   }
 
-  if (translations.some((translation) => typeof translation !== "string")) {
+  if (uncachedTranslations.some((translation) => typeof translation !== "string")) {
     return {
       ok: false,
       error: createTranslationError(
@@ -179,6 +217,25 @@ export async function translateTexts(
         "Translation results were incomplete.",
       ),
     }
+  }
+
+  // --- write fresh translations to cache ---
+  if (cacheable) {
+    for (let i = 0; i < uncachedEntries.length; i++) {
+      const { text } = uncachedEntries[i]
+      const translation = uncachedTranslations[i]
+      // Fire-and-forget; cache write failure should not block the response.
+      setCachedTranslation(text, targetLang, translation).catch(() => {})
+    }
+  }
+
+  // --- merge cached + fresh results in original order ---
+  const translations = Array.from({ length: texts.length }, () => "")
+  for (const [index, cached] of cachedResults) {
+    translations[index] = cached
+  }
+  for (let i = 0; i < uncachedEntries.length; i++) {
+    translations[uncachedEntries[i].originalIndex] = uncachedTranslations[i]
   }
 
   return { ok: true, translations }

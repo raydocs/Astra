@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react"
 import { browser } from "#imports"
 import type {
   AstraConfig,
+  LanguageLevel,
   SiteConfig,
 } from "@/types/config"
 import type { AstraAccount, AstraSession, AstraUsageSnapshot } from "@/types/auth"
@@ -19,6 +20,7 @@ import {
   normalizeSiteKey,
   resolveSiteTranslationSettings,
 } from "@/types/config"
+import { getReadingHistory, type ReadingHistoryEntry } from "@/utils/storage/reading-history"
 import {
   clearAstraSession,
   readAstraSession,
@@ -42,6 +44,16 @@ import SiteSettingsSection from "./components/SiteSettingsSection"
 import AuthSection from "./components/AuthSection"
 import { btnPrimary, btnSecondary, btnDisabled, warningStyle } from "./components/styles"
 
+function formatRelativeTime(timestamp: number): string {
+  const diff = Date.now() - timestamp
+  const minutes = Math.floor(diff / 60000)
+  if (minutes < 1) return "just now"
+  if (minutes < 60) return `${minutes}m ago`
+  const hours = Math.floor(minutes / 60)
+  if (hours < 24) return `${hours}h ago`
+  return `${Math.floor(hours / 24)}d ago`
+}
+
 async function getActiveSiteKey(): Promise<string | null> {
   const [tab] = await browser.tabs.query({ active: true, currentWindow: true })
   if (!tab?.url) return null
@@ -64,6 +76,7 @@ export default function App() {
   const [authEmail, setAuthEmail] = useState("")
   const [authPassword, setAuthPassword] = useState("")
   const [authBusy, setAuthBusy] = useState(false)
+  const [recentHistory, setRecentHistory] = useState<ReadingHistoryEntry[]>([])
   const hasUnsavedChangesRef = useRef(false)
 
   hasUnsavedChangesRef.current = hasUnsavedChanges
@@ -97,11 +110,13 @@ export default function App() {
   }
 
   const refreshAll = async () => {
-    const [config, siteKey, storedSession] = await Promise.all([
+    const [config, siteKey, storedSession, history] = await Promise.all([
       readConfig(),
       getActiveSiteKey(),
       readAstraSession(),
+      getReadingHistory(),
     ])
+    setRecentHistory(history.slice(0, 5))
     let session = storedSession
     let account: AstraAccount | null = null
     let usage: AstraUsageSnapshot | null = null
@@ -234,12 +249,14 @@ export default function App() {
         contentScope: configDraft.contentScope,
         provider: {
           id: configDraft.provider.id,
+          apiKey: configDraft.provider.apiKey,
           relayBaseURL: configDraft.provider.relayBaseURL ?? "",
           model: configDraft.provider.model,
         },
         presentation: configDraft.presentation,
         hoverTrigger: configDraft.hoverTrigger,
         inputTranslation: configDraft.inputTranslation,
+        languageLevel: configDraft.languageLevel,
         privacyMode: configDraft.privacyMode,
         sites: configDraft.sites,
       })
@@ -514,6 +531,7 @@ export default function App() {
         onTargetLangChange={(lang) => updateDraft((current) => ({ ...current, targetLang: lang }))}
         onHoverTriggerChange={(trigger) => updateDraft((current) => ({ ...current, hoverTrigger: trigger }))}
         onContentScopeChange={(scope) => updateDraft((current) => ({ ...current, contentScope: scope }))}
+        onLanguageLevelChange={(level: LanguageLevel) => updateDraft((current) => ({ ...current, languageLevel: level }))}
       />
 
       {activeSiteKey && (
@@ -533,6 +551,42 @@ export default function App() {
       >
         {saved ? "✓ 已保存" : "保存设置"}
       </button>
+
+      {recentHistory.length > 0 && (
+        <details style={{ marginTop: 12, marginBottom: 4 }}>
+          <summary style={{ cursor: "pointer", fontSize: 13, color: "#6366f1" }}>
+            Recent Translations
+          </summary>
+          <div style={{ marginTop: 6 }}>
+            {recentHistory.map((entry) => (
+              <div
+                key={entry.id}
+                style={{
+                  display: "flex",
+                  justifyContent: "space-between",
+                  alignItems: "baseline",
+                  fontSize: 12,
+                  color: "#334155",
+                  padding: "4px 0",
+                  borderBottom: "1px solid #f1f5f9",
+                }}
+              >
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                    {entry.title.length > 40 ? `${entry.title.slice(0, 40)}...` : entry.title}
+                  </div>
+                  <div style={{ fontSize: 11, color: "#94a3b8" }}>
+                    {entry.hostname} · {entry.wordsTranslated} words
+                  </div>
+                </div>
+                <div style={{ fontSize: 11, color: "#94a3b8", whiteSpace: "nowrap", marginLeft: 8 }}>
+                  {formatRelativeTime(entry.visitedAt)}
+                </div>
+              </div>
+            ))}
+          </div>
+        </details>
+      )}
 
       {statusMessage && (
         <div style={warningStyle}>

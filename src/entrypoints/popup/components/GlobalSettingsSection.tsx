@@ -2,6 +2,7 @@ import type {
   AstraConfig,
   ContentScope,
   HoverTrigger,
+  LanguageLevel,
   ProviderId,
   TranslationMode,
   TranslationTheme,
@@ -27,6 +28,12 @@ const HOVER_TRIGGER_OPTIONS = [
   { value: "disabled", label: "关闭" },
 ] as const
 
+const LANGUAGE_LEVEL_OPTIONS = [
+  { value: "beginner", label: "初学者" },
+  { value: "intermediate", label: "中级" },
+  { value: "advanced", label: "高级" },
+] as const
+
 const PROVIDER_OPTIONS = [
   { value: "openai", label: "OpenAI" },
   { value: "gemini", label: "Gemini" },
@@ -39,6 +46,7 @@ export interface GlobalSettingsSectionProps {
   onTargetLangChange: (lang: string) => void
   onHoverTriggerChange: (trigger: HoverTrigger) => void
   onContentScopeChange: (scope: ContentScope) => void
+  onLanguageLevelChange: (level: LanguageLevel) => void
 }
 
 export default function GlobalSettingsSection({
@@ -48,6 +56,7 @@ export default function GlobalSettingsSection({
   onTargetLangChange,
   onHoverTriggerChange,
   onContentScopeChange,
+  onLanguageLevelChange,
 }: GlobalSettingsSectionProps) {
   return (
     <details open style={{ marginBottom: 12 }}>
@@ -118,6 +127,17 @@ export default function GlobalSettingsSection({
           style={inputStyle}
         >
           {HOVER_TRIGGER_OPTIONS.map((option) => (
+            <option key={option.value} value={option.value}>{option.label}</option>
+          ))}
+        </select>
+
+        <label style={labelStyle}>语言水平</label>
+        <select
+          value={config.languageLevel}
+          onChange={(e) => onLanguageLevelChange(e.target.value as LanguageLevel)}
+          style={inputStyle}
+        >
+          {LANGUAGE_LEVEL_OPTIONS.map((option) => (
             <option key={option.value} value={option.value}>{option.label}</option>
           ))}
         </select>

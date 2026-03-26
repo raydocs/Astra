@@ -11,6 +11,7 @@ import { toTranslationError } from "@/types/translation"
 import { toggleTabTranslation } from "@/utils/extension/messages"
 import { translateWithProvider } from "@/utils/providers/router"
 import { readConfig, saveConfig } from "@/utils/storage/config"
+import { cleanExpiredCache } from "@/utils/cache/translation-cache"
 import { readAstraSession } from "@/utils/storage/auth"
 import { resolveManagedProviderConfig, type HoverTrigger } from "@/types/config"
 
@@ -18,6 +19,9 @@ export default defineBackground({
   type: "module",
   main: () => {
     browser.runtime.onInstalled.addListener(() => {
+      // Prune expired translation cache entries on install/update
+      cleanExpiredCache().catch(() => {})
+
       if (browser.contextMenus) {
         browser.contextMenus.create({
           id: "astra-translate-selection",
@@ -167,6 +171,7 @@ async function handleTranslate(payload: {
     context: payload.context,
     task: payload.task,
     customSystemPrompt: payload.customSystemPrompt,
+    languageLevel: config.languageLevel,
   })
 
   return {
