@@ -52,7 +52,7 @@ import type {
 } from "./types.ts"
 import type { BenchOptStructuredReportLike } from "./compare.ts"
 import { compareCandidateScores, normalizeBaseline, scoreCandidate } from "./score.ts"
-import { checkGuardrails, type BenchOptGuardrailResult } from "./guardrails.ts"
+import { checkGuardrails, extractScoreTrends, type BenchOptGuardrailResult } from "./guardrails.ts"
 import { detectRedFlags, type BenchOptRedFlagReport } from "./red-flags.ts"
 import { createTelemetryCollector, type BenchOptTelemetryCollector } from "./telemetry.ts"
 import { createLogger } from "./logs.ts"
@@ -87,6 +87,26 @@ function parseVerificationSplits(value: string | null | undefined): BenchOptTria
     .map((part) => normalizeTrialSplit(part))
 
   return splits.length > 0 ? [...new Set(splits)] : null
+}
+
+function toStatusScoreTrends(
+  trends: Array<{
+    split: string
+    averageTotal: number | null
+  }>,
+) {
+  const grouped = new Map<string, number[]>()
+  for (const trend of trends) {
+    if (trend.averageTotal === null) continue
+    const scores = grouped.get(trend.split) ?? []
+    scores.push(trend.averageTotal)
+    grouped.set(trend.split, scores)
+  }
+
+  return Array.from(grouped.entries()).map(([surface, scores]) => ({
+    surface,
+    scores,
+  }))
 }
 
 function normalizeOrchestrationOptions(
@@ -1668,6 +1688,7 @@ export async function runBenchOpt(
 ): Promise<BenchOptRunResult> {
   const startedAtMs = Date.now()
   const telemetry = createTelemetryCollector({ sessionId: `run-${Date.now()}` })
+  telemetry.recordIterationStart(0)
   const logger = createLogger(`run-${Date.now()}`, { enableConsole: true })
   logger.info("Starting bench-opt run")
   const args = argv.slice()
@@ -2067,6 +2088,36 @@ export async function runBenchOpt(
     ]
   }
 
+  if (experiment) {
+    const scoreTrends = extractScoreTrends(experiment.trials)
+    scoreTrends.train.forEach((score, iteration) => {
+      telemetry.recordScoreTrend({
+        iteration,
+        split: "train",
+        averageTotal: score,
+        surfaces: [{ surface: "train", averageTotal: score }],
+        recordedAt: new Date().toISOString(),
+      })
+    })
+    scoreTrends.validation.forEach((score, iteration) => {
+      telemetry.recordScoreTrend({
+        iteration,
+        split: "validation",
+        averageTotal: score,
+        surfaces: [{ surface: "validation", averageTotal: score }],
+        recordedAt: new Date().toISOString(),
+      })
+    })
+
+    for (const trial of experiment.trials) {
+      if (trial.status === "retained" || trial.status === "promoted") {
+        telemetry.recordCandidateDecision(trial.trialId, "kept")
+      } else if (trial.status === "rejected") {
+        telemetry.recordCandidateDecision(trial.trialId, "rejected")
+      }
+    }
+  }
+
   // --- Safety: guardrails + red flags ---
   let guardrailResult: BenchOptGuardrailResult | null = null
   let redFlagReport: BenchOptRedFlagReport | null = null
@@ -2233,6 +2284,9 @@ export async function runBenchOpt(
     ]
   }
 
+  telemetry.recordIterationEnd(Math.max(0, (orchestrationLoop?.completedIterations ?? 1) - 1))
+  const telemetrySnapshot = telemetry.snapshot()
+
   let text = renderText(report)
   if (execution) {
     text = `${text}\n\n${renderExecutionSummary(execution)}`
@@ -2398,12 +2452,12 @@ export async function runBenchOpt(
         redFlags: { flagCount: redFlagReport.flags.length, criticalCount: redFlagReport.flags.filter(f => f.severity === "critical").length, flags: redFlagReport.flags.map(f => ({ id: f.id, severity: f.severity, description: f.description })) },
       } : null,
       telemetry: {
-        durationMs: Date.now() - startedAtMs,
-        iterationCount: orchestrationLoop?.completedIterations ?? 1,
-        candidatesKept: experiment?.trials.filter(t => t.status === "retained" || t.status === "promoted").length ?? 0,
-        candidatesRejected: experiment?.trials.filter(t => t.status === "rejected").length ?? 0,
-        estimatedCostUsd: null,
-        scoreTrends: [],
+        durationMs: telemetrySnapshot.durationMs,
+        iterationCount: telemetrySnapshot.iterations || (orchestrationLoop?.completedIterations ?? 1),
+        candidatesKept: telemetrySnapshot.candidatesKept,
+        candidatesRejected: telemetrySnapshot.candidatesRejected,
+        estimatedCostUsd: telemetrySnapshot.cost.estimatedCostUsd,
+        scoreTrends: toStatusScoreTrends(telemetrySnapshot.scoreTrends),
       },
       paths: {
         latestJsonPath,
@@ -2554,12 +2608,12 @@ export async function runBenchOpt(
             redFlags: { flagCount: redFlagReport.flags.length, criticalCount: redFlagReport.flags.filter(f => f.severity === "critical").length, flags: redFlagReport.flags.map(f => ({ id: f.id, severity: f.severity, description: f.description })) },
           } : null,
           telemetry: {
-            durationMs: Date.now() - startedAtMs,
-            iterationCount: orchestrationLoop?.completedIterations ?? 1,
-            candidatesKept: experiment?.trials.filter(t => t.status === "retained" || t.status === "promoted").length ?? 0,
-            candidatesRejected: experiment?.trials.filter(t => t.status === "rejected").length ?? 0,
-            estimatedCostUsd: null,
-            scoreTrends: [],
+            durationMs: telemetrySnapshot.durationMs,
+            iterationCount: telemetrySnapshot.iterations || (orchestrationLoop?.completedIterations ?? 1),
+            candidatesKept: telemetrySnapshot.candidatesKept,
+            candidatesRejected: telemetrySnapshot.candidatesRejected,
+            estimatedCostUsd: telemetrySnapshot.cost.estimatedCostUsd,
+            scoreTrends: toStatusScoreTrends(telemetrySnapshot.scoreTrends),
           },
           paths: {
             latestJsonPath: paths.latestJsonPath,

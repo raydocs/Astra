@@ -94,6 +94,11 @@ export async function resolveLiveBrowserExecutablePath(options: {
     }
   }
 
+  const playwrightExecutablePath = chromium.executablePath()
+  if (playwrightExecutablePath && (await pathExists(playwrightExecutablePath))) {
+    return playwrightExecutablePath
+  }
+
   return null
 }
 
