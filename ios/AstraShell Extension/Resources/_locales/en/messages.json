@@ -1,0 +1,310 @@
+{
+  "extName": {
+    "message": "Astra"
+  },
+  "extDescription": {
+    "message": "AI language learning assistant"
+  },
+  "settingsTitle": {
+    "message": "Global Settings"
+  },
+  "providerLabel": {
+    "message": "Provider"
+  },
+  "apiKeyLabel": {
+    "message": "API Key"
+  },
+  "baseUrlLabel": {
+    "message": "Base URL (optional)"
+  },
+  "relayUrlLabel": {
+    "message": "Astra Relay URL (managed mode, optional)"
+  },
+  "modelLabel": {
+    "message": "Model"
+  },
+  "targetLangLabel": {
+    "message": "Target Language"
+  },
+  "hoverTriggerLabel": {
+    "message": "Hover Translation Trigger"
+  },
+  "hoverTriggerAlt": {
+    "message": "Alt + Hover"
+  },
+  "hoverTriggerAlways": {
+    "message": "Always on Hover"
+  },
+  "hoverTriggerDisabled": {
+    "message": "Disabled"
+  },
+  "translationModeLabel": {
+    "message": "Translation Mode"
+  },
+  "modeBilingual": {
+    "message": "Bilingual"
+  },
+  "modeTranslationOnly": {
+    "message": "Translation Only"
+  },
+  "translationThemeLabel": {
+    "message": "Translation Theme"
+  },
+  "themeDefault": {
+    "message": "Default"
+  },
+  "themeUnderline": {
+    "message": "Underline"
+  },
+  "themeHighlight": {
+    "message": "Highlight"
+  },
+  "scopeLabel": {
+    "message": "Translation Scope"
+  },
+  "scopePage": {
+    "message": "Full Page"
+  },
+  "scopeArticle": {
+    "message": "Article Area"
+  },
+  "actionTranslate": {
+    "message": "Translate"
+  },
+  "actionExplain": {
+    "message": "Explain"
+  },
+  "actionCopy": {
+    "message": "Copy"
+  },
+  "actionSave": {
+    "message": "Save"
+  },
+  "actionSaved": {
+    "message": "\u2713 Saved"
+  },
+  "actionSpeak": {
+    "message": "Speak"
+  },
+  "actionStop": {
+    "message": "Stop"
+  },
+  "actionOperationFailed": {
+    "message": "Operation failed"
+  },
+  "actionExplaining": {
+    "message": "Explaining\u2026"
+  },
+  "actionHideExplanation": {
+    "message": "Hide explanation"
+  },
+  "actionSaving": {
+    "message": "Saving..."
+  },
+  "inputTranslateButton": {
+    "message": "Tr"
+  },
+  "translateButton": {
+    "message": "Tr"
+  },
+  "popup_translateThisPage": {
+    "message": "Translate This Page"
+  },
+  "popup_stopTranslation": {
+    "message": "Stop Translation"
+  },
+  "popup_connected": {
+    "message": "Connected"
+  },
+  "popup_notConnected": {
+    "message": "Not connected"
+  },
+  "popup_wordsTranslatedToday": {
+    "message": "$1 words translated today",
+    "placeholders": {
+      "1": { "content": "$1" }
+    }
+  },
+  "popup_signInToAstra": {
+    "message": "Sign in to Astra"
+  },
+  "popup_signIn": {
+    "message": "Sign In"
+  },
+  "popup_signOut": {
+    "message": "Sign Out"
+  },
+  "popup_recentTranslations": {
+    "message": "Recent Translations"
+  },
+  "popup_words": {
+    "message": "words"
+  },
+  "popup_settings": {
+    "message": "Settings"
+  },
+  "popup_vocabulary": {
+    "message": "Vocabulary"
+  },
+  "popup_review": {
+    "message": "Review"
+  },
+  "label_targetLanguage": {
+    "message": "Target Language"
+  },
+  "label_translationMode": {
+    "message": "Translation Mode"
+  },
+  "label_email": {
+    "message": "Email"
+  },
+  "label_password": {
+    "message": "Password"
+  },
+  "label_hover": {
+    "message": "Hover"
+  },
+  "label_altHover": {
+    "message": "Alt + Hover"
+  },
+  "label_languageLevel": {
+    "message": "Language Level"
+  },
+  "label_beginner": {
+    "message": "Beginner"
+  },
+  "label_intermediate": {
+    "message": "Intermediate"
+  },
+  "label_advanced": {
+    "message": "Advanced"
+  },
+  "label_apiKeyDirectConnect": {
+    "message": "Connects directly to $1 API, no Astra account needed",
+    "placeholders": {
+      "1": { "content": "$1" }
+    }
+  },
+  "label_enableAstra": {
+    "message": "Enable Astra on this site"
+  },
+  "label_autoTranslate": {
+    "message": "Auto-translate when page opens"
+  },
+  "label_siteTargetLang": {
+    "message": "Site Target Language"
+  },
+  "label_siteHoverTrigger": {
+    "message": "Site Hover Trigger"
+  },
+  "label_siteTranslationMode": {
+    "message": "Site Translation Mode"
+  },
+  "label_siteTranslationTheme": {
+    "message": "Site Translation Theme"
+  },
+  "label_siteTranslationScope": {
+    "message": "Site Translation Scope"
+  },
+  "label_inheritGlobal": {
+    "message": "Inherit global ($1)",
+    "placeholders": {
+      "1": { "content": "$1" }
+    }
+  },
+  "popup_quotaToday": {
+    "message": "Today: $1% used ($2 / $3 tokens)",
+    "placeholders": {
+      "1": { "content": "$1" },
+      "2": { "content": "$2" },
+      "3": { "content": "$3" }
+    }
+  },
+  "status_status": {
+    "message": "Status"
+  },
+  "status_targetLang": {
+    "message": "Target Language"
+  },
+  "status_modeTheme": {
+    "message": "Mode / Theme"
+  },
+  "status_site": {
+    "message": "Site"
+  },
+  "status_currentPage": {
+    "message": "Current Page"
+  },
+  "status_progress": {
+    "message": "Progress"
+  },
+  "status_siteDisabled": {
+    "message": "Astra is disabled on this site."
+  },
+  "floatball_preparingTranslation": {
+    "message": "Preparing translation\u2026"
+  },
+  "floatball_removingTranslation": {
+    "message": "Removing translation\u2026"
+  },
+  "floatball_translationFailed": {
+    "message": "Translation failed: $1",
+    "placeholders": {
+      "1": { "content": "$1" }
+    }
+  },
+  "floatball_translatePage": {
+    "message": "Translate this page"
+  },
+  "popup_astraAccount": {
+    "message": "Astra Account"
+  },
+  "popup_currentPlan": {
+    "message": "Current Plan"
+  },
+  "popup_planStatus": {
+    "message": "Status"
+  },
+  "popup_todayRequests": {
+    "message": "Today Requests"
+  },
+  "popup_todayCharacters": {
+    "message": "Today Characters"
+  },
+  "popup_remainingRequests": {
+    "message": "Remaining Requests"
+  },
+  "popup_remainingCharacters": {
+    "message": "Remaining Characters"
+  },
+  "popup_perMinuteLimit": {
+    "message": "Per-minute Limit"
+  },
+  "popup_lastCall": {
+    "message": "Last Call"
+  },
+  "popup_usageRefreshTime": {
+    "message": "Usage Refresh Time"
+  },
+  "popup_recentUsage": {
+    "message": "Recent Usage"
+  },
+  "popup_expiresAt": {
+    "message": "Expires At"
+  },
+  "popup_upgradeToPro": {
+    "message": "Upgrade to Pro"
+  },
+  "popup_manageSubscription": {
+    "message": "Manage Subscription"
+  },
+  "popup_switchToFree": {
+    "message": "Switch to Free"
+  },
+  "popup_switchToPro": {
+    "message": "Switch to Pro"
+  },
+  "popup_currentSite": {
+    "message": "Current Site"
+  }
+}
