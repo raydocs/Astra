@@ -364,9 +364,9 @@ export function validateBenchmarkPackResults(
       name: "Blind divergence within fail threshold",
       expected: `<= ${pack.gates.blindDivergenceFailThreshold}`,
       actual: "No blind evaluations executed",
-      passed: true, // no data means no failure signal
+      passed: false,
     })
-    notes.push("Blind evaluations were not executed. Divergence check is inconclusive.")
+    notes.push("Blind evaluations were not executed. Divergence check is required for benchmark-pack pass/fail.")
   }
 
   // 6. Visible pass threshold
