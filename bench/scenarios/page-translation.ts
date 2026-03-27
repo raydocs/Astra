@@ -3,16 +3,14 @@ import { getPageTranslationState, startPageTranslation, stopPageTranslation } fr
 import type { TranslationErrorCode } from "@/types/translation"
 
 import { evaluatePageTranslation, type PageTranslationExecution } from "../evaluators/page-translation"
+import {
+  buildExpectedPageTranslationTexts,
+  buildPageTranslationExecutionFromDocument,
+} from "./helpers/page-translation"
 import { installBenchBrowser } from "../runtime/browser"
 import { installDomEnvironment, flushMicrotasks, cleanupDomEnvironment } from "../runtime/dom"
 import { mountFixture, type FixtureSource } from "../runtime/fixtures"
-import type { BenchmarkScenario } from "../types"
-
-function collectTranslatedTexts(): string[] {
-  return Array.from(document.querySelectorAll("[data-astra-translation='1'] .astra-translation-inner"))
-    .map((element) => element.textContent?.trim() ?? "")
-    .filter(Boolean)
-}
+import type { BenchmarkIssue, BenchmarkScenario, ScenarioCodeHint } from "../types"
 
 async function waitForTranslationMarkers(timeoutMs = 200) {
   const startedAt = Date.now()
@@ -47,8 +45,7 @@ async function executePageScenario(options: {
       url: options.url,
     })
 
-    const plan = resolveExtractionPlan(document, options.overrides?.contentScope ?? "page")
-    const expectedTexts = plan.blocks.map((block) => block.text)
+    const expected = buildExpectedPageTranslationTexts(document, options.overrides?.contentScope ?? "page")
 
     const snapshot = await startPageTranslation({
       targetLang: options.overrides?.targetLang ?? "zh-CN",
@@ -58,21 +55,16 @@ async function executePageScenario(options: {
     await flushMicrotasks(6)
     await waitForTranslationMarkers()
 
-    const execution: PageTranslationExecution = {
-      translatedNodeCount: document.querySelectorAll("[data-astra-translation='1']").length,
-      expectedNodeCount: expectedTexts.length,
-      translationMarkerCount: document.querySelectorAll("[data-astra-translation='1']").length,
-      hiddenSourceCount: document.querySelectorAll("[data-astra-source-hidden]").length,
+    const execution = buildPageTranslationExecutionFromDocument({
+      doc: document,
+      expectedTexts: expected.expectedTexts,
       requestCount: browser.getTranslateCalls().length,
-      skippedInteractiveTranslations: document.querySelectorAll("form [data-astra-translation], nav [data-astra-translation], button [data-astra-translation], input + [data-astra-translation]").length,
-      translatedTexts: collectTranslatedTexts(),
-      expectedTexts,
       snapshotPhase: snapshot.phase,
       failedBlocks: snapshot.progress.failedBlocks,
       notes: [
-        `effectiveScope=${plan.scope}`,
+        `effectiveScope=${expected.effectiveScope}`,
       ],
-    }
+    })
 
     stopPageTranslation()
     return execution
@@ -102,7 +94,7 @@ async function executePageErrorScenario(options: {
       url: options.url,
     })
 
-    const plan = resolveExtractionPlan(document, "page")
+    const expected = buildExpectedPageTranslationTexts(document, "page")
 
     await startPageTranslation({ targetLang: "zh-CN" })
     // Wait long enough for the drain loop to fire, hit the error, and call stopSession
@@ -113,25 +105,82 @@ async function executePageErrorScenario(options: {
     // Read the final state after error propagation
     const finalSnapshot = getPageTranslationState()
 
-    const execution: PageTranslationExecution = {
-      translatedNodeCount: document.querySelectorAll("[data-astra-translation='1']").length,
-      expectedNodeCount: plan.blocks.length,
-      translationMarkerCount: document.querySelectorAll("[data-astra-translation='1']").length,
-      hiddenSourceCount: document.querySelectorAll("[data-astra-source-hidden]").length,
+    const execution = buildPageTranslationExecutionFromDocument({
+      doc: document,
+      expectedTexts: expected.expectedTexts,
       requestCount: browser.getTranslateCalls().length,
-      skippedInteractiveTranslations: 0,
-      translatedTexts: collectTranslatedTexts(),
-      expectedTexts: plan.blocks.map((b) => b.text),
       snapshotPhase: finalSnapshot?.phase ?? "idle",
       failedBlocks: finalSnapshot?.progress.failedBlocks ?? 0,
       notes: ["provider-error-scenario"],
-    }
+    })
 
     stopPageTranslation()
     return execution
   } finally {
     cleanupDomEnvironment()
   }
+}
+
+const PAGE_TRANSLATION_HINTS: Record<string, ScenarioCodeHint> = {
+  "page-translation/article-basic-bilingual": {
+    suspectedFiles: [
+      "src/entrypoints/content/page-translate.ts",
+      "src/entrypoints/content/translation-context.ts",
+      "src/utils/dom/extraction.ts",
+    ],
+    suspectedSymbols: ["startPageTranslation", "resolveExtractionPlan"],
+    suspectedKeywords: ["expectedNodeCount", "bilingual", "coverage"],
+    risk: "cross-module",
+  },
+  "page-translation/forms-and-nav-skip": {
+    suspectedFiles: [
+      "src/entrypoints/content/page-translate.ts",
+      "src/utils/dom/traversal.ts",
+      "src/utils/dom/extraction.ts",
+    ],
+    suspectedSymbols: ["startPageTranslation", "resolveExtractionPlan"],
+    suspectedKeywords: ["interactive", "forms", "nav", "skip"],
+    risk: "cross-module",
+  },
+  "page-translation/article-translation-only": {
+    suspectedFiles: [
+      "src/entrypoints/content/page-translate.ts",
+      "src/entrypoints/content/translation-context.ts",
+    ],
+    suspectedSymbols: ["startPageTranslation"],
+    suspectedKeywords: ["translation-only", "hiddenSourceCount"],
+    risk: "local",
+  },
+  "page-translation/nested-blocks-coverage": {
+    suspectedFiles: [
+      "src/entrypoints/content/page-translate.ts",
+      "src/utils/dom/extraction.ts",
+      "src/utils/dom/traversal.ts",
+    ],
+    suspectedSymbols: ["resolveExtractionPlan"],
+    suspectedKeywords: ["nested", "coverage"],
+    risk: "cross-module",
+  },
+  "page-translation/feed-card-list": {
+    suspectedFiles: [
+      "src/entrypoints/content/page-translate.ts",
+      "src/entrypoints/content/page-translate-registry.ts",
+      "src/utils/dom/extraction.ts",
+    ],
+    suspectedSymbols: ["startPageTranslation", "resolveExtractionPlan"],
+    suspectedKeywords: ["feed", "card", "registry"],
+    risk: "cross-module",
+  },
+  "page-translation/provider-error-graceful": {
+    suspectedFiles: [
+      "src/entrypoints/content/page-translate.ts",
+      "src/entrypoints/content/translation-context.ts",
+      "src/entrypoints/content/page-translate-registry.ts",
+    ],
+    suspectedSymbols: ["startPageTranslation", "stopPageTranslation", "getPageTranslationState"],
+    suspectedKeywords: ["provider error", "failedBlocks", "graceful"],
+    risk: "cross-module",
+  },
 }
 
 export const pageTranslationScenarios: BenchmarkScenario<PageTranslationExecution>[] = [
@@ -141,6 +190,7 @@ export const pageTranslationScenarios: BenchmarkScenario<PageTranslationExecutio
     surface: "page-translation",
     fixture: "article-basic",
     task: "Translate a straightforward article fixture without losing the original DOM structure.",
+    codeHint: PAGE_TRANSLATION_HINTS["page-translation/article-basic-bilingual"],
     run: () => executePageScenario({
       fixture: { kind: "page", name: "article-basic" },
       metaDescription: "Fixture for page translation benchmark.",
@@ -154,6 +204,7 @@ export const pageTranslationScenarios: BenchmarkScenario<PageTranslationExecutio
     surface: "page-translation",
     fixture: "forms-and-nav",
     task: "Translate body content on a mixed layout page while leaving nav and form controls untouched.",
+    codeHint: PAGE_TRANSLATION_HINTS["page-translation/forms-and-nav-skip"],
     run: () => executePageScenario({
       fixture: { kind: "page", name: "forms-and-nav" },
       metaDescription: "Fixture for interactive-node skip benchmark.",
@@ -167,6 +218,7 @@ export const pageTranslationScenarios: BenchmarkScenario<PageTranslationExecutio
     surface: "page-translation",
     fixture: "article-basic",
     task: "Translate an article in translation-only mode and hide original content through Astra source wrappers.",
+    codeHint: PAGE_TRANSLATION_HINTS["page-translation/article-translation-only"],
     run: () => executePageScenario({
       fixture: { kind: "page", name: "article-basic" },
       metaDescription: "Fixture for translation-only benchmark.",
@@ -183,6 +235,7 @@ export const pageTranslationScenarios: BenchmarkScenario<PageTranslationExecutio
     surface: "page-translation",
     fixture: "nested-blocks",
     task: "Translate a fixture with deeply nested div/span/p structures to verify extraction traverses all levels.",
+    codeHint: PAGE_TRANSLATION_HINTS["page-translation/nested-blocks-coverage"],
     run: () => executePageScenario({
       fixture: { kind: "page", name: "nested-blocks" },
       metaDescription: "Fixture for nested DOM benchmark.",
@@ -196,6 +249,7 @@ export const pageTranslationScenarios: BenchmarkScenario<PageTranslationExecutio
     surface: "page-translation",
     fixture: "feed-card-list",
     task: "Translate a card-list feed layout where each card is an independent translation unit.",
+    codeHint: PAGE_TRANSLATION_HINTS["page-translation/feed-card-list"],
     run: () => executePageScenario({
       fixture: { kind: "page", name: "feed-card-list" },
       metaDescription: "Fixture for card-list feed benchmark.",
@@ -209,13 +263,14 @@ export const pageTranslationScenarios: BenchmarkScenario<PageTranslationExecutio
     surface: "page-translation",
     fixture: "article-basic",
     task: "Verify that a provider error marks blocks as failed and stops the session, but does not throw or corrupt DOM.",
+    codeHint: PAGE_TRANSLATION_HINTS["page-translation/provider-error-graceful"],
     run: () => executePageErrorScenario({
       fixture: { kind: "page", name: "article-basic" },
       url: "/fixtures/article-basic-error",
       errorMessage: "Rate limit exceeded. Retry after 30s.",
     }),
     evaluate: (execution) => {
-      const issues: import("../types").BenchmarkIssue[] = []
+      const issues: BenchmarkIssue[] = []
       const requestFired = execution.requestCount > 0
       const noTranslations = execution.translatedNodeCount === 0
       const sessionStopped = execution.snapshotPhase === "idle" || execution.snapshotPhase === "stopping"
@@ -241,7 +296,23 @@ export const pageTranslationScenarios: BenchmarkScenario<PageTranslationExecutio
         total,
         pass: total >= 80 && !issues.some((i) => i.severity === "critical"),
         issues,
-        artifacts: { requestCount: execution.requestCount, failedBlocks: execution.failedBlocks, phase: execution.snapshotPhase },
+        artifacts: {
+          requestCount: execution.requestCount,
+          failedBlocks: execution.failedBlocks,
+          phase: execution.snapshotPhase,
+          patchHints: issues.length > 0
+            ? {
+                suspectedFiles: PAGE_TRANSLATION_HINTS["page-translation/provider-error-graceful"]?.suspectedFiles ?? [],
+                suspectedSymbols: PAGE_TRANSLATION_HINTS["page-translation/provider-error-graceful"]?.suspectedSymbols ?? [],
+                suspectedKeywords: [
+                  ...(PAGE_TRANSLATION_HINTS["page-translation/provider-error-graceful"]?.suspectedKeywords ?? []),
+                  "phase",
+                ],
+                failingSignals: issues.map((i) => i.message),
+                confidence: issues.some((i) => i.severity === "critical") ? "high" : "medium",
+              }
+            : undefined,
+        },
         nextActions: issues.map((i) => i.message),
       }
     },

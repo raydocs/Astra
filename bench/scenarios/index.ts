@@ -1,3 +1,5 @@
+import { filterScenariosBySplit } from "../splits"
+import type { BenchmarkScenario, BenchmarkSplit, BenchmarkSurface } from "../types"
 import { articleExtractionScenarios } from "./article-extraction"
 import { dynamicContentScenarios } from "./dynamic-content"
 import { frameCoordinationScenarios } from "./frame-coordination"
@@ -21,3 +23,11 @@ export const benchmarkScenarios = [
   ...inputTranslationScenarios,
   ...subtitleScenarios,
 ]
+
+export function selectBenchmarkScenarios(options: {
+  surface?: BenchmarkSurface | null
+  split?: BenchmarkSplit | null
+} = {}): Array<(typeof benchmarkScenarios)[number]> {
+  const filteredBySurface = benchmarkScenarios.filter((scenario) => !options.surface || scenario.surface === options.surface)
+  return filterScenariosBySplit(filteredBySurface, options.split ?? null)
+}

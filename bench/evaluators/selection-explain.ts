@@ -1,4 +1,4 @@
-import type { EvaluationResult, BenchmarkIssue } from "../types"
+import type { EvaluationResult, BenchmarkIssue, PatchHintArtifact } from "../types"
 
 export interface SelectionExplainExecution {
   requestCount: number
@@ -16,6 +16,67 @@ function addIssue(
   evidence?: string,
 ) {
   issues.push({ severity, message, evidence })
+}
+
+function buildPatchHints(
+  execution: SelectionExplainExecution,
+  expected: {
+    shouldCopy?: boolean
+    expectedTask?: "explain" | "translate"
+    requireContext?: boolean
+  } = {},
+): PatchHintArtifact | undefined {
+  const failingSignals: string[] = []
+
+  if (execution.requestCount !== 1) {
+    failingSignals.push(`requestCount=${execution.requestCount}`)
+  }
+
+  if (expected.expectedTask && execution.requestTask !== expected.expectedTask) {
+    failingSignals.push(`task=${execution.requestTask}`)
+  }
+
+  if (expected.requireContext !== false && !execution.requestSelectionContext) {
+    failingSignals.push("missing selection context")
+  }
+
+  if (expected.shouldCopy && execution.clipboardWrites.length === 0) {
+    failingSignals.push("missing clipboard write")
+  }
+
+  if (failingSignals.length === 0) {
+    return undefined
+  }
+
+  const confidence: PatchHintArtifact["confidence"] =
+    execution.requestCount !== 1 || (expected.shouldCopy && execution.clipboardWrites.length === 0)
+      ? "high"
+      : "medium"
+
+  return {
+    suspectedFiles: [
+      "src/entrypoints/content/components/SelectionToolbar.tsx",
+      "src/entrypoints/content/interaction-coordination.ts",
+      "src/entrypoints/content/inline-actions.ts",
+      "src/utils/dom/clipboard.ts",
+    ],
+    suspectedSymbols: [
+      "mountSelectionToolbar",
+      "getSelectionContext",
+      "setInteractionSuppressionReason",
+      "clearInteractionSuppression",
+      "runActionById",
+      "copyTextToClipboard",
+    ],
+    suspectedKeywords: [
+      "解释",
+      "复制",
+      "selection",
+      "toolbar",
+    ],
+    failingSignals,
+    confidence,
+  }
 }
 
 export function evaluateSelectionExplain(
@@ -103,6 +164,7 @@ export function evaluateSelectionExplain(
       resultText: execution.resultText,
       clipboardWrites: execution.clipboardWrites,
       buttonLabels: execution.buttonLabels,
+      patchHints: buildPatchHints(execution, expected),
     },
     nextActions: issues.map((issue) => issue.message),
   }

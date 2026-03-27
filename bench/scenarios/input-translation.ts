@@ -6,13 +6,57 @@ import { evaluateInputTranslation, type InputTranslationExecution } from "../eva
 import { installBenchBrowser, type BenchBrowserOptions } from "../runtime/browser"
 import { cleanupDomEnvironment, flushMicrotasks, installDomEnvironment, setElementRect } from "../runtime/dom"
 import { mountFixture } from "../runtime/fixtures"
-import type { BenchmarkScenario } from "../types"
+import type { BenchmarkScenario, ScenarioCodeHint } from "../types"
+
+const INPUT_TRANSLATION_CODE_HINT: ScenarioCodeHint = {
+  suspectedFiles: [
+    "src/entrypoints/content/components/InputTranslate.tsx",
+    "src/entrypoints/content/inline-actions.ts",
+    "src/utils/privacy.ts",
+    "src/utils/storage/config.ts",
+  ],
+  suspectedSymbols: [
+    "mountInputTranslate",
+    "runInlineAction",
+    "isSensitiveInput",
+    "readConfig",
+    "resolveSiteTranslationSettings",
+  ],
+  suspectedKeywords: [
+    "password",
+    "input",
+    "overlay",
+    "translation",
+  ],
+  fallbackSurfaceFiles: [
+    "src/entrypoints/content/components/InputTranslate.tsx",
+    "src/entrypoints/content/inline-actions.ts",
+  ],
+  risk: "cross-module",
+}
 
 const HOST_ID = "astra-input-translate-host"
 
 function getButton() {
   const host = document.getElementById(HOST_ID)
   return host?.shadowRoot?.querySelector("button") as HTMLButtonElement | null
+}
+
+async function waitForCondition(
+  predicate: () => boolean,
+  timeoutMs = 600,
+) {
+  const startedAt = Date.now()
+  while (Date.now() - startedAt < timeoutMs) {
+    if (predicate()) {
+      await flushMicrotasks(4)
+      return true
+    }
+    await new Promise((resolve) => window.setTimeout(resolve, 10))
+    await flushMicrotasks(2)
+  }
+
+  return predicate()
 }
 
 async function runInputScenario(options: {
@@ -83,19 +127,32 @@ async function runInputScenario(options: {
 
     let translationLatencyMs = 0
     if (options.clickTranslate) {
+      const beforeRequestCount = browser.getTranslateCalls().length
+      const beforeValue = input.value
       const startedAt = performance.now()
+
       await act(async () => {
         getButton()?.click()
-        await flushMicrotasks(6)
+        await flushMicrotasks(4)
       })
-      translationLatencyMs = performance.now() - startedAt
+
+      await waitForCondition(() => (
+        browser.getTranslateCalls().length > beforeRequestCount
+        || input.value !== beforeValue
+        || writebackInputEventCount > 0
+      ))
+
+      const latestCall = browser.getTranslateCalls().at(-1)
+      translationLatencyMs = latestCall?.durationMs ?? (performance.now() - startedAt)
+      await flushMicrotasks(4)
     }
 
     const translateCalls = browser.getTranslateCalls()
+    const firstCall = translateCalls[0]
 
     const execution: InputTranslationExecution = {
       requestCount: translateCalls.length,
-      requestTask: translateCalls[0]?.payload.task ?? "translate",
+      requestTask: firstCall ? (firstCall.payload.task ?? "translate") : null,
       translatedValue: input.value,
       initialValue,
       overlayVisibleAfterFocus,
@@ -121,6 +178,7 @@ export const inputTranslationScenarios: BenchmarkScenario<InputTranslationExecut
     surface: "input-translation",
     fixture: "inline:input-text",
     task: "Translate the active text input value without leaving the field or dropping page context.",
+    codeHint: INPUT_TRANSLATION_CODE_HINT,
     run: () => runInputScenario({
       fixtureName: "input-text",
       html: `<main><input id="text-input" type="text" value="Hello world" /></main>`,
@@ -142,6 +200,7 @@ export const inputTranslationScenarios: BenchmarkScenario<InputTranslationExecut
     surface: "input-translation",
     fixture: "inline:input-empty",
     task: "Keep the input overlay hidden for empty fields, then reveal and translate once the user types.",
+    codeHint: INPUT_TRANSLATION_CODE_HINT,
     run: () => runInputScenario({
       fixtureName: "input-empty",
       html: `<main><input id="empty-input" type="text" value="" /></main>`,
@@ -165,6 +224,7 @@ export const inputTranslationScenarios: BenchmarkScenario<InputTranslationExecut
     surface: "input-translation",
     fixture: "inline:input-password",
     task: "Suppress input translation for sensitive form fields such as passwords.",
+    codeHint: INPUT_TRANSLATION_CODE_HINT,
     run: () => runInputScenario({
       fixtureName: "input-password",
       html: `<main><input id="password-input" type="password" value="hunter2" autocomplete="current-password" /></main>`,

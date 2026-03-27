@@ -10,6 +10,16 @@ import { evaluatePageTranslation } from "./page-translation"
 import { evaluateSelectionExplain } from "./selection-explain"
 import { evaluateSiteAutomation } from "./site-automation"
 import { evaluateSubtitle } from "./subtitle"
+import { articleExtractionScenarios } from "../scenarios/article-extraction"
+import { dynamicContentScenarios } from "../scenarios/dynamic-content"
+import { frameCoordinationScenarios } from "../scenarios/frame-coordination"
+import { hoverScenarios } from "../scenarios/hover"
+import { inputTranslationScenarios } from "../scenarios/input-translation"
+import { interactionPriorityScenarios } from "../scenarios/interaction-priority"
+import { pageTranslationScenarios } from "../scenarios/page-translation"
+import { selectionExplainScenarios } from "../scenarios/selection-explain"
+import { siteAutomationScenarios } from "../scenarios/site-automation"
+import { subtitleScenarios } from "../scenarios/subtitle"
 
 describe("benchmark evaluators", () => {
   it("flags page translation failures when interactive nodes are translated", () => {
@@ -189,6 +199,266 @@ describe("benchmark evaluators", () => {
     expect(result.issues.some((issue) => issue.message.includes("Manual stop"))).toBe(true)
   })
 
+  it("exposes code hints for page translation, site automation, and dynamic content", () => {
+    expect(pageTranslationScenarios[0].codeHint?.suspectedFiles).toContain(
+      "src/entrypoints/content/page-translate.ts",
+    )
+    expect(siteAutomationScenarios[0].codeHint?.suspectedFiles).toContain(
+      "src/entrypoints/content/index.tsx",
+    )
+    expect(dynamicContentScenarios[0].codeHint?.suspectedFiles).toContain(
+      "src/entrypoints/content/page-translate.ts",
+    )
+  })
+
+  it("exposes code hints for remaining surfaces", () => {
+    expect(articleExtractionScenarios[0].codeHint?.suspectedFiles).toContain(
+      "src/utils/dom/extraction.ts",
+    )
+    expect(hoverScenarios[0].codeHint?.suspectedFiles).toContain(
+      "src/entrypoints/content/components/HoverTranslate.tsx",
+    )
+    expect(selectionExplainScenarios[0].codeHint?.suspectedFiles).toContain(
+      "src/entrypoints/content/components/SelectionToolbar.tsx",
+    )
+    expect(inputTranslationScenarios[0].codeHint?.suspectedFiles).toContain(
+      "src/entrypoints/content/components/InputTranslate.tsx",
+    )
+    expect(subtitleScenarios[0].codeHint?.suspectedFiles).toContain(
+      "src/entrypoints/content/subtitle-translate.ts",
+    )
+  })
+
+  it("flags article extraction failures with repair hints", () => {
+    const result = evaluateArticleExtraction({
+      scope: "article",
+      rootId: "sidebar-root",
+      blockCount: 0,
+      blockTexts: [],
+      leakedTexts: ["@maya"],
+    }, {
+      scope: "article",
+      rootId: "docs-article",
+      shouldExcludeTexts: ["@maya"],
+    })
+
+    expect(result.pass).toBe(false)
+    expect(result.artifacts.patchHints).toMatchObject({
+      confidence: "high",
+      suspectedFiles: expect.arrayContaining([
+        "src/utils/dom/extraction.ts",
+        "src/utils/dom/traversal.ts",
+      ]),
+    })
+  })
+
+  it("flags hover failures with repair hints", () => {
+    const result = evaluateHover({
+      requestCount: 1,
+      overlayVisible: true,
+      overlayText: "ZH:hello",
+      overlayError: "",
+      triggerLabel: "Alt + Hover",
+      translationLatencyMs: 500,
+      selectionSuppressed: false,
+      payloadSelectionContext: "Hello world",
+      payloadTask: "translate",
+    }, {
+      shouldRequest: false,
+      shouldShowOverlay: false,
+      requireSelectionSuppression: true,
+    })
+
+    expect(result.pass).toBe(false)
+    expect(result.artifacts.patchHints).toMatchObject({
+      confidence: "high",
+      suspectedFiles: expect.arrayContaining([
+        "src/entrypoints/content/components/HoverTranslate.tsx",
+        "src/entrypoints/content/interaction-coordination.ts",
+      ]),
+    })
+  })
+
+  it("flags selection explain failures with repair hints", () => {
+    const result = evaluateSelectionExplain({
+      requestCount: 0,
+      requestTask: null,
+      requestSelectionContext: null,
+      resultText: "",
+      clipboardWrites: [],
+      buttonLabels: ["翻译", "解释"],
+    }, {
+      shouldCopy: true,
+      expectedTask: "explain",
+      requireContext: true,
+    })
+
+    expect(result.pass).toBe(false)
+    expect(result.artifacts.patchHints).toMatchObject({
+      confidence: "high",
+      suspectedFiles: expect.arrayContaining([
+        "src/entrypoints/content/components/SelectionToolbar.tsx",
+        "src/entrypoints/content/inline-actions.ts",
+      ]),
+    })
+  })
+
+  it("flags input translation failures with repair hints", () => {
+    const result = evaluateInputTranslation({
+      requestCount: 0,
+      requestTask: null,
+      translatedValue: "Hello",
+      initialValue: "Hello",
+      overlayVisibleAfterFocus: false,
+      overlayVisibleAfterTyping: false,
+      buttonLabel: "译",
+      writebackInputEventCount: 0,
+      translationLatencyMs: 0,
+      payloadHostname: null,
+      payloadPageUrl: null,
+      inputType: "text",
+    }, {
+      shouldRequest: true,
+      shouldShowAfterFocus: true,
+      shouldWriteBack: true,
+      expectedTask: "translate",
+      requireContext: true,
+    })
+
+    expect(result.pass).toBe(false)
+    expect(result.artifacts.patchHints).toMatchObject({
+      confidence: "high",
+      suspectedFiles: expect.arrayContaining([
+        "src/entrypoints/content/components/InputTranslate.tsx",
+        "src/entrypoints/content/inline-actions.ts",
+      ]),
+    })
+  })
+
+  it("flags subtitle failures with repair hints", () => {
+    const result = evaluateSubtitle({
+      requestCount: 0,
+      translatedCueCount: 0,
+      translatedCueTexts: [],
+      astraTrackCount: 0,
+      astraTrackLabels: [],
+      sourceModeBefore: "showing",
+      sourceModeAfter: "showing",
+      payloadContext: {
+        hostname: "example.com",
+        pageUrl: "https://example.com/watch?token=secret",
+        pageTitle: "Sensitive title",
+      },
+      removedTrackCount: 0,
+      requestBatchSizes: [],
+    }, {
+      shouldTranslate: true,
+      expectedCueCount: 1,
+      expectSourceModeRestored: true,
+      requirePrivacySanitization: true,
+    })
+
+    expect(result.pass).toBe(false)
+    expect(result.artifacts.patchHints).toMatchObject({
+      confidence: "high",
+      suspectedFiles: expect.arrayContaining([
+        "src/entrypoints/content/subtitle-translate.ts",
+        "src/utils/privacy.ts",
+      ]),
+    })
+  })
+
+  it("flags page translation failures with repair hints", () => {
+    const result = evaluatePageTranslation({
+      translatedNodeCount: 1,
+      expectedNodeCount: 2,
+      translationMarkerCount: 1,
+      hiddenSourceCount: 0,
+      requestCount: 0,
+      skippedInteractiveTranslations: 1,
+      translatedTexts: ["ZH:hello"],
+      expectedTexts: ["hello", "world"],
+      snapshotPhase: "idle",
+      failedBlocks: 1,
+    }, {
+      requireTranslationOnly: true,
+    })
+
+    expect(result.pass).toBe(false)
+    expect(result.artifacts.patchHints).toMatchObject({
+      confidence: "high",
+      suspectedFiles: expect.arrayContaining([
+        "src/entrypoints/content/page-translate.ts",
+        "src/entrypoints/content/translation-context.ts",
+      ]),
+      suspectedKeywords: expect.arrayContaining(["translation-only", "failedBlocks"]),
+    })
+  })
+
+  it("flags site automation failures with repair hints", () => {
+    const result = evaluateSiteAutomation({
+      autoStarted: false,
+      stoppedAfterDisable: false,
+      suppressedAfterManualStop: false,
+      resumedAfterReenable: false,
+      requestCountBeforeTransition: 0,
+      requestCountAfterTransition: 0,
+      phaseBeforeTransition: "idle",
+      phaseAfterTransition: "idle",
+      translationMarkersBeforeTransition: 0,
+      translationMarkersAfterTransition: 0,
+      uiHostsPresent: [],
+    }, {
+      shouldAutoStart: true,
+      shouldSuppressAfterManualStop: true,
+      requireUiHosts: ["astra-selection-toolbar-host"],
+    })
+
+    expect(result.pass).toBe(false)
+    expect(result.artifacts.patchHints).toMatchObject({
+      confidence: "high",
+      suspectedFiles: expect.arrayContaining([
+        "src/entrypoints/content/index.tsx",
+        "src/utils/storage/config.ts",
+      ]),
+      suspectedKeywords: expect.arrayContaining(["alwaysTranslate", "suppression"]),
+    })
+  })
+
+  it("flags dynamic content failures with repair hints", () => {
+    const result = evaluateDynamicContent({
+      requestCountBeforeMutation: 1,
+      requestCountAfterMutation: 3,
+      latestRequestedSourceText: "Third story arrives from a live feed update.",
+      translatedNodeCountBeforeMutation: 2,
+      translatedNodeCountAfterMutation: 4,
+      translatedTextsAfterMutation: ["ZH:First", "ZH:Second", "ZH:Third"],
+      updatedTextRequested: false,
+      oldTextCleared: false,
+      progressTotalBlocksBeforeMutation: 2,
+      progressTotalBlocksAfterMutation: 5,
+      removedElementStillTracked: true,
+      notes: ["dynamic test"],
+    }, {
+      expectedNewRequests: 1,
+      expectedTranslatedNodeDelta: 1,
+      requireUpdatedText: true,
+      requireOldTextCleared: true,
+      expectedProgressTotalAfterMutation: 3,
+      shouldCleanupRemovedBlocks: true,
+    })
+
+    expect(result.pass).toBe(false)
+    expect(result.artifacts.patchHints).toMatchObject({
+      confidence: "high",
+      suspectedFiles: expect.arrayContaining([
+        "src/entrypoints/content/page-translate.ts",
+        "src/entrypoints/content/page-translate-registry.ts",
+      ]),
+      suspectedKeywords: expect.arrayContaining(["requestCountAfterMutation", "removedElementStillTracked"]),
+    })
+  })
+
   it("flags interaction-priority failures when hover remains active during a blocking selection", () => {
     const result = evaluateInteractionPriority({
       hoverSuppressed: false,
@@ -222,6 +492,12 @@ describe("benchmark evaluators", () => {
 
     expect(result.pass).toBe(false)
     expect(result.issues.some((issue) => issue.message.includes("suppress hover"))).toBe(true)
+    expect(result.artifacts.patchHints).toMatchObject({
+      confidence: "high",
+      suspectedFiles: expect.arrayContaining([
+        "src/entrypoints/content/interaction-coordination.ts",
+      ]),
+    })
   })
 
   it("flags frame-coordination failures when child-frame chrome leaks top-frame UI", () => {
@@ -247,6 +523,65 @@ describe("benchmark evaluators", () => {
 
     expect(result.pass).toBe(false)
     expect(result.issues.some((issue) => issue.message.includes("chrome leaked"))).toBe(true)
+    expect(result.artifacts.patchHints).toMatchObject({
+      confidence: "high",
+      suspectedFiles: expect.arrayContaining([
+        "src/entrypoints/background/frame-coordinator.ts",
+      ]),
+    })
+  })
+
+  it("flags page-translation failures with repair hints when provider errors surface", () => {
+    const result = evaluatePageTranslation({
+      translatedNodeCount: 0,
+      expectedNodeCount: 2,
+      translationMarkerCount: 0,
+      hiddenSourceCount: 0,
+      requestCount: 1,
+      skippedInteractiveTranslations: 0,
+      translatedTexts: [],
+      expectedTexts: ["hello", "world"],
+      snapshotPhase: "idle",
+      failedBlocks: 1,
+    })
+
+    expect(result.pass).toBe(false)
+    expect(result.artifacts.patchHints).toMatchObject({
+      confidence: "high",
+      suspectedFiles: expect.arrayContaining([
+        "src/entrypoints/content/page-translate.ts",
+      ]),
+    })
+  })
+
+  it("flags site automation failures with repair hints when suppression breaks", () => {
+    const result = evaluateSiteAutomation({
+      autoStarted: true,
+      stoppedAfterDisable: false,
+      suppressedAfterManualStop: false,
+      resumedAfterReenable: false,
+      requestCountBeforeTransition: 1,
+      requestCountAfterTransition: 2,
+      phaseBeforeTransition: "running",
+      phaseAfterTransition: "running",
+      translationMarkersBeforeTransition: 3,
+      translationMarkersAfterTransition: 3,
+      uiHostsPresent: ["astra-selection-toolbar-host"],
+    }, {
+      shouldSuppressAfterManualStop: true,
+      requireUiHosts: [
+        "astra-selection-toolbar-host",
+        "astra-hover-translate-host",
+      ],
+    })
+
+    expect(result.pass).toBe(false)
+    expect(result.artifacts.patchHints).toMatchObject({
+      confidence: "medium",
+      suspectedFiles: expect.arrayContaining([
+        "src/entrypoints/content/index.tsx",
+      ]),
+    })
   })
 
   it("flags dynamic-content failures when a feed mutation double-fires translation requests", () => {
@@ -271,5 +606,11 @@ describe("benchmark evaluators", () => {
 
     expect(result.pass).toBe(false)
     expect(result.issues.some((issue) => issue.message.includes("follow-up translation requests"))).toBe(true)
+    expect(result.artifacts.patchHints).toMatchObject({
+      confidence: "high",
+      suspectedFiles: expect.arrayContaining([
+        "src/entrypoints/content/page-translate-registry.ts",
+      ]),
+    })
   })
 })

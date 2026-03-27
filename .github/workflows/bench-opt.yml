@@ -1,0 +1,167 @@
+name: Bench Opt
+
+on:
+  # Manual trigger with configurable parameters
+  workflow_dispatch:
+    inputs:
+      split:
+        description: "Evaluation split (train, validation, holdout)"
+        required: false
+        default: "validation"
+        type: choice
+        options:
+          - train
+          - validation
+          - holdout
+      dry-run:
+        description: "Dry-run mode (skip real execution)"
+        required: false
+        default: true
+        type: boolean
+      allow-promotion:
+        description: "Allow promotion if gates pass"
+        required: false
+        default: false
+        type: boolean
+
+  # Scheduled: daily at 04:00 UTC, weekly full run on Sundays
+  schedule:
+    - cron: "0 4 * * *"    # daily
+    - cron: "0 6 * * 0"    # weekly (Sunday)
+
+  # PR-triggered when labeled with bench-opt
+  pull_request:
+    types: [labeled]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: bench-opt-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  bench-opt:
+    # Only run on manual/schedule, or when the bench-opt label is applied
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      github.event_name == 'schedule' ||
+      (github.event_name == 'pull_request' && github.event.label.name == 'bench-opt')
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Type check
+        run: pnpm type-check
+
+      - name: Run bench-opt tests
+        run: pnpm test -- --reporter=verbose bench-opt/
+
+      - name: Run bench-opt optimizer
+        run: pnpm bench:opt
+        env:
+          BENCH_OPT_SPLIT: ${{ github.event.inputs.split || 'validation' }}
+          BENCH_OPT_DRY_RUN: ${{ github.event.inputs.dry-run || 'true' }}
+          BENCH_OPT_ALLOW_PROMOTION: ${{ github.event.inputs.allow-promotion || 'false' }}
+
+      - name: Install Playwright browsers
+        run: npx playwright install chromium --with-deps
+
+      - name: Run live smoke scenarios
+        run: |
+          set -euo pipefail
+          echo "Running live smoke scenarios..."
+          pnpm bench:live -- --scenario bench-live/page-translation-article-basic-source-bilingual
+          pnpm bench:live -- --scenario bench-live/interaction-priority-basic
+          pnpm bench:live -- --scenario bench-live/input-translation-basic
+          pnpm bench:live -- --scenario bench-live/frame-coordination-basic
+          echo "Live smoke scenarios complete."
+        env:
+          PLAYWRIGHT_BROWSERS_PATH: 0
+
+      - name: Upload live results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: bench-live-results-${{ github.run_id }}
+          path: bench-live-results/
+          retention-days: 30
+          if-no-files-found: ignore
+
+      - name: Upload bench-opt results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: bench-opt-results-${{ github.run_id }}
+          path: |
+            bench-opt-results/
+          retention-days: 30
+          if-no-files-found: ignore
+
+      - name: Upload promotion artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: bench-opt-promotions-${{ github.run_id }}
+          path: |
+            bench-opt-results/promotions/
+            bench-opt-results/publish/
+            bench-opt-results/rollbacks/
+          retention-days: 90
+          if-no-files-found: ignore
+
+      - name: Upload store artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: bench-opt-store-${{ github.run_id }}
+          path: |
+            bench-opt-results/store/
+          retention-days: 90
+          if-no-files-found: ignore
+
+      - name: Summary
+        if: always()
+        run: |
+          echo "## Bench Opt Results" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "- **Run ID:** ${{ github.run_id }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Trigger:** ${{ github.event_name }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Split:** ${{ github.event.inputs.split || 'validation' }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Dry Run:** ${{ github.event.inputs.dry-run || 'true' }}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          if [ -f bench-opt-results/latest.json ]; then
+            echo "### Latest Report" >> $GITHUB_STEP_SUMMARY
+            echo '```json' >> $GITHUB_STEP_SUMMARY
+            head -50 bench-opt-results/latest.json >> $GITHUB_STEP_SUMMARY
+            echo '```' >> $GITHUB_STEP_SUMMARY
+          fi
+          if [ -f bench-live-results/latest.result.json ]; then
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "### Live Smoke Results" >> $GITHUB_STEP_SUMMARY
+            echo '```json' >> $GITHUB_STEP_SUMMARY
+            head -30 bench-live-results/latest.result.json >> $GITHUB_STEP_SUMMARY
+            echo '```' >> $GITHUB_STEP_SUMMARY
+          fi
+          if [ -d bench-opt-results/promotions ]; then
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "### Promotion Artifacts" >> $GITHUB_STEP_SUMMARY
+            ls -la bench-opt-results/promotions/ 2>/dev/null >> $GITHUB_STEP_SUMMARY || echo "No promotion artifacts." >> $GITHUB_STEP_SUMMARY
+          fi

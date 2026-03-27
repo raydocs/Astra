@@ -16,7 +16,33 @@ import {
   setElementRect,
 } from "../runtime/dom"
 import { mountFixture } from "../runtime/fixtures"
-import type { BenchmarkScenario } from "../types"
+import type { BenchmarkScenario, ScenarioCodeHint } from "../types"
+
+const DYNAMIC_CONTENT_CODE_HINT: ScenarioCodeHint = {
+  suspectedFiles: [
+    "src/entrypoints/content/page-translate.ts",
+    "src/entrypoints/content/page-translate-registry.ts",
+    "src/utils/dom/traversal.ts",
+    "src/utils/dom/inject.ts",
+  ],
+  suspectedSymbols: [
+    "startPageTranslation",
+    "stopPageTranslation",
+    "getPageTranslationState",
+    "resolveExtractionPlan",
+  ],
+  suspectedKeywords: [
+    "requestCountAfterMutation",
+    "progressTotalBlocks",
+    "removedElementStillTracked",
+    "dynamic-content",
+  ],
+  fallbackSurfaceFiles: [
+    "src/entrypoints/content/page-translate.ts",
+    "src/entrypoints/content/page-translate-registry.ts",
+  ],
+  risk: "cross-module",
+}
 
 function collectTranslatedTexts(): string[] {
   return Array.from(document.querySelectorAll("[data-astra-translation='1'] .astra-translation-inner"))
@@ -100,6 +126,7 @@ export const dynamicContentScenarios: BenchmarkScenario<DynamicContentExecution>
     surface: "dynamic-content",
     fixture: "dynamic-feed",
     task: "Translate newly appended feed items after the initial page pass without duplicating requests.",
+    codeHint: DYNAMIC_CONTENT_CODE_HINT,
     run: () => executeDynamicScenario(async () => {
       const browser = installBenchBrowser()
       mountDynamicFixture()
@@ -157,6 +184,7 @@ export const dynamicContentScenarios: BenchmarkScenario<DynamicContentExecution>
     surface: "dynamic-content",
     fixture: "dynamic-feed",
     task: "Re-translate a changed feed block in place and clear stale translation output.",
+    codeHint: DYNAMIC_CONTENT_CODE_HINT,
     run: () => executeDynamicScenario(async () => {
       const browser = installBenchBrowser()
       mountDynamicFixture()
@@ -207,6 +235,7 @@ export const dynamicContentScenarios: BenchmarkScenario<DynamicContentExecution>
     surface: "dynamic-content",
     fixture: "dynamic-feed",
     task: "Drop disconnected feed items from the registry so progress totals do not drift upward over time.",
+    codeHint: DYNAMIC_CONTENT_CODE_HINT,
     run: () => executeDynamicScenario(async () => {
       installBenchBrowser()
       mountDynamicFixture()

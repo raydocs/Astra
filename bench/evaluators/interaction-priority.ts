@@ -1,4 +1,4 @@
-import type { BenchmarkIssue, EvaluationResult } from "../types"
+import type { BenchmarkIssue, EvaluationResult, PatchHintArtifact } from "../types"
 
 export interface InteractionPriorityExecution {
   hoverSuppressed: boolean
@@ -20,6 +20,93 @@ function addIssue(
   evidence?: string,
 ) {
   issues.push({ severity, message, evidence })
+}
+
+function buildPatchHints(
+  execution: InteractionPriorityExecution,
+  expectations: {
+    shouldSuppressHover?: boolean
+    shouldRequestHover?: boolean
+    shouldToggleFloatBall?: boolean
+    requiredVisibleHosts?: string[]
+    forbiddenVisibleHosts?: string[]
+    requireFloatBallMounted?: boolean
+  },
+  issues: BenchmarkIssue[],
+): PatchHintArtifact | undefined {
+  if (issues.length === 0) {
+    return undefined
+  }
+
+  const suspectedFiles = new Set<string>([
+    "src/entrypoints/content/interaction-coordination.ts",
+    "src/entrypoints/content/components/HoverTranslate.tsx",
+    "src/entrypoints/content/components/SelectionToolbar.tsx",
+    "src/entrypoints/content/components/InputTranslate.tsx",
+    "src/entrypoints/content/components/FloatBall.tsx",
+  ])
+  const suspectedSymbols = new Set<string>([
+    "getInteractionSuppressionState",
+    "clearInteractionSuppression",
+    "mountHoverTranslate",
+    "mountSelectionToolbar",
+    "mountInputTranslate",
+    "mountFloatBall",
+  ])
+  const suspectedKeywords = new Set<string>([
+    "hoverSuppressed",
+    "selection",
+    "focusin",
+    "pointerdown",
+    "toggleCommandCount",
+  ])
+  const failingSignals: string[] = []
+
+  if (expectations.shouldSuppressHover !== undefined && execution.hoverSuppressed !== expectations.shouldSuppressHover) {
+    failingSignals.push("hover suppression state did not match the selection priority flow")
+  }
+
+  if (expectations.shouldRequestHover === true && execution.hoverRequestCount < 1) {
+    failingSignals.push("hover request never resumed after the blocking interaction cleared")
+  }
+
+  if (expectations.shouldRequestHover === false && execution.hoverRequestCount > 0) {
+    failingSignals.push("hover request fired while a higher-priority interaction was active")
+  }
+
+  if (expectations.shouldToggleFloatBall && execution.toggleCommandCount < 1) {
+    failingSignals.push("float ball did not dispatch a page toggle command")
+  }
+
+  if (expectations.requireFloatBallMounted && !execution.floatBallMounted) {
+    failingSignals.push("float ball host was not mounted")
+  }
+
+  if (execution.hoverOverlayVisible) {
+    suspectedFiles.add("src/entrypoints/content/components/HoverTranslate.tsx")
+  }
+
+  if (execution.selectionToolbarVisible) {
+    suspectedFiles.add("src/entrypoints/content/components/SelectionToolbar.tsx")
+  }
+
+  if (execution.inputOverlayVisible) {
+    suspectedFiles.add("src/entrypoints/content/components/InputTranslate.tsx")
+  }
+
+  if (execution.floatBallMounted) {
+    suspectedFiles.add("src/entrypoints/content/components/FloatBall.tsx")
+  }
+
+  const confidence = issues.some((issue) => issue.severity === "critical") ? "high" : "medium"
+
+  return {
+    suspectedFiles: [...suspectedFiles],
+    suspectedSymbols: [...suspectedSymbols],
+    suspectedKeywords: [...suspectedKeywords],
+    failingSignals,
+    confidence,
+  }
 }
 
 export function evaluateInteractionPriority(
@@ -152,6 +239,7 @@ export function evaluateInteractionPriority(
       visibleHosts: execution.visibleHosts,
       mountedHosts: execution.mountedHosts,
       notes: execution.notes ?? [],
+      patchHints: buildPatchHints(execution, expectations, issues),
     },
     nextActions: issues.map((issue) => issue.message),
   }

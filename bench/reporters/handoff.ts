@@ -100,6 +100,7 @@ export function buildGeneratorHandoff(
         nextActions: scenario.evaluation.nextActions,
         scoreDeltas: delta?.scoreDeltas ?? [],
         suggestedPrompt: renderSuggestedPrompt(scenario, delta),
+        repairHints: scenario.repairHints,
       } satisfies GeneratorHandoffItem
     })
     .sort(comparePriority)
@@ -170,6 +171,9 @@ export function renderGeneratorMarkdown(handoff: GeneratorHandoff) {
     const moved = item.scoreDeltas.filter((entry) => entry.delta !== null && entry.delta !== 0)
     lines.push(`- Score deltas: ${moved.length ? moved.map((entry) => `${entry.key}:${entry.delta! > 0 ? `+${entry.delta}` : entry.delta}`).join(", ") : "none"}`)
     lines.push(`- Issues: ${item.issues.length ? item.issues.map((issue) => `[${issue.severity}] ${issue.message}`).join(" | ") : "none"}`)
+    if (item.repairHints) {
+      lines.push(`- Repair hints: files=${item.repairHints.suspectedFiles.length}, symbols=${item.repairHints.suspectedSymbols.length}, keywords=${item.repairHints.suspectedKeywords.length}${item.repairHints.confidence ? `, confidence=${item.repairHints.confidence}` : ""}`)
+    }
     lines.push(`- Prompt: ${item.suggestedPrompt}`)
     lines.push("")
   })

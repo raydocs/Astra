@@ -1,4 +1,4 @@
-import type { EvaluationResult, BenchmarkIssue } from "../types"
+import type { EvaluationResult, BenchmarkIssue, PatchHintArtifact } from "../types"
 
 export interface PageTranslationExecution {
   translatedNodeCount: number
@@ -21,6 +21,69 @@ function addIssue(
   evidence?: string,
 ) {
   issues.push({ severity, message, evidence })
+}
+
+function buildPatchHints(
+  execution: PageTranslationExecution,
+  options: {
+    requireTranslationOnly?: boolean
+  },
+  issues: BenchmarkIssue[],
+): PatchHintArtifact | undefined {
+  if (issues.length === 0) {
+    return undefined
+  }
+
+  const suspectedFiles = new Set<string>([
+    "src/entrypoints/content/page-translate.ts",
+    "src/entrypoints/content/translation-context.ts",
+    "src/entrypoints/content/page-translate-registry.ts",
+    "src/utils/dom/extraction.ts",
+    "src/utils/dom/traversal.ts",
+  ])
+  const suspectedSymbols = new Set<string>([
+    "startPageTranslation",
+    "stopPageTranslation",
+    "resolveExtractionPlan",
+  ])
+  const suspectedKeywords = new Set<string>([
+    "failedBlocks",
+    "translation-only",
+    "interactive",
+    "expectedNodeCount",
+  ])
+  const failingSignals: string[] = []
+
+  if (execution.translatedNodeCount !== execution.expectedNodeCount) {
+    failingSignals.push("translated node count diverged from extraction plan")
+    suspectedKeywords.add("coverage")
+  }
+
+  if (execution.skippedInteractiveTranslations > 0) {
+    failingSignals.push("interactive nodes received translation markers")
+    suspectedKeywords.add("interactive")
+  }
+
+  if (execution.failedBlocks > 0) {
+    failingSignals.push("page translation session reported failed blocks")
+    suspectedKeywords.add("provider error")
+    suspectedKeywords.add("graceful")
+  }
+
+  if (options.requireTranslationOnly && execution.hiddenSourceCount !== execution.translatedNodeCount) {
+    failingSignals.push("translation-only wrappers failed to hide all source nodes")
+    suspectedKeywords.add("hiddenSourceCount")
+  }
+
+  const confidence = issues.some((issue) => issue.severity === "critical") ? "high" : "medium"
+
+  return {
+    suspectedFiles: [...suspectedFiles],
+    suspectedSymbols: [...suspectedSymbols],
+    suspectedKeywords: [...suspectedKeywords],
+    failingSignals,
+    confidence,
+  }
 }
 
 export function evaluatePageTranslation(
@@ -110,6 +173,7 @@ export function evaluatePageTranslation(
       expectedTexts: execution.expectedTexts,
       requestCount: execution.requestCount,
       notes: execution.notes ?? [],
+      patchHints: buildPatchHints(execution, options, issues),
     },
     nextActions: issues.map((issue) => issue.message),
   }

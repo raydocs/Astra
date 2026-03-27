@@ -419,4 +419,4 @@ export const frameCoordinationScenarios: BenchmarkScenario<FrameCoordinationExec
       expectedSendFrameIds: [0, 5],
     }),
   },
-] as BenchmarkScenario<FrameCoordinationExecution>[]
+] as BenchmarkScenarioWithHint[]

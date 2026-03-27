@@ -1,4 +1,4 @@
-import type { EvaluationResult, BenchmarkIssue } from "../types"
+import type { EvaluationResult, BenchmarkIssue, PatchHintArtifact } from "../types"
 
 export interface HoverExecution {
   requestCount: number
@@ -19,6 +19,79 @@ function pushIssue(
   evidence?: string,
 ) {
   issues.push({ severity, message, evidence })
+}
+
+function buildPatchHints(
+  execution: HoverExecution,
+  expected: {
+    shouldRequest: boolean
+    shouldShowOverlay: boolean
+    expectedTriggerLabel?: string
+    maxLatencyMs?: number
+    expectedTask?: "translate" | "explain"
+    requireSelectionSuppression?: boolean
+  },
+): PatchHintArtifact | undefined {
+  const failingSignals: string[] = []
+
+  if (execution.requestCount !== (expected.shouldRequest ? 1 : 0)) {
+    failingSignals.push(`requestCount=${execution.requestCount}`)
+  }
+
+  if (execution.overlayVisible !== expected.shouldShowOverlay) {
+    failingSignals.push(`overlayVisible=${execution.overlayVisible}`)
+  }
+
+  if (expected.expectedTriggerLabel && execution.triggerLabel !== expected.expectedTriggerLabel) {
+    failingSignals.push(`triggerLabel=${execution.triggerLabel}`)
+  }
+
+  if (expected.expectedTask && execution.payloadTask !== expected.expectedTask) {
+    failingSignals.push(`task=${execution.payloadTask}`)
+  }
+
+  if (expected.shouldRequest && execution.translationLatencyMs > (expected.maxLatencyMs ?? 450)) {
+    failingSignals.push(`latency=${execution.translationLatencyMs}ms`)
+  }
+
+  if (expected.requireSelectionSuppression && !execution.selectionSuppressed) {
+    failingSignals.push("selectionSuppressed=false")
+  }
+
+  if (failingSignals.length === 0) {
+    return undefined
+  }
+
+  const confidence: PatchHintArtifact["confidence"] =
+    execution.requestCount !== (expected.shouldRequest ? 1 : 0)
+    || (expected.requireSelectionSuppression && !execution.selectionSuppressed)
+      ? "high"
+      : "medium"
+
+  return {
+    suspectedFiles: [
+      "src/entrypoints/content/components/HoverTranslate.tsx",
+      "src/entrypoints/content/interaction-coordination.ts",
+      "src/utils/dom/traversal.ts",
+      "src/entrypoints/content/inline-actions.ts",
+    ],
+    suspectedSymbols: [
+      "mountHoverTranslate",
+      "getInteractionSuppressionState",
+      "hasActiveTextSelection",
+      "subscribeToInteractionSuppression",
+      "findClosestTextBlock",
+      "runInlineAction",
+    ],
+    suspectedKeywords: [
+      "hover",
+      "selection",
+      "overlay",
+      "suppression",
+    ],
+    failingSignals,
+    confidence,
+  }
 }
 
 export function evaluateHover(
@@ -134,6 +207,7 @@ export function evaluateHover(
       overlayError: execution.overlayError,
       triggerLabel: execution.triggerLabel,
       translationLatencyMs: execution.translationLatencyMs,
+      patchHints: buildPatchHints(execution, expected),
     },
     nextActions: issues.map((issue) => issue.message),
   }

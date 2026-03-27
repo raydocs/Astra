@@ -1,4 +1,4 @@
-import type { BenchmarkIssue, EvaluationResult } from "../types"
+import type { BenchmarkIssue, EvaluationResult, PatchHintArtifact } from "../types"
 
 export interface DynamicContentExecution {
   requestCountBeforeMutation: number
@@ -22,6 +22,83 @@ function addIssue(
   evidence?: string,
 ) {
   issues.push({ severity, message, evidence })
+}
+
+function buildPatchHints(
+  execution: DynamicContentExecution,
+  expectations: {
+    expectedNewRequests?: number
+    expectedTranslatedNodeDelta?: number
+    requireUpdatedText?: boolean
+    requireOldTextCleared?: boolean
+    expectedProgressTotalAfterMutation?: number
+    shouldCleanupRemovedBlocks?: boolean
+  },
+  issues: BenchmarkIssue[],
+): PatchHintArtifact | undefined {
+  if (issues.length === 0) {
+    return undefined
+  }
+
+  const suspectedFiles = new Set<string>([
+    "src/entrypoints/content/page-translate.ts",
+    "src/entrypoints/content/page-translate-registry.ts",
+    "src/utils/dom/traversal.ts",
+    "src/utils/dom/inject.ts",
+  ])
+  const suspectedSymbols = new Set<string>([
+    "startPageTranslation",
+    "stopPageTranslation",
+  ])
+  const suspectedKeywords = new Set<string>([
+    "mutation",
+    "registry",
+    "dynamic",
+    "progressTotalBlocks",
+    "requestCountAfterMutation",
+    "translatedNodeCountAfterMutation",
+    "updatedTextRequested",
+    "oldTextCleared",
+    "removedElementStillTracked",
+  ])
+  const failingSignals: string[] = []
+  const newRequests = execution.requestCountAfterMutation - execution.requestCountBeforeMutation
+  const translatedNodeDelta = execution.translatedNodeCountAfterMutation - execution.translatedNodeCountBeforeMutation
+
+  if (expectations.expectedNewRequests !== undefined && newRequests !== expectations.expectedNewRequests) {
+    failingSignals.push("dynamic mutation triggered the wrong number of follow-up requests")
+    suspectedKeywords.add("requestCountAfterMutation")
+  }
+  if (expectations.expectedTranslatedNodeDelta !== undefined && translatedNodeDelta !== expectations.expectedTranslatedNodeDelta) {
+    failingSignals.push("translated node count did not track the mutation correctly")
+    suspectedKeywords.add("translatedNodeCountAfterMutation")
+  }
+  if (expectations.requireUpdatedText && !execution.updatedTextRequested) {
+    failingSignals.push("updated dynamic text was never re-requested")
+    suspectedKeywords.add("updatedTextRequested")
+  }
+  if (expectations.requireOldTextCleared && !execution.oldTextCleared) {
+    failingSignals.push("stale translated text remained after an in-place update")
+    suspectedKeywords.add("oldTextCleared")
+  }
+  if (expectations.expectedProgressTotalAfterMutation !== undefined && execution.progressTotalBlocksAfterMutation !== expectations.expectedProgressTotalAfterMutation) {
+    failingSignals.push("translation progress registry did not converge after mutation handling")
+    suspectedKeywords.add("progressTotalBlocksAfterMutation")
+  }
+  if (expectations.shouldCleanupRemovedBlocks && execution.removedElementStillTracked) {
+    failingSignals.push("removed dynamic block remained in registry tracking")
+    suspectedKeywords.add("removedElementStillTracked")
+  }
+
+  const confidence = issues.some((issue) => issue.severity === "critical") ? "high" : "medium"
+
+  return {
+    suspectedFiles: [...suspectedFiles],
+    suspectedSymbols: [...suspectedSymbols],
+    suspectedKeywords: [...suspectedKeywords],
+    failingSignals,
+    confidence,
+  }
 }
 
 export function evaluateDynamicContent(
@@ -157,6 +234,7 @@ export function evaluateDynamicContent(
       progressTotalBlocksBeforeMutation: execution.progressTotalBlocksBeforeMutation,
       progressTotalBlocksAfterMutation: execution.progressTotalBlocksAfterMutation,
       notes: execution.notes ?? [],
+      patchHints: buildPatchHints(execution, expectations, issues),
     },
     nextActions: issues.map((issue) => issue.message),
   }

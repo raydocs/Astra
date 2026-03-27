@@ -3,7 +3,31 @@ import { resolveExtractionPlan } from "@/utils/dom/extraction"
 import { evaluateArticleExtraction, type ArticleExtractionExecution } from "../evaluators/article-extraction"
 import { cleanupDomEnvironment, installDomEnvironment } from "../runtime/dom"
 import { mountFixture, type FixtureSource } from "../runtime/fixtures"
-import type { BenchmarkScenario } from "../types"
+import type { BenchmarkScenario, ScenarioCodeHint } from "../types"
+
+const ARTICLE_EXTRACTION_CODE_HINT: ScenarioCodeHint = {
+  suspectedFiles: [
+    "src/utils/dom/extraction.ts",
+    "src/utils/dom/traversal.ts",
+  ],
+  suspectedSymbols: [
+    "resolveArticleRoot",
+    "resolveExtractionPlan",
+    "collectTextBlocks",
+    "buildContentSummary",
+  ],
+  suspectedKeywords: [
+    "ARTICLE_ROOT_SELECTORS",
+    "NAV_SIDEBAR_SELECTOR",
+    "article",
+    "main content",
+  ],
+  fallbackSurfaceFiles: [
+    "src/utils/dom/extraction.ts",
+    "src/utils/dom/traversal.ts",
+  ],
+  risk: "local",
+}
 
 function runExtractionScenario(source: FixtureSource, url: string) {
   installDomEnvironment(`https://example.com${url}`)
@@ -32,6 +56,7 @@ export const articleExtractionScenarios: BenchmarkScenario<ArticleExtractionExec
     surface: "article-extraction",
     fixture: "docs-sidebar-heavy",
     task: "Choose the main article container on a documentation page with sidebar chrome.",
+    codeHint: ARTICLE_EXTRACTION_CODE_HINT,
     run: async () => runExtractionScenario({ kind: "page", name: "docs-sidebar-heavy" }, "/fixtures/docs-sidebar-heavy"),
     evaluate: (execution) => evaluateArticleExtraction(execution, {
       scope: "article",
@@ -44,6 +69,7 @@ export const articleExtractionScenarios: BenchmarkScenario<ArticleExtractionExec
     surface: "article-extraction",
     fixture: "blog-comments-mixed",
     task: "Keep article text while excluding lower-value comment content from article mode.",
+    codeHint: ARTICLE_EXTRACTION_CODE_HINT,
     run: async () => {
       const execution = runExtractionScenario({ kind: "page", name: "blog-comments-mixed" }, "/fixtures/blog-comments-mixed")
       execution.leakedTexts = ["@maya", "@leo"].filter((needle) =>
@@ -63,6 +89,7 @@ export const articleExtractionScenarios: BenchmarkScenario<ArticleExtractionExec
     surface: "article-extraction",
     fixture: "forum-thread",
     task: "Stay on page scope instead of forcing an article root for forum-style layouts.",
+    codeHint: ARTICLE_EXTRACTION_CODE_HINT,
     run: async () => runExtractionScenario({ kind: "page", name: "forum-thread" }, "/fixtures/forum-thread"),
     evaluate: (execution) => evaluateArticleExtraction(execution, {
       scope: "page",

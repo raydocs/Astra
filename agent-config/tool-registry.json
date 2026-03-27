@@ -1,0 +1,102 @@
+{
+  "schemaVersion": 1,
+  "tools": [
+    {
+      "id": "translate-page",
+      "name": "Page Translation",
+      "description": "Translates all visible text on the current page using the configured provider.",
+      "enabled": true,
+      "critical": true,
+      "category": "translation",
+      "parameters": {
+        "targetLang": { "type": "string", "required": true, "default": "zh-CN" },
+        "mode": { "type": "enum", "values": ["bilingual", "translation-only"], "default": "bilingual" },
+        "contentScope": { "type": "enum", "values": ["page", "article"], "default": "page" }
+      }
+    },
+    {
+      "id": "translate-selection",
+      "name": "Selection Translation",
+      "description": "Translates the currently selected text fragment.",
+      "enabled": true,
+      "critical": false,
+      "category": "translation",
+      "parameters": {
+        "targetLang": { "type": "string", "required": true, "default": "zh-CN" },
+        "showExplanation": { "type": "boolean", "default": true }
+      }
+    },
+    {
+      "id": "translate-hover",
+      "name": "Hover Translation",
+      "description": "Shows an inline translation tooltip when the user hovers over text.",
+      "enabled": true,
+      "critical": false,
+      "category": "translation",
+      "parameters": {
+        "trigger": { "type": "enum", "values": ["alt", "always", "disabled"], "default": "alt" },
+        "popupDelayMs": { "type": "number", "default": 200, "min": 0, "max": 2000 }
+      }
+    },
+    {
+      "id": "translate-input",
+      "name": "Input Translation",
+      "description": "Translates text inside input fields and textareas as the user types.",
+      "enabled": true,
+      "critical": false,
+      "category": "translation",
+      "parameters": {
+        "debounceMs": { "type": "number", "default": 300, "min": 100, "max": 2000 },
+        "targetLang": { "type": "string", "required": true, "default": "zh-CN" }
+      }
+    },
+    {
+      "id": "extract-article",
+      "name": "Article Extraction",
+      "description": "Extracts the main article content from a web page, stripping navigation and ads.",
+      "enabled": true,
+      "critical": false,
+      "category": "extraction",
+      "parameters": {
+        "includeImages": { "type": "boolean", "default": false },
+        "maxLength": { "type": "number", "default": 50000, "min": 1000, "max": 200000 }
+      }
+    },
+    {
+      "id": "detect-language",
+      "name": "Language Detection",
+      "description": "Detects the source language of a text fragment.",
+      "enabled": true,
+      "critical": true,
+      "category": "utility",
+      "parameters": {
+        "sampleLength": { "type": "number", "default": 200, "min": 20, "max": 1000 }
+      }
+    },
+    {
+      "id": "subtitle-overlay",
+      "name": "Subtitle Overlay",
+      "description": "Renders translated subtitles over video elements on the page.",
+      "enabled": true,
+      "critical": false,
+      "category": "media",
+      "parameters": {
+        "position": { "type": "enum", "values": ["bottom", "top"], "default": "bottom" },
+        "fontSize": { "type": "number", "default": 16, "min": 10, "max": 32 },
+        "targetLang": { "type": "string", "required": true, "default": "zh-CN" }
+      }
+    },
+    {
+      "id": "site-automation",
+      "name": "Site Automation",
+      "description": "Applies per-site translation rules automatically when navigating to configured domains.",
+      "enabled": true,
+      "critical": false,
+      "category": "automation",
+      "parameters": {
+        "triggerOnLoad": { "type": "boolean", "default": true },
+        "respectSiteConfig": { "type": "boolean", "default": true }
+      }
+    }
+  ]
+}

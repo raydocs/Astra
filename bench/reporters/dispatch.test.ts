@@ -22,6 +22,11 @@ const readyExecutor: ExecutorAttempt = {
     actionableScenarioCount: 1,
     primaryScenarioId: "hover/failing",
     blockReason: null,
+    gateSummary: {
+      decision: "ready",
+      reason: "current signal(s) made this attempt ready.",
+      error: null,
+    },
   },
   actionableScenarios: [{
     id: "hover/failing",
@@ -69,6 +74,13 @@ describe("dispatch reporter", () => {
 
     const markdown = renderDispatchMarkdown(artifact)
     expect(artifact.status).toBe("blocked")
+    expect(artifact.summary.gateSummary).toEqual({
+      decision: "blocked",
+      reason: "Blocked on purpose.",
+      error: null,
+    })
+    expect(markdown).toContain("## Gate Decision")
+    expect(markdown).toContain("Decision: `blocked`")
     expect(markdown).toContain("Blocked")
   })
 })

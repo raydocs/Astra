@@ -21,6 +21,19 @@ function buildPrompt(task: PatchTask, context: PatchContextPack) {
     const status = file.exists ? `${file.includedLines}/${file.lineCount}${file.truncated ? " truncated" : ""}` : "missing"
     lines.push(`- ${file.path} (${status})`)
   })
+  if (task.history) {
+    lines.push("History signals:")
+    lines.push(`- runs analyzed: ${task.history.totalRuns}`)
+    task.history.recurringFailures.slice(0, 3).forEach((entry) => {
+      lines.push(`- recurring: ${entry.id} (${entry.surface}) issue hits=${entry.issueCount}, latest=${entry.latestTotal}, worst=${entry.worstTotal}`)
+    })
+    task.history.weakestSurfaces.slice(0, 3).forEach((entry) => {
+      lines.push(`- weak surface: ${entry.surface} avg=${entry.averageTotal.toFixed(1)} (${entry.direction}, failures=${entry.failureRuns})`)
+    })
+    if (task.history.sourceMarkdownPath) {
+      lines.push(`- history markdown: ${task.history.sourceMarkdownPath}`)
+    }
+  }
   lines.push("Validation:")
   task.validationCommands.forEach((command) => {
     lines.push(`- ${command}`)
@@ -55,6 +68,7 @@ export function buildPatchPass(
         "Stop after `pnpm bench` and `pnpm test` are both green for the selected pass.",
       ],
     },
+    ...(task.history ? { history: task.history } : {}),
     prompt: buildPrompt(task, context),
   }
 }
@@ -72,6 +86,12 @@ export function renderPatchPassMarkdown(pass: PatchPass) {
   lines.push(`- Context files: ${pass.summary.contextFileCount}`)
   lines.push(`- Latest patch task: \`${pass.sourceArtifacts.latestPatchTask}\``)
   lines.push(`- Latest patch context: \`${pass.sourceArtifacts.latestPatchContext}\``)
+  if (pass.sourceArtifacts.latestHistoryJson) {
+    lines.push(`- Latest history JSON: \`${pass.sourceArtifacts.latestHistoryJson}\``)
+  }
+  if (pass.sourceArtifacts.latestHistoryMarkdown) {
+    lines.push(`- Latest history Markdown: \`${pass.sourceArtifacts.latestHistoryMarkdown}\``)
+  }
   lines.push("")
   lines.push("## Write Scope")
   lines.push("")
@@ -79,6 +99,18 @@ export function renderPatchPassMarkdown(pass: PatchPass) {
     lines.push(`- \`${file}\``)
   })
   lines.push("")
+  if (pass.history) {
+    lines.push("## History Signals")
+    lines.push("")
+    lines.push(`- Runs analyzed: ${pass.history.totalRuns}`)
+    pass.history.recurringFailures.slice(0, 3).forEach((entry) => {
+      lines.push(`- Recurring: \`${entry.id}\` [${entry.surface}] issue hits=${entry.issueCount}, latest=${entry.latestTotal}, worst=${entry.worstTotal}`)
+    })
+    pass.history.weakestSurfaces.slice(0, 3).forEach((entry) => {
+      lines.push(`- Weak surface: \`${entry.surface}\` avg ${entry.averageTotal.toFixed(1)} (${entry.direction}, failures ${entry.failureRuns})`)
+    })
+    lines.push("")
+  }
   lines.push("## Validation")
   lines.push("")
   pass.execution.validationCommands.forEach((command) => {

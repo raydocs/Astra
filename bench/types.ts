@@ -10,7 +10,55 @@ export type BenchmarkSurface =
   | "input-translation"
   | "subtitle"
 
+export type BenchmarkSplit = "train" | "validation" | "holdout"
+
 export type IssueSeverity = "critical" | "high" | "medium" | "low"
+
+export type OptimizerContextSlot =
+  | "task"
+  | "surface"
+  | "fixture"
+  | "codeHint"
+  | "history"
+  | "candidateFiles"
+  | "reportSummary"
+  | "patchHints"
+
+export interface ResolvedOptimizerPromptPolicy {
+  analysisMode: "minimal" | "analysis-first"
+  toolPolicy: "default" | "read-before-edit"
+  writeScopeMode: "strict" | "evidence-led"
+}
+
+export interface ResolvedOptimizerContextPolicy {
+  rankingMode: "balanced" | "explicit-first"
+  maxFiles: number
+  maxLinesPerFile: number
+  preferHistory: boolean
+}
+
+export interface ResolvedOptimizerPromptCandidate {
+  id: string
+  label: string
+  description: string
+  text: string
+  policy: ResolvedOptimizerPromptPolicy
+}
+
+export interface ResolvedOptimizerContextCandidate {
+  id: string
+  label: string
+  description: string
+  slots: OptimizerContextSlot[]
+  policy: ResolvedOptimizerContextPolicy
+}
+
+export interface ResolvedOptimizerConfig {
+  sourcePath: string
+  sourceKind: "bench-opt-report" | "direct-config"
+  prompt: ResolvedOptimizerPromptCandidate | null
+  context: ResolvedOptimizerContextCandidate | null
+}
 
 export interface BenchmarkIssue {
   severity: IssueSeverity
@@ -129,6 +177,7 @@ export interface BenchmarkComparison {
 export interface BenchmarkInventory {
   totalScenarios: number
   bySurface: Record<string, number>
+  bySplit: Record<BenchmarkSplit, number>
 }
 
 export interface BenchmarkReport {
@@ -137,6 +186,7 @@ export interface BenchmarkReport {
   generatedAt: string
   filter: {
     surface: BenchmarkSurface | null
+    split: BenchmarkSplit | null
   }
   summary: {
     totalScenarios: number
@@ -171,6 +221,8 @@ export interface GeneratorHandoffItem {
   }>
   suggestedPrompt: string
   repairHints?: RepairHintSummary
+  selectionScore?: number
+  selectionReasons?: string[]
 }
 
 export interface GeneratorHandoff {
@@ -190,14 +242,45 @@ export interface GeneratorHandoff {
   priorities: GeneratorHandoffItem[]
 }
 
+export interface HistoryWeakSurfaceSignal {
+  surface: BenchmarkSurface
+  averageTotal: number
+  direction: "improving" | "regressing" | "flat"
+  failureRuns: number
+}
+
+export interface HistoryRecurringFailureSignal {
+  id: string
+  surface: BenchmarkSurface
+  occurrenceCount?: number
+  failureCount?: number
+  regressionCount?: number
+  issueCount: number
+  averageTotal?: number
+  latestTotal: number
+  worstTotal: number
+}
+
+export interface HistoryPromptSummary {
+  sourceJsonPath: string | null
+  sourceMarkdownPath: string | null
+  totalRuns: number
+  notes: string[]
+  weakestSurfaces: HistoryWeakSurfaceSignal[]
+  recurringFailures: HistoryRecurringFailureSignal[]
+}
+
 export interface LoopPlan {
   schemaVersion: 1
   runId: string
   generatedAt: string
+  optimizer?: ResolvedOptimizerConfig
   sourceArtifacts: {
     latestHandoff: string
     latestFeedback: string
     latestJson: string
+    latestHistoryJson?: string
+    latestHistoryMarkdown?: string
   }
   selection: {
     maxItems: number
@@ -209,12 +292,14 @@ export interface LoopPlan {
     enabled: boolean
     scenarioId: string | null
     reason: string | null
+    historyReady?: boolean
   }
   summary: {
     failedScenarios: number
     regressedScenarios: number
     imperfectPasses: number
   }
+  history?: HistoryPromptSummary
   selectedItems: GeneratorHandoffItem[]
 }
 
@@ -235,6 +320,9 @@ export interface PatchTask {
     latestHandoff: string
     latestFeedback: string
     latestJson: string
+    latestHistoryJson?: string
+    latestHistoryMarkdown?: string
+    latestOptimizerConfig?: string
   }
   focus: {
     primaryScenarioId: string | null
@@ -246,6 +334,8 @@ export interface PatchTask {
   relevantFiles: string[]
   validationCommands: string[]
   instructions: string[]
+  history?: HistoryPromptSummary
+  optimizer?: ResolvedOptimizerConfig
   prompt: string
 }
 
@@ -276,12 +366,14 @@ export interface PatchContextPack {
     latestHandoff: string
     latestFeedback: string
     latestJson: string
+    latestOptimizerConfig?: string
   }
   budget: {
     maxFiles: number
     maxLinesPerFile: number
     maxTotalLines: number
   }
+  optimizer?: ResolvedOptimizerConfig
   files: PatchContextFile[]
 }
 
@@ -296,6 +388,9 @@ export interface PatchPass {
     latestHandoff: string
     latestFeedback: string
     latestJson: string
+    latestHistoryJson?: string
+    latestHistoryMarkdown?: string
+    latestOptimizerConfig?: string
   }
   summary: {
     primaryScenarioId: string | null
@@ -309,6 +404,8 @@ export interface PatchPass {
     validationCommands: string[]
     stopConditions: string[]
   }
+  history?: HistoryPromptSummary
+  optimizer?: ResolvedOptimizerConfig
   prompt: string
 }
 
@@ -333,6 +430,7 @@ export interface ExecutorAttempt {
     latestHandoff: string
     latestFeedback: string
     latestJson: string
+    latestOptimizerConfig?: string
   }
   status: "ready" | "blocked"
   summary: {
@@ -340,10 +438,24 @@ export interface ExecutorAttempt {
     actionableScenarioCount: number
     primaryScenarioId: string | null
     blockReason: string | null
+    gateSummary: ExecutorGateSummary
   }
   actionableScenarios: ExecutorScenario[]
   writeScope: string[]
+  optimizer?: ResolvedOptimizerConfig
   prompt: string | null
+}
+
+export interface ExecutorGateSummary {
+  decision: "ready" | "blocked"
+  reason: string | null
+  error: string | null
+}
+
+export interface ExecutorDispatchGateSummary {
+  decision: "blocked" | "executed" | "failed"
+  reason: string | null
+  error: string | null
 }
 
 export interface ExecutorDispatch {
@@ -367,6 +479,7 @@ export interface ExecutorDispatch {
     responseChars: number
     blockReason: string | null
     error: string | null
+    gateSummary: ExecutorDispatchGateSummary
   }
   prompt: string | null
   response: string | null

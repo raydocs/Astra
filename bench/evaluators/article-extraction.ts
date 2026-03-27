@@ -1,4 +1,4 @@
-import type { EvaluationResult, BenchmarkIssue } from "../types"
+import type { EvaluationResult, BenchmarkIssue, PatchHintArtifact } from "../types"
 
 export interface ArticleExtractionExecution {
   scope: "page" | "article"
@@ -16,6 +16,57 @@ function issue(
   evidence?: string,
 ) {
   issues.push({ severity, message, evidence })
+}
+
+function buildPatchHints(
+  execution: ArticleExtractionExecution,
+  expected: {
+    scope: "page" | "article"
+    rootId: string | null
+    shouldExcludeTexts?: string[]
+  },
+): PatchHintArtifact | undefined {
+  const failingSignals: string[] = []
+
+  if (execution.scope !== expected.scope || execution.rootId !== expected.rootId) {
+    failingSignals.push(
+      `resolved ${execution.scope}:${execution.rootId ?? "BODY"} instead of ${expected.scope}:${expected.rootId ?? "BODY"}`,
+    )
+  }
+
+  if (execution.leakedTexts.length > 0) {
+    failingSignals.push(`leaked texts: ${execution.leakedTexts.join(" | ")}`)
+  }
+
+  if (execution.blockCount === 0) {
+    failingSignals.push("no extracted blocks")
+  }
+
+  if (failingSignals.length === 0) {
+    return undefined
+  }
+
+  return {
+    suspectedFiles: [
+      "src/utils/dom/extraction.ts",
+      "src/utils/dom/traversal.ts",
+    ],
+    suspectedSymbols: [
+      "resolveArticleRoot",
+      "resolveExtractionPlan",
+      "collectTextBlocks",
+      "buildContentSummary",
+      "findContentRoot",
+    ],
+    suspectedKeywords: [
+      "article",
+      "sidebar",
+      "root",
+      "leaked",
+    ],
+    failingSignals,
+    confidence: "high",
+  }
 }
 
 export function evaluateArticleExtraction(
@@ -86,6 +137,7 @@ export function evaluateArticleExtraction(
       blockTexts: execution.blockTexts.slice(0, 8),
       expectedExclusions: expected.shouldExcludeTexts ?? [],
       notes: execution.notes ?? [],
+      patchHints: buildPatchHints(execution, expected),
     },
     nextActions: issues.map((item) => item.message),
   }

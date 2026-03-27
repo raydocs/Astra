@@ -13,7 +13,35 @@ import {
   setElementRect,
 } from "../runtime/dom"
 import { mountFixture } from "../runtime/fixtures"
-import type { BenchmarkScenario } from "../types"
+import type { BenchmarkScenario, ScenarioCodeHint } from "../types"
+
+const HOVER_CODE_HINT: ScenarioCodeHint = {
+  suspectedFiles: [
+    "src/entrypoints/content/components/HoverTranslate.tsx",
+    "src/entrypoints/content/interaction-coordination.ts",
+    "src/utils/dom/traversal.ts",
+    "src/entrypoints/content/inline-actions.ts",
+  ],
+  suspectedSymbols: [
+    "mountHoverTranslate",
+    "getInteractionSuppressionState",
+    "hasActiveTextSelection",
+    "subscribeToInteractionSuppression",
+    "findClosestTextBlock",
+    "runInlineAction",
+  ],
+  suspectedKeywords: [
+    "hover",
+    "selection",
+    "suppression",
+    "overlay",
+  ],
+  fallbackSurfaceFiles: [
+    "src/entrypoints/content/components/HoverTranslate.tsx",
+    "src/entrypoints/content/interaction-coordination.ts",
+  ],
+  risk: "cross-module",
+}
 
 const HOST_ID = "astra-hover-translate-host"
 
@@ -97,6 +125,7 @@ export const hoverScenarios: BenchmarkScenario<HoverExecution>[] = [
     surface: "hover",
     fixture: "inline:hover-basic",
     task: "Translate a hovered phrase only when Alt is held, preserving selection context.",
+    codeHint: HOVER_CODE_HINT,
     run: () => mountHoverScenario({ hoverTrigger: "alt" }),
     evaluate: (execution) => evaluateHover(execution, {
       shouldRequest: true,
@@ -112,6 +141,7 @@ export const hoverScenarios: BenchmarkScenario<HoverExecution>[] = [
     surface: "hover",
     fixture: "inline:hover-basic",
     task: "Do not translate on hover when the feature is disabled in config.",
+    codeHint: HOVER_CODE_HINT,
     run: () => mountHoverScenario({ hoverTrigger: "disabled" }),
     evaluate: (execution) => evaluateHover(execution, {
       shouldRequest: false,
@@ -124,6 +154,7 @@ export const hoverScenarios: BenchmarkScenario<HoverExecution>[] = [
     surface: "hover",
     fixture: "inline:hover-basic",
     task: "Avoid triggering hover translation while a selection is active.",
+    codeHint: HOVER_CODE_HINT,
     run: async () => {
       const execution = await mountHoverScenario({ hoverTrigger: "alt", withSelection: true })
       setInteractionSuppressionReason("selection-toolbar", false)

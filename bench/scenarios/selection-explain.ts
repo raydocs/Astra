@@ -13,7 +13,35 @@ import {
   setElementRect,
 } from "../runtime/dom"
 import { mountFixture } from "../runtime/fixtures"
-import type { BenchmarkScenario } from "../types"
+import type { BenchmarkScenario, ScenarioCodeHint } from "../types"
+
+const SELECTION_EXPLAIN_CODE_HINT: ScenarioCodeHint = {
+  suspectedFiles: [
+    "src/entrypoints/content/components/SelectionToolbar.tsx",
+    "src/entrypoints/content/interaction-coordination.ts",
+    "src/entrypoints/content/inline-actions.ts",
+    "src/utils/dom/clipboard.ts",
+  ],
+  suspectedSymbols: [
+    "mountSelectionToolbar",
+    "getSelectionContext",
+    "setInteractionSuppressionReason",
+    "clearInteractionSuppression",
+    "runActionById",
+    "copyTextToClipboard",
+  ],
+  suspectedKeywords: [
+    "解释",
+    "复制",
+    "selection",
+    "toolbar",
+  ],
+  fallbackSurfaceFiles: [
+    "src/entrypoints/content/components/SelectionToolbar.tsx",
+    "src/entrypoints/content/interaction-coordination.ts",
+  ],
+  risk: "cross-module",
+}
 
 const HOST_ID = "astra-selection-toolbar-host"
 
@@ -105,6 +133,7 @@ export const selectionExplainScenarios: BenchmarkScenario<SelectionExplainExecut
     surface: "selection-explain",
     fixture: "inline:selection-basic",
     task: "Explain a selected sentence with context-aware inline output.",
+    codeHint: SELECTION_EXPLAIN_CODE_HINT,
     run: () => runSelectionScenario({ clickCopy: false }),
     evaluate: (execution) => evaluateSelectionExplain(execution, {
       expectedTask: "explain",
@@ -117,6 +146,7 @@ export const selectionExplainScenarios: BenchmarkScenario<SelectionExplainExecut
     surface: "selection-explain",
     fixture: "inline:selection-basic",
     task: "Copy the generated explain output after the action completes.",
+    codeHint: SELECTION_EXPLAIN_CODE_HINT,
     run: () => runSelectionScenario({ clickCopy: true }),
     evaluate: (execution) => evaluateSelectionExplain(execution, {
       expectedTask: "explain",
