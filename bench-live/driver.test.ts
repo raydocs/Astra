@@ -1,3 +1,7 @@
+import { mkdtemp, writeFile } from "node:fs/promises"
+import os from "node:os"
+import path from "node:path"
+
 import { describe, expect, it } from "vitest"
 
 import { prepareLiveArtifactDir, readFixtureHtml, resolveLiveBrowserExecutablePath } from "./driver"
@@ -15,11 +19,15 @@ describe("bench-live driver", () => {
   })
 
   it("returns the override browser path when it exists", async () => {
+    const tempDir = await mkdtemp(path.join(os.tmpdir(), "astra-live-driver-"))
+    const fakeBrowserPath = path.join(tempDir, "fake-chromium")
+    await writeFile(fakeBrowserPath, "")
+
     const resolved = await resolveLiveBrowserExecutablePath({
-      overridePath: "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
+      overridePath: fakeBrowserPath,
       candidates: [],
     })
 
-    expect(resolved).toBe("/Applications/Google Chrome.app/Contents/MacOS/Google Chrome")
+    expect(resolved).toBe(fakeBrowserPath)
   })
 })
