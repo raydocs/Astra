@@ -1,4 +1,4 @@
-import type { BenchmarkIssue, EvaluationResult } from "../types"
+import type { BenchmarkIssue, EvaluationResult, PatchHintArtifact } from "../types"
 
 export interface SiteAutomationExecution {
   autoStarted: boolean
@@ -22,6 +22,67 @@ function addIssue(
   evidence?: string,
 ) {
   issues.push({ severity, message, evidence })
+}
+
+function buildPatchHints(
+  execution: SiteAutomationExecution,
+  expectations: {
+    shouldAutoStart?: boolean
+    shouldStopAfterDisable?: boolean
+    shouldSuppressAfterManualStop?: boolean
+    shouldResumeAfterReenable?: boolean
+    requireUiHosts?: string[]
+  },
+  issues: BenchmarkIssue[],
+): PatchHintArtifact | undefined {
+  if (issues.length === 0) {
+    return undefined
+  }
+
+  const suspectedFiles = new Set<string>([
+    "src/entrypoints/content/index.tsx",
+    "src/entrypoints/content/page-translate.ts",
+    "src/utils/storage/config.ts",
+    "src/types/config.ts",
+  ])
+  const suspectedSymbols = new Set<string>([
+    "main",
+    "startPageTranslation",
+    "stopPageTranslation",
+  ])
+  const suspectedKeywords = new Set<string>([
+    "alwaysTranslate",
+    "enabled",
+    "manual stop",
+    "suppression",
+  ])
+  const failingSignals: string[] = []
+
+  if (expectations.shouldAutoStart && !execution.autoStarted) {
+    failingSignals.push("site never auto-started translation while eligible")
+  }
+  if (expectations.shouldStopAfterDisable && !execution.stoppedAfterDisable) {
+    failingSignals.push("active translation did not stop after site disable")
+  }
+  if (expectations.shouldSuppressAfterManualStop && !execution.suppressedAfterManualStop) {
+    failingSignals.push("manual stop did not suppress same-page restart")
+  }
+  if (expectations.shouldResumeAfterReenable && !execution.resumedAfterReenable) {
+    failingSignals.push("translation did not resume after re-enable")
+  }
+  if ((expectations.requireUiHosts ?? []).some((id) => !execution.uiHostsPresent.includes(id))) {
+    failingSignals.push("site-level UI hosts were missing during site automation flow")
+  }
+
+  const confidence = issues.some((issue) => issue.severity === "critical") ? "high" : "medium"
+
+  return {
+    suspectedFiles: [...suspectedFiles],
+    suspectedSymbols: [...suspectedSymbols],
+    suspectedKeywords: [...suspectedKeywords],
+    failingSignals,
+    confidence,
+  }
 }
 
 export function evaluateSiteAutomation(
@@ -114,6 +175,7 @@ export function evaluateSiteAutomation(
       translationMarkersAfterTransition: execution.translationMarkersAfterTransition,
       uiHostsPresent: execution.uiHostsPresent,
       notes: execution.notes ?? [],
+      patchHints: buildPatchHints(execution, expectations, issues),
     },
     nextActions: issues.map((issue) => issue.message),
   }

@@ -9,6 +9,10 @@ dist/
 .env.production
 logs/
 bench-results/
+bench-opt-results/
+bench-live-results/
+.bench-opt/
+.claude/
 DerivedData/
 ios/build/
 *.xcuserstate

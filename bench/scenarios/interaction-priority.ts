@@ -408,4 +408,4 @@ export const interactionPriorityScenarios: BenchmarkScenario<InteractionPriority
       requireFloatBallMounted: true,
     }),
   },
-] as BenchmarkScenario<InteractionPriorityExecution>[]
+] as BenchmarkScenarioWithHint[]

@@ -1,6 +1,7 @@
 import { act } from "react"
 
 import { mountSelectionToolbar } from "@/entrypoints/content/components/SelectionToolbar"
+import { t } from "@/utils/i18n"
 
 import { evaluateSelectionExplain, type SelectionExplainExecution } from "../evaluators/selection-explain"
 import { installBenchBrowser } from "../runtime/browser"
@@ -13,9 +14,45 @@ import {
   setElementRect,
 } from "../runtime/dom"
 import { mountFixture } from "../runtime/fixtures"
-import type { BenchmarkScenario } from "../types"
+import type { BenchmarkScenario, ScenarioCodeHint } from "../types"
+
+const SELECTION_EXPLAIN_CODE_HINT: ScenarioCodeHint = {
+  suspectedFiles: [
+    "src/entrypoints/content/components/SelectionToolbar.tsx",
+    "src/entrypoints/content/interaction-coordination.ts",
+    "src/entrypoints/content/inline-actions.ts",
+    "src/utils/dom/clipboard.ts",
+  ],
+  suspectedSymbols: [
+    "mountSelectionToolbar",
+    "getSelectionContext",
+    "setInteractionSuppressionReason",
+    "clearInteractionSuppression",
+    "runActionById",
+    "copyTextToClipboard",
+  ],
+  suspectedKeywords: [
+    "解释",
+    "复制",
+    "selection",
+    "toolbar",
+  ],
+  fallbackSurfaceFiles: [
+    "src/entrypoints/content/components/SelectionToolbar.tsx",
+    "src/entrypoints/content/interaction-coordination.ts",
+  ],
+  risk: "cross-module",
+}
 
 const HOST_ID = "astra-selection-toolbar-host"
+
+function findToolbarButton(buttons: HTMLButtonElement[], labels: string[]): HTMLButtonElement | undefined {
+  const normalized = labels.map((label) => label.trim())
+  return buttons.find((button) => {
+    const text = button.textContent?.trim()
+    return !!text && normalized.includes(text)
+  })
+}
 
 async function runSelectionScenario(options: {
   clickCopy?: boolean
@@ -55,8 +92,8 @@ async function runSelectionScenario(options: {
     })
 
     const host = document.getElementById(HOST_ID)
-    const buttons = Array.from(host?.shadowRoot?.querySelectorAll("button") ?? [])
-    const explainButton = buttons.find((button) => button.textContent?.trim() === "解释")
+    const buttons = Array.from(host?.shadowRoot?.querySelectorAll("button") ?? []) as HTMLButtonElement[]
+    const explainButton = findToolbarButton(buttons, [t("actionExplain"), "解释"])
 
     if (!explainButton) {
       return {
@@ -70,15 +107,15 @@ async function runSelectionScenario(options: {
     }
 
     await act(async () => {
-      explainButton.dispatchEvent(new window.MouseEvent("click", { bubbles: true }))
+      explainButton.click()
       await flushMicrotasks(4)
     })
 
     if (options.clickCopy) {
-      const copyButton = buttons.find((button) => button.textContent?.trim() === "复制")
+      const copyButton = findToolbarButton(buttons, [t("actionCopy"), "复制"])
       if (copyButton) {
         await act(async () => {
-          copyButton.dispatchEvent(new window.MouseEvent("click", { bubbles: true }))
+          copyButton.click()
           await flushMicrotasks(2)
         })
       }
@@ -105,6 +142,7 @@ export const selectionExplainScenarios: BenchmarkScenario<SelectionExplainExecut
     surface: "selection-explain",
     fixture: "inline:selection-basic",
     task: "Explain a selected sentence with context-aware inline output.",
+    codeHint: SELECTION_EXPLAIN_CODE_HINT,
     run: () => runSelectionScenario({ clickCopy: false }),
     evaluate: (execution) => evaluateSelectionExplain(execution, {
       expectedTask: "explain",
@@ -117,6 +155,7 @@ export const selectionExplainScenarios: BenchmarkScenario<SelectionExplainExecut
     surface: "selection-explain",
     fixture: "inline:selection-basic",
     task: "Copy the generated explain output after the action completes.",
+    codeHint: SELECTION_EXPLAIN_CODE_HINT,
     run: () => runSelectionScenario({ clickCopy: true }),
     evaluate: (execution) => evaluateSelectionExplain(execution, {
       expectedTask: "explain",

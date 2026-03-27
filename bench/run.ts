@@ -35,13 +35,25 @@ async function main() {
   try {
     const entry = await server.ssrLoadModule("/bench/entry.ts")
     const result = await entry.runBench(process.argv.slice(2))
+
+    if (!result.report || !result.paths) {
+      console.log(result.text)
+      return
+    }
+
     console.log(result.text)
     console.log("")
     console.log(`JSON report: ${result.paths.latestPath}`)
     console.log(`Feedback prompt: ${result.paths.feedbackPath}`)
     console.log(`Generator handoff: ${result.paths.handoffPath}`)
     console.log(`Generator markdown: ${result.paths.generatorPath}`)
-    console.log(`History report: ${result.paths.historyPath}`)
+    console.log(`History archive: ${result.paths.historyPath}`)
+    if (result.paths.historySummaryPath) {
+      console.log(`History summary JSON: ${result.paths.historySummaryPath}`)
+    }
+    if (result.paths.historyMarkdownPath) {
+      console.log(`History summary Markdown: ${result.paths.historyMarkdownPath}`)
+    }
 
     if (result.report.summary.failedScenarios > 0) {
       process.exitCode = 1

@@ -1,4 +1,4 @@
-import type { BenchmarkIssue, EvaluationResult } from "../types"
+import type { BenchmarkIssue, EvaluationResult, PatchHintArtifact } from "../types"
 
 export interface FrameCoordinationExecution {
   floatBallMounted: boolean
@@ -23,6 +23,126 @@ function addIssue(
   evidence?: string,
 ) {
   issues.push({ severity, message, evidence })
+}
+
+function buildPatchHints(
+  execution: FrameCoordinationExecution,
+  expectations: {
+    shouldMountFloatBall?: boolean
+    shouldMountSiteUi?: boolean
+    shouldMountInputUi?: boolean
+    shouldAutoStart?: boolean
+    expectedFramesTotal?: number
+    expectedFramesTranslating?: number
+    expectedAggregatePhase?: string
+    expectedAggregateHostname?: string | null
+    expectedAggregateTargetLang?: string | null
+    expectedProgressTotalBlocks?: number
+    expectedSendFrameIds?: number[]
+  },
+  issues: BenchmarkIssue[],
+): PatchHintArtifact | undefined {
+  if (issues.length === 0) {
+    return undefined
+  }
+
+  const suspectedFiles = new Set<string>([
+    "src/entrypoints/content/index.tsx",
+    "src/entrypoints/content/frame-context.ts",
+    "src/entrypoints/background/frame-coordinator.ts",
+    "src/entrypoints/content/page-translate.ts",
+    "src/utils/extension/messages.ts",
+  ])
+  const suspectedSymbols = new Set<string>([
+    "main",
+    "executeTabCommand",
+    "__setTopFrameOverrideForTests",
+    "getPageTranslationState",
+  ])
+  const suspectedKeywords = new Set<string>([
+    "framesTotal",
+    "framesTranslating",
+    "aggregateHostname",
+    "aggregateTargetLang",
+    "sendMessageFrameIds",
+    "alwaysTranslate",
+  ])
+  const failingSignals: string[] = []
+
+  if (expectations.shouldMountFloatBall !== undefined && execution.floatBallMounted !== expectations.shouldMountFloatBall) {
+    failingSignals.push(
+      expectations.shouldMountFloatBall
+        ? "top-frame chrome did not mount"
+        : "top-frame-only chrome leaked into a child frame",
+    )
+  }
+
+  if (expectations.shouldMountSiteUi !== undefined && execution.siteUiMounted !== expectations.shouldMountSiteUi) {
+    failingSignals.push("site-level inline UI mount state was incorrect for the frame context")
+  }
+
+  if (expectations.shouldMountInputUi !== undefined && execution.inputUiMounted !== expectations.shouldMountInputUi) {
+    failingSignals.push("input overlay mount state was incorrect for the frame context")
+  }
+
+  if (expectations.shouldAutoStart !== undefined && execution.autoStarted !== expectations.shouldAutoStart) {
+    failingSignals.push("always-translate auto-start behavior did not match the expected frame")
+  }
+
+  if (expectations.expectedFramesTotal !== undefined && execution.framesTotal !== expectations.expectedFramesTotal) {
+    failingSignals.push("aggregated frame count did not match the discovered translatable frames")
+  }
+
+  if (expectations.expectedFramesTranslating !== undefined && execution.framesTranslating !== expectations.expectedFramesTranslating) {
+    failingSignals.push("aggregated translating-frame count was incorrect")
+  }
+
+  if (expectations.expectedAggregatePhase !== undefined && execution.aggregatePhase !== expectations.expectedAggregatePhase) {
+    failingSignals.push("aggregated phase did not reflect the expected frame state")
+  }
+
+  if (expectations.expectedAggregateHostname !== undefined && execution.aggregateHostname !== expectations.expectedAggregateHostname) {
+    failingSignals.push("aggregated hostname metadata did not use the expected top-frame source")
+  }
+
+  if (expectations.expectedAggregateTargetLang !== undefined && execution.aggregateTargetLang !== expectations.expectedAggregateTargetLang) {
+    failingSignals.push("aggregated target language metadata was incorrect")
+  }
+
+  if (expectations.expectedProgressTotalBlocks !== undefined && execution.progressTotalBlocks !== expectations.expectedProgressTotalBlocks) {
+    failingSignals.push("aggregated progress totals were incorrect")
+  }
+
+  if (expectations.expectedSendFrameIds && execution.sendMessageFrameIds.length > 0) {
+    const actual = [...execution.sendMessageFrameIds].sort((a, b) => a - b)
+    const expected = [...expectations.expectedSendFrameIds].sort((a, b) => a - b)
+    if (JSON.stringify(actual) !== JSON.stringify(expected)) {
+      failingSignals.push("background fan-out did not target the expected frame IDs")
+    }
+  }
+
+  if (execution.floatBallMounted) {
+    suspectedFiles.add("src/entrypoints/content/components/FloatBall.tsx")
+  }
+
+  if (execution.siteUiMounted) {
+    suspectedFiles.add("src/entrypoints/content/components/SelectionToolbar.tsx")
+    suspectedFiles.add("src/entrypoints/content/components/HoverTranslate.tsx")
+  }
+
+  if (execution.inputUiMounted) {
+    suspectedFiles.add("src/entrypoints/content/components/InputTranslate.tsx")
+  }
+
+  const confidence = issues.some((issue) => issue.severity === "critical" || issue.severity === "high") ? "high" : "medium"
+
+  return {
+    suspectedFiles: [...suspectedFiles],
+    suspectedSymbols: [...suspectedSymbols],
+    suspectedKeywords: [...suspectedKeywords],
+    failingSignals,
+    confidence,
+  }
 }
 
 export function evaluateFrameCoordination(
@@ -237,6 +357,7 @@ export function evaluateFrameCoordination(
       progressTotalBlocks: execution.progressTotalBlocks,
       sendMessageFrameIds: execution.sendMessageFrameIds,
       notes: execution.notes ?? [],
+      patchHints: buildPatchHints(execution, expectations, issues),
     },
     nextActions: issues.map((issue) => issue.message),
   }

@@ -1,0 +1,90 @@
+{
+  "schemaVersion": 1,
+  "id": "translation-flow",
+  "description": "Standard translation pipeline: detect language, route to the appropriate translation tool, then evaluate quality.",
+  "entrypoint": "detect-lang",
+  "nodes": [
+    {
+      "id": "detect-lang",
+      "type": "tool",
+      "config": {
+        "toolId": "detect-language",
+        "parameters": { "sampleLength": 200 }
+      }
+    },
+    {
+      "id": "route-translation",
+      "type": "router",
+      "config": {
+        "strategy": "condition-based",
+        "conditions": [
+          { "when": "sourceLang === targetLang", "goto": "skip-translation" },
+          { "when": "contentType === 'subtitle'", "goto": "translate-subtitle" },
+          { "when": "contentType === 'selection'", "goto": "translate-sel" },
+          { "otherwise": true, "goto": "translate-full" }
+        ]
+      }
+    },
+    {
+      "id": "translate-full",
+      "type": "tool",
+      "config": {
+        "toolId": "translate-page",
+        "parameters": {}
+      }
+    },
+    {
+      "id": "translate-sel",
+      "type": "tool",
+      "config": {
+        "toolId": "translate-selection",
+        "parameters": {}
+      }
+    },
+    {
+      "id": "translate-subtitle",
+      "type": "tool",
+      "config": {
+        "toolId": "subtitle-overlay",
+        "parameters": {}
+      }
+    },
+    {
+      "id": "skip-translation",
+      "type": "tool",
+      "config": {
+        "toolId": null,
+        "parameters": {},
+        "noop": true
+      }
+    },
+    {
+      "id": "quality-check",
+      "type": "evaluator",
+      "config": {
+        "metric": "translation-quality",
+        "threshold": 0.7,
+        "action": "log"
+      }
+    },
+    {
+      "id": "system-prompt",
+      "type": "prompt",
+      "config": {
+        "promptKey": "translation",
+        "inject": "before-tool"
+      }
+    }
+  ],
+  "edges": [
+    { "from": "detect-lang", "to": "route-translation" },
+    { "from": "route-translation", "to": "translate-full", "condition": "default" },
+    { "from": "route-translation", "to": "translate-sel", "condition": "contentType === 'selection'" },
+    { "from": "route-translation", "to": "translate-subtitle", "condition": "contentType === 'subtitle'" },
+    { "from": "route-translation", "to": "skip-translation", "condition": "sourceLang === targetLang" },
+    { "from": "translate-full", "to": "quality-check" },
+    { "from": "translate-sel", "to": "quality-check" },
+    { "from": "translate-subtitle", "to": "quality-check" },
+    { "from": "system-prompt", "to": "detect-lang" }
+  ]
+}

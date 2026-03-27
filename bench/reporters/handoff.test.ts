@@ -9,7 +9,7 @@ describe("generator handoff reporter", () => {
       schemaVersion: 1,
       runId: "run-2",
       generatedAt: "2026-03-26T00:00:00.000Z",
-      filter: { surface: null },
+      filter: { surface: null, split: null },
       summary: {
         totalScenarios: 2,
         passedScenarios: 1,

@@ -1,4 +1,4 @@
-import type { BenchmarkIssue, EvaluationResult } from "../types"
+import type { BenchmarkIssue, EvaluationResult, PatchHintArtifact } from "../types"
 
 export interface InputTranslationExecution {
   requestCount: number
@@ -22,6 +22,87 @@ function addIssue(
   evidence?: string,
 ) {
   issues.push({ severity, message, evidence })
+}
+
+function buildPatchHints(
+  execution: InputTranslationExecution,
+  expected: {
+    shouldRequest: boolean
+    shouldShowAfterFocus: boolean
+    shouldShowAfterTyping?: boolean
+    shouldWriteBack: boolean
+    expectedTask?: "translate"
+    requireContext?: boolean
+    maxLatencyMs?: number
+  },
+): PatchHintArtifact | undefined {
+  const failingSignals: string[] = []
+
+  if (execution.requestCount !== (expected.shouldRequest ? 1 : 0)) {
+    failingSignals.push(`requestCount=${execution.requestCount}`)
+  }
+
+  if (execution.overlayVisibleAfterFocus !== expected.shouldShowAfterFocus) {
+    failingSignals.push(`overlayVisibleAfterFocus=${execution.overlayVisibleAfterFocus}`)
+  }
+
+  const expectedOverlayAfterTyping = expected.shouldShowAfterTyping ?? expected.shouldShowAfterFocus
+  if (execution.overlayVisibleAfterTyping !== expectedOverlayAfterTyping) {
+    failingSignals.push(`overlayVisibleAfterTyping=${execution.overlayVisibleAfterTyping}`)
+  }
+
+  if (expected.shouldWriteBack
+    ? execution.translatedValue === execution.initialValue || execution.writebackInputEventCount === 0
+    : execution.translatedValue !== execution.initialValue || execution.writebackInputEventCount > 0) {
+    failingSignals.push(`writeback=${execution.translatedValue === execution.initialValue ? "missing" : "mutated"}`)
+  }
+
+  if (expected.expectedTask && execution.requestTask !== expected.expectedTask) {
+    failingSignals.push(`task=${execution.requestTask}`)
+  }
+
+  if (expected.requireContext && (!execution.payloadHostname || !execution.payloadPageUrl)) {
+    failingSignals.push("missing page context")
+  }
+
+  if (expected.shouldRequest && execution.translationLatencyMs > (expected.maxLatencyMs ?? 350)) {
+    failingSignals.push(`latency=${execution.translationLatencyMs}ms`)
+  }
+
+  if (failingSignals.length === 0) {
+    return undefined
+  }
+
+  const confidence: PatchHintArtifact["confidence"] =
+    execution.requestCount !== (expected.shouldRequest ? 1 : 0)
+    || expected.shouldWriteBack
+    || (expected.requireContext && (!execution.payloadHostname || !execution.payloadPageUrl))
+      ? "high"
+      : "medium"
+
+  return {
+    suspectedFiles: [
+      "src/entrypoints/content/components/InputTranslate.tsx",
+      "src/entrypoints/content/inline-actions.ts",
+      "src/utils/privacy.ts",
+      "src/utils/storage/config.ts",
+    ],
+    suspectedSymbols: [
+      "mountInputTranslate",
+      "runInlineAction",
+      "isSensitiveInput",
+      "readConfig",
+      "resolveSiteTranslationSettings",
+    ],
+    suspectedKeywords: [
+      "password",
+      "input",
+      "overlay",
+      "translation",
+    ],
+    failingSignals,
+    confidence,
+  }
 }
 
 export function evaluateInputTranslation(
@@ -174,6 +255,7 @@ export function evaluateInputTranslation(
       inputType: execution.inputType,
       buttonLabel: execution.buttonLabel,
       translationLatencyMs: execution.translationLatencyMs,
+      patchHints: buildPatchHints(execution, expected),
     },
     nextActions: issues.map((issue) => issue.message),
   }

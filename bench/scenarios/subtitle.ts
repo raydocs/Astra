@@ -4,7 +4,7 @@ import { evaluateSubtitle, type SubtitleExecution } from "../evaluators/subtitle
 import { installBenchBrowser } from "../runtime/browser"
 import { cleanupDomEnvironment, installDomEnvironment } from "../runtime/dom"
 import { mountFixture } from "../runtime/fixtures"
-import type { BenchmarkScenario } from "../types"
+import type { BenchmarkScenario, ScenarioCodeHint } from "../types"
 
 interface BenchCue {
   startTime: number
@@ -14,6 +14,34 @@ interface BenchCue {
 
 interface BenchTrack extends TextTrack {
   addedCues: BenchCue[]
+}
+
+const SUBTITLE_CODE_HINT: ScenarioCodeHint = {
+  suspectedFiles: [
+    "src/entrypoints/content/subtitle-translate.ts",
+    "src/entrypoints/content/translation-context.ts",
+    "src/utils/translate/translate.ts",
+    "src/utils/privacy.ts",
+    "src/utils/storage/config.ts",
+  ],
+  suspectedSymbols: [
+    "translatePageSubtitles",
+    "removeTranslatedSubtitles",
+    "getDocumentTranslationContext",
+    "sanitizeTranslationContext",
+    "translateTexts",
+  ],
+  suspectedKeywords: [
+    "Astra:",
+    "privacy",
+    "track",
+    "cue",
+  ],
+  fallbackSurfaceFiles: [
+    "src/entrypoints/content/subtitle-translate.ts",
+    "src/entrypoints/content/translation-context.ts",
+  ],
+  risk: "cross-module",
 }
 
 function installVttCueMock() {
@@ -282,6 +310,7 @@ export const subtitleScenarios: BenchmarkScenario<SubtitleExecution>[] = [
     surface: "subtitle",
     fixture: "inline:subtitle-video",
     task: "Translate visible subtitle cues into a dedicated Astra track without leaving the source track stuck in hidden mode.",
+    codeHint: SUBTITLE_CODE_HINT,
     run: () => runSubtitleTranslationScenario({ sourceMode: "disabled", url: "/watch/subtitles" }),
     evaluate: (execution) => evaluateSubtitle(execution, {
       shouldTranslate: true,
@@ -295,6 +324,7 @@ export const subtitleScenarios: BenchmarkScenario<SubtitleExecution>[] = [
     surface: "subtitle",
     fixture: "inline:subtitle-video",
     task: "Translate subtitle cues in privacy mode without leaking query strings, hashes, or page metadata.",
+    codeHint: SUBTITLE_CODE_HINT,
     run: () => runSubtitleTranslationScenario({
       privacyMode: true,
       sourceMode: "showing",
@@ -312,6 +342,7 @@ export const subtitleScenarios: BenchmarkScenario<SubtitleExecution>[] = [
     surface: "subtitle",
     fixture: "inline:subtitle-cleanup",
     task: "Clean up translated subtitle tracks without deleting user or source subtitle tracks.",
+    codeHint: SUBTITLE_CODE_HINT,
     run: runSubtitleCleanupScenario,
     evaluate: (execution) => evaluateSubtitle(execution, {
       shouldTranslate: false,

@@ -1,32 +1,56 @@
 import { readFile, writeFile } from "node:fs/promises"
 import path from "node:path"
 
-import { benchmarkScenarios } from "./scenarios"
+import { selectBenchmarkScenarios } from "./scenarios"
+import { countScenariosBySplit, isBenchmarkSplit } from "./splits"
 import { renderTextReport } from "./reporters/text"
 import { writeJsonReport } from "./reporters/json"
 import { renderFeedbackReport } from "./reporters/feedback"
 import { buildGeneratorHandoff, renderGeneratorMarkdown } from "./reporters/handoff"
+import { buildHistoryReport, loadHistoryReports, renderHistoryMarkdown } from "./reporters/history"
 import type {
   BenchmarkComparison,
+  BenchmarkInventory,
   BenchmarkReport,
   BenchmarkScenario,
+  BenchmarkSplit,
   BenchmarkSurface,
+  PatchHintArtifact,
+  RepairHintSummary,
+  ScenarioCodeHint,
   ScenarioReport,
   SurfaceSummary,
 } from "./types"
 
 function parseArgs(argv: string[]) {
   let surface: BenchmarkSurface | null = null
+  let split: BenchmarkSplit | null = null
+  let inventoryOnly = false
 
   for (let index = 0; index < argv.length; index += 1) {
     const current = argv[index]
     if (current === "--surface") {
       surface = (argv[index + 1] ?? null) as BenchmarkSurface | null
       index += 1
+      continue
+    }
+
+    if (current === "--split") {
+      const rawSplit = argv[index + 1] ?? null
+      if (!isBenchmarkSplit(rawSplit)) {
+        throw new Error(`Invalid benchmark split: ${rawSplit}`)
+      }
+      split = rawSplit
+      index += 1
+      continue
+    }
+
+    if (current === "--inventory-only") {
+      inventoryOnly = true
     }
   }
 
-  return { surface }
+  return { surface, split, inventoryOnly }
 }
 
 async function readPreviousReport(): Promise<BenchmarkReport | null> {
@@ -37,6 +61,45 @@ async function readPreviousReport(): Promise<BenchmarkReport | null> {
     return JSON.parse(content) as BenchmarkReport
   } catch {
     return null
+  }
+}
+
+function buildInventory(scenarios: BenchmarkScenario[]): BenchmarkInventory {
+  const bySurface: Record<string, number> = {}
+
+  scenarios.forEach((scenario) => {
+    bySurface[scenario.surface] = (bySurface[scenario.surface] ?? 0) + 1
+  })
+
+  return {
+    totalScenarios: scenarios.length,
+    bySurface,
+    bySplit: countScenariosBySplit(scenarios),
+  }
+}
+
+function mergeRepairHints(
+  codeHint?: ScenarioCodeHint,
+  patchHints?: PatchHintArtifact,
+): RepairHintSummary | undefined {
+  const suspectedFiles = [...new Set([...(codeHint?.suspectedFiles ?? []), ...(patchHints?.suspectedFiles ?? [])])]
+  const suspectedSymbols = [...new Set([...(codeHint?.suspectedSymbols ?? []), ...(patchHints?.suspectedSymbols ?? [])])]
+  const suspectedKeywords = [...new Set([...(codeHint?.suspectedKeywords ?? []), ...(patchHints?.suspectedKeywords ?? [])])]
+  const failingSignals = [...new Set(patchHints?.failingSignals ?? [])]
+  const confidence = patchHints?.confidence ?? null
+  const risk = codeHint?.risk ?? null
+
+  if (suspectedFiles.length === 0 && suspectedSymbols.length === 0 && suspectedKeywords.length === 0 && failingSignals.length === 0 && !confidence && !risk) {
+    return undefined
+  }
+
+  return {
+    suspectedFiles,
+    suspectedSymbols,
+    suspectedKeywords,
+    failingSignals,
+    confidence,
+    risk,
   }
 }
 
@@ -153,12 +216,24 @@ function compareToPrevious(
 }
 
 export async function runBench(argv: string[] = process.argv.slice(2)) {
-  const { surface } = parseArgs(argv)
-  const selectedScenarios = benchmarkScenarios
-    .filter((scenario) => !surface || scenario.surface === surface)
+  const { surface, split, inventoryOnly } = parseArgs(argv)
+  const selectedScenarios = selectBenchmarkScenarios({ surface, split })
 
   if (selectedScenarios.length === 0) {
-    throw new Error(`No benchmark scenarios matched surface filter: ${surface}`)
+    throw new Error(`No benchmark scenarios matched filters: surface=${surface ?? "all"}, split=${split ?? "all"}`)
+  }
+
+  const inventory = buildInventory(selectedScenarios as BenchmarkScenario[])
+
+  if (inventoryOnly) {
+    return {
+      inventory,
+      text: JSON.stringify(inventory, null, 2),
+      report: null,
+      feedback: null,
+      handoff: null,
+      paths: null,
+    }
   }
 
   const scenarioReports: ScenarioReport[] = []
@@ -175,6 +250,8 @@ export async function runBench(argv: string[] = process.argv.slice(2)) {
         task: scenario.task,
         execution,
         evaluation,
+        codeHint: scenario.codeHint,
+        repairHints: mergeRepairHints(scenario.codeHint, evaluation.artifacts.patchHints),
       })
     } catch (error) {
       const message = error instanceof Error ? error.message : "Unexpected scenario error"
@@ -203,6 +280,8 @@ export async function runBench(argv: string[] = process.argv.slice(2)) {
           artifacts: {},
           nextActions: [message],
         },
+        codeHint: scenario.codeHint,
+        repairHints: mergeRepairHints(scenario.codeHint, undefined),
       })
     }
   }
@@ -216,7 +295,7 @@ export async function runBench(argv: string[] = process.argv.slice(2)) {
     schemaVersion: 1,
     runId: new Date().toISOString().replace(/[:.]/g, "-"),
     generatedAt: new Date().toISOString(),
-    filter: { surface },
+    filter: { surface, split },
     summary: {
       totalScenarios: scenarioReports.length,
       passedScenarios: scenarioReports.filter((scenario) => scenario.evaluation.pass).length,
@@ -224,6 +303,7 @@ export async function runBench(argv: string[] = process.argv.slice(2)) {
       averageTotal,
       surfaces: summarizeSurfaces(scenarioReports),
     },
+    inventory,
     comparison: compareToPrevious(scenarioReports, previous),
     scenarios: scenarioReports,
   }
@@ -241,6 +321,17 @@ export async function runBench(argv: string[] = process.argv.slice(2)) {
   const generatorPrompt = renderGeneratorMarkdown(handoff)
   const generatorPath = path.join(paths.outputDir, "latest.generator.md")
   await writeFile(generatorPath, generatorPrompt)
+
+  const historyReports = await loadHistoryReports(path.join(paths.outputDir, "history"))
+  const historyReport = buildHistoryReport(historyReports, {
+    historyDir: path.join(paths.outputDir, "history"),
+  })
+  const historySummaryPath = path.join(paths.outputDir, "latest.history.json")
+  await writeFile(historySummaryPath, JSON.stringify(historyReport, null, 2))
+  const historyMarkdown = renderHistoryMarkdown(historyReport)
+  const historyMarkdownPath = path.join(paths.outputDir, "latest.history.md")
+  await writeFile(historyMarkdownPath, historyMarkdown)
+
   const text = renderTextReport(report)
 
   return {
@@ -253,6 +344,8 @@ export async function runBench(argv: string[] = process.argv.slice(2)) {
       feedbackPath,
       handoffPath,
       generatorPath,
+      historySummaryPath,
+      historyMarkdownPath,
     },
   }
 }

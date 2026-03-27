@@ -9,7 +9,33 @@ import { evaluateSiteAutomation, type SiteAutomationExecution } from "../evaluat
 import { installBenchBrowser } from "../runtime/browser"
 import { cleanupDomEnvironment, flushMicrotasks, installDomEnvironment } from "../runtime/dom"
 import { mountFixture, type FixtureSource } from "../runtime/fixtures"
-import type { BenchmarkScenario } from "../types"
+import type { BenchmarkScenario, ScenarioCodeHint } from "../types"
+
+const SITE_AUTOMATION_CODE_HINT: ScenarioCodeHint = {
+  suspectedFiles: [
+    "src/entrypoints/content/index.tsx",
+    "src/entrypoints/content/page-translate.ts",
+    "src/types/config.ts",
+    "src/utils/storage/config.ts",
+  ],
+  suspectedSymbols: [
+    "getPageTranslationState",
+    "startPageTranslation",
+    "stopPageTranslation",
+    "ASTRA_CONFIG_STORAGE_KEY",
+  ],
+  suspectedKeywords: [
+    "alwaysTranslate",
+    "enabled",
+    "suppressedAfterManualStop",
+    "resumedAfterReenable",
+  ],
+  fallbackSurfaceFiles: [
+    "src/entrypoints/content/index.tsx",
+    "src/utils/storage/config.ts",
+  ],
+  risk: "cross-module",
+}
 
 const UI_HOST_IDS = [
   "astra-selection-toolbar-host",
@@ -136,6 +162,7 @@ export const siteAutomationScenarios: BenchmarkScenario<SiteAutomationExecution>
     surface: "site-automation",
     fixture: "article-basic",
     task: "Verify Always Translate auto-starts on the first page load when provider access is available.",
+    codeHint: SITE_AUTOMATION_CODE_HINT,
     run: () => executeSiteAutomationScenario(async () => {
       const config = createConfig({
         sites: {
@@ -178,6 +205,7 @@ export const siteAutomationScenarios: BenchmarkScenario<SiteAutomationExecution>
     surface: "site-automation",
     fixture: "article-basic",
     task: "Verify a storage-backed site disable event immediately stops active translation and removes Astra markers.",
+    codeHint: SITE_AUTOMATION_CODE_HINT,
     run: () => executeSiteAutomationScenario(async () => {
       const initialConfig = createConfig({
         sites: {
@@ -244,6 +272,7 @@ export const siteAutomationScenarios: BenchmarkScenario<SiteAutomationExecution>
     surface: "site-automation",
     fixture: "article-basic",
     task: "Verify Always Translate does not immediately restart after a user manually stops translation on the current page.",
+    codeHint: SITE_AUTOMATION_CODE_HINT,
     run: () => executeSiteAutomationScenario(async () => {
       const initialConfig = createConfig({
         sites: {
@@ -311,6 +340,7 @@ export const siteAutomationScenarios: BenchmarkScenario<SiteAutomationExecution>
     surface: "site-automation",
     fixture: "article-basic",
     task: "Verify a page that was manually stopped starts again after the site becomes ineligible and then eligible once more.",
+    codeHint: SITE_AUTOMATION_CODE_HINT,
     run: () => executeSiteAutomationScenario(async () => {
       const initialConfig = createConfig({
         sites: {

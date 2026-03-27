@@ -1,0 +1,36 @@
+{
+  "schemaVersion": 1,
+  "modelRouting": {
+    "primary": {
+      "provider": "openai",
+      "model": "gpt-5.4-nano",
+      "temperature": 0.3,
+      "maxTokens": 4096
+    },
+    "fallback": {
+      "provider": "gemini",
+      "model": "gemini-3.1-flash-lite-preview",
+      "temperature": 0.2,
+      "maxTokens": 4096
+    },
+    "routingStrategy": "primary-with-fallback"
+  },
+  "systemPrompts": {
+    "translation": "You are a professional translator. Translate the following text accurately, preserving formatting and meaning.",
+    "summarization": "You are a concise summarizer. Extract the key points from the provided content.",
+    "extraction": "You are an information extractor. Identify and return the requested structured data from the content."
+  },
+  "retryPolicy": {
+    "maxRetries": 2,
+    "backoffMs": 500,
+    "retryableErrors": ["rate_limit", "timeout", "server_error"]
+  },
+  "timeouts": {
+    "requestMs": 30000,
+    "totalMs": 120000
+  },
+  "concurrency": {
+    "maxParallelRequests": 3,
+    "queueStrategy": "fifo"
+  }
+}

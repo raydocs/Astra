@@ -1,4 +1,4 @@
-import type { BenchmarkIssue, EvaluationResult } from "../types"
+import type { BenchmarkIssue, EvaluationResult, PatchHintArtifact } from "../types"
 
 export interface SubtitleExecution {
   requestCount: number
@@ -20,6 +20,79 @@ function addIssue(
   evidence?: string,
 ) {
   issues.push({ severity, message, evidence })
+}
+
+function buildPatchHints(
+  execution: SubtitleExecution,
+  expected: {
+    shouldTranslate: boolean
+    expectedCueCount?: number
+    expectedRemovedTracks?: number
+    expectSourceModeRestored?: boolean
+    requirePrivacySanitization?: boolean
+  },
+): PatchHintArtifact | undefined {
+  const failingSignals: string[] = []
+
+  if (execution.requestCount !== (expected.shouldTranslate ? 1 : 0)) {
+    failingSignals.push(`requestCount=${execution.requestCount}`)
+  }
+
+  if (expected.shouldTranslate && execution.translatedCueCount !== (expected.expectedCueCount ?? execution.translatedCueCount)) {
+    failingSignals.push(`translatedCueCount=${execution.translatedCueCount}`)
+  }
+
+  if (expected.shouldTranslate
+    ? execution.astraTrackCount !== 1 || !execution.astraTrackLabels.every((label) => label.startsWith("Astra: "))
+    : execution.astraTrackCount !== 0) {
+    failingSignals.push(`astraTrackCount=${execution.astraTrackCount}`)
+  }
+
+  if (expected.expectSourceModeRestored && execution.sourceModeBefore !== execution.sourceModeAfter) {
+    failingSignals.push(`sourceMode=${execution.sourceModeBefore}->${execution.sourceModeAfter}`)
+  }
+
+  if (expected.requirePrivacySanitization && !isSanitizedPrivacyContext(execution.payloadContext)) {
+    failingSignals.push("privacy context leaked")
+  }
+
+  if (expected.expectedRemovedTracks !== undefined && execution.removedTrackCount !== expected.expectedRemovedTracks) {
+    failingSignals.push(`removedTrackCount=${execution.removedTrackCount}`)
+  }
+
+  if (failingSignals.length === 0) {
+    return undefined
+  }
+
+  const confidence: PatchHintArtifact["confidence"] =
+    expected.requirePrivacySanitization || expected.expectedCueCount !== undefined || expected.expectSourceModeRestored
+      ? "high"
+      : "medium"
+
+  return {
+    suspectedFiles: [
+      "src/entrypoints/content/subtitle-translate.ts",
+      "src/entrypoints/content/translation-context.ts",
+      "src/utils/translate/translate.ts",
+      "src/utils/privacy.ts",
+      "src/utils/storage/config.ts",
+    ],
+    suspectedSymbols: [
+      "translatePageSubtitles",
+      "removeTranslatedSubtitles",
+      "getDocumentTranslationContext",
+      "sanitizeTranslationContext",
+      "translateTexts",
+    ],
+    suspectedKeywords: [
+      "Astra:",
+      "privacy",
+      "track",
+      "cue",
+    ],
+    failingSignals,
+    confidence,
+  }
 }
 
 function isSanitizedPrivacyContext(context: Record<string, unknown> | null) {
@@ -155,6 +228,7 @@ export function evaluateSubtitle(
       astraTrackLabels: execution.astraTrackLabels,
       requestBatchSizes: execution.requestBatchSizes,
       payloadContext: execution.payloadContext,
+      patchHints: buildPatchHints(execution, expected),
     },
     nextActions: issues.map((issue) => issue.message),
   }
