@@ -51,7 +51,7 @@ This page tracks the current product surface in the repo so feature work, docs, 
 - Readability fixture catalog under `test/fixtures/pages` (14 fixtures)
 - Provider prompt/parser contract tests including error paths (429, 500, network failure)
 - Inline action contract tests
-- Evaluator-first bench harness under `bench/` with 35 scored scenarios across 10 surfaces, including interaction-priority, multi-frame coordination, and dynamic-content coverage
+- Evaluator-first bench harness under `bench/`, with active scenario inventory tracked by `pnpm bench:inventory`, including interaction-priority, frame-coordination, and dynamic-content coverage
 - Bench regression gate in CI (`pnpm bench` step)
 - 373 unit tests, 55 test files
 
