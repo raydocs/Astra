@@ -1,3 +1,4 @@
+import { hoverTranslationMovingTargetsHoldoutScenario } from "./hover-translation-moving-targets"
 import { interactionStressHoldoutScenario } from "./interaction-stress"
 import { pageTranslationFeedCardChurnHoldoutScenario } from "./page-translation-feed-card-churn"
 import { pageTranslationLayoutNoiseSourceHoldoutScenario } from "./page-translation-layout-noise-source"
@@ -5,6 +6,7 @@ import { pdfReaderLayoutNoiseHoldoutScenario } from "./pdf-reader-layout-noise"
 import { youtubeSubtitleRaceHoldoutScenario } from "./youtube-subtitle-race"
 import { translationRaceHoldoutScenario } from "./translation-race"
 
+export { hoverTranslationMovingTargetsHoldoutScenario } from "./hover-translation-moving-targets"
 export { interactionStressHoldoutScenario } from "./interaction-stress"
 export { pageTranslationFeedCardChurnHoldoutScenario } from "./page-translation-feed-card-churn"
 export { pageTranslationLayoutNoiseSourceHoldoutScenario } from "./page-translation-layout-noise-source"
@@ -21,6 +23,7 @@ export { translationRaceHoldoutScenario } from "./translation-race"
  * to detect regressions or validate robustness beyond the basic suite.
  */
 export const holdoutScenarios = [
+  hoverTranslationMovingTargetsHoldoutScenario,
   interactionStressHoldoutScenario,
   pageTranslationFeedCardChurnHoldoutScenario,
   pageTranslationLayoutNoiseSourceHoldoutScenario,

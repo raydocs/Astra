@@ -1,5 +1,6 @@
 import { fixturePlaywrightSmokeScenario } from "./fixture-playwright-smoke"
 import { frameCoordinationBasicScenario } from "./frame-coordination-basic"
+import { hoverTranslationBasicScenario } from "./hover-translation-basic"
 import { inputTranslationBasicScenario } from "./input-translation-basic"
 import { inputTranslationFieldMatrixScenario } from "./input-translation-field-matrix"
 import { interactionPriorityBasicScenario } from "./interaction-priority-basic"
@@ -17,6 +18,7 @@ import { holdoutScenarios } from "./holdout/index"
 
 export { fixturePlaywrightSmokeScenario } from "./fixture-playwright-smoke"
 export { frameCoordinationBasicScenario } from "./frame-coordination-basic"
+export { hoverTranslationBasicScenario } from "./hover-translation-basic"
 export { inputTranslationBasicScenario } from "./input-translation-basic"
 export { inputTranslationFieldMatrixScenario } from "./input-translation-field-matrix"
 export { interactionPriorityBasicScenario } from "./interaction-priority-basic"
@@ -41,6 +43,7 @@ export const liveScenarios = [
   pdfReaderBasicScenario,
   interactionPriorityBasicScenario,
   frameCoordinationBasicScenario,
+  hoverTranslationBasicScenario,
   inputTranslationBasicScenario,
   inputTranslationFieldMatrixScenario,
   youtubeSubtitleBasicScenario,
