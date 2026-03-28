@@ -7,7 +7,7 @@ import {
   withLiveBrowserPage,
   LiveBrowserUnavailableError,
 } from "../driver"
-import type { LiveScenarioDefinition, LiveScenarioExecution } from "../evaluator"
+import type { LiveEvaluationResult, LiveScenarioDefinition, LiveScenarioExecution } from "../evaluator"
 import { buildLiveInputTranslationEvaluation } from "./helpers/input-translation"
 
 interface LiveInputTranslationFieldMatrixExecution extends LiveScenarioExecution {
@@ -477,7 +477,7 @@ export const inputTranslationFieldMatrixScenario: LiveScenarioDefinition<LiveInp
     }
   },
   async evaluate(execution, context) {
-    return buildLiveInputTranslationEvaluation(execution, context.runId, context.scenario, context.runtime, {
+    const base = buildLiveInputTranslationEvaluation(execution, context.runId, context.scenario, context.runtime, {
       expected: {
         shouldRequest: true,
         shouldShowAfterFocus: true,
@@ -490,5 +490,54 @@ export const inputTranslationFieldMatrixScenario: LiveScenarioDefinition<LiveInp
       successSummary: "Live input-translation field matrix passed: textarea cursor preservation, contenteditable writeback, delayed hydration, repeated edits, and password suppression all held.",
       failureSummary: "Live input-translation field matrix failed: one or more field behaviors diverged from the harness contract.",
     })
+
+    const matrix = execution.fieldMatrix
+    const issues = [...(base.issues ?? [])]
+    const notes = [...(base.notes ?? [])]
+    const nextActions = [...(base.nextActions ?? [])]
+
+    if (!matrix) {
+      issues.push('fieldMatrix execution payload was missing')
+      nextActions.push('Inspect the field-matrix runtime bridge and rerun the live scenario.')
+    } else {
+      if (!matrix.textareaCursorPreserved) issues.push('Textarea cursor preservation failed inside the field matrix holdout.')
+      if (!matrix.contenteditableWrittenBack) issues.push('Contenteditable writeback failed inside the field matrix holdout.')
+      if (!matrix.passwordSuppressed) issues.push('Sensitive password field was not suppressed inside the field matrix holdout.')
+      if (!matrix.delayedHydrationTranslated) issues.push('Delayed hydration field did not translate after hydration completed.')
+      if (!matrix.repeatedEditTranslated) issues.push('Repeated edit flow failed to translate the revised field contents.')
+      if ((matrix.hydratedFieldCount ?? 0) < 1) issues.push('Hydrated field count did not reach the expected minimum of 1.')
+      notes.push(`fieldMatrix.textareaCursorPreserved=${matrix.textareaCursorPreserved}`)
+      notes.push(`fieldMatrix.contenteditableWrittenBack=${matrix.contenteditableWrittenBack}`)
+      notes.push(`fieldMatrix.passwordSuppressed=${matrix.passwordSuppressed}`)
+      notes.push(`fieldMatrix.delayedHydrationTranslated=${matrix.delayedHydrationTranslated}`)
+      notes.push(`fieldMatrix.repeatedEditTranslated=${matrix.repeatedEditTranslated}`)
+      notes.push(`fieldMatrix.hydratedFieldCount=${matrix.hydratedFieldCount}`)
+    }
+
+    const penalty = Math.min(40, Math.max(0, issues.length - (base.issues?.length ?? 0)) * 10)
+    const score = Math.max(0, (base.score ?? 0) - penalty)
+    const pass = (base.pass ?? false) && issues.length === 0
+
+    return {
+      runId: base.runId ?? context.runId,
+      scenario: base.scenario ?? context.scenario,
+      status: pass ? 'pass' : 'fail',
+      pass,
+      score,
+      summary: pass
+        ? "Live input-translation field matrix passed: textarea cursor preservation, contenteditable writeback, delayed hydration, repeated edits, and password suppression all held."
+        : "Live input-translation field matrix failed: one or more matrix-specific holdout behaviors diverged from expectations.",
+      issues,
+      nextActions,
+      notes,
+      rubrics: base.rubrics ?? [],
+      artifacts: {
+        browserArtifacts: execution.artifacts ?? {},
+        inputTranslationExecution: execution.inputTranslation,
+        benchmarkEvaluation: (base.artifacts as Record<string, unknown> | undefined)?.benchmarkEvaluation,
+        fieldMatrix: matrix,
+      },
+      runtime: base.runtime ?? context.runtime,
+    } as unknown as Partial<LiveEvaluationResult>
   },
 }
