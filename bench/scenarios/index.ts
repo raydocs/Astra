@@ -11,6 +11,7 @@ import { pdfTranslationScenarios } from "./pdf"
 import { selectionExplainScenarios } from "./selection-explain"
 import { siteAutomationScenarios } from "./site-automation"
 import { subtitleScenarios } from "./subtitle"
+import { subtitleFileScenarios } from "./subtitle-file"
 import { youtubeSubtitleScenarios } from "./youtube-subtitle"
 
 export const benchmarkScenarios = [
@@ -24,6 +25,7 @@ export const benchmarkScenarios = [
   ...selectionExplainScenarios,
   ...inputTranslationScenarios,
   ...subtitleScenarios,
+  ...subtitleFileScenarios,
   ...pdfTranslationScenarios,
   ...youtubeSubtitleScenarios,
 ]

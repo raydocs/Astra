@@ -14,6 +14,7 @@ import { pdfReaderBasicScenario } from "./pdf-reader-basic"
 import { placeholderScenario } from "./placeholder"
 import { youtubeSubtitleBasicScenario } from "./youtube-subtitle-basic"
 import { subtitleBasicScenario } from "./subtitle-basic"
+import { subtitleFileBasicScenario } from "./subtitle-file-basic"
 import { holdoutScenarios } from "./holdout/index"
 
 export { fixturePlaywrightSmokeScenario } from "./fixture-playwright-smoke"
@@ -32,7 +33,7 @@ export { pdfReaderBasicScenario } from "./pdf-reader-basic"
 export { placeholderScenario } from "./placeholder"
 export { youtubeSubtitleBasicScenario } from "./youtube-subtitle-basic"
 export { subtitleBasicScenario } from "./subtitle-basic"
-
+export { subtitleFileBasicScenario } from "./subtitle-file-basic"
 export const liveScenarios = [
   pageTranslationArticleBasicSourceScenario,
   pageTranslationArticleBasicSourceTranslationOnlyScenario,
@@ -48,7 +49,7 @@ export const liveScenarios = [
   inputTranslationFieldMatrixScenario,
   youtubeSubtitleBasicScenario,
   subtitleBasicScenario,
-  fixturePlaywrightSmokeScenario,
+  subtitleFileBasicScenario,
   placeholderScenario,
   ...holdoutScenarios,
 ]
