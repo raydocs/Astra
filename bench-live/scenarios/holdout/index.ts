@@ -1,7 +1,11 @@
 import { interactionStressHoldoutScenario } from "./interaction-stress"
+import { pageTranslationFeedCardChurnHoldoutScenario } from "./page-translation-feed-card-churn"
+import { youtubeSubtitleRaceHoldoutScenario } from "./youtube-subtitle-race"
 import { translationRaceHoldoutScenario } from "./translation-race"
 
 export { interactionStressHoldoutScenario } from "./interaction-stress"
+export { pageTranslationFeedCardChurnHoldoutScenario } from "./page-translation-feed-card-churn"
+export { youtubeSubtitleRaceHoldoutScenario } from "./youtube-subtitle-race"
 export { translationRaceHoldoutScenario } from "./translation-race"
 
 /**
@@ -14,5 +18,7 @@ export { translationRaceHoldoutScenario } from "./translation-race"
  */
 export const holdoutScenarios = [
   interactionStressHoldoutScenario,
+  pageTranslationFeedCardChurnHoldoutScenario,
+  youtubeSubtitleRaceHoldoutScenario,
   translationRaceHoldoutScenario,
 ]

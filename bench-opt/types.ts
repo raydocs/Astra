@@ -12,6 +12,7 @@ import type { BenchOptCheckpointArtifact } from "./checkpoints.ts"
 import type { BenchOptCompactionTrigger, BenchOptCompactionMetadata } from "./compaction.ts"
 import type { BenchOptSessionHandoffArtifact } from "./handoff.ts"
 import type { BenchOptVerificationKind, BenchOptVerificationPlan, BenchOptVerificationResult } from "./verify.ts"
+import type { AstraCapabilityCurrentState, AstraCapabilityGapType, AstraCapabilityId, AstraCapabilityLaneCoverage, AstraCapabilityVerdict, AstraCapabilityWave } from "./capabilities.ts"
 
 export type OptimizerPhase = 1
 
@@ -570,6 +571,33 @@ export interface BenchOptOrchestrationLoopResult {
   finalHandoff: BenchOptOrchestrationArtifact["handoff"] | null
 }
 
+export interface BenchOptCapabilityStatusSummary {
+  protocolVersion: string
+  total: number
+  conquered: number
+  byWave: Array<{
+    wave: AstraCapabilityWave
+    total: number
+    conquered: number
+  }>
+  cards: Array<{
+    id: AstraCapabilityId
+    name: string
+    wave: AstraCapabilityWave
+    beta: boolean
+    astraCurrentState: AstraCapabilityCurrentState
+    verdict: AstraCapabilityVerdict
+    currentCoverage: AstraCapabilityLaneCoverage
+    gapClassification: readonly AstraCapabilityGapType[]
+    targetBehavior: string
+    readFrogReference: string
+    immersiveBenchmark: string
+    missingHarnessLanes: readonly (keyof AstraCapabilityLaneCoverage)[]
+    exitCriteria: readonly string[]
+    notes: readonly string[]
+  }>
+}
+
 export interface BenchOptStatusArtifact {
   schemaVersion: 1
   runId: string
@@ -600,6 +628,8 @@ export interface BenchOptStatusArtifact {
     rollbackStatus: BenchOptRollbackPlan["status"] | null
     guardrailVerdict: "pass" | "warn" | "block" | null
     redFlagCount: number | null
+    capabilityProtocolVersion: string | null
+    capabilityConqueredCount: number | null
   }
   selection: BenchOptResolvedOptimizerConfig["selection"] | null
   execution: {
@@ -671,6 +701,7 @@ export interface BenchOptStatusArtifact {
       scores: number[]
     }>
   } | null
+  capabilities: BenchOptCapabilityStatusSummary | null
   store: {
     latestExperimentId: string | null
     latestChampionId: string | null

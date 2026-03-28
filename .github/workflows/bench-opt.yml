@@ -89,6 +89,8 @@ jobs:
           set -euo pipefail
           echo "Running live smoke scenarios..."
           pnpm bench:live -- --scenario bench-live/page-translation-article-basic-source-bilingual
+          pnpm bench:live -- --scenario bench-live/page-translation-forms-and-nav-source-bilingual
+          pnpm bench:live -- --scenario bench-live/page-translation-nested-blocks-source-bilingual
           pnpm bench:live -- --scenario bench-live/interaction-priority-basic
           pnpm bench:live -- --scenario bench-live/input-translation-basic
           pnpm bench:live -- --scenario bench-live/frame-coordination-basic

@@ -43,6 +43,7 @@ describe("InputTranslate", () => {
       <input id="text-input" type="text" value="Hello" />
       <input id="password-input" type="password" value="secret" />
       <textarea id="textarea">Some text</textarea>
+      <div id="editor" contenteditable="true">Editable text</div>
     </main>`
 
     const textInput = document.getElementById("text-input") as HTMLInputElement
@@ -81,6 +82,19 @@ describe("InputTranslate", () => {
       height: 20,
       x: 16,
       y: 140,
+      toJSON: () => ({}),
+    } as DOMRect)
+
+    const editor = document.getElementById("editor") as HTMLDivElement
+    editor.getBoundingClientRect = () => ({
+      top: 180,
+      left: 16,
+      right: 260,
+      bottom: 240,
+      width: 244,
+      height: 60,
+      x: 16,
+      y: 180,
       toJSON: () => ({}),
     } as DOMRect)
 
@@ -325,5 +339,91 @@ describe("InputTranslate", () => {
 
     const clearedButton = getButton()
     expect(clearedButton?.textContent).toBe("译")
+  })
+
+  it("shows the translate button for contenteditable elements", async () => {
+    const editor = document.getElementById("editor") as HTMLDivElement
+    const handleFocusIn = documentListeners.focusin as ((event: FocusEvent) => void) | undefined
+    expect(handleFocusIn).toBeTypeOf("function")
+
+    const event = new FocusEvent("focusin")
+    Object.defineProperty(event, "target", { value: editor })
+
+    await act(async () => {
+      handleFocusIn?.(event)
+      await Promise.resolve()
+    })
+
+    expect(getButton()).not.toBeNull()
+  })
+
+  it("writes the translated text back into textarea content and preserves the selection", async () => {
+    const textarea = document.getElementById("textarea") as HTMLTextAreaElement
+    textarea.setSelectionRange(5, 9)
+    const handleFocusIn = documentListeners.focusin as ((event: FocusEvent) => void) | undefined
+    const focusEvent = new FocusEvent("focusin")
+    Object.defineProperty(focusEvent, "target", { value: textarea })
+
+    await act(async () => {
+      handleFocusIn?.(focusEvent)
+      await Promise.resolve()
+    })
+
+    const button = getButton()
+    expect(button).not.toBeNull()
+
+    await act(async () => {
+      button?.click()
+      await Promise.resolve()
+      await Promise.resolve()
+    })
+
+    expect(runInlineActionMock).toHaveBeenCalledWith({
+      text: "Some text",
+      targetLang: "zh-CN",
+      task: "translate",
+    })
+    expect(textarea.value).toBe("你好")
+    expect(textarea.selectionStart).toBe(2)
+    expect(textarea.selectionEnd).toBe(2)
+  })
+
+  it("writes the translated text back into contenteditable elements and keeps the caret inside the editor", async () => {
+    const editor = document.getElementById("editor") as HTMLDivElement
+    const textNode = editor.firstChild as Text
+    const range = document.createRange()
+    range.setStart(textNode, 3)
+    range.setEnd(textNode, 3)
+    const selection = window.getSelection()
+    selection?.removeAllRanges()
+    selection?.addRange(range)
+
+    const handleFocusIn = documentListeners.focusin as ((event: FocusEvent) => void) | undefined
+    const focusEvent = new FocusEvent("focusin")
+    Object.defineProperty(focusEvent, "target", { value: editor })
+
+    await act(async () => {
+      handleFocusIn?.(focusEvent)
+      await Promise.resolve()
+    })
+
+    const button = getButton()
+    expect(button).not.toBeNull()
+
+    await act(async () => {
+      button?.click()
+      await Promise.resolve()
+      await Promise.resolve()
+    })
+
+    expect(runInlineActionMock).toHaveBeenCalledWith({
+      text: "Editable text",
+      targetLang: "zh-CN",
+      task: "translate",
+    })
+    expect(editor.textContent).toBe("你好")
+    expect(window.getSelection()?.rangeCount).toBe(1)
+    expect(window.getSelection()?.anchorNode).toBe(editor.firstChild)
+    expect(window.getSelection()?.anchorOffset).toBe(2)
   })
 })

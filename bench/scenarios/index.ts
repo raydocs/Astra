@@ -10,6 +10,7 @@ import { pageTranslationScenarios } from "./page-translation"
 import { selectionExplainScenarios } from "./selection-explain"
 import { siteAutomationScenarios } from "./site-automation"
 import { subtitleScenarios } from "./subtitle"
+import { youtubeSubtitleScenarios } from "./youtube-subtitle"
 
 export const benchmarkScenarios = [
   ...pageTranslationScenarios,
@@ -22,6 +23,7 @@ export const benchmarkScenarios = [
   ...selectionExplainScenarios,
   ...inputTranslationScenarios,
   ...subtitleScenarios,
+  ...youtubeSubtitleScenarios,
 ]
 
 export function selectBenchmarkScenarios(options: {
