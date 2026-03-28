@@ -4,6 +4,7 @@ export type {
   BenchOptBaselineSnapshot,
   BenchOptCandidate,
   BenchOptCandidateInput,
+  BenchOptCapabilityStatusSummary,
   BenchOptCandidateScore,
   BenchOptChampionRecord,
   BenchOptExperimentLineage,
@@ -37,6 +38,25 @@ export type {
   OptimizerRegistry,
   PromptOptimizerCandidate,
 } from "./types"
+
+export {
+  astraV2Capabilities,
+  createAstraCapabilityStatusCards,
+  getAstraV2Capability,
+  listAstraV2Capabilities,
+  summarizeAstraCapabilityCards,
+} from "./capabilities"
+
+export type {
+  AstraCapabilityDefinition,
+  AstraCapabilityGapType,
+  AstraCapabilityId,
+  AstraCapabilityLaneCoverage,
+  AstraCapabilityLaneStatus,
+  AstraCapabilityStatusCard,
+  AstraCapabilityVerdict,
+  AstraCapabilityWave,
+} from "./capabilities"
 
 export type {
   BenchOptAutoLoopArtifact,

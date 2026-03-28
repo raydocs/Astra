@@ -393,6 +393,11 @@ export const translationRaceHoldoutScenario: LiveScenarioDefinition<LiveTranslat
         payloadHostname: null,
         payloadPageUrl: null,
         inputType: "email",
+        editableKind: "input",
+        selectionStartBefore: null,
+        selectionEndBefore: null,
+        selectionStartAfter: null,
+        selectionEndAfter: null,
       }
 
       runtime.complete("Translation-race holdout scenario completed.")
@@ -460,6 +465,11 @@ export const translationRaceHoldoutScenario: LiveScenarioDefinition<LiveTranslat
             payloadHostname: null,
             payloadPageUrl: null,
             inputType: "email",
+            editableKind: "input",
+            selectionStartBefore: null,
+            selectionEndBefore: null,
+            selectionStartAfter: null,
+            selectionEndAfter: null,
           },
           raceMetrics: {
             dynamicChunkCount: 0,

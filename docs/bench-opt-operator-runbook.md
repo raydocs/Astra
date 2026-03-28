@@ -72,6 +72,43 @@ The system is **read-only by default**. It does not modify source code, create b
 
 ---
 
+## Capability Protocol v2 (draft)
+
+Bench-opt status can now carry a **capability conquest summary** for Astra v2. This is separate from the suite verdict.
+
+### What capability status means
+
+Capability cards track whether a single product surface has reached these lanes:
+- deterministic bench
+- live standard lane
+- holdout lane
+- proof contribution
+
+Capability verdict taxonomy:
+
+| Verdict | Meaning |
+|---|---|
+| `not-started` | No trustworthy conquest progress yet |
+| `partial` | Runtime or harness slice exists, but not bench-grade |
+| `bench-pass` | Deterministic bench is green; live/holdout remain incomplete |
+| `live-pass` | Deterministic and live lanes are green |
+| `holdout-pass` | Deterministic, live, and holdout lanes are green |
+| `conquered` | Deterministic, live, holdout, and proof/reporting obligations are all satisfied |
+
+### How to read the capability section in status
+
+The capability section reports:
+- protocol version (`2.0.0-draft` while v2 is still evolving)
+- total capability count
+- conquered capability count
+- wave breakdown (`B`, `C`, `D`)
+- per-capability lane state (`bench`, `live`, `holdout`, `proof`)
+
+Use it to answer:
+1. which surfaces are already strong,
+2. which wave owns the remaining work,
+3. which harness lanes still need to be built.
+
 ## Which Artifacts Matter Most
 
 For day-to-day operation, focus on these three:

@@ -237,6 +237,11 @@ export const inputTranslationBasicScenario: LiveScenarioDefinition<LiveInputTran
         payloadHostname: null,
         payloadPageUrl: null,
         inputType: "email",
+        editableKind: "input",
+        selectionStartBefore: null,
+        selectionEndBefore: null,
+        selectionStartAfter: null,
+        selectionEndAfter: null,
       }
 
       runtime.complete("Browser-backed input-translation contract scenario completed.")
@@ -293,6 +298,11 @@ export const inputTranslationBasicScenario: LiveScenarioDefinition<LiveInputTran
             payloadHostname: null,
             payloadPageUrl: null,
             inputType: "email",
+            editableKind: "input",
+            selectionStartBefore: null,
+            selectionEndBefore: null,
+            selectionStartAfter: null,
+            selectionEndAfter: null,
           },
         }
       }

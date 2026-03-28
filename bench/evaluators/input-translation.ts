@@ -13,6 +13,11 @@ export interface InputTranslationExecution {
   payloadHostname: string | null
   payloadPageUrl: string | null
   inputType: string
+  editableKind: "input" | "textarea" | "contenteditable"
+  selectionStartBefore: number | null
+  selectionEndBefore: number | null
+  selectionStartAfter: number | null
+  selectionEndAfter: number | null
 }
 
 function addIssue(
@@ -24,6 +29,33 @@ function addIssue(
   issues.push({ severity, message, evidence })
 }
 
+function clampSelectionToTranslatedText(
+  execution: InputTranslationExecution,
+  before: number | null,
+) {
+  if (before === null) return null
+  return Math.min(before, execution.translatedValue.length)
+}
+
+function cursorPreserved(
+  execution: InputTranslationExecution,
+) {
+  if (
+    execution.selectionStartBefore === null
+    || execution.selectionEndBefore === null
+    || execution.selectionStartAfter === null
+    || execution.selectionEndAfter === null
+  ) {
+    return false
+  }
+
+  const expectedStart = clampSelectionToTranslatedText(execution, execution.selectionStartBefore)
+  const expectedEnd = clampSelectionToTranslatedText(execution, execution.selectionEndBefore)
+
+  return execution.selectionStartAfter === expectedStart
+    && execution.selectionEndAfter === expectedEnd
+}
+
 function buildPatchHints(
   execution: InputTranslationExecution,
   expected: {
@@ -31,6 +63,7 @@ function buildPatchHints(
     shouldShowAfterFocus: boolean
     shouldShowAfterTyping?: boolean
     shouldWriteBack: boolean
+    shouldPreserveCursor?: boolean
     expectedTask?: "translate"
     requireContext?: boolean
     maxLatencyMs?: number
@@ -59,6 +92,12 @@ function buildPatchHints(
 
   if (expected.expectedTask && execution.requestTask !== expected.expectedTask) {
     failingSignals.push(`task=${execution.requestTask}`)
+  }
+
+  if (expected.shouldPreserveCursor) {
+    if (!cursorPreserved(execution)) {
+      failingSignals.push(`cursorPreserved=${cursorPreserved(execution)}`)
+    }
   }
 
   if (expected.requireContext && (!execution.payloadHostname || !execution.payloadPageUrl)) {
@@ -112,6 +151,7 @@ export function evaluateInputTranslation(
     shouldShowAfterFocus: boolean
     shouldShowAfterTyping?: boolean
     shouldWriteBack: boolean
+    shouldPreserveCursor?: boolean
     expectedTask?: "translate"
     requireContext?: boolean
     maxLatencyMs?: number
@@ -131,6 +171,7 @@ export function evaluateInputTranslation(
     || !!execution.payloadHostname?.trim() && !!execution.payloadPageUrl?.trim()
   const taskMatches = !expected.expectedTask || execution.requestTask === expected.expectedTask
   const latencyMatches = !expected.shouldRequest || execution.translationLatencyMs <= (expected.maxLatencyMs ?? 350)
+  const cursorMatches = !expected.shouldPreserveCursor || cursorPreserved(execution)
 
   if (!requestMatches) {
     addIssue(
@@ -197,7 +238,17 @@ export function evaluateInputTranslation(
     )
   }
 
-  if ((expected.shouldShowAfterFocus || expectedOverlayAfterTyping) && execution.buttonLabel !== "译") {
+  if (!cursorMatches) {
+    addIssue(
+      issues,
+      "medium",
+      "Input translation did not preserve the cursor or selection range.",
+      `before=${execution.selectionStartBefore}-${execution.selectionEndBefore}, after=${execution.selectionStartAfter}-${execution.selectionEndAfter}`,
+    )
+  }
+
+  const allowedButtonLabels = new Set(["译", "Translate", "inputTranslateButton"])
+  if ((expected.shouldShowAfterFocus || expectedOverlayAfterTyping) && !allowedButtonLabels.has(execution.buttonLabel)) {
     addIssue(
       issues,
       "low",
@@ -215,6 +266,7 @@ export function evaluateInputTranslation(
   const correctness = writebackMatches ? 10 : 3
   const completeness = requestMatches && taskMatches ? 10 : 5
   const stability = 10
+  const cursor_preservation = cursorMatches ? 10 : 4
 
   const scores = {
     correctness,
@@ -224,6 +276,7 @@ export function evaluateInputTranslation(
     context_quality: contextQuality,
     interaction_safety: interactionSafety,
     latency,
+    cursor_preservation,
   }
 
   const baseTotal = Math.round((Object.values(scores).reduce((sum, score) => sum + score, 0) / (Object.keys(scores).length * 10)) * 100)

@@ -4,13 +4,19 @@
  * Extracts text blocks from each page, preserving reading order.
  */
 
-import { getDocument, GlobalWorkerOptions } from "pdfjs-dist"
+import { getDocument, GlobalWorkerOptions } from "pdfjs-dist/legacy/build/pdf.mjs"
 
-// Use bundled worker
-GlobalWorkerOptions.workerSrc = new URL(
-  "pdfjs-dist/build/pdf.worker.min.mjs",
-  import.meta.url,
-).toString()
+const IS_NODE_BENCH_ENV = typeof process !== "undefined" && !!process.versions?.node
+
+// In the browser bundle we still prefer the bundled worker, but in Node-based
+// bench harness runs we disable workers entirely to avoid worker resolution
+// issues and keep extraction deterministic.
+if (!IS_NODE_BENCH_ENV) {
+  GlobalWorkerOptions.workerSrc = new URL(
+    "pdfjs-dist/legacy/build/pdf.worker.min.mjs",
+    import.meta.url,
+  ).toString()
+}
 
 export interface PdfTextBlock {
   text: string
@@ -106,7 +112,10 @@ function mergeTextItems(
 }
 
 export async function extractPdfPages(data: Uint8Array): Promise<PdfPage[]> {
-  const pdf = await getDocument({ data }).promise
+  const pdf = await getDocument({
+    data,
+    disableWorker: IS_NODE_BENCH_ENV,
+  } as Parameters<typeof getDocument>[0]).promise
   const pages: PdfPage[] = []
 
   try {

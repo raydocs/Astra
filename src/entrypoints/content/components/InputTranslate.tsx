@@ -9,6 +9,10 @@ import { runInlineAction } from "../inline-actions"
 
 const HOST_ID = "astra-input-translate-host"
 const BRAND_COLOR = "#6366f1"
+const TEXT_NODE_FILTER = typeof NodeFilter !== "undefined" ? NodeFilter.SHOW_TEXT : 4
+
+type EditableKind = "input" | "textarea" | "contenteditable"
+type EditableElement = HTMLInputElement | HTMLTextAreaElement | HTMLElement
 
 interface InputOverlayState {
   visible: boolean
@@ -16,6 +20,163 @@ interface InputOverlayState {
   left: number
   translating: boolean
   error: string | null
+}
+
+interface EditableSelectionSnapshot {
+  kind: EditableKind
+  start: number | null
+  end: number | null
+  direction: SelectionDirection | null
+}
+
+function isSupportedTextInput(element: HTMLInputElement) {
+  return ["text", "search", "url", "email", ""].includes(element.type)
+}
+
+function isEditableElement(target: EventTarget | null): target is EditableElement {
+  return target instanceof HTMLInputElement
+    || target instanceof HTMLTextAreaElement
+    || (target instanceof HTMLElement && (target.isContentEditable || target.getAttribute("contenteditable") === "true"))
+}
+
+function getEditableKind(target: EditableElement): EditableKind {
+  if (target instanceof HTMLInputElement) return "input"
+  if (target instanceof HTMLTextAreaElement) return "textarea"
+  return "contenteditable"
+}
+
+function getEditableText(target: EditableElement): string {
+  if (target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement) {
+    return target.value
+  }
+
+  return target.innerText ?? target.textContent ?? ""
+}
+
+function setEditableText(target: EditableElement, text: string) {
+  if (target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement) {
+    const nativeSetter = Object.getOwnPropertyDescriptor(
+      target instanceof HTMLTextAreaElement ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype,
+      "value",
+    )?.set
+    nativeSetter?.call(target, text)
+    if (!nativeSetter) {
+      target.value = text
+    }
+    return
+  }
+
+  target.textContent = text
+}
+
+function getContentEditableOffset(root: HTMLElement, node: Node | null, offset: number) {
+  if (!node || !root.contains(node)) return null
+
+  const range = document.createRange()
+  range.selectNodeContents(root)
+
+  try {
+    range.setEnd(node, offset)
+  } catch {
+    return null
+  }
+
+  return range.toString().length
+}
+
+function resolveContentEditablePosition(root: HTMLElement, offset: number) {
+  const walker = document.createTreeWalker(root, TEXT_NODE_FILTER)
+  let remaining = Math.max(0, offset)
+  let current = walker.nextNode() as Text | null
+
+  while (current) {
+    const textLength = current.textContent?.length ?? 0
+    if (remaining <= textLength) {
+      return { node: current, offset: remaining }
+    }
+    remaining -= textLength
+    current = walker.nextNode() as Text | null
+  }
+
+  const fallback = root.lastChild
+  if (fallback instanceof Text) {
+    return { node: fallback, offset: fallback.textContent?.length ?? 0 }
+  }
+
+  return { node: root, offset: root.childNodes.length }
+}
+
+function getEditableSelectionSnapshot(target: EditableElement): EditableSelectionSnapshot {
+  if (target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement) {
+    return {
+      kind: getEditableKind(target),
+      start: target.selectionStart ?? null,
+      end: target.selectionEnd ?? null,
+      direction: target.selectionDirection ?? null,
+    }
+  }
+
+  const selection = window.getSelection()
+  if (!selection || selection.rangeCount === 0) {
+    return { kind: "contenteditable", start: null, end: null, direction: null }
+  }
+
+  const range = selection.getRangeAt(0)
+  if (!target.contains(range.commonAncestorContainer)) {
+    return { kind: "contenteditable", start: null, end: null, direction: null }
+  }
+
+  return {
+    kind: "contenteditable",
+    start: getContentEditableOffset(target, range.startContainer, range.startOffset),
+    end: getContentEditableOffset(target, range.endContainer, range.endOffset),
+    direction: null,
+  }
+}
+
+function restoreEditableSelection(target: EditableElement, snapshot: EditableSelectionSnapshot, nextText: string) {
+  if (snapshot.start === null || snapshot.end === null) return
+
+  if (target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement) {
+    const max = target.value.length
+    const start = Math.min(snapshot.start, max)
+    const end = Math.min(snapshot.end, max)
+    try {
+      target.setSelectionRange(start, end, snapshot.direction ?? undefined)
+    } catch {
+      target.setSelectionRange(start, end)
+    }
+    return
+  }
+
+  const selection = window.getSelection()
+  if (!selection) return
+
+  const max = nextText.length
+  const startPosition = resolveContentEditablePosition(target, Math.min(snapshot.start, max))
+  const endPosition = resolveContentEditablePosition(target, Math.min(snapshot.end, max))
+  if (!startPosition || !endPosition) return
+
+  const range = document.createRange()
+  range.setStart(startPosition.node, startPosition.offset)
+  range.setEnd(endPosition.node, endPosition.offset)
+  selection.removeAllRanges()
+  selection.addRange(range)
+}
+
+function dispatchEditableInputEvent(target: EditableElement, text: string) {
+  try {
+    const inputEvent = new InputEvent("input", {
+      bubbles: true,
+      cancelable: true,
+      inputType: "insertText",
+      data: text,
+    })
+    target.dispatchEvent(inputEvent)
+    return
+  } catch {
+    target.dispatchEvent(new Event("input", { bubbles: true, cancelable: true }))
+  }
 }
 
 function InputTranslateApp() {
@@ -26,24 +187,24 @@ function InputTranslateApp() {
     translating: false,
     error: null,
   })
-  const activeInput = useRef<HTMLInputElement | HTMLTextAreaElement | null>(null)
+  const activeInput = useRef<EditableElement | null>(null)
   const translatingRef = useRef(false)
 
   useEffect(() => {
     const handleFocusIn = (event: FocusEvent) => {
       const target = event.target
-      if (!(target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement)) return
-      // Skip password, hidden, and non-text inputs
-      if (target instanceof HTMLInputElement && !["text", "search", "url", "email", ""].includes(target.type)) return
-      if (isSensitiveInput(target)) return
+      if (!isEditableElement(target)) return
+      if (target instanceof HTMLInputElement && !isSupportedTextInput(target)) return
+      if ((target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement) && isSensitiveInput(target)) return
 
       activeInput.current = target
 
-      const value = target.value.trim()
+      const value = getEditableText(target).trim()
       if (!value) {
         setOverlay(prev => ({ ...prev, visible: false }))
         return
       }
+
       const rect = target.getBoundingClientRect()
       setOverlay({
         visible: true,
@@ -55,7 +216,6 @@ function InputTranslateApp() {
     }
 
     const handleFocusOut = (_event: FocusEvent) => {
-      // Delay to allow button click to fire
       setTimeout(() => {
         const host = document.getElementById(HOST_ID)
         if (host?.contains(document.activeElement)) return
@@ -66,10 +226,11 @@ function InputTranslateApp() {
 
     const handleInput = (event: Event) => {
       const target = event.target
-      if (!(target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement)) return
+      if (!isEditableElement(target)) return
       if (target !== activeInput.current) return
+      if (target instanceof HTMLInputElement && !isSupportedTextInput(target)) return
 
-      const value = target.value.trim()
+      const value = getEditableText(target).trim()
       if (!value) {
         setOverlay(prev => ({ ...prev, visible: false }))
         return
@@ -99,8 +260,10 @@ function InputTranslateApp() {
     const input = activeInput.current
     if (!input || translatingRef.current) return
 
-    const text = input.value.trim()
+    const text = getEditableText(input).trim()
     if (!text) return
+
+    const selectionSnapshot = getEditableSelectionSnapshot(input)
 
     translatingRef.current = true
     setOverlay(prev => ({ ...prev, translating: true, error: null }))
@@ -127,13 +290,9 @@ function InputTranslateApp() {
       })
 
       if (result.ok) {
-        // Replace input value with translation
-        const nativeInputValueSetter = Object.getOwnPropertyDescriptor(
-          input instanceof HTMLTextAreaElement ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype,
-          "value",
-        )?.set
-        nativeInputValueSetter?.call(input, result.text)
-        input.dispatchEvent(new Event("input", { bubbles: true }))
+        setEditableText(input, result.text)
+        restoreEditableSelection(input, selectionSnapshot, result.text)
+        dispatchEditableInputEvent(input, result.text)
       } else {
         const msg = result.message || "Translation failed"
         setOverlay(prev => ({ ...prev, error: msg }))

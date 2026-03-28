@@ -18,12 +18,11 @@ This document is the authoritative live-evaluation coverage plan for Astra. It c
 
 ### page-translation
 - Deterministic bench coverage: yes (6 scenarios: article-basic-bilingual, forms-and-nav-skip, article-translation-only, nested-blocks-coverage, feed-card-list, provider-error-graceful)
-- Live coverage: strong (3 source-backed Playwright scenarios: bilingual, translation-only, contract fallback; plus fixture-playwright-smoke)
+- Live coverage: strong (6 source-backed / browser-backed Playwright scenarios: bilingual, translation-only, contract fallback, forms-and-nav, nested-blocks, feed-card-list; plus fixture-playwright-smoke)
 - CI protection: partial (deterministic runs in CI; live scenarios require local Chrome and are opt-in via `pnpm bench:live`)
 - Current gaps:
-  - No live scenario for forms-and-nav-skip (interactive node skipping validated only in JSDOM)
-  - No live scenario for nested-blocks-coverage (deep DOM traversal tested only in JSDOM mock)
-  - No live scenario for feed-card-list (card layout rendering not verified in real browser)
+  - The live suite now includes forms-and-nav, nested-blocks, and feed-card-list browser-backed coverage, but the deterministic holdout for provider-error-graceful still lacks a dedicated browser stress case
+  - Live scenarios still do not validate visual rendering quality (font rendering, layout shifts, bilingual spacing)
   - No live scenario for provider-error-graceful (error UI rendering not browser-verified)
   - Live scenarios do not validate visual rendering quality (font rendering, layout shifts, bilingual spacing)
   - No real-extension-loaded live scenario (current source-backed path runs `startPageTranslation()` in JSDOM/Vite SSR, not through the actual content script bootstrap)

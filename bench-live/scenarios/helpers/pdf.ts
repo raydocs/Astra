@@ -1,40 +1,30 @@
-import { evaluateInputTranslation, type InputTranslationExecution } from "../../../bench/evaluators/input-translation"
+import { evaluatePdfTranslation, type PdfTranslationExecution } from "../../../bench/evaluators/pdf"
 import type { LiveEvaluationResult, LiveScenarioExecution } from "../../evaluator"
 
-interface LiveInputTranslationExecution extends LiveScenarioExecution {
-  inputTranslation?: InputTranslationExecution
+interface LivePdfExecution extends LiveScenarioExecution {
+  pdfTranslation?: PdfTranslationExecution
 }
 
-export function buildLiveInputTranslationEvaluation(
-  execution: LiveInputTranslationExecution,
+export function buildLivePdfEvaluation(
+  execution: LivePdfExecution,
   runId: string,
   scenario: LiveEvaluationResult["scenario"],
   runtime: LiveEvaluationResult["runtime"],
   options: {
-    expected: {
-      shouldRequest: boolean
-      shouldShowAfterFocus: boolean
-      shouldShowAfterTyping?: boolean
-      shouldWriteBack: boolean
-      shouldPreserveCursor?: boolean
-      expectedTask?: "translate"
-      requireContext?: boolean
-      maxLatencyMs?: number
-    }
     successSummary: string
     failureSummary: string
   },
 ) {
-  if (!execution.inputTranslation) {
+  if (!execution.pdfTranslation) {
     return {
       runId,
       scenario,
       status: execution.status === "skipped" ? "skipped" : "fail",
       pass: false,
       score: 0,
-      summary: execution.summary ?? "The live input-translation scenario did not produce a structured execution payload.",
-      issues: ["inputTranslation execution payload was missing"],
-      nextActions: ["Inspect the live runtime bridge and rerun the scenario."],
+      summary: execution.summary ?? "The live PDF scenario did not produce a structured execution payload.",
+      issues: ["pdfTranslation execution payload was missing"],
+      nextActions: ["Inspect the PDF live runtime bridge and rerun the scenario."],
       notes: execution.notes ?? [],
       rubrics: [],
       artifacts: {
@@ -44,7 +34,7 @@ export function buildLiveInputTranslationEvaluation(
     } as unknown as Partial<LiveEvaluationResult>
   }
 
-  const benchmark = evaluateInputTranslation(execution.inputTranslation, options.expected)
+  const benchmark = evaluatePdfTranslation(execution.pdfTranslation)
   const issues = benchmark.issues.map((issue) => issue.evidence ? `${issue.message} (${issue.evidence})` : issue.message)
 
   return {
@@ -60,7 +50,7 @@ export function buildLiveInputTranslationEvaluation(
     rubrics: [],
     artifacts: {
       browserArtifacts: execution.artifacts ?? {},
-      inputTranslationExecution: execution.inputTranslation,
+      pdfTranslationExecution: execution.pdfTranslation,
       benchmarkEvaluation: benchmark,
     },
     runtime,

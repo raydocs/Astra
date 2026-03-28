@@ -7,9 +7,11 @@ import { hoverScenarios } from "./hover"
 import { inputTranslationScenarios } from "./input-translation"
 import { interactionPriorityScenarios } from "./interaction-priority"
 import { pageTranslationScenarios } from "./page-translation"
+import { pdfTranslationScenarios } from "./pdf"
 import { selectionExplainScenarios } from "./selection-explain"
 import { siteAutomationScenarios } from "./site-automation"
 import { subtitleScenarios } from "./subtitle"
+import { youtubeSubtitleScenarios } from "./youtube-subtitle"
 
 export const benchmarkScenarios = [
   ...pageTranslationScenarios,
@@ -22,6 +24,8 @@ export const benchmarkScenarios = [
   ...selectionExplainScenarios,
   ...inputTranslationScenarios,
   ...subtitleScenarios,
+  ...pdfTranslationScenarios,
+  ...youtubeSubtitleScenarios,
 ]
 
 export function selectBenchmarkScenarios(options: {

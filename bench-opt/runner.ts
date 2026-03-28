@@ -18,6 +18,8 @@ import { decideBenchOptPromotion, type BenchOptPromotionDecision } from "./promo
 import { buildBenchOptRollbackPlan, type BenchOptRollbackPlan } from "./rollback.ts"
 import { createBenchOptSessionState, isBenchOptSessionOverBudget, resumeBenchOptSessionState, updateBenchOptSessionState, type BenchOptSessionState } from "./session.ts"
 import { buildBenchOptStatusArtifact, renderBenchOptStatusMarkdown } from "./status.ts"
+import { createAstraCapabilityStatusCards, summarizeAstraCapabilityCards } from "./capabilities.ts"
+import { buildCapabilityProofOverrides, type CapabilityProofResult } from "./capability-proof.ts"
 import { loadBenchOptStore, saveBenchOptChampion, saveBenchOptExperiment, saveBenchOptSessionArtifacts } from "./store.ts"
 import { createBenchOptIterationBudget } from "./strategy.ts"
 import { runBenchOptVerification } from "./verify.ts"
@@ -2014,6 +2016,18 @@ export async function runBenchOpt(
   }
 
   const resolvedOutputDir = path.resolve(outputDir)
+  const latestCapabilityProofPath = path.join(resolvedOutputDir, "capability-proof", "latest.capability-proof.json")
+  const capabilityProofResult = await tryReadJson<CapabilityProofResult>(latestCapabilityProofPath)
+  const capabilityProofOverrides = capabilityProofResult ? buildCapabilityProofOverrides(capabilityProofResult) : null
+  const capabilitySummary = summarizeAstraCapabilityCards(
+    createAstraCapabilityStatusCards(capabilityProofOverrides ?? undefined),
+  )
+  report.summary.notes = [
+    ...report.summary.notes,
+    capabilityProofResult
+      ? `Capability proof loaded from ${latestCapabilityProofPath}.`
+      : `Capability proof artifact not found at ${latestCapabilityProofPath}; using registry defaults.`,
+  ]
   const plannedArtifactPaths = {
     latestJsonPath: writeOutput ? path.join(resolvedOutputDir, "latest.json") : null,
     latestMarkdownPath: writeOutput ? path.join(resolvedOutputDir, "latest.md") : null,
@@ -2435,8 +2449,8 @@ export async function runBenchOpt(
       }
     }
     const store = await loadBenchOptStore(resolvedOutputDir)
-    const status = buildBenchOptStatusArtifact({
-      report,
+      const status = buildBenchOptStatusArtifact({
+        report,
       resolvedConfig,
       execution,
       live,
@@ -2459,6 +2473,7 @@ export async function runBenchOpt(
         estimatedCostUsd: telemetrySnapshot.cost.estimatedCostUsd,
         scoreTrends: toStatusScoreTrends(telemetrySnapshot.scoreTrends),
       },
+      capabilities: capabilitySummary,
       paths: {
         latestJsonPath,
         latestMarkdownPath,
@@ -2615,6 +2630,7 @@ export async function runBenchOpt(
             estimatedCostUsd: telemetrySnapshot.cost.estimatedCostUsd,
             scoreTrends: toStatusScoreTrends(telemetrySnapshot.scoreTrends),
           },
+          capabilities: capabilitySummary,
           paths: {
             latestJsonPath: paths.latestJsonPath,
             latestMarkdownPath: paths.latestMarkdownPath,

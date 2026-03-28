@@ -1,39 +1,30 @@
-import { evaluateInputTranslation, type InputTranslationExecution } from "../../../bench/evaluators/input-translation"
+import { evaluateYouTubeSubtitle, type YouTubeSubtitleExecution } from "../../../bench/evaluators/youtube-subtitle"
 import type { LiveEvaluationResult, LiveScenarioExecution } from "../../evaluator"
+import { buildYouTubeSubtitleFixtureHtml } from "../../../bench/scenarios/helpers/youtube-subtitle"
 
-interface LiveInputTranslationExecution extends LiveScenarioExecution {
-  inputTranslation?: InputTranslationExecution
+interface LiveYouTubeSubtitleExecution extends LiveScenarioExecution {
+  youtubeSubtitle?: YouTubeSubtitleExecution
 }
 
-export function buildLiveInputTranslationEvaluation(
-  execution: LiveInputTranslationExecution,
+export function buildLiveYouTubeSubtitleEvaluation(
+  execution: LiveYouTubeSubtitleExecution,
   runId: string,
   scenario: LiveEvaluationResult["scenario"],
   runtime: LiveEvaluationResult["runtime"],
   options: {
-    expected: {
-      shouldRequest: boolean
-      shouldShowAfterFocus: boolean
-      shouldShowAfterTyping?: boolean
-      shouldWriteBack: boolean
-      shouldPreserveCursor?: boolean
-      expectedTask?: "translate"
-      requireContext?: boolean
-      maxLatencyMs?: number
-    }
     successSummary: string
     failureSummary: string
   },
 ) {
-  if (!execution.inputTranslation) {
+  if (!execution.youtubeSubtitle) {
     return {
       runId,
       scenario,
       status: execution.status === "skipped" ? "skipped" : "fail",
       pass: false,
       score: 0,
-      summary: execution.summary ?? "The live input-translation scenario did not produce a structured execution payload.",
-      issues: ["inputTranslation execution payload was missing"],
+      summary: execution.summary ?? "The live YouTube subtitle scenario did not produce a structured execution payload.",
+      issues: ["youtubeSubtitle execution payload was missing"],
       nextActions: ["Inspect the live runtime bridge and rerun the scenario."],
       notes: execution.notes ?? [],
       rubrics: [],
@@ -44,7 +35,7 @@ export function buildLiveInputTranslationEvaluation(
     } as unknown as Partial<LiveEvaluationResult>
   }
 
-  const benchmark = evaluateInputTranslation(execution.inputTranslation, options.expected)
+  const benchmark = evaluateYouTubeSubtitle(execution.youtubeSubtitle)
   const issues = benchmark.issues.map((issue) => issue.evidence ? `${issue.message} (${issue.evidence})` : issue.message)
 
   return {
@@ -56,13 +47,15 @@ export function buildLiveInputTranslationEvaluation(
     summary: benchmark.pass ? options.successSummary : options.failureSummary,
     issues,
     nextActions: benchmark.nextActions,
-    notes: [...(execution.notes ?? []), ...(Array.isArray(benchmark.artifacts.notes) ? benchmark.artifacts.notes : [])],
+    notes: [...(execution.notes ?? []), ...(Array.isArray(benchmark.artifacts.captionSnapshots) ? benchmark.artifacts.captionSnapshots.map((snapshot) => `${snapshot.phase}: ${snapshot.sourceText}`) : [])],
     rubrics: [],
     artifacts: {
       browserArtifacts: execution.artifacts ?? {},
-      inputTranslationExecution: execution.inputTranslation,
+      youtubeSubtitleExecution: execution.youtubeSubtitle,
       benchmarkEvaluation: benchmark,
     },
     runtime,
   } as unknown as Partial<LiveEvaluationResult>
 }
+
+export { buildYouTubeSubtitleFixtureHtml }

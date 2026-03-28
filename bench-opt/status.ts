@@ -4,6 +4,7 @@ import type { BenchOptPublishPlan } from "./publish.ts"
 import type { BenchOptRollbackPlan } from "./rollback.ts"
 import type { LiveEvaluationResult } from "../bench-live/index"
 import type {
+  BenchOptCapabilityStatusSummary,
   BenchOptExecutionResult,
   BenchOptOrchestrationLoopResult,
   BenchOptResolvedOptimizerConfig,
@@ -12,6 +13,7 @@ import type {
   BenchOptStatusArtifact,
   BenchOptStoreIndex,
 } from "./types.ts"
+import { createAstraCapabilityStatusCards, summarizeAstraCapabilityCards } from "./capabilities.ts"
 
 function deriveOverallState(input: {
   session: BenchOptSessionArtifactsResult | null
@@ -79,10 +81,12 @@ export function buildBenchOptStatusArtifact(input: {
     estimatedCostUsd: number | null
     scoreTrends: Array<{ surface: string; scores: number[] }>
   } | null
+  capabilities?: BenchOptCapabilityStatusSummary | null
   store: BenchOptStoreIndex | null
   paths: BenchOptStatusArtifact["paths"]
 }): BenchOptStatusArtifact {
   const { report, resolvedConfig, execution, live, orchestration, orchestrationLoop, session, promotion, publishPlan, rollbackPlan, safety, telemetry, store, paths } = input
+  const capabilities = input.capabilities ?? summarizeAstraCapabilityCards(createAstraCapabilityStatusCards())
 
   const notes = [
     ...report.summary.notes,
@@ -110,6 +114,7 @@ export function buildBenchOptStatusArtifact(input: {
     telemetry
       ? `Telemetry: ${telemetry.iterationCount} iteration(s), ${telemetry.durationMs}ms, ${telemetry.candidatesKept} kept / ${telemetry.candidatesRejected} rejected.`
       : "Telemetry was not collected.",
+    `Capability protocol ${capabilities.protocolVersion}: ${capabilities.conquered}/${capabilities.total} conquered, ${capabilities.cards.filter((card) => card.verdict === "partial").length} partial.`,
   ]
 
   return {
@@ -139,6 +144,8 @@ export function buildBenchOptStatusArtifact(input: {
       rollbackStatus: rollbackPlan?.status ?? null,
       guardrailVerdict: safety?.guardrails.verdict ?? null,
       redFlagCount: safety?.redFlags.flagCount ?? null,
+      capabilityProtocolVersion: capabilities.protocolVersion,
+      capabilityConqueredCount: capabilities.conquered,
     },
     selection: resolvedConfig?.selection ?? null,
     execution: execution
@@ -192,6 +199,7 @@ export function buildBenchOptStatusArtifact(input: {
     rollbackPlan: rollbackPlan ?? null,
     safety: safety ?? null,
     telemetry: telemetry ?? null,
+    capabilities,
     store: store
       ? {
           latestExperimentId: store.latestExperimentId,
@@ -249,6 +257,20 @@ export function renderBenchOptStatusMarkdown(status: BenchOptStatusArtifact) {
     `- Store index: ${status.paths.storeIndexPath ?? "n/a"}`,
     "",
   ]
+
+  if (status.capabilities) {
+    lines.push(
+      "## Capability Status (Protocol v2)",
+      `- Protocol version: ${status.capabilities.protocolVersion}`,
+      `- Total capabilities: ${status.capabilities.total}`,
+      `- Conquered: ${status.capabilities.conquered}`,
+      ...status.capabilities.byWave.map((wave) => `- Wave ${wave.wave}: ${wave.conquered}/${wave.total} conquered`),
+      "",
+      "### Capability Cards",
+      ...status.capabilities.cards.map((card) => `- ${card.name}${card.beta ? " (beta)" : ""}: ${card.verdict} [bench=${card.currentCoverage.bench}, live=${card.currentCoverage.live}, holdout=${card.currentCoverage.holdout}, proof=${card.currentCoverage.proof}]`),
+      "",
+    )
+  }
 
   if (status.session) {
     lines.push(

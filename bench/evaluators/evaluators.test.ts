@@ -130,6 +130,11 @@ describe("benchmark evaluators", () => {
       payloadHostname: "example.com",
       payloadPageUrl: "https://example.com/fixtures/input",
       inputType: "text",
+      editableKind: "input",
+      selectionStartBefore: null,
+      selectionEndBefore: null,
+      selectionStartAfter: null,
+      selectionEndAfter: null,
     }, {
       shouldRequest: true,
       shouldShowAfterFocus: true,
@@ -140,6 +145,38 @@ describe("benchmark evaluators", () => {
 
     expect(result.pass).toBe(false)
     expect(result.issues.some((issue) => issue.message.includes("write the translated text back"))).toBe(true)
+  })
+
+  it("treats clamped cursor restoration as preserved after writeback", () => {
+    const result = evaluateInputTranslation({
+      requestCount: 1,
+      requestTask: "translate",
+      translatedValue: "你好",
+      initialValue: "Some text",
+      overlayVisibleAfterFocus: true,
+      overlayVisibleAfterTyping: true,
+      buttonLabel: "译",
+      writebackInputEventCount: 1,
+      translationLatencyMs: 110,
+      payloadHostname: "example.com",
+      payloadPageUrl: "https://example.com/fixtures/input",
+      inputType: "textarea",
+      editableKind: "textarea",
+      selectionStartBefore: 5,
+      selectionEndBefore: 9,
+      selectionStartAfter: 2,
+      selectionEndAfter: 2,
+    }, {
+      shouldRequest: true,
+      shouldShowAfterFocus: true,
+      shouldWriteBack: true,
+      shouldPreserveCursor: true,
+      expectedTask: "translate",
+      requireContext: true,
+    })
+
+    expect(result.pass).toBe(true)
+    expect(result.scores.cursor_preservation).toBe(10)
   })
 
   it("flags subtitle failures when privacy mode leaks page metadata", () => {
@@ -317,6 +354,11 @@ describe("benchmark evaluators", () => {
       payloadHostname: null,
       payloadPageUrl: null,
       inputType: "text",
+      editableKind: "input",
+      selectionStartBefore: null,
+      selectionEndBefore: null,
+      selectionStartAfter: null,
+      selectionEndAfter: null,
     }, {
       shouldRequest: true,
       shouldShowAfterFocus: true,
