@@ -1,6 +1,6 @@
 import { JSDOM } from "jsdom"
 
-import { installBenchBrowser, type TranslateCallRecord } from "../../runtime/browser"
+import { installBenchBrowser, type TranslateCallRecord, type TranslationBatchPayload } from "../../runtime/browser"
 import type { EpubTranslationExecution } from "../../evaluators/epub"
 
 export type EpubReaderMode = "bilingual" | "translation-only"
@@ -43,6 +43,13 @@ export interface EpubReaderHarnessResult {
   renderedHtml: string
   translateCalls: TranslateCallRecord[]
   summary: EpubReaderSkeletonSummary
+}
+
+function normalizeTranslateCallContext(context: TranslationBatchPayload["context"]): Record<string, unknown> | null {
+  if (!context || typeof context !== "object") {
+    return null
+  }
+  return context as Record<string, unknown>
 }
 
 export const EPUB_READER_FIRST_CUT_FIXTURE = "epub-reader-first-cut"
@@ -297,6 +304,8 @@ export async function runEpubReaderHarness(options: {
       fixtureName: fixture.name,
       chapterCount: fixture.chapters.length,
       translationRequestCount: browser.getTranslateCalls().length,
+      translateCallContexts: browser.getTranslateCalls().map((call) => normalizeTranslateCallContext(call.payload.context)),
+      privacyContextLeakCount: browser.getTranslateCalls().filter((call) => normalizeTranslateCallContext(call.payload.context) !== null).length,
       activeChapterTitle: activeChapter.title,
       resumedChapterTitle,
       readingStateRestored: resumedChapterTitle === activeChapter.title,

@@ -16,6 +16,7 @@ export function buildLiveEpubEvaluation(
       expectedActiveChapterTitle?: string
       expectedTranslationRequestCount?: number
       requireReadingStateRestored?: boolean
+      requirePrivacyIsolation?: boolean
     }
     successSummary: string
     failureSummary: string

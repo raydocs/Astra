@@ -97,10 +97,10 @@ export function createWaveBCapabilityProofConfig(
       {
         id: "wave-d-privacy-mode",
         prompt:
-          "Build a privacy-preserving translation system that redacts page metadata, strips query and fragment data, preserves only hostname and canonical path, and keeps sensitive authoring surfaces isolated.",
+          "Build a privacy-preserving translation system that redacts page metadata, strips query and fragment data, preserves only hostname and canonical path for page translation, and keeps local subtitle-file and sensitive authoring surfaces free of leaked page context.",
         category: "privacy-sensitive-authoring",
         difficulty: "medium",
-        capabilityTargets: ["privacy-mode", "web-translation", "input-translation"],
+        capabilityTargets: ["privacy-mode", "web-translation", "input-translation", "subtitle-file-translation"],
       },
     ]
 

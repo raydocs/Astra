@@ -118,6 +118,7 @@ export const epubReaderBasicScenario: LiveScenarioDefinition<LiveEpubReaderExecu
         expectedActiveChapterTitle: "Chapter 2 — Signals",
         expectedTranslationRequestCount: 2,
         requireReadingStateRestored: true,
+        requirePrivacyIsolation: true,
       },
       successSummary: "Browser-backed EPUB reader first cut matched the deterministic EPUB harness contract.",
       failureSummary: "Browser-backed EPUB reader first cut diverged from the deterministic EPUB harness contract.",

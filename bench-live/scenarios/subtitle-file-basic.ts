@@ -141,6 +141,7 @@ export const subtitleFileBasicScenario: LiveScenarioDefinition<LiveSubtitleFileE
         expectedRequestCount: 2,
         expectedPreviewSections: 2,
         requireTimingPreserved: true,
+        requirePrivacyIsolation: true,
       },
       successSummary: "Live subtitle-file roundtrip passed: SRT and VTT ingests rendered bilingual/translation-only previews and exports.",
       failureSummary: "Live subtitle-file roundtrip failed: ingest, preview, or export behavior diverged from the Astra contract.",

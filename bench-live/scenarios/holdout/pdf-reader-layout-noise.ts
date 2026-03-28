@@ -126,6 +126,7 @@ export const pdfReaderLayoutNoiseHoldoutScenario: LiveScenarioDefinition<LivePdf
     return buildLivePdfEvaluation(execution, context.runId, context.scenario, context.runtime, {
       successSummary: "Holdout PDF reader layout-noise scenario passed: bilingual and translation-only rendering stayed aligned under noisier PDF content.",
       failureSummary: "Holdout PDF reader layout-noise scenario failed: bilingual or translation-only rendering diverged under noisier PDF content.",
+      requirePrivacyIsolation: true,
     })
   },
 }

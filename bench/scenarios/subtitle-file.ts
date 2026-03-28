@@ -66,6 +66,28 @@ export const subtitleFileScenarios: BenchmarkScenario<SubtitleFileExecution>[] =
       expectedRequestCount: 2,
       expectedPreviewSections: 2,
       requireTimingPreserved: true,
+      requirePrivacyIsolation: true,
+    }),
+  },
+  {
+    id: "subtitle-file/privacy-no-page-context",
+    title: "Subtitle-file translation keeps local file requests free of page context",
+    surface: "subtitle-file",
+    fixture: "files:subtitle-file-privacy",
+    task: "Translate a local subtitle file without leaking page, selection, or document metadata into runtime translate-batch requests.",
+    codeHint: SUBTITLE_FILE_CODE_HINT,
+    run: () => runSubtitleFileHarness([
+      { fileName: "privacy-check.srt", content: SRT_FIXTURE, previewMode: "bilingual" },
+    ]).then((result) => result.execution),
+    evaluate: (execution) => evaluateSubtitleFile(execution, {
+      expectedFileCount: 1,
+      expectedCueCount: 2,
+      expectedFormats: ["srt"],
+      expectedExportFormats: ["srt", "vtt"],
+      expectedRequestCount: 1,
+      expectedPreviewSections: 1,
+      requireTimingPreserved: true,
+      requirePrivacyIsolation: true,
     }),
   },
 ]

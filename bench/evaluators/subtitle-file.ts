@@ -15,6 +15,8 @@ export interface SubtitleFileExecution {
   exportTimingPreserved: boolean
   warnings: string[]
   previewWarnings: string[]
+  translateCallContexts: Array<Record<string, unknown> | null>
+  privacyContextLeakCount: number
   fileSummaries: Array<{
     fileName: string
     format: SubtitleFormat
@@ -33,6 +35,11 @@ function pushIssue(
   issues.push({ severity, message, evidence })
 }
 
+function hasIsolatedSubtitleFilePrivacyContext(execution: SubtitleFileExecution) {
+  return execution.privacyContextLeakCount === 0
+    && execution.translateCallContexts.every((context) => context === null)
+}
+
 function buildPatchHints(
   execution: SubtitleFileExecution,
   expected: {
@@ -44,6 +51,7 @@ function buildPatchHints(
     expectedPreviewSections?: number
     expectedWarningsAtLeast?: number
     requireTimingPreserved?: boolean
+    requirePrivacyIsolation?: boolean
   },
 ): PatchHintArtifact | undefined {
   const failingSignals: string[] = []
@@ -72,6 +80,9 @@ function buildPatchHints(
   if (expected.requireTimingPreserved && (!execution.sourceTimingPreserved || !execution.exportTimingPreserved)) {
     failingSignals.push(`timingPreserved=${execution.sourceTimingPreserved}/${execution.exportTimingPreserved}`)
   }
+  if (expected.requirePrivacyIsolation && !hasIsolatedSubtitleFilePrivacyContext(execution)) {
+    failingSignals.push(`privacyContextLeakCount=${execution.privacyContextLeakCount}`)
+  }
 
   if (failingSignals.length === 0) {
     return undefined
@@ -83,12 +94,14 @@ function buildPatchHints(
       "src/entrypoints/subtitle-reader/SubtitleReaderApp.tsx",
       "src/entrypoints/subtitle-reader/main.tsx",
       "src/entrypoints/subtitle-reader/index.html",
+      "src/utils/privacy.ts",
     ],
     suspectedSymbols: [
       "parseSubtitles",
       "exportBilingualSrt",
       "exportBilingualVtt",
       "SubtitleReaderApp",
+      "sanitizeTranslationContext",
     ],
     suspectedKeywords: [
       "subtitle",
@@ -97,6 +110,8 @@ function buildPatchHints(
       "bilingual",
       "preview",
       "export",
+      "privacy",
+      "context",
     ],
     failingSignals,
     confidence: "high",
@@ -114,6 +129,7 @@ export function evaluateSubtitleFile(
     expectedPreviewSections?: number
     expectedWarningsAtLeast?: number
     requireTimingPreserved?: boolean
+    requirePrivacyIsolation?: boolean
   },
 ): EvaluationResult {
   const issues: BenchmarkIssue[] = []
@@ -125,6 +141,7 @@ export function evaluateSubtitleFile(
   const sectionMatches = expected.expectedPreviewSections === undefined || execution.previewSectionCount === expected.expectedPreviewSections
   const warningsMatches = expected.expectedWarningsAtLeast === undefined || execution.warnings.length >= expected.expectedWarningsAtLeast
   const timingMatches = !expected.requireTimingPreserved || (execution.sourceTimingPreserved && execution.exportTimingPreserved)
+  const privacyMatches = !expected.requirePrivacyIsolation || hasIsolatedSubtitleFilePrivacyContext(execution)
 
   if (!fileCountMatches) {
     pushIssue(issues, "critical", "Subtitle-file translation ingested an unexpected file count.", `fileCount=${execution.fileCount}`)
@@ -150,6 +167,9 @@ export function evaluateSubtitleFile(
   if (!timingMatches) {
     pushIssue(issues, "high", "Subtitle-file translation did not preserve source/export timing.", `timingPreserved=${execution.sourceTimingPreserved}/${execution.exportTimingPreserved}`)
   }
+  if (!privacyMatches) {
+    pushIssue(issues, "high", "Subtitle-file privacy mode leaked page or selection context into local file translation requests.", `privacyContextLeakCount=${execution.privacyContextLeakCount}`)
+  }
 
   const scores = {
     correctness: fileCountMatches && cueCountMatches && requestMatches ? 10 : 4,
@@ -157,6 +177,7 @@ export function evaluateSubtitleFile(
     stability: timingMatches ? 10 : 4,
     format_coverage: formatMatches ? 10 : 4,
     timing_safety: timingMatches ? 10 : 4,
+    privacy_isolation: privacyMatches ? 10 : 4,
   }
 
   const baseTotal = Math.round((Object.values(scores).reduce((sum, score) => sum + score, 0) / (Object.keys(scores).length * 10)) * 100)
@@ -187,6 +208,8 @@ export function evaluateSubtitleFile(
       formatsSeen: execution.formatsSeen,
       warnings: execution.warnings,
       previewWarnings: execution.previewWarnings,
+      translateCallContexts: execution.translateCallContexts,
+      privacyContextLeakCount: execution.privacyContextLeakCount,
       fileSummaries: execution.fileSummaries,
       patchHints: buildPatchHints(execution, expected),
     },

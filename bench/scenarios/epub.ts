@@ -45,6 +45,7 @@ export const epubTranslationScenarios: BenchmarkScenario<EpubTranslationExecutio
       expectedActiveChapterTitle: "Chapter 2 — Signals",
       expectedTranslationRequestCount: 2,
       requireReadingStateRestored: true,
+      requirePrivacyIsolation: true,
     }),
   },
   {
@@ -60,6 +61,7 @@ export const epubTranslationScenarios: BenchmarkScenario<EpubTranslationExecutio
       expectedActiveChapterTitle: "Chapter 3 — Resume",
       expectedTranslationRequestCount: 4,
       requireReadingStateRestored: true,
+      requirePrivacyIsolation: true,
     }),
   },
 ]

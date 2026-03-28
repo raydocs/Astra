@@ -126,6 +126,7 @@ export const pdfReaderBasicScenario: LiveScenarioDefinition<LivePdfReaderExecuti
     return buildLivePdfEvaluation(execution, context.runId, context.scenario, context.runtime, {
       successSummary: "Browser-backed PDF reader first cut matched the deterministic PDF harness contract.",
       failureSummary: "Browser-backed PDF reader first cut diverged from the deterministic PDF harness contract.",
+      requirePrivacyIsolation: true,
     })
   },
 }

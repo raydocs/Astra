@@ -125,6 +125,7 @@ export const epubReaderLongChapterHoldoutScenario: LiveScenarioDefinition<LiveEp
         expectedActiveChapterTitle: "Chapter 3 — Resume",
         expectedTranslationRequestCount: 4,
         requireReadingStateRestored: true,
+        requirePrivacyIsolation: true,
       },
       successSummary: "Holdout EPUB reader long-chapter scenario passed: bilingual and translation-only rendering stayed aligned under a longer resumed chapter.",
       failureSummary: "Holdout EPUB reader long-chapter scenario failed: bilingual or translation-only rendering diverged under a longer resumed chapter.",

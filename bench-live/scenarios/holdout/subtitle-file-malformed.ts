@@ -135,6 +135,7 @@ export const subtitleFileMalformedHoldoutScenario: LiveScenarioDefinition<LiveSu
         expectedPreviewSections: 1,
         expectedWarningsAtLeast: 2,
         requireTimingPreserved: false,
+        requirePrivacyIsolation: true,
       },
       successSummary: "Subtitle-file malformed holdout passed: the browser preview stayed stable and surfaced timing warnings for overlapping/reversed cues.",
       failureSummary: "Subtitle-file malformed holdout failed: malformed timing either crashed parsing or failed to surface the expected warnings.",

@@ -23,6 +23,8 @@ export interface SubtitleFileHarnessExecution {
   exportTimingPreserved: boolean
   warnings: string[]
   previewWarnings: string[]
+  translateCallContexts: Array<Record<string, unknown> | null>
+  privacyContextLeakCount: number
   fileSummaries: Array<{
     fileName: string
     format: SubtitleFormat
@@ -99,6 +101,13 @@ function renderExportPreview(cues: SubtitleCue[], translations: Map<number, stri
   }).join("")
 
   return { bilingualRows, translationOnlyRows }
+}
+
+function normalizeTranslateCallContext(context: TranslationBatchPayload["context"]): Record<string, unknown> | null {
+  if (!context || typeof context !== "object") {
+    return null
+  }
+  return context as Record<string, unknown>
 }
 
 export async function runSubtitleFileHarness(fixtures: SubtitleFileFixture[]): Promise<SubtitleFileHarnessResult> {
@@ -257,6 +266,8 @@ export async function runSubtitleFileHarness(fixtures: SubtitleFileFixture[]): P
       exportTimingPreserved,
       warnings,
       previewWarnings,
+      translateCallContexts: browser.getTranslateCalls().map((call) => normalizeTranslateCallContext(call.payload.context)),
+      privacyContextLeakCount: browser.getTranslateCalls().filter((call) => normalizeTranslateCallContext(call.payload.context) !== null).length,
       fileSummaries,
     },
     renderedHtml,

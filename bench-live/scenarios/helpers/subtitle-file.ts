@@ -20,6 +20,7 @@ export function buildLiveSubtitleFileEvaluation(
       expectedPreviewSections?: number
       expectedWarningsAtLeast?: number
       requireTimingPreserved?: boolean
+      requirePrivacyIsolation?: boolean
     }
     successSummary: string
     failureSummary: string

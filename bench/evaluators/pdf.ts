@@ -6,6 +6,8 @@ export interface PdfTranslationExecution {
   pageCount: number
   blockCount: number
   translationRequestCount: number
+  translateCallContexts: Array<Record<string, unknown> | null>
+  privacyContextLeakCount: number
   bilingual: PdfReaderModeSummary
   translationOnly: PdfReaderModeSummary
   notes?: string[]
@@ -20,6 +22,11 @@ function addIssue(
   issues.push({ severity, message, evidence })
 }
 
+function hasIsolatedPdfPrivacyContext(execution: PdfTranslationExecution) {
+  return execution.privacyContextLeakCount === 0
+    && execution.translateCallContexts.every((context) => context === null)
+}
+
 function buildPatchHints(execution: PdfTranslationExecution, issues: BenchmarkIssue[]): PatchHintArtifact | undefined {
   if (issues.length === 0) {
     return undefined
@@ -31,18 +38,22 @@ function buildPatchHints(execution: PdfTranslationExecution, issues: BenchmarkIs
     "src/entrypoints/pdf-reader/pdf-extractor.ts",
     "src/entrypoints/pdf-reader/pdf-translator.ts",
     "src/entrypoints/content/pdf-detect.ts",
+    "src/utils/privacy.ts",
   ])
   const suspectedSymbols = new Set<string>([
     "PdfReaderApp",
     "extractPdfPages",
     "translatePdfPage",
     "detectAndShowPdfBanner",
+    "sanitizeTranslationContext",
   ])
   const suspectedKeywords = new Set<string>([
     "pdf",
     "bilingual",
     "translation-only",
     "page-count",
+    "privacy",
+    "context",
   ])
 
   if (execution.pageCount <= 0) {
@@ -55,6 +66,10 @@ function buildPatchHints(execution: PdfTranslationExecution, issues: BenchmarkIs
 
   if (execution.translationRequestCount < 1) {
     failingSignals.push("no translation requests were issued")
+  }
+
+  if (!hasIsolatedPdfPrivacyContext(execution)) {
+    failingSignals.push(`privacyContextLeakCount=${execution.privacyContextLeakCount}`)
   }
 
   if (execution.bilingual.sourceCount !== execution.blockCount || execution.bilingual.translationCount !== execution.blockCount) {
@@ -80,6 +95,9 @@ function matchesExpectedPrefix(values: string[], prefix: string) {
 
 export function evaluatePdfTranslation(
   execution: PdfTranslationExecution,
+  options: {
+    requirePrivacyIsolation?: boolean
+  } = {},
 ): EvaluationResult {
   const issues: BenchmarkIssue[] = []
   const pageCountMatches = execution.pageCount === execution.bilingual.pageCount
@@ -97,6 +115,7 @@ export function evaluatePdfTranslation(
     && execution.translationOnly.sectionCount === 1
   const translationPrefixMatches = matchesExpectedPrefix(execution.bilingual.translationTexts, "ZH:")
     && matchesExpectedPrefix(execution.translationOnly.translationTexts, "ZH:")
+  const privacyMatches = !options.requirePrivacyIsolation || hasIsolatedPdfPrivacyContext(execution)
 
   if (!pageCountMatches) {
     addIssue(
@@ -152,6 +171,15 @@ export function evaluatePdfTranslation(
     )
   }
 
+  if (!privacyMatches) {
+    addIssue(
+      issues,
+      "high",
+      "PDF translation leaked page context into local/document translation requests.",
+      `privacyContextLeakCount=${execution.privacyContextLeakCount}`,
+    )
+  }
+
   const scores = {
     correctness:
       pageCountMatches
@@ -173,6 +201,7 @@ export function evaluatePdfTranslation(
     bilingual_rendering: bilingualMatches ? 10 : 4,
     translation_only_rendering: translationOnlyMatches ? 10 : 4,
     translation_prefix: translationPrefixMatches ? 10 : 5,
+    privacy_isolation: privacyMatches ? 10 : 4,
   }
 
   const baseTotal = Math.round((Object.values(scores).reduce((sum, score) => sum + score, 0) / (Object.keys(scores).length * 10)) * 100)
@@ -204,6 +233,8 @@ export function evaluatePdfTranslation(
       pageCount: execution.pageCount,
       blockCount: execution.blockCount,
       translationRequestCount: execution.translationRequestCount,
+      translateCallContexts: execution.translateCallContexts,
+      privacyContextLeakCount: execution.privacyContextLeakCount,
       bilingual: execution.bilingual,
       translationOnly: execution.translationOnly,
       notes: execution.notes ?? [],
