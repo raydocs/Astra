@@ -31,6 +31,17 @@ const ASTRA_LIVE_STYLE_TEXT = `
   }
 `
 
+interface SourceTranslateCallRecord {
+  payload: {
+    texts: string[]
+    targetLang: string
+    sourceLang?: string
+    context?: Record<string, unknown>
+    task?: unknown
+    customSystemPrompt?: string
+  }
+}
+
 interface PageTranslateModule {
   getPageTranslationState: () => {
     phase: string
@@ -48,16 +59,12 @@ interface PageTranslateModule {
     translationMode?: "bilingual" | "translation-only"
     translationTheme?: "default" | "underline" | "highlight"
     contentScope?: "page" | "article"
+    privacyMode?: boolean
   }) => Promise<unknown>
   stopPageTranslation: () => unknown
 }
 
-export interface TranslateCallRecord {
-  payload: {
-    texts: string[]
-    targetLang: string
-  }
-}
+export interface TranslateCallRecord extends SourceTranslateCallRecord {}
 
 interface BenchBrowserController {
   getTranslateCalls: () => TranslateCallRecord[]
@@ -68,13 +75,14 @@ interface SourceBackedPageTranslationResult {
   html: string
   pageTranslation: PageTranslationExecution
   requestCount: number
-  translateCalls: Array<{ payload: { texts: string[]; targetLang: string } }>
+  translateCalls: SourceTranslateCallRecord[]
 }
 
 function installSourceBenchBrowser(config: {
   targetLang: string
   contentScope: "page" | "article"
   translationMode: "bilingual" | "translation-only"
+  privacyMode?: boolean
 }) {
   const translateCalls: TranslateCallRecord[] = []
   const storage: Record<string, unknown> = {
@@ -86,7 +94,7 @@ function installSourceBenchBrowser(config: {
       contentScope: config.contentScope,
       inputTranslation: "disabled",
       languageLevel: "intermediate",
-      privacyMode: false,
+      privacyMode: config.privacyMode ?? false,
       provider: {
         id: "openai",
         accessToken: "",
@@ -132,7 +140,7 @@ function installSourceBenchBrowser(config: {
       },
     },
     runtime: {
-      async sendMessage(message: { type?: string; payload?: { texts: string[]; targetLang: string } }) {
+      async sendMessage(message: { type?: string; payload?: SourceTranslateCallRecord["payload"] }) {
         if (message?.type !== "runtime/translate-batch" || !message.payload) {
           throw new Error(`Unhandled runtime message: ${JSON.stringify(message)}`)
         }
@@ -141,6 +149,10 @@ function installSourceBenchBrowser(config: {
           payload: {
             texts: [...message.payload.texts],
             targetLang: message.payload.targetLang,
+            ...(message.payload.sourceLang ? { sourceLang: message.payload.sourceLang } : {}),
+            ...(message.payload.context ? { context: message.payload.context as Record<string, unknown> } : {}),
+            ...(message.payload.task ? { task: message.payload.task } : {}),
+            ...(message.payload.customSystemPrompt ? { customSystemPrompt: message.payload.customSystemPrompt } : {}),
           },
         })
 
@@ -307,6 +319,7 @@ export async function runSourceBackedPageTranslation(params: {
   targetLang?: string
   contentScope?: "page" | "article"
   translationMode?: "bilingual" | "translation-only"
+  privacyMode?: boolean
   snapshotHtmlPath?: string
   timeoutMs?: number
 }) {
@@ -340,6 +353,7 @@ export async function runSourceBackedPageTranslation(params: {
       targetLang,
       contentScope,
       translationMode,
+      privacyMode: params.privacyMode,
     })
 
     try {
@@ -349,6 +363,7 @@ export async function runSourceBackedPageTranslation(params: {
           contentScope,
           translationMode,
           translationTheme: "default",
+          ...(params.privacyMode ? { privacyMode: true } : {}),
         })
 
         const snapshot = await waitForTranslationCompletion(
@@ -380,6 +395,10 @@ export async function runSourceBackedPageTranslation(params: {
             payload: {
               texts: call.payload.texts,
               targetLang: call.payload.targetLang,
+              ...(call.payload.sourceLang ? { sourceLang: call.payload.sourceLang } : {}),
+              ...(call.payload.context ? { context: call.payload.context } : {}),
+              ...(call.payload.task ? { task: call.payload.task } : {}),
+              ...(call.payload.customSystemPrompt ? { customSystemPrompt: call.payload.customSystemPrompt } : {}),
             },
           })),
         } satisfies SourceBackedPageTranslationResult

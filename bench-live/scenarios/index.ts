@@ -11,6 +11,7 @@ import { pageTranslationArticleBasicSourceTranslationOnlyScenario } from "./page
 import { pageTranslationFeedCardListSourceScenario } from "./page-translation-feed-card-list-source"
 import { pageTranslationFormsAndNavSourceScenario } from "./page-translation-forms-and-nav-source"
 import { pageTranslationNestedBlocksSourceScenario } from "./page-translation-nested-blocks-source"
+import { privacyModePageTranslationSourceScenario } from "./privacy-mode-page-translation-source"
 import { pdfReaderBasicScenario } from "./pdf-reader-basic"
 import { placeholderScenario } from "./placeholder"
 import { youtubeSubtitleBasicScenario } from "./youtube-subtitle-basic"
@@ -31,6 +32,7 @@ export { pageTranslationArticleBasicSourceTranslationOnlyScenario } from "./page
 export { pageTranslationFeedCardListSourceScenario } from "./page-translation-feed-card-list-source"
 export { pageTranslationFormsAndNavSourceScenario } from "./page-translation-forms-and-nav-source"
 export { pageTranslationNestedBlocksSourceScenario } from "./page-translation-nested-blocks-source"
+export { privacyModePageTranslationSourceScenario } from "./privacy-mode-page-translation-source"
 export { pdfReaderBasicScenario } from "./pdf-reader-basic"
 export { placeholderScenario } from "./placeholder"
 export { youtubeSubtitleBasicScenario } from "./youtube-subtitle-basic"
@@ -41,6 +43,7 @@ export const liveScenarios = [
   pageTranslationArticleBasicSourceTranslationOnlyScenario,
   pageTranslationArticleBasicScenario,
   pageTranslationFeedCardListSourceScenario,
+  privacyModePageTranslationSourceScenario,
   pageTranslationFormsAndNavSourceScenario,
   pageTranslationNestedBlocksSourceScenario,
   pdfReaderBasicScenario,

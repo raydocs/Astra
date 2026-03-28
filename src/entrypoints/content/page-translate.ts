@@ -660,15 +660,16 @@ function buildPageContext(
   summary: string | null,
   privacyMode = false,
 ): TranslationRequestContext {
+  const effectiveHostname = hostname || window.location.hostname || null
   if (privacyMode) {
     return {
-      ...(hostname ? { hostname } : {}),
+      ...(effectiveHostname ? { hostname: effectiveHostname } : {}),
     }
   }
   const contentSummary = summary ?? undefined
   return {
     ...getDocumentTranslationContext(),
-    ...(hostname ? { hostname } : {}),
+    ...(effectiveHostname ? { hostname: effectiveHostname } : {}),
     ...(contentSummary ? { contentSummary } : {}),
   }
 }

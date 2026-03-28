@@ -2,6 +2,7 @@ import { epubReaderLongChapterHoldoutScenario } from "./epub-reader-long-chapter
 import { hoverTranslationMovingTargetsHoldoutScenario } from "./hover-translation-moving-targets"
 import { interactionStressHoldoutScenario } from "./interaction-stress"
 import { pageTranslationFeedCardChurnHoldoutScenario } from "./page-translation-feed-card-churn"
+import { privacyModeShouldNotLeakHoldoutScenario } from "./privacy-mode-should-not-leak"
 import { pageTranslationLayoutNoiseSourceHoldoutScenario } from "./page-translation-layout-noise-source"
 import { pdfReaderLayoutNoiseHoldoutScenario } from "./pdf-reader-layout-noise"
 import { subtitleFileMalformedHoldoutScenario } from "./subtitle-file-malformed"
@@ -12,6 +13,7 @@ export { epubReaderLongChapterHoldoutScenario } from "./epub-reader-long-chapter
 export { hoverTranslationMovingTargetsHoldoutScenario } from "./hover-translation-moving-targets"
 export { interactionStressHoldoutScenario } from "./interaction-stress"
 export { pageTranslationFeedCardChurnHoldoutScenario } from "./page-translation-feed-card-churn"
+export { privacyModeShouldNotLeakHoldoutScenario } from "./privacy-mode-should-not-leak"
 export { pageTranslationLayoutNoiseSourceHoldoutScenario } from "./page-translation-layout-noise-source"
 export { pdfReaderLayoutNoiseHoldoutScenario } from "./pdf-reader-layout-noise"
 export { subtitleFileMalformedHoldoutScenario } from "./subtitle-file-malformed"
@@ -31,6 +33,7 @@ export const holdoutScenarios = [
   hoverTranslationMovingTargetsHoldoutScenario,
   interactionStressHoldoutScenario,
   pageTranslationFeedCardChurnHoldoutScenario,
+  privacyModeShouldNotLeakHoldoutScenario,
   pageTranslationLayoutNoiseSourceHoldoutScenario,
   pdfReaderLayoutNoiseHoldoutScenario,
   subtitleFileMalformedHoldoutScenario,
