@@ -55,7 +55,7 @@ export interface CapabilityProofResult {
 }
 
 export function createWaveBCapabilityProofConfig(
-  overrides: Partial<Pick<CapabilityProofConfig, "runsPerPrompt" | "sprintsPerRun" | "longRunConfig">> & { includeHoverTranslation?: boolean } = {},
+  overrides: Partial<Pick<CapabilityProofConfig, "runsPerPrompt" | "sprintsPerRun" | "longRunConfig">> & { includeHoverTranslation?: boolean; includeSubtitleFileTranslation?: boolean } = {},
 ): CapabilityProofConfig {
   const prompts: CapabilityProofPromptSpec[] = [
       {
@@ -100,6 +100,17 @@ export function createWaveBCapabilityProofConfig(
       category: "interaction-polish",
       difficulty: "medium",
       capabilityTargets: ["hover-translation"],
+    })
+  }
+
+  if (overrides.includeSubtitleFileTranslation) {
+    prompts.push({
+      id: "wave-c-subtitle-file-translation",
+      prompt:
+        "Build a subtitle-file translation workflow for .srt and .vtt files with ingest, bilingual preview, malformed timing recovery, and timing-preserving export.",
+      category: "document-translation",
+      difficulty: "medium",
+      capabilityTargets: ["subtitle-file-translation"],
     })
   }
 

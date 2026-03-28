@@ -15,6 +15,7 @@ interface ParsedArgs {
   sprints: number
   outputDir: string
   includeHover: boolean
+  includeSubtitleFile: boolean
 }
 
 function parseArgs(argv: string[]): ParsedArgs {
@@ -23,6 +24,7 @@ function parseArgs(argv: string[]): ParsedArgs {
   let sprints = 5
   let outputDir = path.resolve(process.cwd(), "bench-opt-results", "capability-proof")
   let includeHover = false
+  let includeSubtitleFile = false
   for (let i = 0; i < argv.length; i++) {
     const arg = argv[i]
     if (arg === "--help" || arg === "-h") {
@@ -50,8 +52,12 @@ function parseArgs(argv: string[]): ParsedArgs {
       includeHover = true
       continue
     }
+    if (arg === "--include-subtitle-file") {
+      includeSubtitleFile = true
+      continue
+    }
   }
-  return { help, runs, sprints, outputDir, includeHover }
+  return { help, runs, sprints, outputDir, includeHover, includeSubtitleFile }
 }
 
 function printHelp() {
@@ -64,6 +70,7 @@ function printHelp() {
   console.log("  --sprints, -s <n>          Sprints per run (default: 5)")
   console.log("  --output-dir, -o <path>    Output directory (default: bench-opt-results/capability-proof)")
   console.log("  --include-hover            Include hover-translation in the proof prompt set")
+  console.log("  --include-subtitle-file    Include subtitle-file-translation in the proof prompt set")
 }
 
 export async function runCapabilityProofEntry(argv: string[] = process.argv.slice(2)): Promise<{ result: CapabilityProofResult; jsonPath: string; markdownPath: string } | null> {
@@ -72,7 +79,7 @@ export async function runCapabilityProofEntry(argv: string[] = process.argv.slic
     printHelp()
     return null
   }
-  const config = createWaveBCapabilityProofConfig({ runsPerPrompt: parsed.runs, sprintsPerRun: parsed.sprints, includeHoverTranslation: parsed.includeHover })
+  const config = createWaveBCapabilityProofConfig({ runsPerPrompt: parsed.runs, sprintsPerRun: parsed.sprints, includeHoverTranslation: parsed.includeHover, includeSubtitleFileTranslation: parsed.includeSubtitleFile })
   console.log(`Starting capability proof: ${config.prompts.length} prompts x ${config.runsPerPrompt} run(s)`)
   const result = await runCapabilityProof(config)
   await mkdir(parsed.outputDir, { recursive: true })
