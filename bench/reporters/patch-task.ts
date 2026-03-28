@@ -69,6 +69,12 @@ const SURFACE_FILE_MAP: Record<BenchmarkSurface, string[]> = {
     "src/entrypoints/content/translation-context.ts",
     "src/utils/privacy.ts",
   ],
+  pdf: [
+    "src/entrypoints/pdf-reader/PdfReaderApp.tsx",
+    "src/entrypoints/pdf-reader/pdf-extractor.ts",
+    "src/entrypoints/pdf-reader/pdf-translator.ts",
+    "src/entrypoints/content/pdf-detect.ts",
+  ],
 }
 
 type LoopItem = LoopPlan["selectedItems"][number]

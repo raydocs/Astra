@@ -38,7 +38,7 @@ That means v2 currently functions as a **conquest planning pack**, not a final e
 | Capability | Current state | Wave | Benchmark-pack role |
 |---|---|---|---|
 | 网页翻译 | strong | B | required |
-| PDF 文件翻译 | gap | B | required |
+| PDF 文件翻译 | partial | B | required |
 | 视频双语字幕（YouTube） | partial | B | required |
 | 输入框翻译 | strong | B | required |
 | EPUB 双语翻译 | gap | C | required |

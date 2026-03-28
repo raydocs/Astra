@@ -1,10 +1,12 @@
 import { interactionStressHoldoutScenario } from "./interaction-stress"
 import { pageTranslationFeedCardChurnHoldoutScenario } from "./page-translation-feed-card-churn"
+import { pdfReaderLayoutNoiseHoldoutScenario } from "./pdf-reader-layout-noise"
 import { youtubeSubtitleRaceHoldoutScenario } from "./youtube-subtitle-race"
 import { translationRaceHoldoutScenario } from "./translation-race"
 
 export { interactionStressHoldoutScenario } from "./interaction-stress"
 export { pageTranslationFeedCardChurnHoldoutScenario } from "./page-translation-feed-card-churn"
+export { pdfReaderLayoutNoiseHoldoutScenario } from "./pdf-reader-layout-noise"
 export { youtubeSubtitleRaceHoldoutScenario } from "./youtube-subtitle-race"
 export { translationRaceHoldoutScenario } from "./translation-race"
 
@@ -19,6 +21,7 @@ export { translationRaceHoldoutScenario } from "./translation-race"
 export const holdoutScenarios = [
   interactionStressHoldoutScenario,
   pageTranslationFeedCardChurnHoldoutScenario,
+  pdfReaderLayoutNoiseHoldoutScenario,
   youtubeSubtitleRaceHoldoutScenario,
   translationRaceHoldoutScenario,
 ]
