@@ -14,6 +14,7 @@ interface ParsedArgs {
   runs: number
   sprints: number
   outputDir: string
+  includeHover: boolean
 }
 
 function parseArgs(argv: string[]): ParsedArgs {
@@ -21,6 +22,7 @@ function parseArgs(argv: string[]): ParsedArgs {
   let runs = 2
   let sprints = 5
   let outputDir = path.resolve(process.cwd(), "bench-opt-results", "capability-proof")
+  let includeHover = false
   for (let i = 0; i < argv.length; i++) {
     const arg = argv[i]
     if (arg === "--help" || arg === "-h") {
@@ -44,8 +46,12 @@ function parseArgs(argv: string[]): ParsedArgs {
       i += 1
       continue
     }
+    if (arg === "--include-hover") {
+      includeHover = true
+      continue
+    }
   }
-  return { help, runs, sprints, outputDir }
+  return { help, runs, sprints, outputDir, includeHover }
 }
 
 function printHelp() {
@@ -57,6 +63,7 @@ function printHelp() {
   console.log("  --runs, -r <n>             Runs per prompt (default: 2)")
   console.log("  --sprints, -s <n>          Sprints per run (default: 5)")
   console.log("  --output-dir, -o <path>    Output directory (default: bench-opt-results/capability-proof)")
+  console.log("  --include-hover            Include hover-translation in the proof prompt set")
 }
 
 export async function runCapabilityProofEntry(argv: string[] = process.argv.slice(2)): Promise<{ result: CapabilityProofResult; jsonPath: string; markdownPath: string } | null> {
@@ -65,7 +72,7 @@ export async function runCapabilityProofEntry(argv: string[] = process.argv.slic
     printHelp()
     return null
   }
-  const config = createWaveBCapabilityProofConfig({ runsPerPrompt: parsed.runs, sprintsPerRun: parsed.sprints })
+  const config = createWaveBCapabilityProofConfig({ runsPerPrompt: parsed.runs, sprintsPerRun: parsed.sprints, includeHoverTranslation: parsed.includeHover })
   console.log(`Starting capability proof: ${config.prompts.length} prompts x ${config.runsPerPrompt} run(s)`)
   const result = await runCapabilityProof(config)
   await mkdir(parsed.outputDir, { recursive: true })

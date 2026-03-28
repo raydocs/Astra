@@ -55,10 +55,9 @@ export interface CapabilityProofResult {
 }
 
 export function createWaveBCapabilityProofConfig(
-  overrides: Partial<Pick<CapabilityProofConfig, "runsPerPrompt" | "sprintsPerRun" | "longRunConfig">> = {},
+  overrides: Partial<Pick<CapabilityProofConfig, "runsPerPrompt" | "sprintsPerRun" | "longRunConfig">> & { includeHoverTranslation?: boolean } = {},
 ): CapabilityProofConfig {
-  return {
-    prompts: [
+  const prompts: CapabilityProofPromptSpec[] = [
       {
         id: "wave-b-web-translation",
         prompt:
@@ -91,7 +90,21 @@ export function createWaveBCapabilityProofConfig(
         difficulty: "medium",
         capabilityTargets: ["input-translation", "privacy-mode"],
       },
-    ],
+    ]
+
+  if (overrides.includeHoverTranslation) {
+    prompts.push({
+      id: "wave-c-hover-translation",
+      prompt:
+        "Build a hover translation experience with stable tooltips, request dedupe, moving-target resilience, and clear coordination with selection and input interactions.",
+      category: "interaction-polish",
+      difficulty: "medium",
+      capabilityTargets: ["hover-translation"],
+    })
+  }
+
+  return {
+    prompts,
     runsPerPrompt: overrides.runsPerPrompt ?? 2,
     sprintsPerRun: overrides.sprintsPerRun ?? 5,
     longRunConfig: overrides.longRunConfig,
