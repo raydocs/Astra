@@ -32,6 +32,7 @@
     "bench:opt:resume-latest": "tsx bench-opt/resume-latest.ts",
     "bench:opt:list": "tsx bench-opt/entry.ts --list",
     "bench:opt:status": "tsx bench-opt/status-latest.ts",
+    "bench:opt:capability-proof": "tsx bench-opt/capability-proof-entry.ts",
     "bench:opt:loop": "node bench/loop.ts --use-bench-opt",
     "bench:opt:execute": "pnpm bench:execute",
     "bench:opt:dispatch": "pnpm bench:dispatch",

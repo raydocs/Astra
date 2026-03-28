@@ -304,15 +304,26 @@ export function getAstraV2Capability(id: AstraCapabilityId): AstraCapabilityDefi
   return astraV2Capabilities.find((capability) => capability.id === id)
 }
 
-export function createAstraCapabilityStatusCards(): AstraCapabilityStatusCard[] {
-  return astraV2Capabilities.map((capability) => ({
-    ...capability,
-    verdict: deriveCapabilityVerdict(capability.currentCoverage),
-    notes: [
-      `Wave ${capability.wave} owner for v2 conquest sequencing.`,
-      capability.beta ? "This capability is explicitly beta-scoped until holdout criteria are met." : "This capability is intended to graduate to non-beta parity claims.",
-    ],
-  }))
+export function createAstraCapabilityStatusCards(options?: {
+  proofStatusOverrides?: Partial<Record<AstraCapabilityId, AstraCapabilityLaneStatus>>
+  proofNotes?: Partial<Record<AstraCapabilityId, string[]>>
+}): AstraCapabilityStatusCard[] {
+  return astraV2Capabilities.map((capability) => {
+    const proofOverride = options?.proofStatusOverrides?.[capability.id]
+    const currentCoverage = proofOverride
+      ? { ...capability.currentCoverage, proof: proofOverride }
+      : capability.currentCoverage
+    return {
+      ...capability,
+      currentCoverage,
+      verdict: deriveCapabilityVerdict(currentCoverage),
+      notes: [
+        `Wave ${capability.wave} owner for v2 conquest sequencing.`,
+        capability.beta ? "This capability is explicitly beta-scoped until holdout criteria are met." : "This capability is intended to graduate to non-beta parity claims.",
+        ...(options?.proofNotes?.[capability.id] ?? []),
+      ],
+    }
+  })
 }
 
 export function summarizeAstraCapabilityCards(cards: readonly AstraCapabilityStatusCard[]) {
