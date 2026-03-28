@@ -2,6 +2,7 @@ import { filterScenariosBySplit } from "../splits"
 import type { BenchmarkScenario, BenchmarkSplit, BenchmarkSurface } from "../types"
 import { articleExtractionScenarios } from "./article-extraction"
 import { dynamicContentScenarios } from "./dynamic-content"
+import { epubTranslationScenarios } from "./epub"
 import { frameCoordinationScenarios } from "./frame-coordination"
 import { hoverScenarios } from "./hover"
 import { inputTranslationScenarios } from "./input-translation"
@@ -28,6 +29,7 @@ export const benchmarkScenarios = [
   ...subtitleFileScenarios,
   ...pdfTranslationScenarios,
   ...youtubeSubtitleScenarios,
+  ...epubTranslationScenarios,
 ]
 
 export function selectBenchmarkScenarios(options: {

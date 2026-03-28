@@ -1,3 +1,4 @@
+import { epubReaderBasicScenario } from "./epub-reader-basic"
 import { fixturePlaywrightSmokeScenario } from "./fixture-playwright-smoke"
 import { frameCoordinationBasicScenario } from "./frame-coordination-basic"
 import { hoverTranslationBasicScenario } from "./hover-translation-basic"
@@ -17,6 +18,7 @@ import { subtitleBasicScenario } from "./subtitle-basic"
 import { subtitleFileBasicScenario } from "./subtitle-file-basic"
 import { holdoutScenarios } from "./holdout/index"
 
+export { epubReaderBasicScenario } from "./epub-reader-basic"
 export { fixturePlaywrightSmokeScenario } from "./fixture-playwright-smoke"
 export { frameCoordinationBasicScenario } from "./frame-coordination-basic"
 export { hoverTranslationBasicScenario } from "./hover-translation-basic"
@@ -50,6 +52,7 @@ export const liveScenarios = [
   youtubeSubtitleBasicScenario,
   subtitleBasicScenario,
   subtitleFileBasicScenario,
+  epubReaderBasicScenario,
   placeholderScenario,
   ...holdoutScenarios,
 ]

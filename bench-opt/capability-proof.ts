@@ -55,7 +55,11 @@ export interface CapabilityProofResult {
 }
 
 export function createWaveBCapabilityProofConfig(
-  overrides: Partial<Pick<CapabilityProofConfig, "runsPerPrompt" | "sprintsPerRun" | "longRunConfig">> & { includeHoverTranslation?: boolean; includeSubtitleFileTranslation?: boolean } = {},
+  overrides: Partial<Pick<CapabilityProofConfig, "runsPerPrompt" | "sprintsPerRun" | "longRunConfig">> & {
+    includeHoverTranslation?: boolean
+    includeSubtitleFileTranslation?: boolean
+    includeEpubTranslation?: boolean
+  } = {},
 ): CapabilityProofConfig {
   const prompts: CapabilityProofPromptSpec[] = [
       {
@@ -111,6 +115,17 @@ export function createWaveBCapabilityProofConfig(
       category: "document-translation",
       difficulty: "medium",
       capabilityTargets: ["subtitle-file-translation"],
+    })
+  }
+
+  if (overrides.includeEpubTranslation) {
+    prompts.push({
+      id: "wave-c-epub-translation",
+      prompt:
+        "Build an EPUB bilingual reader with chapter navigation, translation-only mode, restored reading state, and resilient long-chapter batching.",
+      category: "document-translation",
+      difficulty: "medium",
+      capabilityTargets: ["epub-bilingual-translation"],
     })
   }
 

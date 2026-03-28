@@ -1,3 +1,4 @@
+import { epubReaderLongChapterHoldoutScenario } from "./epub-reader-long-chapter"
 import { hoverTranslationMovingTargetsHoldoutScenario } from "./hover-translation-moving-targets"
 import { interactionStressHoldoutScenario } from "./interaction-stress"
 import { pageTranslationFeedCardChurnHoldoutScenario } from "./page-translation-feed-card-churn"
@@ -7,6 +8,7 @@ import { subtitleFileMalformedHoldoutScenario } from "./subtitle-file-malformed"
 import { youtubeSubtitleRaceHoldoutScenario } from "./youtube-subtitle-race"
 import { translationRaceHoldoutScenario } from "./translation-race"
 
+export { epubReaderLongChapterHoldoutScenario } from "./epub-reader-long-chapter"
 export { hoverTranslationMovingTargetsHoldoutScenario } from "./hover-translation-moving-targets"
 export { interactionStressHoldoutScenario } from "./interaction-stress"
 export { pageTranslationFeedCardChurnHoldoutScenario } from "./page-translation-feed-card-churn"
@@ -25,6 +27,7 @@ export { translationRaceHoldoutScenario } from "./translation-race"
  * to detect regressions or validate robustness beyond the basic suite.
  */
 export const holdoutScenarios = [
+  epubReaderLongChapterHoldoutScenario,
   hoverTranslationMovingTargetsHoldoutScenario,
   interactionStressHoldoutScenario,
   pageTranslationFeedCardChurnHoldoutScenario,
