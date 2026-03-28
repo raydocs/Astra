@@ -205,6 +205,29 @@ describe("benchmark evaluators", () => {
     expect(result.issues.some((issue) => issue.message.includes("privacy"))).toBe(true)
   })
 
+  it("flags page translation failures when privacy mode leaks page metadata", () => {
+    const result = evaluatePageTranslation({
+      translatedNodeCount: 2,
+      expectedNodeCount: 2,
+      translationMarkerCount: 2,
+      hiddenSourceCount: 0,
+      requestCount: 1,
+      skippedInteractiveTranslations: 0,
+      translatedTexts: ["ZH:hello", "ZH:world"],
+      expectedTexts: ["hello", "world"],
+      snapshotPhase: "running",
+      failedBlocks: 0,
+      payloadContext: {
+        hostname: "example.com",
+        pageUrl: "https://example.com/article?token=secret#frag",
+        pageTitle: "Sensitive title",
+      },
+    }, { requirePrivacySanitization: true })
+
+    expect(result.pass).toBe(false)
+    expect(result.issues.some((issue) => issue.message.includes("privacy"))).toBe(true)
+  })
+
   it("flags site automation failures when manual stop suppression does not hold", () => {
     const result = evaluateSiteAutomation({
       autoStarted: true,

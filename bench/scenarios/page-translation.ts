@@ -30,6 +30,7 @@ async function executePageScenario(options: {
   fixture: FixtureSource
   metaDescription?: string
   url: string
+  privacyMode?: boolean
   overrides?: {
     targetLang?: string
     translationMode?: "bilingual" | "translation-only"
@@ -38,7 +39,9 @@ async function executePageScenario(options: {
 }) {
   installDomEnvironment(`https://example.com${options.url}`)
   try {
-    const browser = installBenchBrowser()
+    const browser = installBenchBrowser({
+      ...(options.privacyMode ? { config: { privacyMode: true } } : {}),
+    })
     mountFixture(options.fixture, {
       title: "Astra Bench Page",
       metaDescription: options.metaDescription,
@@ -51,6 +54,7 @@ async function executePageScenario(options: {
       targetLang: options.overrides?.targetLang ?? "zh-CN",
       ...(options.overrides?.translationMode ? { translationMode: options.overrides.translationMode } : {}),
       ...(options.overrides?.contentScope ? { contentScope: options.overrides.contentScope } : {}),
+      ...(options.privacyMode ? { privacyMode: true } : {}),
     })
     await flushMicrotasks(6)
     await waitForTranslationMarkers()
@@ -61,6 +65,7 @@ async function executePageScenario(options: {
       requestCount: browser.getTranslateCalls().length,
       snapshotPhase: snapshot.phase,
       failedBlocks: snapshot.progress.failedBlocks,
+      payloadContext: (browser.getTranslateCalls()[0]?.payload.context ?? null) as Record<string, unknown> | null,
       notes: [
         `effectiveScope=${expected.effectiveScope}`,
       ],
@@ -179,6 +184,16 @@ const PAGE_TRANSLATION_HINTS: Record<string, ScenarioCodeHint> = {
     ],
     suspectedSymbols: ["startPageTranslation", "stopPageTranslation", "getPageTranslationState"],
     suspectedKeywords: ["provider error", "failedBlocks", "graceful"],
+    risk: "cross-module",
+  },
+  "page-translation/privacy-sanitized-context": {
+    suspectedFiles: [
+      "src/entrypoints/content/page-translate.ts",
+      "src/entrypoints/content/translation-context.ts",
+      "src/utils/privacy.ts",
+    ],
+    suspectedSymbols: ["startPageTranslation", "buildPageContext", "sanitizeTranslationContext"],
+    suspectedKeywords: ["privacy", "hostname", "pageUrl"],
     risk: "cross-module",
   },
 }
@@ -316,5 +331,20 @@ export const pageTranslationScenarios: BenchmarkScenario<PageTranslationExecutio
         nextActions: issues.map((i) => i.message),
       }
     },
+  },
+  {
+    id: "page-translation/privacy-sanitized-context",
+    title: "Privacy mode strips page translation context down to hostname and canonical page URL",
+    surface: "page-translation",
+    fixture: "article-basic",
+    task: "Translate an article in privacy mode without leaking query strings, hashes, page title, or content summary in the request context.",
+    codeHint: PAGE_TRANSLATION_HINTS["page-translation/privacy-sanitized-context"],
+    run: () => executePageScenario({
+      fixture: { kind: "page", name: "article-basic" },
+      metaDescription: "Fixture for privacy mode page translation benchmark.",
+      url: "/fixtures/article-basic?token=secret#frag",
+      privacyMode: true,
+    }),
+    evaluate: (execution) => evaluatePageTranslation(execution, { requirePrivacySanitization: true }),
   },
 ]

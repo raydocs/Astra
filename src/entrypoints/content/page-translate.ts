@@ -5,6 +5,7 @@
 import {
   readConfig,
 } from "@/utils/storage/config"
+import { sanitizeTranslationContext } from "@/utils/privacy"
 import { recordPageTranslation } from "@/utils/storage/reading-history"
 import {
   clearLoading,
@@ -661,17 +662,16 @@ function buildPageContext(
   privacyMode = false,
 ): TranslationRequestContext {
   const effectiveHostname = hostname || window.location.hostname || null
-  if (privacyMode) {
-    return {
-      ...(effectiveHostname ? { hostname: effectiveHostname } : {}),
-    }
-  }
   const contentSummary = summary ?? undefined
-  return {
+  const fullContext = {
     ...getDocumentTranslationContext(),
     ...(effectiveHostname ? { hostname: effectiveHostname } : {}),
     ...(contentSummary ? { contentSummary } : {}),
   }
+  if (privacyMode) {
+    return sanitizeTranslationContext(fullContext)
+  }
+  return fullContext
 }
 
 async function resolveStartSettings(overrides: TranslationOverrides = {}) {

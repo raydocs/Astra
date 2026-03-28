@@ -11,6 +11,7 @@ export interface PageTranslationExecution {
   expectedTexts: string[]
   snapshotPhase: string
   failedBlocks: number
+  payloadContext?: Record<string, unknown> | null
   notes?: string[]
 }
 
@@ -23,10 +24,25 @@ function addIssue(
   issues.push({ severity, message, evidence })
 }
 
+function isSanitizedPrivacyContext(context: Record<string, unknown> | null | undefined) {
+  if (!context) return false
+  const keys = Object.keys(context).sort()
+  const allowedKeys = ["hostname", "pageUrl"]
+  const onlyAllowedKeys = keys.every((key) => allowedKeys.includes(key))
+  const pageUrl = typeof context.pageUrl === "string" ? context.pageUrl : ""
+
+  return onlyAllowedKeys
+    && typeof context.hostname === "string"
+    && pageUrl.length > 0
+    && !pageUrl.includes("?")
+    && !pageUrl.includes("#")
+}
+
 function buildPatchHints(
   execution: PageTranslationExecution,
   options: {
     requireTranslationOnly?: boolean
+    requirePrivacySanitization?: boolean
   },
   issues: BenchmarkIssue[],
 ): PatchHintArtifact | undefined {
@@ -75,6 +91,13 @@ function buildPatchHints(
     suspectedKeywords.add("hiddenSourceCount")
   }
 
+  if (options.requirePrivacySanitization && !isSanitizedPrivacyContext(execution.payloadContext)) {
+    failingSignals.push("privacy context leaked")
+    suspectedFiles.add("src/utils/privacy.ts")
+    suspectedKeywords.add("privacy")
+    suspectedKeywords.add("sanitizeTranslationContext")
+  }
+
   const confidence = issues.some((issue) => issue.severity === "critical") ? "high" : "medium"
 
   return {
@@ -90,6 +113,7 @@ export function evaluatePageTranslation(
   execution: PageTranslationExecution,
   options: {
     requireTranslationOnly?: boolean
+    requirePrivacySanitization?: boolean
   } = {},
 ): EvaluationResult {
   const issues: BenchmarkIssue[] = []
@@ -137,12 +161,26 @@ export function evaluatePageTranslation(
     )
   }
 
+  if (options.requirePrivacySanitization && !isSanitizedPrivacyContext(execution.payloadContext)) {
+    addIssue(
+      issues,
+      "high",
+      "Page translation privacy mode leaked more context than the sanitized contract allows.",
+      JSON.stringify(execution.payloadContext),
+    )
+  }
+
+  const contextSafety = !options.requirePrivacySanitization || isSanitizedPrivacyContext(execution.payloadContext)
+    ? 10
+    : 4
+
   const scores = {
     correctness,
     completeness,
     stability,
     coverage: Math.min(10, coverage),
     dom_preservation: domPreservation,
+    context_safety: contextSafety,
   }
 
   const baseTotal = Math.round((Object.values(scores).reduce((sum, score) => sum + score, 0) / (Object.keys(scores).length * 10)) * 100)

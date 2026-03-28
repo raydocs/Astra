@@ -5,6 +5,7 @@
   "page-translation/nested-blocks-coverage": "train",
   "page-translation/feed-card-list": "train",
   "page-translation/provider-error-graceful": "holdout",
+  "page-translation/privacy-sanitized-context": "validation",
   "site-automation/always-translate-initial-autostart": "train",
   "site-automation/site-disable-stops-active-session": "train",
   "site-automation/manual-stop-suppresses-page-restart": "validation",

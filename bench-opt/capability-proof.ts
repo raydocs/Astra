@@ -94,6 +94,14 @@ export function createWaveBCapabilityProofConfig(
         difficulty: "medium",
         capabilityTargets: ["input-translation", "privacy-mode"],
       },
+      {
+        id: "wave-d-privacy-mode",
+        prompt:
+          "Build a privacy-preserving translation system that redacts page metadata, strips query and fragment data, preserves only hostname and canonical path, and keeps sensitive authoring surfaces isolated.",
+        category: "privacy-sensitive-authoring",
+        difficulty: "medium",
+        capabilityTargets: ["privacy-mode", "web-translation", "input-translation"],
+      },
     ]
 
   if (overrides.includeHoverTranslation) {

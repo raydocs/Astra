@@ -147,9 +147,10 @@ export const pageTranslationLayoutNoiseSourceHoldoutScenario: LiveScenarioDefini
             skippedInteractiveTranslations: 0,
             translatedTexts: [],
             expectedTexts: [],
-            snapshotPhase: "idle",
-            failedBlocks: 0,
-            notes: ["browser-unavailable"],
+              snapshotPhase: "idle",
+              failedBlocks: 0,
+              payloadContext: null,
+              notes: ["browser-unavailable"],
           },
         }
       }

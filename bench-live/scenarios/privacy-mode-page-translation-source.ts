@@ -122,7 +122,7 @@ export const privacyModePageTranslationSourceScenario: LiveScenarioDefinition<Li
 
     const privacy = evaluateSanitizedTranslateCalls(execution.translateCalls ?? [], {
       requireHostname: true,
-      allowPageUrl: false,
+      allowPageUrl: true,
     })
     const issues = [...(base.issues ?? []), ...privacy.issues.map((issue) => issue.evidence ? `${issue.message} (${issue.evidence})` : issue.message)]
     const pass = Boolean(base.pass) && privacy.pass

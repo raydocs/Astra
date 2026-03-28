@@ -69,6 +69,7 @@ export function buildPageTranslationExecutionFromDocument(params: {
   requestCount: number
   snapshotPhase: string
   failedBlocks: number
+  payloadContext?: Record<string, unknown> | null
   notes?: string[]
 }) {
   return {
@@ -82,6 +83,7 @@ export function buildPageTranslationExecutionFromDocument(params: {
     expectedTexts: params.expectedTexts,
     snapshotPhase: params.snapshotPhase,
     failedBlocks: params.failedBlocks,
+    payloadContext: params.payloadContext ?? null,
     notes: params.notes ?? [],
   } satisfies PageTranslationExecution
 }
