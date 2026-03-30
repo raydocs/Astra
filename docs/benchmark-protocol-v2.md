@@ -1,7 +1,7 @@
 # Astra Benchmark Protocol v2.0.0-draft
 
 _Draft foundation for the Astra v2 capability conquest campaign._
-_Last updated: 2026-03-27_
+_Last updated: 2026-03-30_
 
 This protocol extends the frozen proof/benchmark work from v1.0.0 into a **capability-conquest protocol**. v1 answered, “can Astra prove a hardened proof lane?” v2 answers, “can Astra systematically conquer the translation/reading/media/document surfaces required to compete with best-in-class references?”
 
@@ -75,11 +75,13 @@ Wave C covers:
 - 字幕文件翻译
 - 鼠标悬停翻译
 
-### Wave D — Beta + privacy conquest
+### Wave D — Beta + privacy standalone conquest
 Wave D covers:
 - 图片翻译 (Beta)
 - 漫画翻译 (Beta)
 - 隐私模式 (Beta → core policy)
+
+For privacy specifically, Wave D refers to **standalone capability conquest**. Privacy gating work may start earlier and can block Wave B/C expansion claims before privacy itself is marked conquered.
 
 ## 5. Per-Capability Scorecard Requirement
 
@@ -109,6 +111,8 @@ Future benchmark-pack specs must also indicate whether a capability is:
 - required for parity claims,
 - beta-only,
 - excluded from parity claims.
+
+Frozen capability rows are necessary but not always sufficient for a claim: cross-cutting governance tracks such as provider-routing maturity and privacy gating can still block conquest/parity assertions even though they are not separate capability rows in v2.
 
 ## 7. Harness Requirements by Capability
 
@@ -163,6 +167,8 @@ Reading ecosystem capabilities must each reach at least `live-pass`, with EPUB a
 
 ### Wave D acceptance
 Beta surfaces must have explicit beta-grade harnesses, and privacy mode must be promoted to a first-class product/policy gate.
+
+This does not prevent privacy gating from acting earlier as a release-blocking governance condition for non-Wave-D capabilities.
 
 ## 11. Relationship to v1
 

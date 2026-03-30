@@ -2,110 +2,188 @@
 
 ## Summary
 
-`bench/` 是 Astra 当前的 split-aware, evaluator-first judge harness。
+Astra 当前的 benchmark stack 不是单一的 `bench/`，而是 **三层 benchmark 治理 + 一层 test 基础设施**：
 
-它和 `test/` 的分工不同：
+- `test/`：单元测试、组件测试、回归测试
+- `bench/`：deterministic、split-aware、evaluator-first 的 judge harness
+- `bench-live/`：source-backed / browser-backed 的 live validation 与显式 holdout
+- `bench-opt/`：建立在 deterministic + live + holdout 结果之上的 optimizer / proof / promotion 治理层
 
-- `test/` 负责单元测试、组件测试和回归测试
-- `bench/` 负责场景执行、评分、结果汇总、版本对比，以及给下一轮 agent / generator 提供可消费反馈
+这三层 benchmark 治理共同回答三个不同问题：
 
-当前 V1 覆盖的产品面：
+1. **`bench/`**：逻辑是否稳定、可复现、可打分
+2. **`bench-live/`**：真实 runtime / browser / source path 是否真能跑通
+3. **`bench-opt/`**：能力是否足够稳定，能否通过 proof / hidden gate / promotion 治理
 
-- 网页翻译
-- 站点自动化
+当前 deterministic `bench/` 已覆盖的 surface：
+
+- page translation
+- site automation
 - interaction priority
 - frame coordination
 - dynamic content
-- 文章提取
-- 悬停翻译
-- 划词 explain
-- 输入框翻译
-- 字幕翻译
+- article extraction
+- hover translation
+- selection explain
+- input translation
+- subtitle translation（含 YouTube subtitle deterministic path）
+- subtitle-file translation
+- PDF translation
+- EPUB translation
+- provider routing
 
-暂不覆盖：
+当前 `bench-live/` 标准 live lane 已覆盖：
 
-- PDF
-- EPUB
-- 图片翻译
-- multi-model judge
-- 自动 retry loop
+- page translation
+- privacy-mode page translation
+- PDF reader
+- frame coordination
+- hover translation
+- input translation
+- subtitle / YouTube subtitle / subtitle-file
+- EPUB reader
 
-## Directory Layout
+当前显式 live holdout 已覆盖：
+
+- page-translation layout noise / churn / malformed placeholder / invalid selectors
+- privacy should-not-leak
+- PDF layout noise
+- EPUB long chapter
+- subtitle / translation race
+- SPA restart / rapid navigation restart
+- provider switch / provider + site update restart
+- background-routed direct / relay / fallback path
+
+仍未成为 first-class benchmark surface 的方向：
+
+- image translation / OCR
+- comic translation
+- scanned-PDF OCR path
+- 更广的 provider ecosystem
+- 更完整的 AI translation quality-control stack
+
+## Benchmark Stack Layout
 
 ```text
 bench/
-  entry.ts                   # bench 主流程
-  run.ts                     # CLI 入口
-  types.ts                   # report / scenario / evaluator schema
-  runtime/
-    dom.ts                   # JSDOM 与交互辅助
-    browser.ts               # bench 专用 browser mock
-    fixtures.ts              # fixture 挂载与页面准备
-  scenarios/                 # benchmark scenario 定义
+  entry.ts                   # deterministic bench 主流程
+  run.ts                     # deterministic CLI 入口
+  splits.json                # split source of truth
+  scenarios/                 # deterministic scenario 定义
   evaluators/                # 确定性打分逻辑
-  reporters/
-    json.ts                  # 写入 latest.json
-    text.ts                  # 终端摘要
-    feedback.ts              # agent 可消费 handoff 文本
-    handoff.ts               # generator 优先级与压缩 prompt 输出
+  reporters/                 # latest.json / feedback / loop / patch / dispatch artifacts
+
+bench-live/
+  entry.ts                   # live CLI 入口
+  index.ts                   # live orchestration surface
+  runtime.ts                 # live runtime event model
+  driver.ts                  # browser / fixture / artifact helpers
+  source-runtime.ts          # source-backed execution path
+  scenarios/                 # standard live scenarios
+  scenarios/holdout/         # explicit live holdouts
+  results.ts                 # bench-live-results/ artifact persistence
+
+bench-opt/
+  entry.ts                   # optimizer / orchestration CLI
+  runner.ts                  # trial orchestration
+  capability-proof.ts        # capability-proof prompt pack + summarization
+  proof-suite.ts             # multi-run proof suite + hidden gate
+  capabilities.ts            # capability registry / coverage model
+  status.ts                  # operator-facing status artifact
 ```
 
-## Benchmark Splits
+## Split Discipline
 
-`/Users/ruirui/Downloads/GitHub/Astra/bench/splits.json` 是 split source of truth，`/Users/ruirui/Downloads/GitHub/Astra/bench/splits.ts` 负责加载和过滤。
+`bench/splits.json` 是 deterministic split 的 source of truth，`bench/splits.ts` 负责加载和过滤。
 
-当前 split discipline：
+当前 split 纪律：
 
-- `train`：用于日常迭代和 optimizer 候选搜索
-- `validation`：用于选择 candidate / champion
-- `holdout`：用于最终 promotion gate，不应用来反复调 prompt
+- `train`：日常迭代、修复、candidate 搜索
+- `validation`：选择 candidate / champion
+- `holdout`：promotion 前的最终 deterministic gate，不用于反复调 prompt
 
 CLI 支持 `--split train|validation|holdout`，也支持和 `--surface` 组合过滤。
 
+## Snapshot Counts
+
+不要在别处手工维护硬编码数量；以 CLI 输出为准。
+
+- `pnpm bench:inventory` 给 deterministic inventory 真值
+- `pnpm bench:live -- --list` 给标准 live lane 真值
+- `bench-live/scenarios/holdout/index.ts` 给显式 live holdout 真值
+
+作为 **2026-03-28** 的快照：
+
+- deterministic `bench/`：`62` 个 scenario，`14` 个 surface
+- split 分布：`train=34`、`validation=16`、`holdout=12`
+- 标准 `bench-live/`：`18` 个 live scenario
+- 显式 `bench-live` holdout：`21` 个 scenario
+
+如果这些数字变化，优先更新代码和 inventory，不要先改这份文档里的文字描述。
+
 ## How To Run
 
-全量运行：
+### Deterministic bench
 
 ```bash
+pnpm bench:inventory
 pnpm bench
+pnpm bench -- --split train
+pnpm bench -- --split validation
+pnpm bench -- --split holdout
+pnpm bench -- --surface provider-routing
+pnpm bench -- --surface page-translation --split validation
+```
+
+### Loop / executor / dispatch flow
+
+```bash
 pnpm bench:loop
 pnpm bench:task
 pnpm bench:pass
 pnpm bench:execute
-pnpm bench:drill
 pnpm bench:dispatch
+```
 
-# drill 一个本地演练场景，让 executor 进入 ready
+### Live bench
+
+```bash
+pnpm bench:live -- --list
+pnpm bench:live -- --scenario bench-live/page-translation-article-basic-source-bilingual
+pnpm bench:live -- --scenario bench-live/pdf-reader-basic
+pnpm bench:live -- --scenario bench-live/privacy-mode-page-translation-source
+pnpm bench:live -- --scenario bench-live/holdout/privacy-mode-should-not-leak
+pnpm bench:live -- --scenario bench-live/holdout/background-routed-direct-relay-fallback-page-translation-source
+```
+
+### Bench-opt / proof / status
+
+```bash
+pnpm bench:opt:list
+pnpm bench:opt
+pnpm bench:opt:status
+pnpm bench:opt:capability-proof
+pnpm bench:opt:capability-proof -- --include-hover --include-subtitle-file --include-epub
+```
+
+### Drill matrix
+
+```bash
 pnpm bench:drill
-
-# 查看 loop / dispatch CLI 帮助
-pnpm bench:loop -- --help
-pnpm bench:dispatch -- --help
+pnpm bench:drill:current-failure
+pnpm bench:drill:dispatch
+pnpm bench:drill:current-failure:dispatch
 ```
 
-按 surface 过滤：
+`drill` 不会修改真实 benchmark 定义，只会在 loop 层注入 synthetic ready / current-failure path，方便演练 gate、artifact、dispatch 链路。
 
-```bash
-pnpm bench -- --surface hover
-pnpm bench -- --surface page-translation
-pnpm bench -- --surface article-extraction
-pnpm bench -- --surface selection-explain
-pnpm bench -- --surface input-translation
-pnpm bench -- --surface subtitle
-```
+## Output Artifacts
 
-按 split 过滤：
+### `bench-results/`
 
-```bash
-pnpm bench -- --split train
-pnpm bench -- --split validation
-pnpm bench -- --split holdout
-pnpm bench -- --surface hover --split train
-```
+deterministic bench 与 loop / executor / dispatch 的主 artifact 目录。
 
-## Output Files
-
-每次运行都会生成：
+每次 deterministic bench / loop 运行通常会更新：
 
 - `bench-results/latest.json`
 - `bench-results/latest.feedback.md`
@@ -127,34 +205,42 @@ pnpm bench -- --surface hover --split train
 
 其中：
 
-- `latest.json` 是机器可消费的结构化结果；其中 `inventory.bySplit` 和 `filter.split` 会标明这次结果对应的 split 视角
-- `latest.feedback.md` 是给下一轮生成器直接喂入的 handoff 文本
-- `latest.handoff.json` 是 generator 优先级队列，包含 regression / improvement / score-delta 信息
-- `latest.generator.md` 是可直接贴给 agent 的压缩版执行指令
-- `latest.loop.json` 是单轮 loop runner 选出的当前修复队列；其中 `selectedItems[*].selectionScore` 是该项的排序权重，`selectedItems[*].selectionReasons` 是这份排序的可解释来源
-- `latest.loop.md` 是单轮 loop runner 的执行任务单；每个被选中的 scenario 会额外打印 `Selection score` 和 `Selection reasons`，方便人工 review / debug；文件尾部还会附带当前回合的 `## Executor Gate`
-- `latest.patch-task.json` 是单轮 patch pass 的结构化任务定义
-- `latest.patch-task.md` 是可直接贴给 generator 的聚焦修复任务单
-- `latest.patch-context.json` 是 patch task 相关文件的结构化上下文快照
-- `latest.patch-context.md` 是带行号的文件上下文包
-- `latest.patch-pass.json` 是单轮 patch 执行摘要
-- `latest.patch-pass.md` 是当前回合最直接的 executor brief
-- `latest.executor.json` 是受限自动 patch 尝试的门控结果；其中 `summary.gateSummary` 明确给出 `decision` / `reason` / `error`
-- `latest.executor.md` 是最终执行或阻断说明；其中 `## Gate Decision` 和 `## History-backed readiness summary` 会解释为什么当前回合进入 ready / blocked
-- `latest.dispatch.json` 是外部模型调用尝试的结果
-- `latest.dispatch.md` 是外部模型返回或阻断原因；其中 `## Gate Decision` 会明确写出 dispatch 为什么 blocked / failed / executed
+- `latest.json`：deterministic 结构化结果
+- `latest.loop.*`：当前回合修复队列和排序原因
+- `latest.patch-task.*`：聚焦修复任务单
+- `latest.patch-context.*`：相关文件上下文包
+- `latest.patch-pass.*`：当前回合最短执行 brief
+- `latest.executor.*`：自动 patch gate 结果
+- `latest.dispatch.*`：外部模型 dispatch 执行或阻断结果
 
-统一 schema 说明：这三份 `latest.*.json` 目前都使用 `schemaVersion: 1`，并共享同一层运行骨架：`runId`、`generatedAt`、`sourceArtifacts` 和 `summary`；差异只在各自的业务载荷上——`latest.loop.json` 记录 `selectedItems` / `selection`，`latest.executor.json` 记录 `actionableScenarios` / `writeScope` / `prompt`，`latest.dispatch.json` 记录 `provider` / `prompt` / `response`。
+### `bench-live-results/`
 
-补充说明：
+`bench-live/results.ts` 会把 live 结果持久化到：
 
-- `selectionScore` 只表示 loop 层的相对优先级，不是 evaluator 的产品评分，也不应该被下游当作“场景本身更好/更差”的绝对指标
-- 下游消费者如果需要重排、过滤或展示 selected items，应保留 `selectionScore` 的降序语义，并把 `selectionReasons` 当作解释性元数据展示；不要把 reasons 里的字符串当成稳定的机器协议去解析
-- drill 模式会把被强制注入的场景标记成 executor-ready，并用极高的 `selectionScore` 让它排在最前面；`selectionReasons` 会注明 drill scenario 和 drill reason
+- `bench-live-results/latest.result.json`
+- `bench-live-results/latest.result.md`
+- `bench-live-results/<run-id>/result.json`
+- `bench-live-results/<run-id>/result.md`
+- `bench-live-results/<run-id>/...` 目录下的截图、HTML snapshot、fixture HTML、调试 artifact
+
+### `bench-opt-results/`
+
+`bench-opt/` 会把 optimizer / status / proof / promotion 相关结果写到：
+
+- `bench-opt-results/latest.json`
+- `bench-opt-results/latest.status.json`
+- `bench-opt-results/latest.status.md`
+- `bench-opt-results/latest.resolved.json`
+- `bench-opt-results/latest.orchestration.json`
+- `bench-opt-results/capability-proof/latest.capability-proof.json`
+- `bench-opt-results/capability-proof/latest.capability-proof.md`
+- 以及 `telemetry/`、`logs/`、`store/`、`promotions/`、`publish/`、`rollbacks/` 等子目录
 
 ## Scoring Model
 
-所有 evaluator 都统一输出：
+### Deterministic evaluators
+
+所有 deterministic evaluator 都统一输出：
 
 - `scores`
 - `total`
@@ -163,82 +249,67 @@ pnpm bench -- --surface hover --split train
 - `artifacts`
 - `nextActions`
 
-总分统一换算到 `0-100`。
+总分统一映射到 `0-100`。
 
 默认通过条件：
 
 - `total >= 80`
 - 且没有 `critical` issue
 
-严重问题会触发额外 penalty，所以“高风险但均分仍高”的情况不会误判为 pass。
+严重问题会触发额外 penalty，所以“均分不低但高风险”的情况不会被误判为 pass。
 
-## Current Scenario Count
+### Live evaluators
 
-当前 scenario 总数、surface 分布和 split 分布以 `benchmarkScenarios`、`/Users/ruirui/Downloads/GitHub/Astra/bench/splits.json` 和 `pnpm bench:inventory` 为准，不再在文档里手写硬编码数字。
+`bench-live/` 的 evaluator 输出以 `pass / score / issues / artifacts / nextActions` 为主，重点不是复刻 deterministic 细粒度分解，而是确认：
 
-这组场景应该保持稳定可复现。如果某次代码修改让分数波动异常，先检查 scenario runtime 或 mock 是否被破坏，再判断是否是真实产品退化。
+- 真实 source/runtime path 是否跑通
+- browser-backed 产物是否可见
+- privacy / routing / restart 等 runtime-only 现象是否可验证
 
-## Agent Workflow
+### Bench-opt governance
 
-建议的使用顺序：
+`bench-opt/` 不替代 deterministic / live，而是消费两者结果，继续做：
 
-1. 先在 `train` 上迭代：`pnpm bench -- --split train`
-2. 再在 `validation` 上确认：`pnpm bench -- --split validation`
-3. 只在 promotion 前跑 `holdout`：`pnpm bench -- --split holdout`
-4. 运行 `pnpm bench:loop`
-3. 先看 `bench-results/latest.loop.json` 或 `bench-results/latest.loop.md`
-4. 先看 `bench-results/latest.loop.json` 里的 `selectedItems[*].selectionScore` / `selectionReasons`，确认当前回合为什么选中了这些场景
-5. 用 `bench-results/latest.patch-task.md` 作为当前单轮修复任务单
-6. 需要代码上下文时，直接看 `bench-results/latest.patch-context.md`
-7. 用 `bench-results/latest.patch-pass.md` 作为当前回合最精简的执行 brief
-8. 运行 `pnpm bench:execute` 查看当前回合是否允许自动尝试；CLI 会直接打印 `Executor Gate`
-9. 如果 gate 为 `ready`，运行 `pnpm bench:dispatch`；CLI 会直接打印 `Dispatch Gate`
-   - 注意：当前 executor / dispatch 仍是 advisory 流程，不会自动修改文件
-10. 需要全量上下文时，再看 `bench-results/latest.handoff.json` 和 `bench-results/latest.feedback.md`
-11. `selectionScore` 是 loop 排序元数据，不是 evaluator/product score；`selectionReasons` 只适合人类审查和调试，不应被当成稳定机器协议
-12. 只修复失败、退化和低分场景
-13. 不要拿 `holdout` 结果做日常 prompt 调参；它只用于最终 gate
-14. 再运行 `pnpm bench`
-15. 最后运行 `pnpm test`
+- capability-proof
+- hidden gate
+- holdout hardening
+- long-run stability
+- promotion / rollback / publish 治理
 
-这就是 Astra 当前最小可用的：
+## Recommended Workflow
 
-```text
-generator -> evaluator -> structured feedback -> next generator pass
-```
+建议顺序：
 
-如果当前 bench 已经全绿、没有任何 failure / regression，可用下面这组 drill：
+1. 先看 deterministic inventory：`pnpm bench:inventory`
+2. 在 `train` 上迭代：`pnpm bench -- --split train`
+3. 在 `validation` 上确认：`pnpm bench -- --split validation`
+4. promotion 前再跑 deterministic `holdout`
+5. 对涉及 runtime / browser / source path 的改动，补跑对应 `bench-live` 场景
+6. 运行 `pnpm bench:loop`
+7. 先看 `bench-results/latest.loop.json` / `latest.loop.md`
+8. 需要修复任务单时，看 `latest.patch-task.md`
+9. 需要上下文时，看 `latest.patch-context.md`
+10. 跑 `pnpm bench:execute` 看 `Executor Gate`
+11. gate 为 `ready` 时，再跑 `pnpm bench:dispatch`
+12. 做 capability claim / 长稳验证时，再跑 `pnpm bench:opt:capability-proof` 或完整 `pnpm bench:opt`
+13. 最后跑 `pnpm test`
 
-```bash
-pnpm bench:drill:current-failure
-pnpm bench:drill
-pnpm bench:drill:current-failure:dispatch
-pnpm bench:drill:dispatch
-```
+### 额外注意
 
-### Drill matrix
+- `selectionScore` 是 loop 层排序权重，不是产品评分
+- `selectionReasons` 是解释性元数据，不是稳定机器协议
+- `holdout` 不应用来做日常 prompt 调参
+- provider routing、privacy、active-session restart 这类问题，优先看 live artifacts，不要只看 deterministic 分数
 
-- current-failure drill：`pnpm bench:drill:current-failure`
-  - 用 synthetic current failure 走一遍 gate
-- history-backed drill：`pnpm bench:drill`
-  - 用 synthetic history-backed ready path 演练 ready gate
-- current-failure drill + dispatch：`pnpm bench:drill:current-failure:dispatch`
-  - 在 current-failure drill 基础上再跑一次 mock dispatch
-- history-backed drill + dispatch：`pnpm bench:drill:dispatch`
-  - 在 history-backed drill 基础上再跑一次 mock dispatch
+## Near-Term Benchmark Expansion Targets
 
-drill 模式不会修改真实 benchmark 定义，只会在 loop 层临时把选中的场景强制变成一个 executor-ready 的回合。`pnpm bench:drill:current-failure` 走的是 synthetic current-failure path；`pnpm bench:drill` 走的是 history-backed ready path。两个 `:dispatch` 变体则分别在各自 drill 的基础上附带一个 mock dispatch，方便完整演练 artifact / CLI / gate summary。
+下一批最值得进入 benchmark stack 的方向：
 
-如果本地没有 `ASTRA_EXECUTOR_API_KEY`，但你想把外部 dispatch 链完整演练到 `executed`，可以显式传一个 mock 响应：
+- image translation / OCR
+- comic translation
+- broader document ingest / export matrix
+- scanned-PDF OCR decision path
+- broader provider breadth / fallback governance
+- AI translation quality-control policy
 
-```bash
-pnpm bench:dispatch -- --mock-response "## Summary\nMock executor output"
-```
-
-这只用于 harness 演练，不代表真实模型调用。
-
-## Next Likely Upgrades
-
-- baseline import 与外部参考输出对比
-- 让外部模型返回可自动应用的结构化 edit plan
-- model judge 作为补充维度，而不是主评分器
+这份文档的重点不是宣称“全都做完了”，而是明确 Astra 现在已经有一套 **deterministic + live + holdout + proof** 的最小可用 benchmark 治理体系，并且 provider routing / privacy / document readers 都已经进入可验证范围。
