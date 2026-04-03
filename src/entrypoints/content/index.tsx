@@ -1,7 +1,6 @@
 import { defineContentScript, browser } from "#imports"
 import {
   getPageTranslationState,
-  retryFailedBlocks,
   startPageTranslation,
   stopPageTranslation,
 } from "./page-translate"
@@ -30,7 +29,11 @@ import {
   type TranslationSnapshot,
 } from "@/types/translation"
 import { readConfig } from "@/utils/storage/config"
-import { hasResolvedProviderAccess, resolveSiteTranslationSettings } from "@/types/config"
+import {
+  hasResolvedProviderAccess,
+  resolveManagedProviderConfig,
+  resolveSiteTranslationSettings,
+} from "@/types/config"
 import { readAstraSession } from "@/utils/storage/auth"
 
 let siteUiMounted = false
@@ -43,6 +46,10 @@ let lastAutomationState = {
   providerReady: false,
 }
 let lastProviderSnapshot: string | null = null
+let lastTranslationSettingsSnapshot: string | null = null
+let storageChangeGeneration = 0
+let reconcileGeneration = 0
+let providerHotSwitchGeneration = 0
 const spaWatcher = createSPANavigationWatcher()
 let spaRestartTimer: ReturnType<typeof setTimeout> | null = null
 
@@ -57,6 +64,10 @@ export function __resetContentEntrypointForTests() {
     providerReady: false,
   }
   lastProviderSnapshot = null
+  lastTranslationSettingsSnapshot = null
+  storageChangeGeneration = 0
+  reconcileGeneration = 0
+  providerHotSwitchGeneration = 0
   spaWatcher.stop()
   if (spaRestartTimer !== null) {
     clearTimeout(spaRestartTimer)
@@ -99,8 +110,7 @@ export default defineContentScript({
 
     browser.storage.onChanged?.addListener((_changes, areaName) => {
       if (areaName !== "local") return
-      void reconcileSiteAutomation()
-      void handleProviderHotSwitch()
+      void handleStorageChange()
     })
 
     const [config, session] = await Promise.all([
@@ -122,23 +132,130 @@ export default defineContentScript({
           if (isVideoPage()) {
             stopVideoSubtitleTranslation()
           }
+          if (spaRestartTimer !== null) {
+            clearTimeout(spaRestartTimer)
+          }
           spaRestartTimer = setTimeout(() => {
             spaRestartTimer = null
-            void startPageTranslation()
+            void startTranslationForCurrentSettings()
           }, 500)
         }
       })
     }
 
-    // Initialize provider snapshot for hot-switch detection
-    lastProviderSnapshot = JSON.stringify(config.provider ?? {})
+    // Initialize effective provider snapshot for hot-switch detection
+    lastProviderSnapshot = buildProviderSnapshot(config, session)
   },
 })
+
+function buildTranslationSettingsSnapshot(siteSettings: ReturnType<typeof resolveSiteTranslationSettings>): string {
+  const selectors = normalizeSelectorList(siteSettings.selectors) ?? []
+  const excludeSelectors = normalizeSelectorList(siteSettings.excludeSelectors) ?? []
+
+  return JSON.stringify({
+    enabled: siteSettings.enabled,
+    targetLang: siteSettings.targetLang,
+    contentScope: siteSettings.contentScope,
+    presentationMode: siteSettings.presentation.mode,
+    presentationTheme: siteSettings.presentation.theme,
+    selectors,
+    excludeSelectors,
+    paragraphMinLength: siteSettings.paragraphMinLength ?? null,
+  })
+}
+
+function normalizeSelectorList(selectors?: string[]): string[] | undefined {
+  if (!selectors) return undefined
+
+  const normalized = [...new Set(
+    selectors
+      .map((selector) => selector.trim())
+      .filter((selector) => selector.length > 0),
+  )].sort((left, right) => left.localeCompare(right))
+
+  return normalized.length > 0 ? normalized : undefined
+}
+
+function buildTranslationStartOverrides(
+  siteSettings: ReturnType<typeof resolveSiteTranslationSettings>,
+) {
+  return {
+    targetLang: siteSettings.targetLang,
+    contentScope: siteSettings.contentScope,
+    translationMode: siteSettings.presentation.mode,
+    translationTheme: siteSettings.presentation.theme,
+    selectors: normalizeSelectorList(siteSettings.selectors),
+    excludeSelectors: normalizeSelectorList(siteSettings.excludeSelectors),
+    paragraphMinLength: siteSettings.paragraphMinLength,
+  }
+}
+
+function buildProviderSnapshot(
+  config: Awaited<ReturnType<typeof readConfig>>,
+  session: Awaited<ReturnType<typeof readAstraSession>>,
+) {
+  const provider = resolveManagedProviderConfig(config.provider, session)
+  return JSON.stringify({
+    id: provider.id ?? null,
+    apiKey: (provider.apiKey ?? "").trim(),
+    accessToken: (provider.accessToken ?? "").trim(),
+    relayBaseURL: provider.relayBaseURL?.trim() ?? "",
+    model: (provider.model ?? "").trim(),
+  })
+}
+
+async function startTranslationForCurrentSettings(
+  configOverride?: Awaited<ReturnType<typeof readConfig>>,
+  sessionOverride?: Awaited<ReturnType<typeof readAstraSession>>,
+) {
+  const [config, session] = await Promise.all([
+    configOverride ? Promise.resolve(configOverride) : readConfig(),
+    sessionOverride !== undefined ? Promise.resolve(sessionOverride) : readAstraSession(),
+  ])
+
+  if (!hasResolvedProviderAccess(config.provider, session)) {
+    return false
+  }
+
+  const siteSettings = resolveSiteTranslationSettings(config, window.location.hostname)
+  if (!siteSettings.enabled) {
+    return false
+  }
+
+  await startPageTranslation(buildTranslationStartOverrides(siteSettings))
+  if (isVideoPage()) {
+    void startVideoSubtitleTranslation()
+  }
+
+  return true
+}
+
+async function handleStorageChange() {
+  const generation = ++storageChangeGeneration
+  const [config, session] = await Promise.all([
+    readConfig(),
+    readAstraSession(),
+  ])
+
+  if (generation !== storageChangeGeneration) {
+    return
+  }
+
+  const reconcileResult = await reconcileSiteAutomation(config, session)
+  if (generation !== storageChangeGeneration) {
+    return
+  }
+
+  await handleProviderHotSwitch(config, session, {
+    activeSessionHandled: reconcileResult.activeSessionHandled,
+  })
+}
 
 async function reconcileSiteAutomation(
   configOverride?: Awaited<ReturnType<typeof readConfig>>,
   sessionOverride?: Awaited<ReturnType<typeof readAstraSession>>,
-) {
+): Promise<{ activeSessionHandled: boolean }> {
+  const generation = ++reconcileGeneration
   const [config, session] = configOverride && sessionOverride !== undefined
     ? [configOverride, sessionOverride]
     : await Promise.all([
@@ -146,9 +263,17 @@ async function reconcileSiteAutomation(
         sessionOverride !== undefined ? Promise.resolve(sessionOverride) : readAstraSession(),
       ])
 
+  if (generation !== reconcileGeneration) {
+    return { activeSessionHandled: false }
+  }
+
   const siteSettings = resolveSiteTranslationSettings(config, window.location.hostname)
   const providerReady = hasResolvedProviderAccess(config.provider, session)
   const currentState = getPageTranslationState()
+  let activeSessionHandled = false
+  const translationSettingsSnapshot = buildTranslationSettingsSnapshot(siteSettings)
+  const translationSettingsChanged = lastTranslationSettingsSnapshot !== null
+    && translationSettingsSnapshot !== lastTranslationSettingsSnapshot
   const automationEligible = siteSettings.enabled && siteSettings.alwaysTranslate && providerReady
   const previousAutomationEligible = lastAutomationState.enabled
     && lastAutomationState.alwaysTranslate
@@ -163,26 +288,73 @@ async function reconcileSiteAutomation(
   }
 
   if (!siteSettings.enabled || !providerReady) {
+    if (generation !== reconcileGeneration) {
+      return { activeSessionHandled: false }
+    }
+
     if (currentState.phase !== "idle") {
       stopPageTranslation()
       removeTranslatedSubtitles()
       if (isVideoPage()) {
         stopVideoSubtitleTranslation()
       }
+      activeSessionHandled = true
     }
+
+    if (generation !== reconcileGeneration) {
+      return { activeSessionHandled: false }
+    }
+
     lastAutomationState = {
       enabled: siteSettings.enabled,
       alwaysTranslate: siteSettings.alwaysTranslate,
       providerReady,
     }
-    return
+    lastTranslationSettingsSnapshot = translationSettingsSnapshot
+    return { activeSessionHandled }
   }
 
-  if (siteSettings.alwaysTranslate && currentState.phase === "idle" && !autoTranslateSuppressedForPage) {
-    await startPageTranslation()
+  if (currentState.phase !== "idle" && translationSettingsChanged && !autoTranslateSuppressedForPage) {
+    if (generation !== reconcileGeneration) {
+      return { activeSessionHandled: false }
+    }
+
+    stopPageTranslation()
+    removeTranslatedSubtitles()
+    if (isVideoPage()) {
+      stopVideoSubtitleTranslation()
+    }
+    activeSessionHandled = true
+
+    if (generation !== reconcileGeneration) {
+      return { activeSessionHandled: false }
+    }
+
+    await startPageTranslation(buildTranslationStartOverrides(siteSettings))
+    if (generation !== reconcileGeneration) {
+      return { activeSessionHandled: false }
+    }
     if (isVideoPage()) {
       void startVideoSubtitleTranslation()
     }
+  }
+
+  if (siteSettings.alwaysTranslate && currentState.phase === "idle" && !autoTranslateSuppressedForPage) {
+    if (generation !== reconcileGeneration) {
+      return { activeSessionHandled: false }
+    }
+
+    await startPageTranslation(buildTranslationStartOverrides(siteSettings))
+    if (generation !== reconcileGeneration) {
+      return { activeSessionHandled: false }
+    }
+    if (isVideoPage()) {
+      void startVideoSubtitleTranslation()
+    }
+  }
+
+  if (generation !== reconcileGeneration) {
+    return { activeSessionHandled: false }
   }
 
   lastAutomationState = {
@@ -190,19 +362,58 @@ async function reconcileSiteAutomation(
     alwaysTranslate: siteSettings.alwaysTranslate,
     providerReady,
   }
+  lastTranslationSettingsSnapshot = translationSettingsSnapshot
+  return { activeSessionHandled }
 }
 
-async function handleProviderHotSwitch() {
-  const config = await readConfig()
-  const currentProviderSnapshot = JSON.stringify(config.provider ?? {})
-  if (lastProviderSnapshot !== null && currentProviderSnapshot !== lastProviderSnapshot) {
-    lastProviderSnapshot = currentProviderSnapshot
-    const state = getPageTranslationState()
-    if (state.phase !== "idle" && state.progress.failedBlocks > 0) {
-      retryFailedBlocks()
-    }
-  } else {
-    lastProviderSnapshot = currentProviderSnapshot
+async function handleProviderHotSwitch(
+  config: Awaited<ReturnType<typeof readConfig>>,
+  session: Awaited<ReturnType<typeof readAstraSession>>,
+  options: { activeSessionHandled?: boolean } = {},
+) {
+  const generation = ++providerHotSwitchGeneration
+  if (generation !== providerHotSwitchGeneration) return
+
+  const currentProviderSnapshot = buildProviderSnapshot(config, session)
+  const previousProviderSnapshot = lastProviderSnapshot
+  lastProviderSnapshot = currentProviderSnapshot
+
+  if (previousProviderSnapshot === null || currentProviderSnapshot === previousProviderSnapshot) {
+    return
+  }
+
+  if (options.activeSessionHandled) {
+    return
+  }
+
+  const state = getPageTranslationState()
+  if (state.phase === "idle") {
+    return
+  }
+
+  const providerReady = hasResolvedProviderAccess(config.provider, session)
+  if (!providerReady) {
+    return
+  }
+
+  const siteSettings = resolveSiteTranslationSettings(config, window.location.hostname)
+  if (!siteSettings.enabled) {
+    return
+  }
+
+  stopPageTranslation()
+  removeTranslatedSubtitles()
+  if (isVideoPage()) {
+    stopVideoSubtitleTranslation()
+  }
+
+  if (generation !== providerHotSwitchGeneration) return
+
+  await startPageTranslation(buildTranslationStartOverrides(siteSettings))
+  if (generation !== providerHotSwitchGeneration) return
+
+  if (isVideoPage()) {
+    void startVideoSubtitleTranslation()
   }
 }
 

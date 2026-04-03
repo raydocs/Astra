@@ -16,6 +16,8 @@ export interface InjectOptions {
   targetLang?: string
 }
 
+export type InjectedTranslationContent = string | DocumentFragment
+
 function getDirectTranslationWrappers(element: HTMLElement): HTMLElement[] {
   return Array.from(element.children).filter(
     (child): child is HTMLElement =>
@@ -42,7 +44,7 @@ function getDirectSourceWrapper(element: HTMLElement): HTMLElement | null {
 
 function createWrapper(
   state: "loading" | "1",
-  text: string,
+  content: InjectedTranslationContent,
   { theme = "default", targetLang = "zh-CN", mode = "bilingual" }: InjectOptions = {},
 ) {
   const wrapper = document.createElement("span")
@@ -53,7 +55,12 @@ function createWrapper(
 
   const inner = document.createElement("span")
   inner.className = "notranslate astra-translation-inner"
-  inner.textContent = text
+  if (typeof content === "string") {
+    inner.textContent = content
+  } else {
+    inner.replaceChildren()
+    inner.appendChild(content)
+  }
 
   wrapper.appendChild(inner)
   return wrapper
@@ -114,12 +121,12 @@ function unwrapSourceWrapper(element: HTMLElement) {
 
 export function injectTranslation(
   originalElement: HTMLElement,
-  translatedText: string,
+  translatedContent: InjectedTranslationContent,
   options: InjectOptions = {},
 ) {
   if (getDirectTranslationWrappers(originalElement).length > 0) return
 
-  const wrapper = createWrapper("1", translatedText, options)
+  const wrapper = createWrapper("1", translatedContent, options)
   if (options.mode === "translation-only") {
     ensureSourceWrapper(originalElement)
     setSourceHidden(originalElement, true)
@@ -145,7 +152,7 @@ export function showLoading(element: HTMLElement, options: InjectOptions = {}) {
 
 export function replaceLoading(
   element: HTMLElement,
-  translatedText: string,
+  translatedContent: InjectedTranslationContent,
   options: InjectOptions = {},
 ) {
   const existing = getDirectLoadingWrapper(element)
@@ -162,11 +169,16 @@ export function replaceLoading(
     existing.setAttribute("lang", targetLang)
     const inner = existing.querySelector(".astra-translation-inner")
     if (inner) {
-      inner.textContent = translatedText
+      if (typeof translatedContent === "string") {
+        inner.textContent = translatedContent
+      } else {
+        inner.replaceChildren()
+        inner.appendChild(translatedContent)
+      }
       inner.classList.remove("astra-loading-dots")
     }
   } else {
-    injectTranslation(element, translatedText, options)
+    injectTranslation(element, translatedContent, options)
   }
 }
 

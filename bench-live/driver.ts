@@ -2,7 +2,7 @@ import { access, mkdir, readFile, writeFile } from "node:fs/promises"
 import path from "node:path"
 import { pathToFileURL } from "node:url"
 
-import { chromium, type Page } from "playwright"
+import { chromium, type Browser, type Page } from "playwright"
 
 export const DEFAULT_LIVE_ARTIFACT_ROOT = path.resolve(process.cwd(), "bench-live-results")
 export const DEFAULT_BROWSER_CANDIDATES = [
@@ -49,10 +49,15 @@ export async function withLiveBrowserPage<T>(
     )
   }
 
-  const browser = await chromium.launch({
-    headless: true,
-    executablePath: browserExecutablePath,
-  })
+  let browser: Browser
+  try {
+    browser = await chromium.launch({
+      headless: true,
+      executablePath: browserExecutablePath,
+    })
+  } catch (error) {
+    throw normalizeLiveBrowserLaunchFailure(error, browserExecutablePath)
+  }
 
   try {
     const page = await browser.newPage({
@@ -66,6 +71,13 @@ export async function withLiveBrowserPage<T>(
   } finally {
     await browser.close()
   }
+}
+
+function normalizeLiveBrowserLaunchFailure(error: unknown, browserExecutablePath: string) {
+  const reason = error instanceof Error ? error.message : String(error)
+  return new LiveBrowserUnavailableError(
+    `Failed to launch live Playwright browser at ${browserExecutablePath}: ${reason}`,
+  )
 }
 
 async function pathExists(filePath: string) {

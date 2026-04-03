@@ -1,6 +1,8 @@
 import { z } from "zod"
 
 import {
+  AstraConfigInputSchema,
+  AstraConfigSchema,
   ContentScopeSchema,
   TranslationModeSchema,
   TranslationThemeSchema,
@@ -26,6 +28,7 @@ export const ContentTranslationOverridesSchema = z.object({
 })
 
 export const TranslationTaskSchema = z.enum(["translate", "explain", "custom"])
+export const TranslationPlaceholderFormatSchema = z.enum(["astra-rich-text-v1"])
 
 export const TranslateBatchPayloadSchema = z.object({
   texts: z.array(z.string()),
@@ -34,6 +37,7 @@ export const TranslateBatchPayloadSchema = z.object({
   context: TranslationRequestContextSchema.optional(),
   task: TranslationTaskSchema.optional(),
   customSystemPrompt: z.string().max(2000).optional(),
+  placeholderFormat: TranslationPlaceholderFormatSchema.optional(),
 })
 
 const TranslationErrorCodeSchema = z.enum([
@@ -81,17 +85,49 @@ const TranslationSnapshotSchema = z.object({
   framesTranslating: z.number().int().nonnegative().optional(),
 })
 
-const RuntimeResponseSchema = z.union([
+const ProviderRoutingSuccessMetadataSchema = z.object({
+  attemptedTransports: z.array(z.enum(["direct", "relay"])),
+  finalTransport: z.enum(["direct", "relay"]),
+  fallbackUsed: z.boolean(),
+})
+
+const ProviderRoutingErrorMetadataSchema = z.object({
+  attemptedTransports: z.array(z.enum(["direct", "relay"])),
+  finalTransport: z.enum(["direct", "relay"]).nullable(),
+  fallbackUsed: z.boolean(),
+})
+
+const RuntimeTranslateResponseSchema = z.union([
   z.object({
     type: z.literal("runtime/translate-batch:success"),
     payload: z.object({
       translations: z.array(z.string()),
+      metadata: ProviderRoutingSuccessMetadataSchema.optional(),
     }),
   }),
   z.object({
     type: z.literal("runtime/translate-batch:error"),
     error: TranslationErrorSchema,
+    metadata: ProviderRoutingErrorMetadataSchema.optional(),
   }),
+])
+
+const RuntimeSaveConfigResponseSchema = z.union([
+  z.object({
+    type: z.literal("runtime/save-config:success"),
+    payload: z.object({
+      config: AstraConfigSchema,
+    }),
+  }),
+  z.object({
+    type: z.literal("runtime/save-config:error"),
+    error: TranslationErrorSchema,
+  }),
+])
+
+const RuntimeResponseSchema = z.union([
+  RuntimeTranslateResponseSchema,
+  RuntimeSaveConfigResponseSchema,
 ])
 
 const ContentCommandResponseSchema = z.union([
@@ -108,6 +144,7 @@ const ContentCommandResponseSchema = z.union([
 
 export type TranslationRequestContext = z.infer<typeof TranslationRequestContextSchema>
 export type TranslationTask = z.infer<typeof TranslationTaskSchema>
+export type TranslationPlaceholderFormat = z.infer<typeof TranslationPlaceholderFormatSchema>
 export type ContentTranslationOverrides = z.infer<typeof ContentTranslationOverridesSchema>
 
 export interface RuntimeTranslateBatchRequest {
@@ -119,12 +156,22 @@ export interface RuntimeTranslateBatchSuccessResponse {
   type: "runtime/translate-batch:success"
   payload: {
     translations: string[]
+    metadata?: {
+      attemptedTransports: Array<"direct" | "relay">
+      finalTransport: "direct" | "relay"
+      fallbackUsed: boolean
+    }
   }
 }
 
 export interface RuntimeTranslateBatchErrorResponse {
   type: "runtime/translate-batch:error"
   error: TranslationError
+  metadata?: {
+    attemptedTransports: Array<"direct" | "relay">
+    finalTransport: "direct" | "relay" | null
+    fallbackUsed: boolean
+  }
 }
 
 export interface RuntimeTabCommandRequest {
@@ -138,13 +185,33 @@ export interface RuntimeCurrentTabCommandRequest {
   command: ContentCommand
 }
 
+export interface RuntimeSaveConfigRequest {
+  type: "runtime/save-config"
+  payload: z.infer<typeof AstraConfigInputSchema>
+}
+
+export interface RuntimeSaveConfigSuccessResponse {
+  type: "runtime/save-config:success"
+  payload: {
+    config: z.infer<typeof AstraConfigSchema>
+  }
+}
+
+export interface RuntimeSaveConfigErrorResponse {
+  type: "runtime/save-config:error"
+  error: TranslationError
+}
+
 export type RuntimeRequest =
   | RuntimeTranslateBatchRequest
   | RuntimeTabCommandRequest
   | RuntimeCurrentTabCommandRequest
+  | RuntimeSaveConfigRequest
 export type RuntimeResponse =
   | RuntimeTranslateBatchSuccessResponse
   | RuntimeTranslateBatchErrorResponse
+  | RuntimeSaveConfigSuccessResponse
+  | RuntimeSaveConfigErrorResponse
 
 export interface ContentGetTranslationStateCommand {
   type: "content/get-translation-state"
@@ -202,8 +269,29 @@ export function isRuntimeCurrentTabCommandRequest(
     && isContentCommand(candidate.command)
 }
 
+export function isRuntimeSaveConfigRequest(
+  value: unknown,
+): value is RuntimeSaveConfigRequest {
+  if (typeof value !== "object" || value === null) return false
+  const candidate = value as Partial<RuntimeSaveConfigRequest>
+  return candidate.type === "runtime/save-config"
+    && AstraConfigInputSchema.safeParse(candidate.payload).success
+}
+
 export function isRuntimeResponse(value: unknown): value is RuntimeResponse {
   return RuntimeResponseSchema.safeParse(value).success
+}
+
+export function isRuntimeTranslateResponse(
+  value: unknown,
+): value is RuntimeTranslateBatchSuccessResponse | RuntimeTranslateBatchErrorResponse {
+  return RuntimeTranslateResponseSchema.safeParse(value).success
+}
+
+export function isRuntimeSaveConfigResponse(
+  value: unknown,
+): value is RuntimeSaveConfigSuccessResponse | RuntimeSaveConfigErrorResponse {
+  return RuntimeSaveConfigResponseSchema.safeParse(value).success
 }
 
 export function isContentCommand(value: unknown): value is ContentCommand {

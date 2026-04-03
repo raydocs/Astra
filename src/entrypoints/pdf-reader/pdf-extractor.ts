@@ -7,6 +7,29 @@
 import { getDocument, GlobalWorkerOptions } from "pdfjs-dist/legacy/build/pdf.mjs"
 
 const IS_NODE_BENCH_ENV = typeof process !== "undefined" && !!process.versions?.node
+const STANDARD_FONT_DATA_URL = (() => {
+  if (!IS_NODE_BENCH_ENV) {
+    return undefined
+  }
+
+  const nodeProcess = process as typeof process & {
+    getBuiltinModule?: (id: string) => Record<string, unknown> | undefined
+  }
+  const nodePath = nodeProcess.getBuiltinModule?.("node:path") as {
+    dirname?: (value: string) => string
+    resolve?: (...segments: string[]) => string
+  } | undefined
+  const nodeUrl = nodeProcess.getBuiltinModule?.("node:url") as {
+    fileURLToPath?: (value: URL | string) => string
+  } | undefined
+
+  if (nodePath?.dirname && nodePath.resolve && nodeUrl?.fileURLToPath && import.meta.url.startsWith("file:")) {
+    const moduleDir = nodePath.dirname(nodeUrl.fileURLToPath(import.meta.url))
+    return `${nodePath.resolve(moduleDir, "../../../node_modules/pdfjs-dist/standard_fonts")}/`
+  }
+
+  return `${process.cwd()}/node_modules/pdfjs-dist/standard_fonts/`
+})()
 
 // In the browser bundle we still prefer the bundled worker, but in Node-based
 // bench harness runs we disable workers entirely to avoid worker resolution
@@ -115,6 +138,7 @@ export async function extractPdfPages(data: Uint8Array): Promise<PdfPage[]> {
   const pdf = await getDocument({
     data,
     disableWorker: IS_NODE_BENCH_ENV,
+    ...(STANDARD_FONT_DATA_URL ? { standardFontDataUrl: STANDARD_FONT_DATA_URL } : {}),
   } as Parameters<typeof getDocument>[0]).promise
   const pages: PdfPage[] = []
 

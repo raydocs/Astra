@@ -11,7 +11,7 @@ import { readConfig } from "@/utils/storage/config"
 import { resolveSiteTranslationSettings } from "@/types/config"
 
 import type { VideoPlatformConfig } from "./types"
-import { youtubePlatform } from "./youtube"
+import { startYouTubeHybridSubtitleSession, youtubePlatform } from "./youtube"
 import { bilibiliPlatform } from "./bilibili"
 import { netflixPlatform } from "./netflix"
 
@@ -23,13 +23,23 @@ const ALL_PLATFORMS: VideoPlatformConfig[] = [
 
 const ASTRA_SUBTITLE_CLASS = "astra-video-subtitle"
 const STYLE_ID = "astra-video-subtitle-styles"
+const PRELOAD_BATCH_SIZE = 15
+const STRUCTURED_CUE_BATCH_SIZE = 20
+const STRUCTURED_CUE_TOLERANCE_SECONDS = 0.35
+const STRUCTURED_TRACK_LOAD_WAIT_MS = 100
+
+interface StructuredTrackCue {
+  startTime: number
+  endTime: number
+  text: string
+  translation?: string
+}
 
 const MAX_CACHE_SIZE = 500
 const translationCache = new Map<string, string>()
 const pendingTranslations = new Set<string>()
 
 function cachePut(key: string, value: string): void {
-  // LRU eviction: delete oldest entries when over limit
   if (translationCache.size >= MAX_CACHE_SIZE) {
     const firstKey = translationCache.keys().next().value
     if (firstKey !== undefined) translationCache.delete(firstKey)
@@ -40,7 +50,6 @@ function cachePut(key: string, value: string): void {
 function cacheGet(key: string): string | undefined {
   const value = translationCache.get(key)
   if (value !== undefined) {
-    // Move to end (most recently used)
     translationCache.delete(key)
     translationCache.set(key, value)
   }
@@ -50,8 +59,7 @@ function cacheGet(key: string): string | undefined {
 let observer: MutationObserver | null = null
 let activePlatform: VideoPlatformConfig | null = null
 let preloadAbort: AbortController | null = null
-
-const PRELOAD_BATCH_SIZE = 15
+let activeSessionStop: (() => void) | null = null
 
 function detectPlatform(): VideoPlatformConfig | null {
   const hostname = window.location.hostname
@@ -74,6 +82,7 @@ function injectStyles(): void {
       color: #fffc;
       font-size: 0.85em;
       line-height: 1.4;
+      white-space: pre-line;
       text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.8);
       margin-top: 2px;
       padding: 2px 6px;
@@ -105,14 +114,30 @@ function getCaptionText(platform: VideoPlatformConfig, container: HTMLElement): 
     }
   }
 
-  // Fallback: get all text, excluding our injected translations
   const clone = container.cloneNode(true) as HTMLElement
   clone.querySelectorAll(`.${ASTRA_SUBTITLE_CLASS}`).forEach((el) => el.remove())
   return clone.textContent?.trim() ?? ""
 }
 
-function injectTranslation(container: HTMLElement, text: string, sourceText: string): void {
+function clearInjectedTranslations(container: ParentNode): void {
   container.querySelectorAll(`.${ASTRA_SUBTITLE_CLASS}`).forEach((el) => el.remove())
+}
+
+function hasMatchingTranslation(
+  container: HTMLElement,
+  sourceText: string,
+  translationText?: string,
+): boolean {
+  const existing = container.querySelector<HTMLElement>(`.${ASTRA_SUBTITLE_CLASS}`)
+  if (!existing || existing.getAttribute("data-source") !== sourceText) {
+    return false
+  }
+
+  return translationText === undefined || existing.textContent === translationText
+}
+
+function injectTranslation(container: HTMLElement, text: string, sourceText: string): void {
+  clearInjectedTranslations(container)
   const el = document.createElement("span")
   el.className = ASTRA_SUBTITLE_CLASS
   el.textContent = text
@@ -128,20 +153,16 @@ async function translateAndInject(
   const sourceText = getCaptionText(platform, captionWindow).trim()
   if (!sourceText || sourceText.length < 2) return
 
-  // Already showing correct translation
   const existing = captionWindow.querySelector(`.${ASTRA_SUBTITLE_CLASS}`)
   if (existing?.getAttribute("data-source") === sourceText) return
 
   const cacheKey = `${sourceText}|${targetLang}`
-
-  // Cache hit
   const cached = cacheGet(cacheKey)
   if (cached) {
     injectTranslation(captionWindow, cached, sourceText)
     return
   }
 
-  // Deduplicate
   if (pendingTranslations.has(cacheKey)) return
   pendingTranslations.add(cacheKey)
 
@@ -168,13 +189,11 @@ function handleCaptionMutation(platform: VideoPlatformConfig, targetLang: string
   const container = document.querySelector(platform.captionContainerSelector)
   if (!container) return
 
-  // Try to find child caption windows (YouTube uses nested .ytp-caption-window-* divs)
   const children = container.children
   let foundChild = false
 
-  for (let i = 0; i < children.length; i++) {
-    const child = children[i] as HTMLElement
-    // Skip our own injected elements
+  for (let index = 0; index < children.length; index += 1) {
+    const child = children[index] as HTMLElement
     if (child.classList.contains(ASTRA_SUBTITLE_CLASS)) continue
     const text = getCaptionText(platform, child)
     if (text) {
@@ -183,7 +202,6 @@ function handleCaptionMutation(platform: VideoPlatformConfig, targetLang: string
     }
   }
 
-  // If no child windows found, treat the container itself as the caption element
   if (!foundChild) {
     const text = getCaptionText(platform, container as HTMLElement)
     if (text) void translateAndInject(platform, container as HTMLElement, targetLang)
@@ -210,84 +228,301 @@ function waitForElement(selector: string, timeoutMs = 10000): Promise<Element | 
   })
 }
 
-/**
- * Best-effort extraction of caption texts from YouTube's embedded player data.
- * YouTube stores caption track URLs in ytInitialPlayerResponse; we cannot fetch
- * the actual timed-text payloads cross-origin, but the page sometimes exposes
- * pre-rendered caption segments in the DOM or in script data.  Returns whatever
- * texts can be scraped without a network request.
- */
-function tryCollectYouTubeCaptions(): string[] {
-  try {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const playerResponse = (window as any).ytInitialPlayerResponse
-    if (!playerResponse) return []
+function normalizeLanguageCode(languageCode?: string): string {
+  return (languageCode ?? "")
+    .trim()
+    .toLowerCase()
+    .replace(/_/g, "-")
+}
 
-    const captionTracks =
-      playerResponse?.captions?.playerCaptionsTracklistRenderer?.captionTracks
-    if (!Array.isArray(captionTracks) || captionTracks.length === 0) return []
+function findVideoForContainer(rootContainer: HTMLElement): HTMLVideoElement | null {
+  const scopedVideo = rootContainer.closest(".html5-video-player, .bpx-player-container, .watch-video, [data-uia='video-canvas']")?.querySelector("video")
+  if (scopedVideo instanceof HTMLVideoElement) {
+    return scopedVideo
+  }
 
-    // The playerResponse only contains track *metadata* (URLs, language codes),
-    // not the actual cue texts.  However, YouTube's timedtext endpoint sometimes
-    // injects cue data into `window.ytcfg` or into script tags.  Attempt to
-    // scrape any pre-rendered caption JSON that may be embedded in the page.
-    const scripts = document.querySelectorAll("script")
-    const cueTexts: string[] = []
+  const siblingVideo = rootContainer.parentElement?.querySelector("video")
+  return siblingVideo instanceof HTMLVideoElement ? siblingVideo : null
+}
 
-    for (const script of scripts) {
-      const content = script.textContent
-      if (!content || !content.includes('"segs"')) continue
+function collectTrackCues(track: TextTrack): StructuredTrackCue[] {
+  if (!track.cues) return []
 
-      // Look for timed-text JSON blobs with segments.
-      // Format: {"segs":[{"utf8":"Hello "},{"utf8":"world"}]}
-      const segRegex = /"segs"\s*:\s*\[([^\]]+)\]/g
-      let match: RegExpExecArray | null
-      while ((match = segRegex.exec(content)) !== null) {
-        try {
-          const segs = JSON.parse(`[${match[1]}]`) as Array<{ utf8?: string }>
-          const line = segs
-            .map((s) => s.utf8 ?? "")
-            .join("")
-            .trim()
-          if (line && line.length >= 2) {
-            cueTexts.push(line)
-          }
-        } catch {
-          // Malformed JSON segment — skip
-        }
-      }
+  const cues: StructuredTrackCue[] = []
+  for (let index = 0; index < track.cues.length; index += 1) {
+    const cue = track.cues[index]
+    if (!cue) continue
+
+    const text = "text" in cue && typeof cue.text === "string"
+      ? cue.text
+      : ""
+    const normalizedText = text
+      .replace(/<\/?[^>]+>/g, "")
+      .replace(/\s+/g, " ")
+      .trim()
+
+    if (!normalizedText) continue
+    cues.push({
+      startTime: cue.startTime,
+      endTime: cue.endTime,
+      text: normalizedText,
+    })
+  }
+
+  return cues
+}
+
+function scoreTextTrack(track: TextTrack, targetLang: string): number {
+  if (track.label.startsWith("Astra: ")) return Number.NEGATIVE_INFINITY
+  if (track.kind !== "subtitles" && track.kind !== "captions") {
+    return Number.NEGATIVE_INFINITY
+  }
+
+  let score = 0
+  if (track.mode === "showing") score += 10
+  if (track.kind === "captions") score += 3
+  if (normalizeLanguageCode(track.language) !== normalizeLanguageCode(targetLang)) score += 8
+  if ((track.label ?? "").trim().length > 0) score += 2
+  return score
+}
+
+async function collectStructuredTrackCues(
+  video: HTMLVideoElement,
+  targetLang: string,
+): Promise<StructuredTrackCue[]> {
+  const tracks = Array.from(video.textTracks)
+    .map((track) => ({ track, score: scoreTextTrack(track, targetLang) }))
+    .filter((entry) => Number.isFinite(entry.score))
+    .sort((left, right) => right.score - left.score)
+
+  for (const { track } of tracks) {
+    const previousMode = track.mode
+    if (track.mode === "disabled") {
+      track.mode = "hidden"
+      await new Promise((resolve) => setTimeout(resolve, STRUCTURED_TRACK_LOAD_WAIT_MS))
     }
 
-    return [...new Set(cueTexts)]
-  } catch {
-    return []
+    const cues = collectTrackCues(track)
+
+    if (previousMode === "disabled") {
+      track.mode = previousMode
+    }
+
+    if (cues.length > 0) {
+      return cues
+    }
+  }
+
+  return []
+}
+
+function buildTextTrackSignature(video: HTMLVideoElement, targetLang: string): string {
+  return Array.from(video.textTracks)
+    .map((track) => {
+      const cueCount = track.cues?.length ?? 0
+      return [
+        scoreTextTrack(track, targetLang),
+        track.kind,
+        track.label,
+        track.language,
+        track.mode,
+        cueCount,
+      ].join(":")
+    })
+    .join("|")
+}
+
+async function translateStructuredCues(
+  cues: StructuredTrackCue[],
+  targetLang: string,
+): Promise<void> {
+  const uniqueTexts = Array.from(new Set(cues.map((cue) => cue.text)))
+
+  for (let index = 0; index < uniqueTexts.length; index += STRUCTURED_CUE_BATCH_SIZE) {
+    const batch = uniqueTexts.slice(index, index + STRUCTURED_CUE_BATCH_SIZE)
+    const uncached = batch.filter((text) => !cacheGet(`${text}|${targetLang}`))
+    if (uncached.length === 0) continue
+
+    const result = await translateTexts({
+      texts: uncached,
+      targetLang,
+      task: "translate",
+    })
+
+    if (!result.ok) {
+      return
+    }
+
+    uncached.forEach((text, translationIndex) => {
+      const translation = result.translations[translationIndex]
+      if (translation) {
+        cachePut(`${text}|${targetLang}`, translation)
+      }
+    })
+  }
+
+  cues.forEach((cue) => {
+    const translation = cacheGet(`${cue.text}|${targetLang}`)
+    if (translation) {
+      cue.translation = translation
+    }
+  })
+}
+
+function getActiveStructuredCues(cues: StructuredTrackCue[], currentTime: number): StructuredTrackCue[] {
+  return cues.filter((cue) =>
+    cue.startTime - STRUCTURED_CUE_TOLERANCE_SECONDS <= currentTime
+    && currentTime <= cue.endTime + STRUCTURED_CUE_TOLERANCE_SECONDS,
+  )
+}
+
+function findFallbackCaptionWindow(
+  platform: VideoPlatformConfig,
+  rootContainer: HTMLElement,
+): HTMLElement {
+  const children = Array.from(rootContainer.children)
+  for (const child of children) {
+    if (!(child instanceof HTMLElement) || child.classList.contains(ASTRA_SUBTITLE_CLASS)) continue
+    if (getCaptionText(platform, child).trim()) {
+      return child
+    }
+  }
+
+  return rootContainer
+}
+
+async function startStructuredTrackSubtitleSession(
+  platform: VideoPlatformConfig,
+  rootContainer: HTMLElement,
+  targetLang: string,
+): Promise<(() => void) | null> {
+  const video = findVideoForContainer(rootContainer)
+  if (!(video instanceof HTMLVideoElement)) {
+    return null
+  }
+
+  let stopped = false
+  let cues = await collectStructuredTrackCues(video, targetLang)
+  let trackSignature = buildTextTrackSignature(video, targetLang)
+  let refreshInFlight: Promise<void> | null = null
+
+  if (stopped) {
+    return null
+  }
+
+  if (cues.length > 0) {
+    await translateStructuredCues(cues, targetLang)
+  }
+
+  const refreshStructuredCues = () => {
+    const nextSignature = buildTextTrackSignature(video, targetLang)
+    if (stopped || refreshInFlight || (nextSignature === trackSignature && cues.length > 0)) {
+      return
+    }
+
+    refreshInFlight = (async () => {
+      const nextCues = await collectStructuredTrackCues(video, targetLang)
+      if (stopped) return
+
+      trackSignature = buildTextTrackSignature(video, targetLang)
+      cues = nextCues
+      if (cues.length > 0) {
+        await translateStructuredCues(cues, targetLang)
+      }
+      if (stopped) return
+      renderCurrent()
+    })().finally(() => {
+      refreshInFlight = null
+    })
+  }
+
+  const renderStructured = (): boolean => {
+    if (cues.length === 0) return false
+
+    const activeCues = getActiveStructuredCues(cues, video.currentTime)
+    if (activeCues.length === 0) {
+      return false
+    }
+
+    const translations = activeCues
+      .map((cue) => cue.translation ?? cacheGet(`${cue.text}|${targetLang}`))
+      .filter((translation): translation is string => typeof translation === "string" && translation.trim().length > 0)
+
+    if (translations.length !== activeCues.length) {
+      return false
+    }
+
+    const renderTarget = findFallbackCaptionWindow(platform, rootContainer)
+    const sourceText = activeCues.map((cue) => cue.text).join(" ")
+    const translationText = translations.join("\n")
+
+    if (!hasMatchingTranslation(renderTarget, sourceText, translationText)) {
+      injectTranslation(renderTarget, translationText, sourceText)
+    }
+
+    rootContainer.dataset.astraCaptionPipeline = `${platform.id}-layered`
+    rootContainer.dataset.astraCaptionSource = "text-track"
+    rootContainer.dataset.astraCaptionStatus = "ready"
+    return true
+  }
+
+  const renderCurrent = () => {
+    if (stopped) return
+
+    if (buildTextTrackSignature(video, targetLang) !== trackSignature || cues.length === 0) {
+      refreshStructuredCues()
+    }
+
+    if (renderStructured()) {
+      return
+    }
+
+    const fallbackTarget = findFallbackCaptionWindow(platform, rootContainer)
+    const fallbackText = getCaptionText(platform, fallbackTarget).trim()
+    if (!fallbackText) {
+      clearInjectedTranslations(rootContainer)
+      rootContainer.dataset.astraCaptionPipeline = `${platform.id}-layered`
+      rootContainer.dataset.astraCaptionStatus = cues.length > 0 ? "ready" : "dom-fallback"
+      delete rootContainer.dataset.astraCaptionSource
+      return
+    }
+
+    rootContainer.dataset.astraCaptionPipeline = `${platform.id}-layered`
+    rootContainer.dataset.astraCaptionSource = "dom"
+    rootContainer.dataset.astraCaptionStatus = "fallback-ready"
+    void translateAndInject(platform, fallbackTarget, targetLang)
+  }
+
+  const sessionObserver = new MutationObserver(() => {
+    renderCurrent()
+  })
+  sessionObserver.observe(rootContainer, { childList: true, subtree: true, characterData: true })
+
+  const playbackListener = () => {
+    renderCurrent()
+  }
+
+  video.addEventListener("timeupdate", playbackListener)
+  video.addEventListener("seeking", playbackListener)
+  video.addEventListener("seeked", playbackListener)
+
+  renderCurrent()
+
+  return () => {
+    stopped = true
+    sessionObserver.disconnect()
+    video.removeEventListener("timeupdate", playbackListener)
+    video.removeEventListener("seeking", playbackListener)
+    video.removeEventListener("seeked", playbackListener)
   }
 }
 
-/**
- * Pre-load subtitle translations by collecting caption texts over a time window,
- * then batch-translating them.  After this runs, the MutationObserver handler
- * will find cache hits and display translations instantly.
- *
- * For YouTube, also attempts to extract captions from embedded page data
- * before falling back to observing DOM mutations.
- */
 async function preloadSubtitleBatch(
   platform: VideoPlatformConfig,
   targetLang: string,
   durationMs = 5000,
 ): Promise<void> {
   const collected = new Set<string>()
-
-  // YouTube-specific: try to grab captions from embedded player data
-  if (platform.id === "youtube") {
-    const ytCaptions = tryCollectYouTubeCaptions()
-    for (const text of ytCaptions) {
-      collected.add(text)
-    }
-  }
-
-  // Observe DOM mutations to collect caption texts as they appear
   const container = document.querySelector(platform.captionContainerSelector)
   if (!container) return
 
@@ -296,32 +531,29 @@ async function preloadSubtitleBatch(
 
   const collectFromContainer = (): void => {
     const children = container.children
-    for (let i = 0; i < children.length; i++) {
-      const child = children[i] as HTMLElement
+    for (let index = 0; index < children.length; index += 1) {
+      const child = children[index] as HTMLElement
       if (child.classList.contains(ASTRA_SUBTITLE_CLASS)) continue
       const text = getCaptionText(platform, child).trim()
       if (text && text.length >= 2) {
         collected.add(text)
       }
     }
-    // Also check the container itself
+
     const containerText = getCaptionText(platform, container as HTMLElement).trim()
     if (containerText && containerText.length >= 2) {
       collected.add(containerText)
     }
   }
 
-  // Collect whatever is already in the DOM
   collectFromContainer()
 
-  // Observe for new captions over the collection window
   const collectObserver = new MutationObserver(() => {
     if (abort.signal.aborted) return
     collectFromContainer()
   })
   collectObserver.observe(container, { childList: true, subtree: true, characterData: true })
 
-  // Wait for the collection window to expire or until aborted
   await new Promise<void>((resolve) => {
     const timer = setTimeout(() => {
       resolve()
@@ -333,18 +565,15 @@ async function preloadSubtitleBatch(
   })
 
   collectObserver.disconnect()
-
   if (abort.signal.aborted) return
 
-  // Filter out texts that are already cached
-  const texts = Array.from(collected).filter((t) => !cacheGet(`${t}|${targetLang}`))
+  const texts = Array.from(collected).filter((text) => !cacheGet(`${text}|${targetLang}`))
   if (texts.length === 0) return
 
-  // Batch translate in groups of PRELOAD_BATCH_SIZE
-  for (let i = 0; i < texts.length; i += PRELOAD_BATCH_SIZE) {
+  for (let index = 0; index < texts.length; index += PRELOAD_BATCH_SIZE) {
     if (abort.signal.aborted) return
 
-    const batch = texts.slice(i, i + PRELOAD_BATCH_SIZE)
+    const batch = texts.slice(index, index + PRELOAD_BATCH_SIZE)
     try {
       const result = await translateTexts({
         texts: batch,
@@ -353,14 +582,13 @@ async function preloadSubtitleBatch(
       })
 
       if (result.ok) {
-        for (let j = 0; j < batch.length; j++) {
-          if (result.translations[j]) {
-            cachePut(`${batch[j]}|${targetLang}`, result.translations[j])
+        for (let translationIndex = 0; translationIndex < batch.length; translationIndex += 1) {
+          if (result.translations[translationIndex]) {
+            cachePut(`${batch[translationIndex]}|${targetLang}`, result.translations[translationIndex])
           }
         }
       }
     } catch {
-      // Batch translation failed — the per-cue fallback will handle these
       console.warn("[Astra] Subtitle preload batch failed, falling back to per-cue translation")
     }
   }
@@ -380,28 +608,60 @@ export async function startVideoSubtitleTranslation(): Promise<void> {
   injectStyles()
 
   const container = await waitForElement(platform.captionContainerSelector)
-  if (!container) return
+  if (!container) {
+    activePlatform = null
+    return
+  }
+
+  if (platform.id === "youtube") {
+    const session = await startYouTubeHybridSubtitleSession({
+      targetLang,
+      rootContainer: container as HTMLElement,
+      cacheGet,
+      cachePut,
+      getDomCaptionText: (captionContainer) => getCaptionText(platform, captionContainer),
+      injectTranslation,
+    })
+
+    if (session) {
+      activeSessionStop = session.stop
+      return
+    }
+  }
+
+  if (platform.preferTextTracks) {
+    const sessionStop = await startStructuredTrackSubtitleSession(
+      platform,
+      container as HTMLElement,
+      targetLang,
+    )
+
+    if (sessionStop) {
+      activeSessionStop = sessionStop
+      void preloadSubtitleBatch(platform, targetLang)
+      return
+    }
+  }
 
   observer = new MutationObserver(() => {
     handleCaptionMutation(platform, targetLang)
   })
   observer.observe(container, { childList: true, subtree: true, characterData: true })
   handleCaptionMutation(platform, targetLang)
-
-  // Fire-and-forget: preload subtitle translations in the background.
-  // The MutationObserver above continues to handle per-cue translation as a
-  // fallback; preloading just warms the cache so subsequent cues are instant.
+  activeSessionStop = null
   void preloadSubtitleBatch(platform, targetLang)
 }
 
 export function stopVideoSubtitleTranslation(): void {
   if (!activePlatform) return
   activePlatform = null
+  activeSessionStop?.()
+  activeSessionStop = null
   preloadAbort?.abort()
   preloadAbort = null
   observer?.disconnect()
   observer = null
-  document.querySelectorAll(`.${ASTRA_SUBTITLE_CLASS}`).forEach((el) => el.remove())
+  clearInjectedTranslations(document)
   removeStyles()
 }
 
@@ -427,7 +687,6 @@ export function setupVideoNavigationHandler(): void {
   })
 }
 
-/** Get list of supported platform IDs */
 export function getSupportedPlatformIds(): string[] {
   return ALL_PLATFORMS.map((p) => p.id)
 }

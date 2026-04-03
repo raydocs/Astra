@@ -14,6 +14,7 @@ import { siteAutomationScenarios } from "./site-automation"
 import { subtitleScenarios } from "./subtitle"
 import { subtitleFileScenarios } from "./subtitle-file"
 import { youtubeSubtitleScenarios } from "./youtube-subtitle"
+import { providerRoutingScenarios } from "./provider-routing"
 
 export const benchmarkScenarios = [
   ...pageTranslationScenarios,
@@ -30,6 +31,7 @@ export const benchmarkScenarios = [
   ...pdfTranslationScenarios,
   ...youtubeSubtitleScenarios,
   ...epubTranslationScenarios,
+  ...providerRoutingScenarios,
 ]
 
 export function selectBenchmarkScenarios(options: {

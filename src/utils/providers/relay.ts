@@ -59,6 +59,7 @@ export async function translateWithRelay(
     task,
     customSystemPrompt,
     languageLevel,
+    placeholderFormat,
   } = options
 
   const endpoint = relayBaseURL?.trim()
@@ -86,6 +87,7 @@ export async function translateWithRelay(
         ...(task ? { task } : {}),
         ...(customSystemPrompt ? { customSystemPrompt } : {}),
         ...(languageLevel ? { languageLevel } : {}),
+        ...(placeholderFormat ? { placeholderFormat } : {}),
       }),
     })
 

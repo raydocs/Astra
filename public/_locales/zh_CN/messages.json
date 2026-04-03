@@ -206,6 +206,33 @@
   "label_siteTranslationScope": {
     "message": "站点翻译范围"
   },
+  "label_siteAdvancedRules": {
+    "message": "高级规则"
+  },
+  "label_siteIncludeSelectors": {
+    "message": "包含选择器"
+  },
+  "label_siteExcludeSelectors": {
+    "message": "排除选择器"
+  },
+  "label_siteParagraphMinLength": {
+    "message": "最小段落长度"
+  },
+  "hint_siteSelectorsPerLine": {
+    "message": "每行一个 CSS 选择器"
+  },
+  "hint_siteParagraphMinLength": {
+    "message": "留空则不启用长度过滤"
+  },
+  "label_inheritBlank": {
+    "message": "继承 / 不启用"
+  },
+  "error_invalidCssSelector": {
+    "message": "无效的 CSS 选择器：$1",
+    "placeholders": {
+      "1": { "content": "$1" }
+    }
+  },
   "label_inheritGlobal": {
     "message": "跟随全局（$1）",
     "placeholders": {

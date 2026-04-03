@@ -17,7 +17,6 @@ import { placeholderScenario } from "./placeholder"
 import { youtubeSubtitleBasicScenario } from "./youtube-subtitle-basic"
 import { subtitleBasicScenario } from "./subtitle-basic"
 import { subtitleFileBasicScenario } from "./subtitle-file-basic"
-import { holdoutScenarios } from "./holdout/index"
 
 export { epubReaderBasicScenario } from "./epub-reader-basic"
 export { fixturePlaywrightSmokeScenario } from "./fixture-playwright-smoke"
@@ -57,5 +56,4 @@ export const liveScenarios = [
   subtitleFileBasicScenario,
   epubReaderBasicScenario,
   placeholderScenario,
-  ...holdoutScenarios,
 ]

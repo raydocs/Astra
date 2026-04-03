@@ -10,6 +10,7 @@ import type {
   TranslationRequestContext,
   TranslationTask,
 } from "@/types/messages"
+import enMessages from "../../public/_locales/en/messages.json"
 
 export interface TranslationBatchPayload {
   texts: string[]
@@ -18,10 +19,12 @@ export interface TranslationBatchPayload {
   context?: TranslationRequestContext
   task?: TranslationTask
   customSystemPrompt?: string
+  placeholderFormat?: "astra-rich-text-v1"
 }
 
 export interface TranslateCallRecord {
   payload: TranslationBatchPayload
+  response: RuntimeResponse
   startedAt: number
   durationMs: number
 }
@@ -52,12 +55,28 @@ export interface BenchBrowserOptions {
   config?: Partial<AstraConfig>
   session?: Partial<AstraSession> | null
   translateBatch?: (payload: TranslationBatchPayload) => Promise<RuntimeResponse> | RuntimeResponse
+  dispatchRuntimeMessagesToListeners?: boolean
   frames?: BenchFrameEntry[] | (() => Promise<BenchFrameEntry[]> | BenchFrameEntry[])
   sendFrameMessage?: (
     tabId: number,
     command: ContentCommand,
     options?: { frameId?: number },
   ) => Promise<unknown> | unknown
+}
+
+function resolveMessage(key: string, substitutions?: string | string[]): string {
+  const entry = (enMessages as Record<string, { message: string }>)[key]
+  if (!entry) return key
+
+  let message = entry.message
+  if (substitutions) {
+    const values = Array.isArray(substitutions) ? substitutions : [substitutions]
+    values.forEach((value, index) => {
+      message = message.replace(`$${index + 1}`, value)
+    })
+  }
+
+  return message
 }
 
 function mergeConfig(config: Partial<AstraConfig> = {}): AstraConfig {
@@ -110,6 +129,58 @@ export function installBenchBrowser(
     state: IDLE_TRANSLATION_SNAPSHOT,
   }
 
+  const dispatchRuntimeMessage = async (message: unknown, sender: unknown) => {
+    const responses: unknown[] = []
+
+    for (const listener of runtimeMessageListeners) {
+      const listenerResponse = await new Promise<unknown | null>((resolve, reject) => {
+        let settled = false
+        const timeout = setTimeout(() => {
+          if (!settled) {
+            settled = true
+            reject(new Error("Timed out waiting for bench runtime listener response."))
+          }
+        }, 2_000)
+
+        const finish = (value: unknown | null) => {
+          if (settled) return
+          settled = true
+          clearTimeout(timeout)
+          resolve(value)
+        }
+
+        try {
+          const maybeAsync = listener(message, sender, (response?: unknown) => {
+            finish(response ?? null)
+          })
+          Promise.resolve(maybeAsync).then((result) => {
+            if (result === true) {
+              return
+            }
+            if (typeof result !== "undefined" && result !== false) {
+              finish(result)
+              return
+            }
+            finish(null)
+          }, reject)
+        } catch (error) {
+          clearTimeout(timeout)
+          reject(error)
+        }
+      })
+
+      if (listenerResponse !== null) {
+        responses.push(listenerResponse)
+      }
+    }
+
+    const lastResponse = responses.at(-1)
+    if (typeof lastResponse === "undefined") {
+      throw new Error(`Runtime message was not handled by any bench listener: ${JSON.stringify(message)}`)
+    }
+    return lastResponse
+  }
+
   const resolveFrames = async (): Promise<BenchFrameEntry[]> => {
     if (!options.frames) return []
     if (typeof options.frames === "function") {
@@ -160,9 +231,12 @@ export function installBenchBrowser(
       async sendMessage(message: { type?: string; payload?: TranslationBatchPayload }) {
         if (message?.type === "runtime/translate-batch" && message.payload) {
           const startedAt = performance.now()
-          const response = await translateBatch(message.payload)
+          const response = options.dispatchRuntimeMessagesToListeners
+            ? await dispatchRuntimeMessage(message, { id: "bench-runtime", tab: { id: 1 } }) as RuntimeResponse
+            : await translateBatch(message.payload)
           translateCalls.push({
             payload: message.payload,
+            response,
             startedAt,
             durationMs: performance.now() - startedAt,
           })
@@ -176,7 +250,9 @@ export function installBenchBrowser(
             tabId: null,
             startedAt: performance.now(),
           })
-          return successCommandResponse
+          return options.dispatchRuntimeMessagesToListeners
+            ? await dispatchRuntimeMessage(message, { id: "bench-runtime", tab: { id: 1 } }) as ContentCommandResponse
+            : successCommandResponse
         }
 
         if (message?.type === "runtime/tab-command" && "command" in message) {
@@ -189,7 +265,9 @@ export function installBenchBrowser(
               : null,
             startedAt: performance.now(),
           })
-          return successCommandResponse
+          return options.dispatchRuntimeMessagesToListeners
+            ? await dispatchRuntimeMessage(message, { id: "bench-runtime", tab: { id: 1 } }) as ContentCommandResponse
+            : successCommandResponse
         }
 
         throw new Error(`Unhandled runtime message: ${JSON.stringify(message)}`)
@@ -226,6 +304,9 @@ export function installBenchBrowser(
         addListener() {},
         removeListener() {},
       },
+    },
+    i18n: {
+      getMessage: (key: string, substitutions?: string | string[]) => resolveMessage(key, substitutions),
     },
   }
 

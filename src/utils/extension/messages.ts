@@ -4,12 +4,16 @@ import type {
   ContentCommand,
   ContentCommandResponse,
   ContentTranslationOverrides,
+  RuntimeSaveConfigErrorResponse,
+  TranslationPlaceholderFormat,
   TranslationRequestContext,
   TranslationTask,
 } from "@/types/messages"
+import type { AstraConfig, AstraConfigInput } from "@/types/config"
 import {
   isContentCommandResponse,
-  isRuntimeResponse,
+  isRuntimeSaveConfigResponse,
+  isRuntimeTranslateResponse,
 } from "@/types/messages"
 import {
   createTranslationError,
@@ -39,6 +43,10 @@ function mapContentMessagingError(error: unknown): TranslationError {
 
 function mapRuntimeMessagingError(error: unknown): TranslationError {
   return toTranslationError(error, "PROVIDER_REQUEST_FAILED")
+}
+
+function mapRuntimeConfigMessagingError(error: unknown): TranslationError {
+  return toTranslationError(error, "UNKNOWN")
 }
 
 async function getActiveTabId(): Promise<number> {
@@ -109,6 +117,7 @@ export async function requestTranslationBatch(payload: {
   context?: TranslationRequestContext
   task?: TranslationTask
   customSystemPrompt?: string
+  placeholderFormat?: TranslationPlaceholderFormat
 }): Promise<TranslationBatchRequestResult> {
   try {
     const response = await browser.runtime.sendMessage({
@@ -116,7 +125,7 @@ export async function requestTranslationBatch(payload: {
       payload,
     }) as unknown
 
-    if (!isRuntimeResponse(response)) {
+    if (!isRuntimeTranslateResponse(response)) {
       return {
         ok: false,
         error: createTranslationError(
@@ -133,6 +142,35 @@ export async function requestTranslationBatch(payload: {
     return { ok: true, translations: response.payload.translations }
   } catch (error) {
     return { ok: false, error: mapRuntimeMessagingError(error) }
+  }
+}
+
+export async function saveConfigInBackground(
+  payload: AstraConfigInput,
+): Promise<{ ok: true; config: AstraConfig } | { ok: false; error: RuntimeSaveConfigErrorResponse["error"] }> {
+  try {
+    const response = await browser.runtime.sendMessage({
+      type: "runtime/save-config",
+      payload,
+    }) as unknown
+
+    if (!isRuntimeSaveConfigResponse(response)) {
+      return {
+        ok: false,
+        error: createTranslationError(
+          "INVALID_RESPONSE",
+          "Received an invalid config save response.",
+        ),
+      }
+    }
+
+    if (response.type === "runtime/save-config:error") {
+      return { ok: false, error: response.error }
+    }
+
+    return { ok: true, config: response.payload.config }
+  } catch (error) {
+    return { ok: false, error: mapRuntimeConfigMessagingError(error) }
   }
 }
 

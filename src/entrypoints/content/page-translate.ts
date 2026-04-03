@@ -15,6 +15,11 @@ import {
   showLoading,
 } from "@/utils/dom/inject"
 import {
+  containsRichTextPlaceholders,
+  decodeRichTextTranslation,
+  serializeRichTextForTranslation,
+} from "@/utils/dom/rich-text-placeholders"
+import {
   buildContentSummary,
   collectTextBlocks,
   extractTextBlockText,
@@ -43,7 +48,7 @@ import {
   subscribeTranslationState,
 } from "./translation-state"
 import { disconnectInlineSummaryObserver, getDocumentTranslationContext } from "./translation-context"
-import { createBlockRegistry, type BlockRegistry } from "./page-translate-registry"
+import { createBlockRegistry, type BlockRegistry, type RegistrableBlock } from "./page-translate-registry"
 
 const INITIAL_VIEWPORT_MARGIN = 200
 const DRAIN_BATCH_SIZE = 12
@@ -231,27 +236,40 @@ function enqueueBlock(session: TranslationSession, element: HTMLElement) {
   session.queue.push(element)
 }
 
+function getValidSiteRuleSelectors(selectors?: string[]): string[] {
+  if (!selectors?.length) {
+    return []
+  }
+
+  return selectors.filter((selector) => {
+    try {
+      document.querySelector(selector)
+      return true
+    } catch {
+      return false
+    }
+  })
+}
+
 function applySiteRuleFilters(blocks: TextBlock[], siteRules: {
   selectors?: string[]
   excludeSelectors?: string[]
   paragraphMinLength?: number
 }): TextBlock[] {
-  const { selectors, excludeSelectors, paragraphMinLength } = siteRules
+  const paragraphMinLength = siteRules.paragraphMinLength
+  const selectors = getValidSiteRuleSelectors(siteRules.selectors)
+  const excludeSelectors = getValidSiteRuleSelectors(siteRules.excludeSelectors)
   let filtered = blocks
 
-  if (selectors && selectors.length > 0) {
+  if (selectors.length > 0) {
     filtered = filtered.filter((b) =>
-      selectors.some((sel: string) => {
-        try { return b.element.closest(sel) !== null } catch { return false }
-      }),
+      selectors.some((sel: string) => b.element.closest(sel) !== null),
     )
   }
 
-  if (excludeSelectors && excludeSelectors.length > 0) {
+  if (excludeSelectors.length > 0) {
     filtered = filtered.filter((b) =>
-      !excludeSelectors.some((sel: string) => {
-        try { return b.element.closest(sel) !== null } catch { return false }
-      }),
+      !excludeSelectors.some((sel: string) => b.element.closest(sel) !== null),
     )
   }
 
@@ -262,10 +280,19 @@ function applySiteRuleFilters(blocks: TextBlock[], siteRules: {
   return filtered
 }
 
+function prepareRegistrableBlock(block: TextBlock): RegistrableBlock {
+  const richText = serializeRichTextForTranslation(block.element)
+  return {
+    element: block.element,
+    sourceText: block.text,
+    requestText: richText.requestText || block.text,
+  }
+}
+
 function registerBlocks(session: TranslationSession, blocks: TextBlock[]) {
   const filtered = applySiteRuleFilters(blocks, session.siteRules ?? {})
   const prevSize = session.registry.size
-  session.registry.registerBlocks(filtered)
+  session.registry.registerBlocks(filtered.map(prepareRegistrableBlock))
   const addedCount = session.registry.size - prevSize
 
   blocks.forEach((block) => {
@@ -382,16 +409,20 @@ function scheduleDrain(session: TranslationSession) {
         })
         publishSessionState(session, "running")
 
+        const requestTexts = inFlightInfo.map(({ element }) => {
+          const block = session.registry.getBlock(element)
+          return block?.requestText ?? ""
+        })
+        const usesRichTextPlaceholders = requestTexts.some(containsRichTextPlaceholders)
+
         let result: Awaited<ReturnType<typeof translateTexts>>
 
         try {
           result = await translateTexts({
-            texts: inFlightInfo.map(({ element }) => {
-              const block = session.registry.getBlock(element)
-              return block?.sourceText ?? ""
-            }),
+            texts: requestTexts,
             targetLang: session.targetLang,
             context: session.context,
+            ...(usesRichTextPlaceholders ? { placeholderFormat: "astra-rich-text-v1" as const } : {}),
           })
         } catch (error) {
           const { requeued, exhausted } = session.registry.markForRetry(
@@ -459,7 +490,17 @@ function scheduleDrain(session: TranslationSession) {
         inFlightInfo.forEach((info, index) => {
           if (!accepted.includes(info.element)) return
           if (!info.element.isConnected) return
-          replaceLoading(info.element, result.translations[index], {
+
+          const requestText = requestTexts[index]
+          const rawTranslation = result.translations[index]
+          const translatedContent = containsRichTextPlaceholders(requestText)
+            ? (() => {
+                const decoded = decodeRichTextTranslation(rawTranslation, requestText)
+                return decoded.fragment ?? decoded.fallbackText ?? rawTranslation
+              })()
+            : rawTranslation
+
+          replaceLoading(info.element, translatedContent, {
             mode: session.presentation.mode,
             theme: session.presentation.theme,
             targetLang: session.targetLang,
@@ -586,14 +627,19 @@ function handleTextChanges(session: TranslationSession, elements: Set<HTMLElemen
     const block = session.registry.getBlock(current)
     if (!block) continue
 
-    // Get the current text content of the block
+    // Get the current text/request content of the block
     const currentText = extractTextBlockText(current)
-    if (currentText === block.sourceText) continue
+    const currentRichText = serializeRichTextForTranslation(current)
+    const currentRequestText = currentRichText.requestText || currentText
+    if (currentText === block.sourceText && currentRequestText === block.requestText) continue
 
     // Source text changed — clear old translation, bump revision, re-queue
     removeTranslationFor(current)
     clearLoading(current)
-    session.registry.markSourceChanged(current, currentText)
+    session.registry.markContentChanged(current, {
+      sourceText: currentText,
+      requestText: currentRequestText,
+    })
     changed = true
 
     if (currentText && isNearViewport(current)) {

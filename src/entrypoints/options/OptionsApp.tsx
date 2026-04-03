@@ -18,6 +18,7 @@ import {
   normalizeSiteKey,
 } from "@/types/config"
 import { readConfig, saveConfig } from "@/utils/storage/config"
+import { clearTranslationCache, getCacheStats } from "@/utils/cache/translation-cache"
 
 type Section = "general" | "providers" | "translation" | "actions" | "sites" | "vocabulary" | "about"
 
@@ -118,14 +119,14 @@ const navBtnBase: React.CSSProperties = {
   fontSize: 14,
   cursor: "pointer",
   color: "#475569",
-  transition: "background 0.15s, color 0.15s",
+  transition: "background 0.15s, color 0.15s, box-shadow 0.15s",
 }
 
 const navBtnActive: React.CSSProperties = {
   background: `${BRAND_COLOR}0d`,
   color: BRAND_COLOR,
   fontWeight: 600,
-  borderRight: `3px solid ${BRAND_COLOR}`,
+  boxShadow: `inset -3px 0 0 ${BRAND_COLOR}`,
 }
 
 const contentStyle: React.CSSProperties = {
@@ -470,6 +471,38 @@ function TranslationSection({
   )
 }
 
+function toMultilineValue(values?: string[]): string {
+  return values?.join("\n") ?? ""
+}
+
+function fromMultilineValue(value: string): string[] | undefined {
+  const entries = value
+    .split(/\r?\n/)
+    .map((entry) => entry.trim())
+    .filter(Boolean)
+
+  return entries.length > 0 ? entries : undefined
+}
+
+function getInvalidSelectors(selectors?: string[]): string[] {
+  if (!selectors) return []
+
+  return selectors.filter((selector) => {
+    try {
+      document.querySelector(selector)
+      return false
+    } catch {
+      return true
+    }
+  })
+}
+
+function hasAdvancedRules(siteConfig: SiteConfig): boolean {
+  return !!siteConfig.selectors?.length
+    || !!siteConfig.excludeSelectors?.length
+    || siteConfig.paragraphMinLength != null
+}
+
 function SitesSection({
   config,
   onChange,
@@ -480,6 +513,18 @@ function SitesSection({
   const siteEntries = Object.entries(config.sites)
   const [editingSite, setEditingSite] = useState<string | null>(null)
   const [newSiteKey, setNewSiteKey] = useState("")
+  const [selectorDrafts, setSelectorDrafts] = useState<Record<string, string>>({})
+  const [excludeSelectorDrafts, setExcludeSelectorDrafts] = useState<Record<string, string>>({})
+  const [selectorErrors, setSelectorErrors] = useState<Record<string, string | null>>({})
+  const [excludeSelectorErrors, setExcludeSelectorErrors] = useState<Record<string, string | null>>({})
+
+  useEffect(() => {
+    const entries = Object.entries(config.sites)
+    setSelectorDrafts(Object.fromEntries(entries.map(([hostname, siteConfig]) => [hostname, toMultilineValue(siteConfig.selectors)])))
+    setExcludeSelectorDrafts(Object.fromEntries(entries.map(([hostname, siteConfig]) => [hostname, toMultilineValue(siteConfig.excludeSelectors)])))
+    setSelectorErrors((current) => Object.fromEntries(entries.map(([hostname]) => [hostname, current[hostname] ?? null])))
+    setExcludeSelectorErrors((current) => Object.fromEntries(entries.map(([hostname]) => [hostname, current[hostname] ?? null])))
+  }, [config.sites])
 
   const deleteSite = (hostname: string) => {
     const nextSites = { ...config.sites }
@@ -487,10 +532,10 @@ function SitesSection({
     onChange({ sites: nextSites })
   }
 
-  const updateSite = (hostname: string, patch: Partial<SiteConfig>) => {
+  const mutateSite = (hostname: string, mutate: (current: SiteConfig) => SiteConfig) => {
     const nextSites = { ...config.sites }
     const current = nextSites[hostname] ?? { enabled: true, alwaysTranslate: false }
-    const updated = { ...current, ...patch }
+    const updated = mutate(current)
     if (isDefaultSiteConfig(updated)) {
       delete nextSites[hostname]
     } else {
@@ -548,6 +593,11 @@ function SitesSection({
                   auto-translate
                 </span>
               )}
+              {hasAdvancedRules(siteConfig) && (
+                <span style={{ marginLeft: 8, fontSize: 11, color: "#0369a1", background: "#e0f2fe", padding: "2px 6px", borderRadius: 4 }}>
+                  advanced
+                </span>
+              )}
             </div>
             <div style={{ display: "flex", gap: 6 }}>
               <button
@@ -574,7 +624,10 @@ function SitesSection({
                   type="checkbox"
                   id={`site-enabled-${hostname}`}
                   checked={siteConfig.enabled}
-                  onChange={(e) => updateSite(hostname, { enabled: e.target.checked })}
+                  onChange={(e) => mutateSite(hostname, (current) => ({
+                    ...current,
+                    enabled: e.target.checked,
+                  }))}
                 />
                 <label htmlFor={`site-enabled-${hostname}`}>Enabled</label>
               </div>
@@ -583,7 +636,10 @@ function SitesSection({
                   type="checkbox"
                   id={`site-auto-${hostname}`}
                   checked={siteConfig.alwaysTranslate}
-                  onChange={(e) => updateSite(hostname, { alwaysTranslate: e.target.checked })}
+                  onChange={(e) => mutateSite(hostname, (current) => ({
+                    ...current,
+                    alwaysTranslate: e.target.checked,
+                  }))}
                 />
                 <label htmlFor={`site-auto-${hostname}`}>Auto-translate on load</label>
               </div>
@@ -592,7 +648,15 @@ function SitesSection({
                 <select
                   style={{ ...selectStyle, maxWidth: 220 }}
                   value={siteConfig.targetLang ?? ""}
-                  onChange={(e) => updateSite(hostname, { targetLang: e.target.value || undefined })}
+                  onChange={(e) => mutateSite(hostname, (current) => {
+                    const nextSite = { ...current }
+                    if (e.target.value) {
+                      nextSite.targetLang = e.target.value
+                    } else {
+                      delete nextSite.targetLang
+                    }
+                    return nextSite
+                  })}
                 >
                   <option value="">Use global default</option>
                   {LANGUAGE_OPTIONS.map((o) => (
@@ -605,7 +669,15 @@ function SitesSection({
                 <select
                   style={{ ...selectStyle, maxWidth: 220 }}
                   value={siteConfig.hoverTrigger ?? ""}
-                  onChange={(e) => updateSite(hostname, { hoverTrigger: (e.target.value || undefined) as HoverTrigger | undefined })}
+                  onChange={(e) => mutateSite(hostname, (current) => {
+                    const nextSite = { ...current }
+                    if (e.target.value) {
+                      nextSite.hoverTrigger = e.target.value as HoverTrigger
+                    } else {
+                      delete nextSite.hoverTrigger
+                    }
+                    return nextSite
+                  })}
                 >
                   <option value="">Use global default</option>
                   {HOVER_TRIGGER_OPTIONS.map((o) => (
@@ -613,6 +685,185 @@ function SitesSection({
                   ))}
                 </select>
               </div>
+              <div style={fieldGroup}>
+                <label style={labelStyle}>Content scope override</label>
+                <select
+                  style={{ ...selectStyle, maxWidth: 220 }}
+                  value={siteConfig.contentScope ?? ""}
+                  onChange={(e) => mutateSite(hostname, (current) => {
+                    const nextSite = { ...current }
+                    if (e.target.value) {
+                      nextSite.contentScope = e.target.value as ContentScope
+                    } else {
+                      delete nextSite.contentScope
+                    }
+                    return nextSite
+                  })}
+                >
+                  <option value="">Use global default</option>
+                  {CONTENT_SCOPE_OPTIONS.map((o) => (
+                    <option key={o.value} value={o.value}>{o.label}</option>
+                  ))}
+                </select>
+              </div>
+              <div style={fieldGroup}>
+                <label style={labelStyle}>Presentation mode override</label>
+                <select
+                  style={{ ...selectStyle, maxWidth: 220 }}
+                  value={siteConfig.presentation?.mode ?? ""}
+                  onChange={(e) => mutateSite(hostname, (current) => {
+                    const nextPresentation = { ...(current.presentation ?? {}) }
+                    if (e.target.value) {
+                      nextPresentation.mode = e.target.value as TranslationMode
+                    } else {
+                      delete nextPresentation.mode
+                    }
+
+                    return {
+                      ...current,
+                      ...(Object.keys(nextPresentation).length > 0
+                        ? { presentation: nextPresentation }
+                        : { presentation: undefined }),
+                    }
+                  })}
+                >
+                  <option value="">Use global default</option>
+                  {MODE_OPTIONS.map((o) => (
+                    <option key={o.value} value={o.value}>{o.label}</option>
+                  ))}
+                </select>
+              </div>
+              <div style={fieldGroup}>
+                <label style={labelStyle}>Theme override</label>
+                <select
+                  style={{ ...selectStyle, maxWidth: 220 }}
+                  value={siteConfig.presentation?.theme ?? ""}
+                  onChange={(e) => mutateSite(hostname, (current) => {
+                    const nextPresentation = { ...(current.presentation ?? {}) }
+                    if (e.target.value) {
+                      nextPresentation.theme = e.target.value as TranslationTheme
+                    } else {
+                      delete nextPresentation.theme
+                    }
+
+                    return {
+                      ...current,
+                      ...(Object.keys(nextPresentation).length > 0
+                        ? { presentation: nextPresentation }
+                        : { presentation: undefined }),
+                    }
+                  })}
+                >
+                  <option value="">Use global default</option>
+                  {THEME_OPTIONS.map((o) => (
+                    <option key={o.value} value={o.value}>{o.label}</option>
+                  ))}
+                </select>
+              </div>
+
+              <details data-testid={`advanced-rules-${hostname}`} style={{ marginTop: 12 }}>
+                <summary style={{ cursor: "pointer", fontSize: 13, color: "#475569" }}>Advanced rules</summary>
+                <div style={{ marginTop: 12 }}>
+                  <div style={fieldGroup}>
+                    <label style={labelStyle}>Include selectors</label>
+                    <textarea
+                      style={textareaStyle}
+                      value={selectorDrafts[hostname] ?? ""}
+                      onChange={(e) => {
+                        const nextValue = e.target.value
+                        setSelectorDrafts((current) => ({ ...current, [hostname]: nextValue }))
+                        const selectors = fromMultilineValue(nextValue)
+                        const invalidSelectors = getInvalidSelectors(selectors)
+                        if (invalidSelectors.length > 0) {
+                          setSelectorErrors((current) => ({ ...current, [hostname]: `Invalid CSS selector: ${invalidSelectors.join(", ")}` }))
+                          return
+                        }
+
+                        setSelectorErrors((current) => ({ ...current, [hostname]: null }))
+                        mutateSite(hostname, (current) => {
+                          const nextSite = { ...current }
+                          if (selectors) {
+                            nextSite.selectors = selectors
+                          } else {
+                            delete nextSite.selectors
+                          }
+                          return nextSite
+                        })
+                      }}
+                      placeholder={"article\n.content"}
+                    />
+                    <div style={hintStyle}>One CSS selector per line.</div>
+                    {selectorErrors[hostname] && (
+                      <div style={{ ...successBanner, marginBottom: 0, marginTop: 8, background: "#fef2f2", color: "#dc2626", borderColor: "#fecaca" }}>
+                        {selectorErrors[hostname]}
+                      </div>
+                    )}
+                  </div>
+
+                  <div style={fieldGroup}>
+                    <label style={labelStyle}>Exclude selectors</label>
+                    <textarea
+                      style={textareaStyle}
+                      value={excludeSelectorDrafts[hostname] ?? ""}
+                      onChange={(e) => {
+                        const nextValue = e.target.value
+                        setExcludeSelectorDrafts((current) => ({ ...current, [hostname]: nextValue }))
+                        const excludeSelectors = fromMultilineValue(nextValue)
+                        const invalidSelectors = getInvalidSelectors(excludeSelectors)
+                        if (invalidSelectors.length > 0) {
+                          setExcludeSelectorErrors((current) => ({ ...current, [hostname]: `Invalid CSS selector: ${invalidSelectors.join(", ")}` }))
+                          return
+                        }
+
+                        setExcludeSelectorErrors((current) => ({ ...current, [hostname]: null }))
+                        mutateSite(hostname, (current) => {
+                          const nextSite = { ...current }
+                          if (excludeSelectors) {
+                            nextSite.excludeSelectors = excludeSelectors
+                          } else {
+                            delete nextSite.excludeSelectors
+                          }
+                          return nextSite
+                        })
+                      }}
+                      placeholder={".comments\naside"}
+                    />
+                    <div style={hintStyle}>One CSS selector per line.</div>
+                    {excludeSelectorErrors[hostname] && (
+                      <div style={{ ...successBanner, marginBottom: 0, marginTop: 8, background: "#fef2f2", color: "#dc2626", borderColor: "#fecaca" }}>
+                        {excludeSelectorErrors[hostname]}
+                      </div>
+                    )}
+                  </div>
+
+                  <div style={fieldGroup}>
+                    <label style={labelStyle}>Minimum paragraph length</label>
+                    <input
+                      type="number"
+                      min="0"
+                      step="1"
+                      style={{ ...inputStyle, maxWidth: 220 }}
+                      value={siteConfig.paragraphMinLength?.toString() ?? ""}
+                      onChange={(e) => mutateSite(hostname, (current) => {
+                        const nextSite = { ...current }
+                        const trimmed = e.target.value.trim()
+                        if (!trimmed) {
+                          delete nextSite.paragraphMinLength
+                          return nextSite
+                        }
+
+                        const parsed = Number.parseInt(trimmed, 10)
+                        if (Number.isFinite(parsed)) {
+                          nextSite.paragraphMinLength = Math.max(0, parsed)
+                        }
+                        return nextSite
+                      })}
+                      placeholder="Use global default"
+                    />
+                    <div style={hintStyle}>Leave blank to disable length filtering.</div>
+                  </div>
+                </div>
+              </details>
             </div>
           )}
         </div>
@@ -866,23 +1117,37 @@ function VocabularySection() {
 
   const [cacheInfo, setCacheInfo] = useState<string>("Loading...")
 
+  const refreshCacheInfo = async () => {
+    try {
+      const [bytes, stats] = await Promise.all([
+        browser.storage.local.getBytesInUse?.(),
+        getCacheStats(),
+      ])
+      const localStorageUsage = typeof bytes === "number"
+        ? `${(bytes / 1024).toFixed(1)} KB local storage usage`
+        : "local storage usage unavailable"
+      const hitRate = stats.lookups > 0 ? `${(stats.hitRate * 100).toFixed(0)}%` : "n/a"
+      const hottestBucket = stats.buckets[0]
+      const hottestLabel = hottestBucket
+        ? `${hottestBucket.providerId}/${hottestBucket.model}`
+        : "no buckets yet"
+      setCacheInfo(`${localStorageUsage} · ${stats.count} cached items · ${stats.lookups} lookups · ${hitRate} hit rate · top bucket ${hottestLabel}`)
+    } catch {
+      setCacheInfo("Cache telemetry unavailable")
+    }
+  }
+
   useEffect(() => {
-    void browser.storage.local.getBytesInUse?.()
-      .then((bytes) => {
-        if (typeof bytes === "number") {
-          const kb = (bytes / 1024).toFixed(1)
-          setCacheInfo(`${kb} KB used in local storage`)
-        } else {
-          setCacheInfo("Storage usage unavailable")
-        }
-      })
-      .catch(() => setCacheInfo("Storage usage unavailable"))
+    void refreshCacheInfo()
   }, [])
 
   const clearCache = async () => {
     try {
-      await browser.storage.local.remove("astra.vocab.cache")
-      setCacheInfo("Cache cleared")
+      await Promise.all([
+        browser.storage.local.remove("astra.vocab.cache"),
+        clearTranslationCache(),
+      ])
+      await refreshCacheInfo()
     } catch {
       setCacheInfo("Failed to clear cache")
     }

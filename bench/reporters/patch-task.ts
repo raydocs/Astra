@@ -85,6 +85,14 @@ const SURFACE_FILE_MAP: Record<BenchmarkSurface, string[]> = {
     "src/entrypoints/epub-reader/EpubReaderApp.tsx",
     "src/entrypoints/epub-reader/main.tsx",
   ],
+  "provider-routing": [
+    "src/utils/providers/router.ts",
+    "src/utils/providers/openai.ts",
+    "src/utils/providers/gemini.ts",
+    "src/utils/providers/relay.ts",
+    "src/entrypoints/background/index.ts",
+    "src/types/config.ts",
+  ],
 }
 
 type LoopItem = LoopPlan["selectedItems"][number]

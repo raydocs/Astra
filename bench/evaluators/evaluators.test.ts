@@ -7,6 +7,7 @@ import { evaluateFrameCoordination } from "./frame-coordination"
 import { evaluateInputTranslation } from "./input-translation"
 import { evaluateInteractionPriority } from "./interaction-priority"
 import { evaluatePageTranslation } from "./page-translation"
+import { evaluateProviderRouting } from "./provider-routing"
 import { evaluateSelectionExplain } from "./selection-explain"
 import { evaluateSiteAutomation } from "./site-automation"
 import { evaluateSubtitle } from "./subtitle"
@@ -203,6 +204,117 @@ describe("benchmark evaluators", () => {
 
     expect(result.pass).toBe(false)
     expect(result.issues.some((issue) => issue.message.includes("privacy"))).toBe(true)
+  })
+
+  it("flags provider routing failures when fallback does not reach relay", () => {
+    const result = evaluateProviderRouting({
+      directAttemptCount: 1,
+      relayAttemptCount: 0,
+      fallbackUsed: false,
+      finalTransport: null,
+      attemptedTransports: ["direct"],
+      translations: [],
+      errorCode: null,
+      relayRequest: null,
+    }, {
+      shouldFallback: true,
+      expectedFinalTransport: "relay",
+      expectedErrorCode: null,
+    })
+
+    expect(result.pass).toBe(false)
+    expect(result.issues.some((issue) => issue.message.includes("fallback chain"))).toBe(true)
+  })
+
+  it("passes provider routing evaluation for parse-failure fail-fast handling", () => {
+    const result = evaluateProviderRouting({
+      directAttemptCount: 1,
+      relayAttemptCount: 0,
+      fallbackUsed: false,
+      finalTransport: null,
+      attemptedTransports: ["direct"],
+      translations: [],
+      errorCode: "PROVIDER_PARSE_FAILED",
+      relayRequest: null,
+    }, {
+      shouldFallback: false,
+      expectedFinalTransport: null,
+      expectedErrorCode: "PROVIDER_PARSE_FAILED",
+    })
+
+    expect(result.pass).toBe(true)
+    expect(result.total).toBe(100)
+  })
+
+  it("flags provider routing failures when config errors incorrectly touch relay", () => {
+    const result = evaluateProviderRouting({
+      directAttemptCount: 1,
+      relayAttemptCount: 1,
+      fallbackUsed: true,
+      finalTransport: "relay",
+      attemptedTransports: ["direct", "relay"],
+      translations: ["RELAY:hello"],
+      errorCode: null,
+      relayRequest: {
+        texts: ["hello"],
+        targetLang: "zh-CN",
+      },
+    }, {
+      shouldFallback: false,
+      expectedFinalTransport: null,
+      expectedErrorCode: "CONFIG_MISSING",
+    })
+
+    expect(result.pass).toBe(false)
+    expect(result.issues.some((issue) => issue.message.includes("should not have been attempted"))).toBe(true)
+  })
+
+  it("passes provider routing evaluation for fail-fast non-AstraError wrapping", () => {
+    const result = evaluateProviderRouting({
+      directAttemptCount: 1,
+      relayAttemptCount: 0,
+      fallbackUsed: false,
+      finalTransport: null,
+      attemptedTransports: ["direct"],
+      translations: [],
+      errorCode: "PROVIDER_REQUEST_FAILED",
+      relayRequest: null,
+    }, {
+      shouldFallback: false,
+      expectedFinalTransport: null,
+      expectedErrorCode: "PROVIDER_REQUEST_FAILED",
+    })
+
+    expect(result.pass).toBe(true)
+    expect(result.total).toBe(100)
+  })
+
+  it("passes provider routing evaluation for fallback exhaustion with relay terminal metadata", () => {
+    const result = evaluateProviderRouting({
+      directAttemptCount: 1,
+      relayAttemptCount: 1,
+      fallbackUsed: true,
+      finalTransport: "relay",
+      attemptedTransports: ["direct", "relay"],
+      translations: [],
+      errorCode: "PROVIDER_REQUEST_FAILED",
+      relayRequest: {
+        texts: ["hello"],
+        targetLang: "zh-CN",
+        task: "translate",
+        context: { pageTitle: "Provider fallback bench" },
+        placeholderFormat: "astra-rich-text-v1",
+        languageLevel: "advanced",
+      },
+    }, {
+      shouldFallback: true,
+      expectedFinalTransport: "relay",
+      expectedErrorCode: "PROVIDER_REQUEST_FAILED",
+      expectRelaySuccess: false,
+    })
+
+    expect(result.pass).toBe(true)
+    expect(result.total).toBe(100)
   })
 
   it("flags page translation failures when privacy mode leaks page metadata", () => {

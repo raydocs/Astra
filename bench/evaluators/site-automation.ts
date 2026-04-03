@@ -5,6 +5,13 @@ export interface SiteAutomationExecution {
   stoppedAfterDisable: boolean
   suppressedAfterManualStop: boolean
   resumedAfterReenable: boolean
+  initialFinalTransport?: "direct" | "relay" | null
+  restartedFinalTransport?: "direct" | "relay" | null
+  restartedFallbackUsed?: boolean
+  restartedTargetLang?: string | null
+  restartedPresentationMode?: string | null
+  hiddenSourceCountAfterTransition?: number
+  restartSessionCount?: number
   requestCountBeforeTransition: number
   requestCountAfterTransition: number
   phaseBeforeTransition: string
@@ -174,6 +181,10 @@ export function evaluateSiteAutomation(
       translationMarkersBeforeTransition: execution.translationMarkersBeforeTransition,
       translationMarkersAfterTransition: execution.translationMarkersAfterTransition,
       uiHostsPresent: execution.uiHostsPresent,
+      initialFinalTransport: execution.initialFinalTransport ?? null,
+      restartedFinalTransport: execution.restartedFinalTransport ?? null,
+      restartedFallbackUsed: execution.restartedFallbackUsed ?? false,
+      restartSessionCount: execution.restartSessionCount ?? null,
       notes: execution.notes ?? [],
       patchHints: buildPatchHints(execution, expectations, issues),
     },

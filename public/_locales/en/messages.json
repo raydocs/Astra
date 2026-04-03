@@ -206,6 +206,33 @@
   "label_siteTranslationScope": {
     "message": "Site Translation Scope"
   },
+  "label_siteAdvancedRules": {
+    "message": "Advanced Rules"
+  },
+  "label_siteIncludeSelectors": {
+    "message": "Include Selectors"
+  },
+  "label_siteExcludeSelectors": {
+    "message": "Exclude Selectors"
+  },
+  "label_siteParagraphMinLength": {
+    "message": "Minimum Paragraph Length"
+  },
+  "hint_siteSelectorsPerLine": {
+    "message": "One CSS selector per line"
+  },
+  "hint_siteParagraphMinLength": {
+    "message": "Leave blank to disable length filtering"
+  },
+  "label_inheritBlank": {
+    "message": "Inherited / disabled"
+  },
+  "error_invalidCssSelector": {
+    "message": "Invalid CSS selector: $1",
+    "placeholders": {
+      "1": { "content": "$1" }
+    }
+  },
   "label_inheritGlobal": {
     "message": "Inherit global ($1)",
     "placeholders": {

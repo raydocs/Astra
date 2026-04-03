@@ -7,6 +7,7 @@ import { generateText } from "ai"
 import { z } from "zod"
 
 import { AstraError } from "@/types/translation"
+import { getRichTextPlaceholderPromptFragment } from "@/utils/dom/rich-text-placeholders"
 
 import type { ProviderTranslationRequest } from "./types"
 
@@ -44,7 +45,8 @@ export function buildTranslationPrompt({
   task = "translate",
   customSystemPrompt,
   languageLevel = "intermediate",
-}: Pick<TranslationOptions, "texts" | "targetLang" | "sourceLang" | "context" | "task" | "customSystemPrompt" | "languageLevel">): string {
+  placeholderFormat,
+}: Pick<TranslationOptions, "texts" | "targetLang" | "sourceLang" | "context" | "task" | "customSystemPrompt" | "languageLevel" | "placeholderFormat">): string {
   const sourceHint = sourceLang ? ` from ${sourceLang}` : ""
   const contextPayload = {
     pageTitle: truncate(context?.pageTitle, 200),
@@ -98,6 +100,9 @@ export function buildTranslationPrompt({
     ...(hasContext
       ? [`Context JSON: ${JSON.stringify(contextPayload)}`]
       : []),
+    ...(placeholderFormat === "astra-rich-text-v1"
+      ? [getRichTextPlaceholderPromptFragment()]
+      : []),
     `Input JSON: ${JSON.stringify({ texts })}`,
   ].join("\n\n")
 }
@@ -150,6 +155,7 @@ export async function translateWithOpenAI(
     task = "translate",
     customSystemPrompt,
     languageLevel,
+    placeholderFormat,
   } = options
 
   const openai = createOpenAI({
@@ -165,6 +171,7 @@ export async function translateWithOpenAI(
     task,
     customSystemPrompt,
     languageLevel,
+    placeholderFormat,
   })
 
   const systemMessage = task === "custom" && customSystemPrompt

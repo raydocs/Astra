@@ -3,6 +3,7 @@ import { browser } from "#imports"
 import { t } from "@/utils/i18n"
 import type {
   AstraConfig,
+  SiteConfig,
   TranslationMode,
 } from "@/types/config"
 import type { AstraAccount, AstraSession, AstraUsageSnapshot } from "@/types/auth"
@@ -10,10 +11,11 @@ import type { TranslationSnapshot } from "@/types/translation"
 import type { QuotaInfo } from "@/utils/astra/quota"
 import {
   getActiveTabTranslationState,
+  saveConfigInBackground,
   startActiveTabTranslation,
   stopActiveTabTranslation,
 } from "@/utils/extension/messages"
-import { readConfig, saveConfig as persistConfig } from "@/utils/storage/config"
+import { readConfig } from "@/utils/storage/config"
 import {
   DEFAULT_ASTRA_CONFIG,
   hasResolvedProviderAccess,
@@ -39,6 +41,7 @@ import { getQuotaInfo } from "@/utils/astra/quota"
 import TranslationStatusCard from "./components/TranslationStatusCard"
 import SimpleControls from "./components/SimpleControls"
 import QuotaBar from "./components/QuotaBar"
+import SiteSettingsSection from "./components/SiteSettingsSection"
 import { btnPrimary, btnSecondary, btnDisabled, warningStyle, inputStyle, labelStyle } from "./components/styles"
 
 function formatRelativeTime(timestamp: number): string {
@@ -73,6 +76,11 @@ export default function App() {
   const [recentHistory, setRecentHistory] = useState<ReadingHistoryEntry[]>([])
   const [quotaInfo, setQuotaInfo] = useState<QuotaInfo | null>(null)
   const hasUnsavedChangesRef = useRef(false)
+  const isMountedRef = useRef(true)
+  const saveSequenceRef = useRef<Promise<void>>(Promise.resolve())
+  const saveRevisionRef = useRef(0)
+  const siteRuleSaveTimerRef = useRef<number | null>(null)
+  const pendingSiteRuleDraftRef = useRef<AstraConfig | null>(null)
 
   const persistedResolvedSite = useMemo(
     () => resolveSiteTranslationSettings(persistedConfig, activeSiteKey),
@@ -172,30 +180,188 @@ export default function App() {
     }
   }, [])
 
-  const handleSaveConfig = async (patch: Partial<AstraConfig>) => {
-    try {
-      const nextConfig = await persistConfig({
-        ...patch,
-        provider: {
-          id: configDraft.provider.id,
-          apiKey: configDraft.provider.apiKey,
-          relayBaseURL: configDraft.provider.relayBaseURL ?? "",
-          model: configDraft.provider.model,
-        },
-        sites: configDraft.sites,
-      })
-      setConfigDraft(nextConfig)
-      setPersistedConfig(nextConfig)
-      hasUnsavedChangesRef.current = false
+  const takePendingSiteRuleDraft = () => {
+    if (siteRuleSaveTimerRef.current !== null) {
+      window.clearTimeout(siteRuleSaveTimerRef.current)
+      siteRuleSaveTimerRef.current = null
+    }
 
-      if (activeSiteKey && !resolveSiteTranslationSettings(nextConfig, activeSiteKey).enabled) {
-        await stopActiveTabTranslation()
+    const pendingDraft = pendingSiteRuleDraftRef.current
+    pendingSiteRuleDraftRef.current = null
+    return pendingDraft
+  }
+
+  const clearScheduledSiteRulePersist = () => {
+    takePendingSiteRuleDraft()
+  }
+
+  const flushPendingSiteRulePersist = async () => {
+    const pendingDraft = takePendingSiteRuleDraft()
+    if (!pendingDraft) {
+      return
+    }
+
+    await persistDraftConfig(pendingDraft, { retranslateActivePage: true })
+  }
+
+  useEffect(() => {
+    const flushPendingSiteRules = () => {
+      void flushPendingSiteRulePersist()
+    }
+
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === "hidden") {
+        flushPendingSiteRules()
+      }
+    }
+
+    window.addEventListener("pagehide", flushPendingSiteRules)
+    document.addEventListener("visibilitychange", handleVisibilityChange)
+
+    return () => {
+      window.removeEventListener("pagehide", flushPendingSiteRules)
+      document.removeEventListener("visibilitychange", handleVisibilityChange)
+      isMountedRef.current = false
+      flushPendingSiteRules()
+    }
+  }, [])
+
+  const persistDraftConfig = async (
+    nextDraft: AstraConfig,
+    options: { retranslateActivePage?: boolean } = {},
+  ) => {
+    const revision = ++saveRevisionRef.current
+
+    const runPersist = async () => {
+      try {
+        const saveResult = await saveConfigInBackground({
+          targetLang: nextDraft.targetLang,
+          connectionMode: nextDraft.connectionMode,
+          hoverTrigger: nextDraft.hoverTrigger,
+          contentScope: nextDraft.contentScope,
+          inputTranslation: nextDraft.inputTranslation,
+          languageLevel: nextDraft.languageLevel,
+          privacyMode: nextDraft.privacyMode,
+          provider: {
+            id: nextDraft.provider.id,
+            accessToken: nextDraft.provider.accessToken,
+            apiKey: nextDraft.provider.apiKey,
+            relayBaseURL: nextDraft.provider.relayBaseURL ?? "",
+            model: nextDraft.provider.model,
+          },
+          presentation: nextDraft.presentation,
+          sites: nextDraft.sites,
+          customActions: nextDraft.customActions,
+        })
+        if (!saveResult.ok) {
+          throw new Error(saveResult.error.message)
+        }
+
+        const nextConfig = saveResult.config
+
+        if (revision !== saveRevisionRef.current) {
+          return
+        }
+
+        if (isMountedRef.current) {
+          setConfigDraft(nextConfig)
+          setPersistedConfig(nextConfig)
+        }
+        hasUnsavedChangesRef.current = false
+
+        if (activeSiteKey) {
+          const resolvedSite = resolveSiteTranslationSettings(nextConfig, activeSiteKey)
+          if (!resolvedSite.enabled) {
+            await stopActiveTabTranslation()
+          } else if (options.retranslateActivePage && translationState?.phase !== "idle" && contentAvailable) {
+            await startActiveTabTranslation({
+              targetLang: resolvedSite.targetLang,
+              translationMode: resolvedSite.presentation.mode,
+              translationTheme: resolvedSite.presentation.theme,
+              contentScope: resolvedSite.contentScope,
+            })
+          }
+        }
+
+        if (isMountedRef.current) {
+          await refreshTranslationState()
+        }
+      } catch (error) {
+        if (revision !== saveRevisionRef.current) {
+          return
+        }
+        if (isMountedRef.current) {
+          setStatusMessage(error instanceof Error ? error.message : "Failed to save settings")
+        }
+      }
+    }
+
+    const pending = saveSequenceRef.current.catch(() => undefined).then(runPersist)
+    saveSequenceRef.current = pending.then(() => undefined, () => undefined)
+    await pending
+  }
+
+  const scheduleSiteRulePersist = (nextDraft: AstraConfig) => {
+    hasUnsavedChangesRef.current = true
+    pendingSiteRuleDraftRef.current = nextDraft
+    if (siteRuleSaveTimerRef.current !== null) {
+      window.clearTimeout(siteRuleSaveTimerRef.current)
+    }
+
+    siteRuleSaveTimerRef.current = window.setTimeout(() => {
+      siteRuleSaveTimerRef.current = null
+      const pendingDraft = pendingSiteRuleDraftRef.current
+      pendingSiteRuleDraftRef.current = null
+      if (!pendingDraft) {
+        return
       }
 
-      await refreshTranslationState()
-    } catch (error) {
-      setStatusMessage(error instanceof Error ? error.message : "Failed to save settings")
+      void persistDraftConfig(pendingDraft, { retranslateActivePage: true })
+    }, 250)
+  }
+
+  const handleSaveConfig = async (patch: Partial<AstraConfig>) => {
+    clearScheduledSiteRulePersist()
+
+    const nextDraft: AstraConfig = {
+      ...configDraft,
+      ...patch,
+      provider: {
+        ...configDraft.provider,
+        ...patch.provider,
+      },
+      presentation: {
+        ...configDraft.presentation,
+        ...patch.presentation,
+      },
+      sites: patch.sites ?? configDraft.sites,
+      customActions: patch.customActions ?? configDraft.customActions,
     }
+
+    setConfigDraft(nextDraft)
+    await persistDraftConfig(nextDraft)
+  }
+
+  const handleSiteRuleChange = (mutate: (current: SiteConfig) => SiteConfig) => {
+    if (!activeSiteKey) return
+
+    setConfigDraft((current) => {
+      const currentRule = current.sites[activeSiteKey] ?? {
+        enabled: true,
+        alwaysTranslate: false,
+      }
+      const nextRule = mutate(currentRule)
+      const nextDraft = {
+        ...current,
+        sites: {
+          ...current.sites,
+          [activeSiteKey]: nextRule,
+        },
+      }
+
+      scheduleSiteRulePersist(nextDraft)
+      return nextDraft
+    })
   }
 
   const handleTargetLangChange = (lang: string) => {
@@ -450,6 +616,22 @@ export default function App() {
           onModeChange={handleModeChange}
         />
       </div>
+
+      {activeSiteKey && (
+        <div style={{ marginTop: 12 }}>
+          <SiteSettingsSection
+            activeSiteKey={activeSiteKey}
+            rawSiteRule={configDraft.sites[activeSiteKey]}
+            globalConfig={{
+              targetLang: configDraft.targetLang,
+              hoverTrigger: configDraft.hoverTrigger,
+              presentation: configDraft.presentation,
+              contentScope: configDraft.contentScope,
+            }}
+            onSiteRuleChange={handleSiteRuleChange}
+          />
+        </div>
+      )}
 
       {/* Auth section (simplified) */}
       {!authSession && (

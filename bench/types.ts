@@ -12,6 +12,7 @@ export type BenchmarkSurface =
   | "subtitle-file"
   | "pdf"
   | "epub"
+  | "provider-routing"
 
 export type BenchmarkSplit = "train" | "validation" | "holdout"
 

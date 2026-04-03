@@ -152,6 +152,9 @@ export interface TranslationOverrides {
   translationMode?: TranslationMode
   translationTheme?: TranslationTheme
   contentScope?: ContentScope
+  selectors?: string[]
+  excludeSelectors?: string[]
+  paragraphMinLength?: number
 }
 
 export interface ResolvedSiteTranslationSettings {
@@ -302,9 +305,9 @@ export function resolveSiteTranslationSettings(
       fontSize: siteConfig?.presentation?.fontSize ?? basePresentation.fontSize,
       translationColor: siteConfig?.presentation?.translationColor ?? basePresentation.translationColor,
     },
-    selectors: siteConfig?.selectors,
-    excludeSelectors: siteConfig?.excludeSelectors,
-    paragraphMinLength: siteConfig?.paragraphMinLength,
+    selectors: overrides.selectors ?? siteConfig?.selectors,
+    excludeSelectors: overrides.excludeSelectors ?? siteConfig?.excludeSelectors,
+    paragraphMinLength: overrides.paragraphMinLength ?? siteConfig?.paragraphMinLength,
   }
 }
 

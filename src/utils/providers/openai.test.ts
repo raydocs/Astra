@@ -37,6 +37,17 @@ describe("openai provider helpers", () => {
     expect(prompt).toContain("Context JSON")
   })
 
+  it("adds placeholder-preservation instructions when rich-text placeholders are enabled", () => {
+    const prompt = buildTranslationPrompt({
+      texts: ["__ASTRA_RT_0_OPEN_STRONG__Hello__ASTRA_RT_0_CLOSE__"],
+      targetLang: "zh-CN",
+      placeholderFormat: "astra-rich-text-v1",
+    })
+
+    expect(prompt).toContain("Astra rich-text placeholders")
+    expect(prompt).toContain("Preserve every placeholder token exactly as written")
+  })
+
   it("parses valid JSON responses", () => {
     expect(
       parseTranslationsResponse("{\"translations\":[\"你好\",\"世界\"]}", 2),

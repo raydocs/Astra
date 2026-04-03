@@ -99,6 +99,9 @@ export async function saveConfig(input: AstraConfigInput): Promise<AstraConfig> 
         ...(value.presentation && Object.keys(value.presentation).length > 0
           ? { presentation: value.presentation }
           : {}),
+        ...(value.selectors?.length ? { selectors: value.selectors } : {}),
+        ...(value.excludeSelectors?.length ? { excludeSelectors: value.excludeSelectors } : {}),
+        ...(value.paragraphMinLength != null ? { paragraphMinLength: value.paragraphMinLength } : {}),
       }
     })
   }

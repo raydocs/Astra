@@ -18,6 +18,10 @@ function addIssue(
   issues.push({ severity, message, evidence })
 }
 
+function hasAnyLabel(buttonLabels: string[], candidates: string[]) {
+  return candidates.some((candidate) => buttonLabels.includes(candidate))
+}
+
 function buildPatchHints(
   execution: SelectionExplainExecution,
   expected: {
@@ -90,7 +94,9 @@ export function evaluateSelectionExplain(
   const issues: BenchmarkIssue[] = []
   const correctness = execution.requestCount === 1 && execution.resultText.trim().length > 0 ? 10 : 3
   const contextQuality = expected.requireContext === false || execution.requestSelectionContext?.trim().length ? 10 : 4
-  const interactionSafety = execution.buttonLabels.includes("解释") && execution.buttonLabels.includes("复制") ? 10 : 5
+  const hasExplainButton = hasAnyLabel(execution.buttonLabels, ["Explain", "解释"])
+  const hasCopyButton = hasAnyLabel(execution.buttonLabels, ["Copy", "复制"])
+  const interactionSafety = hasExplainButton && hasCopyButton ? 10 : 5
   const completeness = expected.shouldCopy ? (execution.clipboardWrites.length > 0 ? 10 : 3) : 10
 
   if (execution.requestCount !== 1) {

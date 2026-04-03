@@ -5,7 +5,7 @@ import type { AstraAccount, AstraSession } from "@/types/auth"
 
 const {
   readConfigMock,
-  saveConfigMock,
+  saveConfigInBackgroundMock,
   readAstraSessionMock,
   saveAstraSessionMock,
   clearAstraSessionMock,
@@ -21,7 +21,7 @@ const {
   getReadingHistoryMock,
 } = vi.hoisted(() => ({
   readConfigMock: vi.fn(),
-  saveConfigMock: vi.fn(),
+  saveConfigInBackgroundMock: vi.fn(),
   readAstraSessionMock: vi.fn(),
   saveAstraSessionMock: vi.fn(),
   clearAstraSessionMock: vi.fn(),
@@ -39,7 +39,6 @@ const {
 
 vi.mock("@/utils/storage/config", () => ({
   readConfig: readConfigMock,
-  saveConfig: saveConfigMock,
 }))
 
 vi.mock("@/utils/storage/auth", () => ({
@@ -65,6 +64,7 @@ vi.mock("@/utils/astra/quota", () => ({
 
 vi.mock("@/utils/extension/messages", () => ({
   getActiveTabTranslationState: getActiveTabTranslationStateMock,
+  saveConfigInBackground: saveConfigInBackgroundMock,
   startActiveTabTranslation: startActiveTabTranslationMock,
   stopActiveTabTranslation: stopActiveTabTranslationMock,
 }))
@@ -171,6 +171,7 @@ function createAccount(patch: Partial<AstraAccount> = {}): AstraAccount {
 describe("popup App", () => {
   let container: HTMLDivElement
   let root: ReactDOM.Root
+  let rootUnmounted: boolean
   let browserMock: any
 
   beforeEach(async () => {
@@ -181,7 +182,10 @@ describe("popup App", () => {
     browserMock.tabs.query.mockResolvedValue([{ id: 1, url: "https://example.com/article" }])
 
     readConfigMock.mockResolvedValue(createConfig())
-    saveConfigMock.mockImplementation(async (input: Partial<AstraConfig>) => createConfig(input))
+    saveConfigInBackgroundMock.mockImplementation(async (input: Partial<AstraConfig>) => ({
+      ok: true,
+      config: createConfig(input),
+    }))
     readAstraSessionMock.mockResolvedValue(createSession())
     saveAstraSessionMock.mockImplementation(async (session: unknown) => session)
     clearAstraSessionMock.mockResolvedValue(undefined)
@@ -199,6 +203,7 @@ describe("popup App", () => {
     container = document.createElement("div")
     document.body.appendChild(container)
     root = ReactDOM.createRoot(container)
+    rootUnmounted = false
 
     await act(async () => {
       root.render(<App />)
@@ -209,10 +214,12 @@ describe("popup App", () => {
   })
 
   afterEach(async () => {
-    await act(async () => {
-      root.unmount()
-      await Promise.resolve()
-    })
+    if (!rootUnmounted) {
+      await act(async () => {
+        root.unmount()
+        await Promise.resolve()
+      })
+    }
     container.remove()
     vi.useRealTimers()
   })
@@ -224,6 +231,21 @@ describe("popup App", () => {
   async function flushApp() {
     await act(async () => {
       await Promise.resolve()
+      await Promise.resolve()
+      await Promise.resolve()
+    })
+  }
+
+  async function setFormValue(element: HTMLInputElement | HTMLTextAreaElement, value: string) {
+    const prototype = element instanceof HTMLTextAreaElement
+      ? HTMLTextAreaElement.prototype
+      : HTMLInputElement.prototype
+    const setter = Object.getOwnPropertyDescriptor(prototype, "value")?.set
+
+    await act(async () => {
+      setter?.call(element, value)
+      element.dispatchEvent(new Event("input", { bubbles: true }))
+      element.dispatchEvent(new Event("change", { bubbles: true }))
       await Promise.resolve()
       await Promise.resolve()
     })
@@ -335,6 +357,107 @@ describe("popup App", () => {
       sessionToken: "astra-session",
     })
     expect(clearAstraSessionMock).toHaveBeenCalled()
+  })
+
+  it("persists site advanced rules from the popup", async () => {
+    await flushApp()
+
+    const selectorsInput = container.querySelector('[data-testid="site-selectors-input"]') as HTMLTextAreaElement
+    const excludeSelectorsInput = container.querySelector('[data-testid="site-exclude-selectors-input"]') as HTMLTextAreaElement
+    const paragraphMinLengthInput = container.querySelector('[data-testid="site-paragraph-min-length-input"]') as HTMLInputElement
+
+    expect(selectorsInput).toBeTruthy()
+    expect(excludeSelectorsInput).toBeTruthy()
+    expect(paragraphMinLengthInput).toBeTruthy()
+
+    await setFormValue(selectorsInput, "article\n.content")
+    await setFormValue(excludeSelectorsInput, ".comments\naside")
+    await setFormValue(paragraphMinLengthInput, "42")
+    await act(async () => {
+      await vi.runAllTimersAsync()
+    })
+    await flushApp()
+
+    expect(saveConfigInBackgroundMock).toHaveBeenCalled()
+    expect(saveConfigInBackgroundMock).toHaveBeenLastCalledWith(expect.objectContaining({
+      sites: expect.objectContaining({
+        "example.com": expect.objectContaining({
+          selectors: ["article", ".content"],
+          excludeSelectors: [".comments", "aside"],
+          paragraphMinLength: 42,
+        }),
+      }),
+    }))
+  })
+
+  it("shows an inline error for invalid CSS selectors and does not persist them", async () => {
+    await flushApp()
+
+    const selectorsInput = container.querySelector('[data-testid="site-selectors-input"]') as HTMLTextAreaElement
+    expect(selectorsInput).toBeTruthy()
+
+    await setFormValue(selectorsInput, "article[")
+    await act(async () => {
+      await vi.runAllTimersAsync()
+    })
+    await flushApp()
+
+    const error = container.querySelector('[data-testid="site-selectors-error"]')
+    expect(error?.textContent).toContain("article[")
+    expect(saveConfigInBackgroundMock).not.toHaveBeenCalled()
+  })
+
+  it("flushes pending site rule saves on pagehide before popup teardown", async () => {
+    await flushApp()
+
+    const selectorsInput = container.querySelector('[data-testid="site-selectors-input"]') as HTMLTextAreaElement
+    expect(selectorsInput).toBeTruthy()
+
+    await setFormValue(selectorsInput, "article\n.content")
+    expect(saveConfigInBackgroundMock).not.toHaveBeenCalled()
+
+    await act(async () => {
+      window.dispatchEvent(new Event("pagehide"))
+      await Promise.resolve()
+      await Promise.resolve()
+      await Promise.resolve()
+    })
+
+    expect(saveConfigInBackgroundMock).toHaveBeenCalledTimes(1)
+    expect(saveConfigInBackgroundMock).toHaveBeenCalledWith(expect.objectContaining({
+      sites: expect.objectContaining({
+        "example.com": expect.objectContaining({
+          selectors: ["article", ".content"],
+        }),
+      }),
+    }))
+  })
+
+  it("flushes pending site rule saves when the popup unmounts", async () => {
+    await flushApp()
+
+    const selectorsInput = container.querySelector('[data-testid="site-selectors-input"]') as HTMLTextAreaElement
+    expect(selectorsInput).toBeTruthy()
+
+    await setFormValue(selectorsInput, "article\n.content")
+    expect(saveConfigInBackgroundMock).not.toHaveBeenCalled()
+
+    await act(async () => {
+      root.unmount()
+      rootUnmounted = true
+      await Promise.resolve()
+      await Promise.resolve()
+      await Promise.resolve()
+    })
+
+    expect(saveConfigInBackgroundMock).toHaveBeenCalledTimes(1)
+    expect(saveConfigInBackgroundMock).toHaveBeenCalledWith(expect.objectContaining({
+      sites: expect.objectContaining({
+        "example.com": expect.objectContaining({
+          selectors: ["article", ".content"],
+        }),
+      }),
+    }))
   })
 
   it("shows the version footer", async () => {

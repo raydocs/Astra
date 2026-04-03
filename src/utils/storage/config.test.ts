@@ -215,6 +215,28 @@ describe("config storage", () => {
     })
   })
 
+  it("persists site-level advanced rules", async () => {
+    const config = await saveConfig({
+      sites: {
+        "example.com": {
+          selectors: ["article", ".content"],
+          excludeSelectors: [".comments", "aside"],
+          paragraphMinLength: 42,
+        },
+      },
+    })
+
+    expect(config.sites).toEqual({
+      "example.com": {
+        enabled: true,
+        alwaysTranslate: false,
+        selectors: ["article", ".content"],
+        excludeSelectors: [".comments", "aside"],
+        paragraphMinLength: 42,
+      },
+    })
+  })
+
   it("persists contentScope in config", async () => {
     const config = await saveConfig({
       contentScope: "article",

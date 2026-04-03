@@ -3,6 +3,7 @@ import type { VideoPlatformConfig } from "./types"
 export const netflixPlatform: VideoPlatformConfig = {
   id: "netflix",
   hostnames: ["www.netflix.com"],
+  preferTextTracks: true,
   // Netflix uses multiple possible subtitle container selectors across versions.
   // Try the most common ones — the platform adapter falls back gracefully if not found.
   captionContainerSelector: [

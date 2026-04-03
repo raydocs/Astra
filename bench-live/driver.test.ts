@@ -2,9 +2,16 @@ import { mkdtemp, writeFile } from "node:fs/promises"
 import os from "node:os"
 import path from "node:path"
 
-import { describe, expect, it } from "vitest"
+import { chromium } from "playwright"
+import { describe, expect, it, vi } from "vitest"
 
-import { prepareLiveArtifactDir, readFixtureHtml, resolveLiveBrowserExecutablePath } from "./driver"
+import {
+  LiveBrowserUnavailableError,
+  prepareLiveArtifactDir,
+  readFixtureHtml,
+  resolveLiveBrowserExecutablePath,
+  withLiveBrowserPage,
+} from "./driver"
 
 describe("bench-live driver", () => {
   it("reads fixture HTML from the shared fixture directory", async () => {
@@ -29,5 +36,27 @@ describe("bench-live driver", () => {
     })
 
     expect(resolved).toBe(fakeBrowserPath)
+  })
+
+  it("normalizes launch failures as LiveBrowserUnavailableError", async () => {
+    const tempDir = await mkdtemp(path.join(os.tmpdir(), "astra-live-driver-launch-"))
+    const fakeBrowserPath = path.join(tempDir, "fake-chromium")
+    await writeFile(fakeBrowserPath, "")
+
+    const launchSpy = vi.spyOn(chromium, "launch").mockRejectedValueOnce(new Error("launch failed"))
+    const originalBrowserPath = process.env.ASTRA_BENCH_LIVE_BROWSER_PATH
+    process.env.ASTRA_BENCH_LIVE_BROWSER_PATH = fakeBrowserPath
+
+    try {
+      const error = await withLiveBrowserPage(async () => "ok").catch((caughtError) => caughtError)
+
+      expect(launchSpy).toHaveBeenCalledOnce()
+      expect(error).toBeInstanceOf(LiveBrowserUnavailableError)
+      expect((error as Error).message).toContain(fakeBrowserPath)
+      expect((error as Error).message).toContain("launch failed")
+    } finally {
+      process.env.ASTRA_BENCH_LIVE_BROWSER_PATH = originalBrowserPath
+      launchSpy.mockRestore()
+    }
   })
 })

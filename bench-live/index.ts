@@ -49,10 +49,12 @@ export {
   subtitleBasicScenario,
   frameCoordinationBasicScenario,
 } from "./scenarios/index"
+export { holdoutScenarios } from "./scenarios/holdout/index"
 
 import { createLiveRuntime } from "./runtime"
 import { evaluateLiveScenario, type LiveEvaluationResult, type LiveScenarioContext, type LiveScenarioDefinition, type LiveScenarioExecution } from "./evaluator"
 import { liveScenarios } from "./scenarios/index"
+import { holdoutScenarios } from "./scenarios/holdout/index"
 
 type AnyLiveScenarioDefinition = LiveScenarioDefinition<any>
 
@@ -150,8 +152,9 @@ export function formatLiveBenchScenarioList(scenarios: AnyLiveScenarioDefinition
 }
 
 export function resolveLiveScenario(scenarioId: string | null): AnyLiveScenarioDefinition {
+  const allScenarios = [...liveScenarios, ...holdoutScenarios]
   const scenario = scenarioId
-    ? liveScenarios.find((entry) => entry.id === scenarioId)
+    ? allScenarios.find((entry) => entry.id === scenarioId)
     : liveScenarios[0]
 
   if (!scenario) {

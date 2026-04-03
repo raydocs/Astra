@@ -12,6 +12,11 @@ export interface PageTranslationExecution {
   snapshotPhase: string
   failedBlocks: number
   payloadContext?: Record<string, unknown> | null
+  requestTexts?: string[]
+  requestPlaceholderCount?: number
+  translatedHtmlSnippets?: string[]
+  placeholderLeakCount?: number
+  restoredRichTextTagCount?: number
   notes?: string[]
 }
 
@@ -43,6 +48,7 @@ function buildPatchHints(
   options: {
     requireTranslationOnly?: boolean
     requirePrivacySanitization?: boolean
+    requireRichTextPlaceholderPreservation?: boolean
   },
   issues: BenchmarkIssue[],
 ): PatchHintArtifact | undefined {
@@ -98,6 +104,25 @@ function buildPatchHints(
     suspectedKeywords.add("sanitizeTranslationContext")
   }
 
+  if (options.requireRichTextPlaceholderPreservation) {
+    suspectedFiles.add("src/utils/dom/rich-text-placeholders.ts")
+    suspectedFiles.add("src/utils/dom/inject.ts")
+    suspectedKeywords.add("placeholder")
+    suspectedKeywords.add("rich-text")
+
+    if ((execution.requestPlaceholderCount ?? 0) === 0) {
+      failingSignals.push("request text missed rich-text placeholders")
+    }
+
+    if ((execution.restoredRichTextTagCount ?? 0) === 0) {
+      failingSignals.push("translated DOM did not restore inline rich-text tags")
+    }
+
+    if ((execution.placeholderLeakCount ?? 0) > 0) {
+      failingSignals.push("placeholder tokens leaked into rendered translation")
+    }
+  }
+
   const confidence = issues.some((issue) => issue.severity === "critical") ? "high" : "medium"
 
   return {
@@ -114,6 +139,7 @@ export function evaluatePageTranslation(
   options: {
     requireTranslationOnly?: boolean
     requirePrivacySanitization?: boolean
+    requireRichTextPlaceholderPreservation?: boolean
   } = {},
 ): EvaluationResult {
   const issues: BenchmarkIssue[] = []
@@ -167,6 +193,33 @@ export function evaluatePageTranslation(
       "high",
       "Page translation privacy mode leaked more context than the sanitized contract allows.",
       JSON.stringify(execution.payloadContext),
+    )
+  }
+
+  if (options.requireRichTextPlaceholderPreservation && (execution.requestPlaceholderCount ?? 0) === 0) {
+    addIssue(
+      issues,
+      "high",
+      "Page translation request did not include Astra rich-text placeholders for inline formatting.",
+      JSON.stringify(execution.requestTexts ?? []),
+    )
+  }
+
+  if (options.requireRichTextPlaceholderPreservation && (execution.restoredRichTextTagCount ?? 0) === 0) {
+    addIssue(
+      issues,
+      "high",
+      "Rendered page translation did not restore any inline rich-text tags.",
+      JSON.stringify(execution.translatedHtmlSnippets ?? []),
+    )
+  }
+
+  if (options.requireRichTextPlaceholderPreservation && (execution.placeholderLeakCount ?? 0) > 0) {
+    addIssue(
+      issues,
+      "high",
+      "Rendered page translation leaked Astra placeholder tokens into the DOM.",
+      `placeholderLeakCount=${execution.placeholderLeakCount}`,
     )
   }
 

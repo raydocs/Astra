@@ -1,6 +1,7 @@
 import { defineBackground, browser } from "#imports"
 import {
   isRuntimeCurrentTabCommandRequest,
+  isRuntimeSaveConfigRequest,
   isRuntimeTabCommandRequest,
   isRuntimeTranslateBatchRequest,
   type ContentCommandResponse,
@@ -9,7 +10,10 @@ import {
 import { executeTabCommand } from "./frame-coordinator"
 import { toTranslationError } from "@/types/translation"
 import { toggleTabTranslation } from "@/utils/extension/messages"
-import { translateWithProvider } from "@/utils/providers/router"
+import {
+  getProviderRoutingMetadataFromError,
+  translateWithProviderDetailed,
+} from "@/utils/providers/router"
 import { readConfig, saveConfig } from "@/utils/storage/config"
 import { cleanExpiredCache } from "@/utils/cache/translation-cache"
 import { getDueVocabularyCount } from "@/utils/storage/vocabulary"
@@ -168,10 +172,16 @@ export default defineBackground({
         updateBadge()
         handleTranslate(message.payload)
           .then((r) => { activeTranslations = Math.max(0, activeTranslations - 1); updateBadge(); sendResponse(r) })
-          .catch((error) => { activeTranslations = Math.max(0, activeTranslations - 1); updateBadge(); sendResponse({
+          .catch((error) => {
+            activeTranslations = Math.max(0, activeTranslations - 1)
+            updateBadge()
+            const metadata = getProviderRoutingMetadataFromError(error)
+            sendResponse({
               type: "runtime/translate-batch:error",
               error: toTranslationError(error, "UNKNOWN"),
-            } satisfies RuntimeResponse) })
+              ...(metadata ? { metadata } : {}),
+            } satisfies RuntimeResponse)
+          })
         return true
       }
 
@@ -208,6 +218,23 @@ export default defineBackground({
         return true
       }
 
+      if (isRuntimeSaveConfigRequest(message)) {
+        saveConfig(message.payload)
+          .then((config) => {
+            sendResponse({
+              type: "runtime/save-config:success",
+              payload: { config },
+            } satisfies RuntimeResponse)
+          })
+          .catch((error) => {
+            sendResponse({
+              type: "runtime/save-config:error",
+              error: toTranslationError(error, "UNKNOWN"),
+            } satisfies RuntimeResponse)
+          })
+        return true
+      }
+
       return false
     })
   },
@@ -227,24 +254,29 @@ async function handleTranslate(payload: {
   }
   task?: "translate" | "explain" | "custom"
   customSystemPrompt?: string
+  placeholderFormat?: "astra-rich-text-v1"
 }): Promise<RuntimeResponse> {
   const [config, session] = await Promise.all([
     readConfig(),
     readAstraSession(),
   ])
 
-  const translations = await translateWithProvider(resolveManagedProviderConfig(config.provider, session), {
+  const result = await translateWithProviderDetailed(resolveManagedProviderConfig(config.provider, session), {
     texts: payload.texts,
     targetLang: payload.targetLang,
     sourceLang: payload.sourceLang,
     context: payload.context,
     task: payload.task,
     customSystemPrompt: payload.customSystemPrompt,
+    placeholderFormat: payload.placeholderFormat,
     languageLevel: config.languageLevel,
   })
 
   return {
     type: "runtime/translate-batch:success",
-    payload: { translations },
+    payload: {
+      translations: result.translations,
+      metadata: result.metadata,
+    },
   }
 }

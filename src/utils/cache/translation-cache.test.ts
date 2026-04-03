@@ -8,7 +8,24 @@ import {
   getCachedTranslations,
   getCacheStats,
   setCachedTranslation,
+  type TranslationCacheContext,
 } from "./translation-cache"
+
+const openAiNanoContext: TranslationCacheContext = {
+  providerId: "openai",
+  model: "gpt-5.4-nano",
+  connectionMode: "astra",
+  routingKey: "astra",
+  languageLevel: "intermediate",
+}
+
+const geminiFlashContext: TranslationCacheContext = {
+  providerId: "gemini",
+  model: "gemini-3.1-flash-lite-preview",
+  connectionMode: "custom",
+  routingKey: "https://gemini.example/v1",
+  languageLevel: "advanced",
+}
 
 describe("translation-cache", () => {
   beforeEach(async () => {
@@ -46,6 +63,26 @@ describe("translation-cache", () => {
       const result = await getCachedTranslation("Hello", "zh-CN")
       expect(result).toBe("你好世界")
     })
+
+    it("isolates entries by translation cache context", async () => {
+      await setCachedTranslation("Hello", "zh-CN", "你好", openAiNanoContext)
+      await setCachedTranslation("Hello", "zh-CN", "您好", geminiFlashContext)
+
+      expect(await getCachedTranslation("Hello", "zh-CN", openAiNanoContext)).toBe("你好")
+      expect(await getCachedTranslation("Hello", "zh-CN", geminiFlashContext)).toBe("您好")
+      expect(await getCachedTranslation("Hello", "zh-CN", {
+        ...openAiNanoContext,
+        model: "gpt-5.4-mini",
+      })).toBeNull()
+      expect(await getCachedTranslation("Hello", "zh-CN", {
+        ...openAiNanoContext,
+        sourceLang: "en",
+      })).toBeNull()
+      expect(await getCachedTranslation("Hello", "zh-CN", {
+        ...openAiNanoContext,
+        requestContextKey: JSON.stringify({ terminologyGlossary: "Astra=阿斯特拉" }),
+      })).toBeNull()
+    })
   })
 
   describe("TTL expiry", () => {
@@ -76,19 +113,59 @@ describe("translation-cache", () => {
 
   describe("batch get", () => {
     it("returns cached entries by index", async () => {
-      await setCachedTranslation("Hello", "zh-CN", "你好")
-      await setCachedTranslation("World", "zh-CN", "世界")
+      await setCachedTranslation("Hello", "zh-CN", "你好", openAiNanoContext)
+      await setCachedTranslation("World", "zh-CN", "世界", openAiNanoContext)
 
       const results = await getCachedTranslations([
-        { text: "Hello", targetLang: "zh-CN" },
-        { text: "Unknown", targetLang: "zh-CN" },
-        { text: "World", targetLang: "zh-CN" },
+        { text: "Hello", targetLang: "zh-CN", cacheContext: openAiNanoContext },
+        { text: "Unknown", targetLang: "zh-CN", cacheContext: openAiNanoContext },
+        { text: "World", targetLang: "zh-CN", cacheContext: openAiNanoContext },
+        { text: "Hello", targetLang: "zh-CN", cacheContext: geminiFlashContext },
       ])
 
       expect(results.size).toBe(2)
       expect(results.get(0)).toBe("你好")
       expect(results.has(1)).toBe(false)
       expect(results.get(2)).toBe("世界")
+      expect(results.has(3)).toBe(false)
+    })
+
+    it("tracks lookup and write metrics by cache bucket", async () => {
+      await setCachedTranslation("Hello", "zh-CN", "你好", openAiNanoContext)
+      await setCachedTranslation("World", "zh-CN", "世界", openAiNanoContext)
+      await setCachedTranslation("Hello", "zh-CN", "您好", geminiFlashContext)
+
+      await getCachedTranslations([
+        { text: "Hello", targetLang: "zh-CN", cacheContext: openAiNanoContext },
+        { text: "Unknown", targetLang: "zh-CN", cacheContext: openAiNanoContext },
+        { text: "Hello", targetLang: "zh-CN", cacheContext: geminiFlashContext },
+      ])
+
+      const stats = await getCacheStats()
+      expect(stats.count).toBe(3)
+      expect(stats.writes).toBe(3)
+      expect(stats.lookups).toBe(3)
+      expect(stats.hits).toBe(2)
+      expect(stats.misses).toBe(1)
+      expect(stats.hitRate).toBeCloseTo(2 / 3)
+      expect(stats.buckets).toEqual(expect.arrayContaining([
+        expect.objectContaining({
+          providerId: "openai",
+          model: "gpt-5.4-nano",
+          lookups: 2,
+          hits: 1,
+          misses: 1,
+          writes: 2,
+        }),
+        expect.objectContaining({
+          providerId: "gemini",
+          model: "gemini-3.1-flash-lite-preview",
+          lookups: 1,
+          hits: 1,
+          misses: 0,
+          writes: 1,
+        }),
+      ]))
     })
   })
 
@@ -110,6 +187,21 @@ describe("translation-cache", () => {
   })
 
   describe("getCacheStats", () => {
+    it("prunes expired entries before reporting stats", async () => {
+      const thirtyOneDaysAgo = Date.now() - 31 * 24 * 60 * 60 * 1000
+      vi.spyOn(Date, "now").mockReturnValue(thirtyOneDaysAgo)
+      await setCachedTranslation("Expired", "zh-CN", "过期")
+      vi.spyOn(Date, "now").mockRestore()
+
+      const freshCreatedAt = Date.now()
+      await setCachedTranslation("Fresh", "zh-CN", "新鲜")
+
+      const stats = await getCacheStats()
+      expect(stats.count).toBe(1)
+      expect(stats.oldestMs).toBe(freshCreatedAt)
+      expect(await getCachedTranslation("Fresh", "zh-CN")).toBe("新鲜")
+    })
+
     it("returns count and oldest timestamp", async () => {
       const fiveDaysAgo = Date.now() - 5 * 24 * 60 * 60 * 1000
       vi.spyOn(Date, "now").mockReturnValue(fiveDaysAgo)
@@ -121,6 +213,7 @@ describe("translation-cache", () => {
       const stats = await getCacheStats()
       expect(stats.count).toBe(2)
       expect(stats.oldestMs).toBe(fiveDaysAgo)
+      expect(stats.writes).toBe(2)
     })
 
     it("returns current time as oldest when cache is empty", async () => {
@@ -128,6 +221,11 @@ describe("translation-cache", () => {
       const stats = await getCacheStats()
       expect(stats.count).toBe(0)
       expect(stats.oldestMs).toBeGreaterThanOrEqual(before)
+      expect(stats.lookups).toBe(0)
+      expect(stats.hits).toBe(0)
+      expect(stats.misses).toBe(0)
+      expect(stats.writes).toBe(0)
+      expect(stats.buckets).toEqual([])
     })
   })
 

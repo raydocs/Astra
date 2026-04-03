@@ -247,7 +247,7 @@ export function evaluateInputTranslation(
     )
   }
 
-  const allowedButtonLabels = new Set(["译", "Translate", "inputTranslateButton"])
+  const allowedButtonLabels = new Set(["译", "Tr", "Translate", "inputTranslateButton"])
   if ((expected.shouldShowAfterFocus || expectedOverlayAfterTyping) && !allowedButtonLabels.has(execution.buttonLabel)) {
     addIssue(
       issues,
