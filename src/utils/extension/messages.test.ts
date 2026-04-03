@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest"
 
 import type { AstraConfig } from "@/types/config"
 import { DEFAULT_ASTRA_CONFIG } from "@/types/config"
-import { saveConfigInBackground } from "./messages"
+import { getActiveTabStudyContext, saveConfigInBackground } from "./messages"
 
 function getMockBrowser() {
   return (globalThis as { __ASTRA_TEST_BROWSER__?: any }).__ASTRA_TEST_BROWSER__
@@ -27,7 +27,7 @@ function createConfig(patch: Partial<AstraConfig> = {}): AstraConfig {
   }
 }
 
-describe("saveConfigInBackground", () => {
+describe("extension message helpers", () => {
   beforeEach(() => {
     vi.clearAllMocks()
   })
@@ -75,6 +75,53 @@ describe("saveConfigInBackground", () => {
       error: {
         code: "INVALID_RESPONSE",
         message: "Received an invalid config save response.",
+      },
+    })
+  })
+
+  it("requests study context from the top frame of the active tab", async () => {
+    const browser = getMockBrowser()
+    browser.tabs.query.mockResolvedValue([{ id: 7, url: "https://example.com/article" }])
+    browser.tabs.sendMessage.mockResolvedValue({
+      ok: true,
+      context: {
+        pageTitle: "Example article",
+        pageUrl: "https://example.com/article",
+        hostname: "example.com",
+        contentSummary: "Summary",
+      },
+    })
+
+    const result = await getActiveTabStudyContext()
+
+    expect(browser.tabs.sendMessage).toHaveBeenCalledWith(
+      7,
+      { type: "content/get-study-context" },
+      { frameId: 0 },
+    )
+    expect(result).toEqual({
+      ok: true,
+      context: {
+        pageTitle: "Example article",
+        pageUrl: "https://example.com/article",
+        hostname: "example.com",
+        contentSummary: "Summary",
+      },
+    })
+  })
+
+  it("maps invalid study context payloads to UNKNOWN", async () => {
+    const browser = getMockBrowser()
+    browser.tabs.query.mockResolvedValue([{ id: 7, url: "https://example.com/article" }])
+    browser.tabs.sendMessage.mockResolvedValue({ ok: true, foo: "bar" })
+
+    const result = await getActiveTabStudyContext()
+
+    expect(result).toEqual({
+      ok: false,
+      error: {
+        code: "UNKNOWN",
+        message: "Received an unexpected study context response.",
       },
     })
   })

@@ -14,9 +14,11 @@ const {
   revokeAstraSessionMock,
   fetchAstraAccountMock,
   fetchAstraUsageSnapshotMock,
+  getActiveTabStudyContextMock,
   getActiveTabTranslationStateMock,
   startActiveTabTranslationMock,
   stopActiveTabTranslationMock,
+  getDueVocabularyCountMock,
   getQuotaInfoMock,
   getReadingHistoryMock,
 } = vi.hoisted(() => ({
@@ -30,9 +32,11 @@ const {
   revokeAstraSessionMock: vi.fn(),
   fetchAstraAccountMock: vi.fn(),
   fetchAstraUsageSnapshotMock: vi.fn(),
+  getActiveTabStudyContextMock: vi.fn(),
   getActiveTabTranslationStateMock: vi.fn(),
   startActiveTabTranslationMock: vi.fn(),
   stopActiveTabTranslationMock: vi.fn(),
+  getDueVocabularyCountMock: vi.fn(),
   getQuotaInfoMock: vi.fn(),
   getReadingHistoryMock: vi.fn(),
 }))
@@ -63,6 +67,7 @@ vi.mock("@/utils/astra/quota", () => ({
 }))
 
 vi.mock("@/utils/extension/messages", () => ({
+  getActiveTabStudyContext: getActiveTabStudyContextMock,
   getActiveTabTranslationState: getActiveTabTranslationStateMock,
   saveConfigInBackground: saveConfigInBackgroundMock,
   startActiveTabTranslation: startActiveTabTranslationMock,
@@ -71,6 +76,10 @@ vi.mock("@/utils/extension/messages", () => ({
 
 vi.mock("@/utils/storage/reading-history", () => ({
   getReadingHistory: getReadingHistoryMock,
+}))
+
+vi.mock("@/utils/storage/vocabulary", () => ({
+  getDueVocabularyCount: getDueVocabularyCountMock,
 }))
 
 import type { AstraConfig } from "@/types/config"
@@ -195,8 +204,18 @@ describe("popup App", () => {
     fetchAstraAccountMock.mockResolvedValue(createAccount())
     fetchAstraUsageSnapshotMock.mockResolvedValue(undefined)
     getActiveTabTranslationStateMock.mockResolvedValue(createIdleState())
+    getActiveTabStudyContextMock.mockResolvedValue({
+      ok: true,
+      context: {
+        pageTitle: "Example article",
+        pageUrl: "https://example.com/article",
+        hostname: "example.com",
+        contentSummary: "A concise summary of the current article for study mode.",
+      },
+    })
     startActiveTabTranslationMock.mockResolvedValue(createIdleState())
     stopActiveTabTranslationMock.mockResolvedValue(createIdleState())
+    getDueVocabularyCountMock.mockResolvedValue(3)
     getQuotaInfoMock.mockResolvedValue({ used: 100000, limit: 200000, plan: "free", resetsAt: "" })
     getReadingHistoryMock.mockResolvedValue([])
 
@@ -359,6 +378,31 @@ describe("popup App", () => {
     expect(clearAstraSessionMock).toHaveBeenCalled()
   })
 
+  it("renders the study hub with current-page summary and review count", async () => {
+    getReadingHistoryMock.mockResolvedValue([
+      {
+        id: "history-1",
+        url: "https://example.com/article",
+        hostname: "example.com",
+        title: "Example article",
+        wordsTranslated: 120,
+        visitedAt: 1000,
+      },
+    ])
+
+    await act(async () => {
+      window.dispatchEvent(new Event("focus"))
+      await Promise.resolve()
+      await Promise.resolve()
+    })
+    await flushApp()
+
+    expect(container.textContent).toContain("学习中心")
+    expect(container.textContent).toContain("A concise summary of the current article for study mode.")
+    expect(container.textContent).toContain("待复习 3 个")
+    expect(container.textContent).toContain("120 词")
+  })
+
   it("persists site advanced rules from the popup", async () => {
     await flushApp()
 
@@ -472,5 +516,19 @@ describe("popup App", () => {
     expect(settingsButton).toBeDefined()
     expect(vocabButton).toBeDefined()
     expect(reviewButton).toBeDefined()
+  })
+
+  it("opens review in the vocabulary page review tab", async () => {
+    const reviewButtons = getButtons().filter((button) => button.textContent === t("popup_review") || button.textContent === `${t("popup_review")} (3)`)
+    expect(reviewButtons.length).toBeGreaterThan(0)
+
+    await act(async () => {
+      reviewButtons[0].click()
+      await Promise.resolve()
+    })
+
+    expect(browserMock.tabs.create).toHaveBeenCalledWith(expect.objectContaining({
+      url: expect.stringContaining("/vocabulary.html?tab=review"),
+    }))
   })
 })

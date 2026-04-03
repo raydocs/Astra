@@ -92,6 +92,7 @@ export function createMockBrowser(initialStorage: StorageData = {}) {
       },
     },
     runtime: {
+      getURL: vi.fn((path: string) => path),
       sendMessage: vi.fn(),
       onMessage: {
         addListener: runtimeMessageBus.addListener,

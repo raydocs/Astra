@@ -20,8 +20,10 @@ import { detectAndShowPdfBanner } from "./pdf-detect"
 import { isTopFrame } from "./frame-context"
 import {
   isContentCommand,
+  isContentStudyContextCommand,
   type ContentCommand,
   type ContentCommandResponse,
+  type ContentStudyContextResponse,
 } from "@/types/messages"
 import {
   createSiteSnapshot,
@@ -29,6 +31,7 @@ import {
   type TranslationSnapshot,
 } from "@/types/translation"
 import { readConfig } from "@/utils/storage/config"
+import { buildInlineTranslationContext } from "./translation-context"
 import {
   hasResolvedProviderAccess,
   resolveManagedProviderConfig,
@@ -90,22 +93,40 @@ export default defineContentScript({
     window.__ASTRA_INJECTED__ = true
 
     browser.runtime.onMessage.addListener((message, _sender, sendResponse) => {
-      if (!isContentCommand(message)) return
+      if (isContentCommand(message)) {
+        void handleContentCommand(message)
+          .then(sendResponse)
+          .catch((error) => {
+            sendResponse({
+              ok: false,
+              error: {
+                code: "UNKNOWN",
+                message: error instanceof Error ? error.message : "Unexpected content error.",
+              },
+              state: getPageTranslationState(),
+            } satisfies ContentCommandResponse)
+          })
 
-      void handleContentCommand(message)
-        .then(sendResponse)
-        .catch((error) => {
-          sendResponse({
-            ok: false,
-            error: {
-              code: "UNKNOWN",
-              message: error instanceof Error ? error.message : "Unexpected content error.",
-            },
-            state: getPageTranslationState(),
-          } satisfies ContentCommandResponse)
-        })
+        return true
+      }
 
-      return true
+      if (isContentStudyContextCommand(message)) {
+        void handleStudyContextCommand()
+          .then(sendResponse)
+          .catch((error) => {
+            sendResponse({
+              ok: false,
+              error: {
+                code: "UNKNOWN",
+                message: error instanceof Error ? error.message : "Unexpected content error.",
+              },
+            } satisfies ContentStudyContextResponse)
+          })
+
+        return true
+      }
+
+      return
     })
 
     browser.storage.onChanged?.addListener((_changes, areaName) => {
@@ -523,6 +544,13 @@ async function handleContentCommand(
         ok: true,
         state: stopPageTranslation(),
       }
+  }
+}
+
+async function handleStudyContextCommand(): Promise<ContentStudyContextResponse> {
+  return {
+    ok: true,
+    context: await buildInlineTranslationContext(),
   }
 }
 

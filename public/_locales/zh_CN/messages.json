@@ -149,6 +149,21 @@
   "popup_review": {
     "message": "复习"
   },
+  "popup_studyTitle": {
+    "message": "学习中心"
+  },
+  "popup_studyEmptyTitle": {
+    "message": "当前页面还没有学习上下文"
+  },
+  "popup_studySummaryEmpty": {
+    "message": "先翻译页面，或在正文里保存单词，Astra 才能形成学习上下文。"
+  },
+  "popup_studyDueCount": {
+    "message": "待复习 $1 个",
+    "placeholders": {
+      "1": { "content": "$1" }
+    }
+  },
   "label_targetLanguage": {
     "message": "目标语言"
   },

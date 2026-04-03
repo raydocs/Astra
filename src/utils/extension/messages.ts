@@ -3,6 +3,7 @@ import { browser } from "#imports"
 import type {
   ContentCommand,
   ContentCommandResponse,
+  ContentStudyContextResponse,
   ContentTranslationOverrides,
   RuntimeSaveConfigErrorResponse,
   TranslationPlaceholderFormat,
@@ -12,6 +13,7 @@ import type {
 import type { AstraConfig, AstraConfigInput } from "@/types/config"
 import {
   isContentCommandResponse,
+  isContentStudyContextResponse,
   isRuntimeSaveConfigResponse,
   isRuntimeTranslateResponse,
 } from "@/types/messages"
@@ -180,6 +182,33 @@ export async function getActiveTabTranslationState(): Promise<ContentCommandResp
     return sendContentCommand(tabId, { type: "content/get-translation-state" })
   } catch (error) {
     return { ok: false, error: toTranslationError(error, "CONTENT_UNAVAILABLE") }
+  }
+}
+
+export async function getActiveTabStudyContext(): Promise<ContentStudyContextResponse> {
+  try {
+    const tabId = await getActiveTabId()
+    const response = await browser.tabs.sendMessage(
+      tabId,
+      {
+        type: "content/get-study-context",
+      },
+      { frameId: 0 },
+    ) as unknown
+
+    if (!isContentStudyContextResponse(response)) {
+      return {
+        ok: false,
+        error: createTranslationError(
+          "UNKNOWN",
+          "Received an unexpected study context response.",
+        ),
+      }
+    }
+
+    return response
+  } catch (error) {
+    return { ok: false, error: mapContentMessagingError(error) }
   }
 }
 

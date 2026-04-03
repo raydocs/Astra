@@ -149,6 +149,21 @@
   "popup_review": {
     "message": "Review"
   },
+  "popup_studyTitle": {
+    "message": "Study Hub"
+  },
+  "popup_studyEmptyTitle": {
+    "message": "No study context for this page yet"
+  },
+  "popup_studySummaryEmpty": {
+    "message": "Translate the page or save words from the article to build a study context."
+  },
+  "popup_studyDueCount": {
+    "message": "$1 due",
+    "placeholders": {
+      "1": { "content": "$1" }
+    }
+  },
   "label_targetLanguage": {
     "message": "Target Language"
   },

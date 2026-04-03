@@ -6,10 +6,12 @@ import type {
   SiteConfig,
   TranslationMode,
 } from "@/types/config"
-import type { AstraAccount, AstraSession, AstraUsageSnapshot } from "@/types/auth"
+import type { AstraAccount, AstraSession } from "@/types/auth"
+import type { PageStudyContext } from "@/types/messages"
 import type { TranslationSnapshot } from "@/types/translation"
 import type { QuotaInfo } from "@/utils/astra/quota"
 import {
+  getActiveTabStudyContext,
   getActiveTabTranslationState,
   saveConfigInBackground,
   startActiveTabTranslation,
@@ -35,24 +37,15 @@ import {
 } from "@/utils/astra/auth"
 import {
   fetchAstraAccount,
-  fetchAstraUsageSnapshot,
 } from "@/utils/astra/account"
 import { getQuotaInfo } from "@/utils/astra/quota"
+import { getDueVocabularyCount } from "@/utils/storage/vocabulary"
 import TranslationStatusCard from "./components/TranslationStatusCard"
 import SimpleControls from "./components/SimpleControls"
 import QuotaBar from "./components/QuotaBar"
 import SiteSettingsSection from "./components/SiteSettingsSection"
+import StudySection from "./components/StudySection"
 import { btnPrimary, btnSecondary, btnDisabled, warningStyle, inputStyle, labelStyle } from "./components/styles"
-
-function formatRelativeTime(timestamp: number): string {
-  const diff = Date.now() - timestamp
-  const minutes = Math.floor(diff / 60000)
-  if (minutes < 1) return "just now"
-  if (minutes < 60) return `${minutes}m ago`
-  const hours = Math.floor(minutes / 60)
-  if (hours < 24) return `${hours}h ago`
-  return `${Math.floor(hours / 24)}d ago`
-}
 
 async function getActiveSiteKey(): Promise<string | null> {
   const [tab] = await browser.tabs.query({ active: true, currentWindow: true })
@@ -74,6 +67,8 @@ export default function App() {
   const [authPassword, setAuthPassword] = useState("")
   const [authBusy, setAuthBusy] = useState(false)
   const [recentHistory, setRecentHistory] = useState<ReadingHistoryEntry[]>([])
+  const [studyContext, setStudyContext] = useState<PageStudyContext | null>(null)
+  const [dueCount, setDueCount] = useState(0)
   const [quotaInfo, setQuotaInfo] = useState<QuotaInfo | null>(null)
   const hasUnsavedChangesRef = useRef(false)
   const isMountedRef = useRef(true)
@@ -101,13 +96,17 @@ export default function App() {
   }
 
   const refreshAll = async () => {
-    const [config, siteKey, storedSession, history] = await Promise.all([
+    const [config, siteKey, storedSession, history, currentDueCount, studyContextResponse] = await Promise.all([
       readConfig(),
       getActiveSiteKey(),
       readAstraSession(),
       getReadingHistory(),
+      getDueVocabularyCount(),
+      getActiveTabStudyContext(),
     ])
     setRecentHistory(history.slice(0, 3))
+    setDueCount(currentDueCount)
+    setStudyContext(studyContextResponse.ok ? studyContextResponse.context : null)
     let session = storedSession
     let account: AstraAccount | null = null
     if (storedSession) {
@@ -501,6 +500,24 @@ export default function App() {
     }
   }
 
+  const openReviewPage = () => {
+    void browser.tabs.create({
+      url: `${browser.runtime.getURL("/vocabulary.html" as "/popup.html")}?tab=review`,
+    })
+  }
+
+  const openVocabularyPage = () => {
+    void browser.tabs.create({ url: browser.runtime.getURL("/vocabulary.html" as "/popup.html") })
+  }
+
+  const openUrlInTab = (url: string) => {
+    void browser.tabs.create({ url })
+  }
+
+  const currentPageHistory = studyContext?.pageUrl
+    ? recentHistory.find((entry) => entry.url === studyContext.pageUrl) ?? null
+    : null
+
   return (
     <div style={{ width: 340, padding: 16, fontFamily: "system-ui, sans-serif" }}>
       {/* Header */}
@@ -617,6 +634,16 @@ export default function App() {
         />
       </div>
 
+      <StudySection
+        currentPageActivity={currentPageHistory}
+        dueCount={dueCount}
+        recentHistory={recentHistory}
+        studyContext={studyContext}
+        onOpenHistoryEntry={openUrlInTab}
+        onOpenReview={openReviewPage}
+        onOpenVocabulary={openVocabularyPage}
+      />
+
       {activeSiteKey && (
         <div style={{ marginTop: 12 }}>
           <SiteSettingsSection
@@ -697,43 +724,6 @@ export default function App() {
         </div>
       )}
 
-      {/* Recent translations */}
-      {recentHistory.length > 0 && (
-        <details style={{ marginTop: 12, marginBottom: 4 }}>
-          <summary style={{ cursor: "pointer", fontSize: 13, color: "#6366f1" }}>
-            {t("popup_recentTranslations")}
-          </summary>
-          <div style={{ marginTop: 6 }}>
-            {recentHistory.map((entry) => (
-              <div
-                key={entry.id}
-                style={{
-                  display: "flex",
-                  justifyContent: "space-between",
-                  alignItems: "baseline",
-                  fontSize: 12,
-                  color: "#334155",
-                  padding: "4px 0",
-                  borderBottom: "1px solid #f1f5f9",
-                }}
-              >
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                    {entry.title.length > 40 ? `${entry.title.slice(0, 40)}...` : entry.title}
-                  </div>
-                  <div style={{ fontSize: 11, color: "#94a3b8" }}>
-                    {entry.hostname} · {entry.wordsTranslated} {t("popup_words")}
-                  </div>
-                </div>
-                <div style={{ fontSize: 11, color: "#94a3b8", whiteSpace: "nowrap", marginLeft: 8 }}>
-                  {formatRelativeTime(entry.visitedAt)}
-                </div>
-              </div>
-            ))}
-          </div>
-        </details>
-      )}
-
       {statusMessage && (
         <div style={warningStyle}>
           {statusMessage}
@@ -751,14 +741,14 @@ export default function App() {
         </button>
         <button
           type="button"
-          onClick={() => void browser.tabs.create({ url: browser.runtime.getURL("/vocabulary.html" as "/popup.html") })}
+          onClick={openVocabularyPage}
           style={{ background: "none", border: "none", color: "#6366f1", fontSize: 11, cursor: "pointer", textDecoration: "underline" }}
         >
           {t("popup_vocabulary")}
         </button>
         <button
           type="button"
-          onClick={() => void browser.tabs.create({ url: browser.runtime.getURL("/review.html" as "/popup.html") })}
+          onClick={openReviewPage}
           style={{ background: "none", border: "none", color: "#6366f1", fontSize: 11, cursor: "pointer", textDecoration: "underline" }}
         >
           {t("popup_review")}

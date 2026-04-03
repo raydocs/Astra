@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest"
 
 import {
   isContentCommandResponse,
+  isContentStudyContextResponse,
   isRuntimeResponse,
 } from "./messages"
 
@@ -67,5 +68,19 @@ describe("message response guards", () => {
     }
 
     expect(isContentCommandResponse(candidate)).toBe(true)
+  })
+
+  it("accepts valid study-context responses", () => {
+    const candidate = {
+      ok: true,
+      context: {
+        pageTitle: "Example article",
+        pageUrl: "https://example.com/article",
+        hostname: "example.com",
+        contentSummary: "Summary text",
+      },
+    }
+
+    expect(isContentStudyContextResponse(candidate)).toBe(true)
   })
 })

@@ -56,6 +56,14 @@ const TranslationErrorSchema = z.object({
   message: z.string().trim().min(1),
 })
 
+export const PageStudyContextSchema = TranslationRequestContextSchema.pick({
+  pageTitle: true,
+  pageUrl: true,
+  hostname: true,
+  metaDescription: true,
+  contentSummary: true,
+})
+
 const TranslationProgressSnapshotSchema = z.object({
   totalBlocks: z.number().int().nonnegative(),
   queuedBlocks: z.number().int().nonnegative(),
@@ -142,7 +150,19 @@ const ContentCommandResponseSchema = z.union([
   }),
 ])
 
+const ContentStudyContextResponseSchema = z.union([
+  z.object({
+    ok: z.literal(true),
+    context: PageStudyContextSchema,
+  }),
+  z.object({
+    ok: z.literal(false),
+    error: TranslationErrorSchema,
+  }),
+])
+
 export type TranslationRequestContext = z.infer<typeof TranslationRequestContextSchema>
+export type PageStudyContext = z.infer<typeof PageStudyContextSchema>
 export type TranslationTask = z.infer<typeof TranslationTaskSchema>
 export type TranslationPlaceholderFormat = z.infer<typeof TranslationPlaceholderFormatSchema>
 export type ContentTranslationOverrides = z.infer<typeof ContentTranslationOverridesSchema>
@@ -226,6 +246,10 @@ export interface ContentStopTranslationCommand {
   type: "content/stop-translation"
 }
 
+export interface ContentGetStudyContextCommand {
+  type: "content/get-study-context"
+}
+
 export interface ContentToggleTranslationCommand {
   type: "content/toggle-translation"
   payload?: ContentTranslationOverrides
@@ -240,6 +264,10 @@ export type ContentCommand =
 export type ContentCommandResponse =
   | { ok: true; state: TranslationSnapshot }
   | { ok: false; error: TranslationError; state?: TranslationSnapshot }
+
+export type ContentStudyContextResponse =
+  | { ok: true; context: PageStudyContext }
+  | { ok: false; error: TranslationError }
 
 export function isRuntimeTranslateBatchRequest(
   value: unknown,
@@ -312,8 +340,21 @@ export function isContentCommand(value: unknown): value is ContentCommand {
   }
 }
 
+export function isContentStudyContextCommand(
+  value: unknown,
+): value is ContentGetStudyContextCommand {
+  if (typeof value !== "object" || value === null) return false
+  return (value as { type?: string }).type === "content/get-study-context"
+}
+
 export function isContentCommandResponse(
   value: unknown,
 ): value is ContentCommandResponse {
   return ContentCommandResponseSchema.safeParse(value).success
+}
+
+export function isContentStudyContextResponse(
+  value: unknown,
+): value is ContentStudyContextResponse {
+  return ContentStudyContextResponseSchema.safeParse(value).success
 }
