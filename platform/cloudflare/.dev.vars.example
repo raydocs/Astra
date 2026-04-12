@@ -1,0 +1,71 @@
+# Use a port distinct from `wrangler dev` for the upstream relay.
+# Example: ASTRA_RELAY_PORT=8788 pnpm relay:start
+NODE_RELAY_ORIGIN=http://127.0.0.1:8788
+ARTICLE_IMPORT_MODE=proxy
+# Optional per-surface overrides, for example: web=shadow,extension=proxy
+ARTICLE_IMPORT_MODE_OVERRIDES=
+# Shared session HMAC secret; keep aligned with the relay's sessionSecret
+ASTRA_SESSION_SECRET=replace-with-relay-session-secret
+# Shared internal mirror-back secret; keep aligned with the relay's ASTRA_PLATFORM_MIRROR_SECRET
+ASTRA_PLATFORM_MIRROR_SECRET=
+# Optional public front-door base for issued sessions during auth authority rollout
+SESSION_PUBLIC_BASE_URL=
+# Keep these aligned with the relay when native anonymous/session issuance is enabled
+ASTRA_FREE_DAILY_REQUESTS=200
+ASTRA_FREE_DAILY_CHARACTERS=200000
+ASTRA_FREE_RPM=20
+ASTRA_SESSION_TTL_MS=2592000000
+# Auth anonymous-issue cutover gate: proxy, shadow, or native
+AUTH_ANONYMOUS_ISSUE_MODE=proxy
+# Auth session-issue cutover gate: proxy, shadow, or native
+AUTH_SESSION_ISSUE_MODE=proxy
+# Auth-session read cutover gate: proxy, shadow, or native
+AUTH_SESSION_READ_MODE=proxy
+# Auth-session current-session revoke cutover gate: proxy or native
+AUTH_SESSION_REVOKE_WRITE_MODE=proxy
+# Account-summary read cutover gate: proxy, shadow, or native
+ACCOUNT_SUMMARY_READ_MODE=proxy
+# Device-list read cutover gate: proxy, shadow, or native
+DEVICE_LIST_READ_MODE=proxy
+# Remote device revoke write cutover gate: proxy or native
+DEVICE_REVOKE_WRITE_MODE=proxy
+# Sync bootstrap read cutover gate: proxy, shadow, or native
+SYNC_BOOTSTRAP_READ_MODE=proxy
+# Sync pull read cutover gate: proxy, shadow, or native
+SYNC_PULL_READ_MODE=proxy
+# Sync push write cutover gate: proxy or native
+SYNC_PUSH_WRITE_MODE=proxy
+# Keep this aligned with the relay's ASTRA_SYNC_MAX_MUTATIONS_PER_REQUEST during rollout
+ASTRA_SYNC_MAX_MUTATIONS_PER_REQUEST=200
+# Optional hostname policy controls. Comma-separate bare suffixes like example.com
+ARTICLE_IMPORT_ALLOWED_HOSTS=
+ARTICLE_IMPORT_BLOCKED_HOSTS=
+ARTICLE_IMPORT_FORCE_PROXY_HOSTS=
+# Optional best-effort per-IP fixed-window throttle for import abuse protection
+ARTICLE_IMPORT_RATE_LIMIT_MAX=
+ARTICLE_IMPORT_RATE_LIMIT_WINDOW_SECONDS=60
+# Hard byte caps to bound request-path cost for shadow capture and native fetch/extraction
+ARTICLE_IMPORT_MAX_SHADOW_BYTES=262144
+ARTICLE_IMPORT_MAX_NATIVE_BYTES=2097152
+# Queue attempts before a job is marked dead_lettered instead of retried again
+ARTICLE_IMPORT_MAX_QUEUE_ATTEMPTS=3
+# Artifact governance defaults stored on D1/R2 metadata
+ARTICLE_IMPORT_ARTIFACT_RETENTION_DAYS=7
+ARTICLE_IMPORT_ARTIFACT_RETENTION_CLASS=import-shadow
+# Operator-only replay/observability token; prefer `wrangler secret put ARTICLE_IMPORT_OPERATOR_TOKEN`
+ARTICLE_IMPORT_OPERATOR_TOKEN=
+# Continuity export artifacts stay downloadable for this many days before expiry/cleanup
+CONTINUITY_EXPORT_ARTIFACT_RETENTION_DAYS=7
+# Grace window before a cloud-data-delete job is allowed to fan out delete mutations
+CONTINUITY_DELETE_GRACE_PERIOD_SECONDS=604800
+# Keep export/delete job history metadata for operator review and polling
+CONTINUITY_JOB_HISTORY_RETENTION_DAYS=90
+# Keep delete tombstones available for downstream sync propagation and reconciliation
+CONTINUITY_TOMBSTONE_RETENTION_DAYS=30
+# Keep sync tombstones/materialized delete state long enough for repair + downstream pull convergence
+SYNC_TOMBSTONE_RETENTION_DAYS=30
+# Bound operator compaction work per request
+SYNC_COMPACTION_BATCH_SIZE=500
+# Start compaction in dry-run mode until metrics/backfill look healthy
+SYNC_COMPACTION_DRY_RUN=true
+ASTRA_ENV=local

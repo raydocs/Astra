@@ -2,6 +2,8 @@
 
 This page tracks the current product surface in the repo so feature work, docs, and validation stay aligned.
 
+> Note: this file is a feature-surface inventory, not the authoritative platform support claim source. For Supported/Beta/Experimental/Not supported wording and external claim boundaries, use `docs/investigations/support-matrix-2026-q2.md`.
+
 ## Implemented now
 
 ### Core translation

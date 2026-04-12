@@ -1,4 +1,5 @@
 import { Component, type ReactNode } from "react"
+import { trackEvent } from "@/utils/telemetry"
 
 interface Props {
   children: ReactNode
@@ -19,6 +20,14 @@ export class ErrorBoundary extends Component<Props, State> {
   }
 
   componentDidCatch(error: Error, errorInfo: React.ErrorInfo) {
+    trackEvent({
+      type: "extension_error",
+      data: {
+        message: error.message,
+        name: error.name,
+        componentStack: errorInfo.componentStack ?? null,
+      },
+    })
     this.props.onError?.(error, errorInfo)
   }
 

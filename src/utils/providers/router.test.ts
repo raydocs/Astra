@@ -313,8 +313,36 @@ describe("provider router", () => {
     expect(translateWithRelayMock).not.toHaveBeenCalled()
   })
 
-  it("wraps non-AstraError direct failures as fail-fast provider request errors", async () => {
+  it("falls back to relay for non-AstraError network failures (e.g. socket hung up)", async () => {
     translateWithOpenAIMock.mockRejectedValueOnce(new Error("socket hung up"))
+    translateWithRelayMock.mockResolvedValueOnce(["你好"])
+
+    const result = await translateWithProviderDetailed(
+      {
+        id: "openai",
+        accessToken: "astra-token",
+        apiKey: "openai-key",
+        model: "gpt-5.4-nano",
+        relayBaseURL: "https://astra.example/v1",
+      },
+      {
+        texts: ["hello"],
+        targetLang: "zh-CN",
+      },
+    )
+
+    expect(result).toEqual({
+      translations: ["你好"],
+      metadata: {
+        attemptedTransports: ["direct", "relay"],
+        finalTransport: "relay",
+        fallbackUsed: true,
+      },
+    })
+  })
+
+  it("wraps non-AstraError non-network failures as fail-fast provider request errors", async () => {
+    translateWithOpenAIMock.mockRejectedValueOnce(new Error("unexpected null in response"))
 
     await expect(() =>
       translateWithProviderDetailed(
@@ -332,7 +360,7 @@ describe("provider router", () => {
       )
     ).rejects.toMatchObject({
       code: "PROVIDER_REQUEST_FAILED",
-      message: "socket hung up",
+      message: "unexpected null in response",
       metadata: {
         attemptedTransports: ["direct"],
         finalTransport: null,
@@ -358,7 +386,16 @@ describe("provider router", () => {
       expect(classifyProviderFailure(new AstraError(errorCode as keyof typeof PROVIDER_FAILURE_POLICY, errorCode))).toBe(expectedPolicy)
     }
 
-    expect(classifyProviderFailure(new Error("network blew up"))).toBe("fail-fast")
+    // Non-AstraError with network-related message triggers relay fallback
+    expect(classifyProviderFailure(new Error("network blew up"))).toBe("fallback-to-relay")
+    expect(classifyProviderFailure(new Error("fetch failed"))).toBe("fallback-to-relay")
+    expect(classifyProviderFailure(new Error("ECONNREFUSED 127.0.0.1:443"))).toBe("fallback-to-relay")
+    expect(classifyProviderFailure(new Error("request timeout"))).toBe("fallback-to-relay")
+    expect(classifyProviderFailure(new Error("socket hung up"))).toBe("fallback-to-relay")
+
+    // Non-AstraError with non-network message still fails fast
+    expect(classifyProviderFailure(new Error("unexpected null"))).toBe("fail-fast")
+    expect(classifyProviderFailure(new Error("JSON parse error"))).toBe("fail-fast")
   })
 
   it("allows overriding router dependencies for background-routed test seams", async () => {

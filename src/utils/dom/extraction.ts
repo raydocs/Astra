@@ -9,6 +9,11 @@ export interface ExtractionPlan {
   summary: string | null
 }
 
+export interface ReadableDocumentMetadata {
+  title: string
+  byline: string | null
+}
+
 const ARTICLE_ROOT_SELECTORS = [
   "article",
   "[role=\"article\"]",
@@ -109,4 +114,51 @@ export const resolveExtractionPlan = (doc: Document, scope: ContentScope): Extra
   const root = doc.body ?? findContentRoot(doc)
   const blocks = collectTextBlocks(root)
   return { root, blocks, scope: "page", summary: buildContentSummary(blocks) }
+}
+
+export function extractReadableDocumentMetadata(doc: Document, fallbackUrl: string): ReadableDocumentMetadata {
+  const title = extractDocumentTitle(doc, fallbackUrl)
+  return {
+    title,
+    byline: extractDocumentByline(doc),
+  }
+}
+
+function extractDocumentTitle(doc: Document, fallbackUrl: string): string {
+  const heading = doc.querySelector("h1")?.textContent?.replace(/\s+/g, " ").trim()
+  if (heading) return heading
+
+  const title = doc.title?.replace(/\s+/g, " ").trim()
+  if (title) return title
+
+  try {
+    return new URL(fallbackUrl).hostname
+  } catch {
+    return fallbackUrl
+  }
+}
+
+function extractDocumentByline(doc: Document): string | null {
+  const candidates = [
+    '[rel="author"]',
+    '[itemprop="author"]',
+    ".byline",
+    ".article-byline",
+    ".post-author",
+    ".author",
+    'meta[name="author"]',
+  ]
+
+  for (const selector of candidates) {
+    const node = doc.querySelector(selector)
+    if (!node) continue
+
+    const content = node.getAttribute("content")?.trim()
+    if (content) return content
+
+    const text = node.textContent?.replace(/\s+/g, " ").trim()
+    if (text) return text
+  }
+
+  return null
 }

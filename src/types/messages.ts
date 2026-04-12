@@ -250,9 +250,22 @@ export interface ContentGetStudyContextCommand {
   type: "content/get-study-context"
 }
 
+export interface ContentDetectArticleCommand {
+  type: "content/detect-article"
+}
+
+export interface ContentDetectArticleResponse {
+  ok: boolean
+  selector?: string
+}
+
 export interface ContentToggleTranslationCommand {
   type: "content/toggle-translation"
   payload?: ContentTranslationOverrides
+}
+
+export interface ContentRetryFailedCommand {
+  type: "content/retry-failed"
 }
 
 export type ContentCommand =
@@ -260,6 +273,7 @@ export type ContentCommand =
   | ContentStartTranslationCommand
   | ContentStopTranslationCommand
   | ContentToggleTranslationCommand
+  | ContentRetryFailedCommand
 
 export type ContentCommandResponse =
   | { ok: true; state: TranslationSnapshot }
@@ -330,6 +344,7 @@ export function isContentCommand(value: unknown): value is ContentCommand {
   switch (candidate.type) {
     case "content/get-translation-state":
     case "content/stop-translation":
+    case "content/retry-failed":
       return true
     case "content/start-translation":
     case "content/toggle-translation":
@@ -345,6 +360,13 @@ export function isContentStudyContextCommand(
 ): value is ContentGetStudyContextCommand {
   if (typeof value !== "object" || value === null) return false
   return (value as { type?: string }).type === "content/get-study-context"
+}
+
+export function isContentDetectArticleCommand(
+  value: unknown,
+): value is ContentDetectArticleCommand {
+  if (typeof value !== "object" || value === null) return false
+  return (value as { type?: string }).type === "content/detect-article"
 }
 
 export function isContentCommandResponse(

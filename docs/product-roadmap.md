@@ -1,10 +1,12 @@
 # Astra Product Roadmap
 
-_Last updated: 2026-03-28_
+_Last updated: 2026-04-09_
 
 ## Summary
 
 Astra 的定位是：**AI-powered language learning layer for the web**。
+
+平台支持等级与对外 claim 边界以 `docs/investigations/support-matrix-2026-q2.md` 为 canonical 口径（Supported/Beta/Experimental/Not supported）。
 
 它先从浏览器插件开始，因为这是进入用户日常语言输入场景的最低摩擦方式。长期目标不是停留在“网页翻译工具”，而是把日常浏览中的理解、解释、记忆、复习和跨端连续性连接成一套完整的软件系统。
 
@@ -37,7 +39,7 @@ Astra 的定位是：**AI-powered language learning layer for the web**。
 
 ## Current Reality Checkpoint
 
-截至 **2026-03-28**，仓库现实已经比“只有网页翻译”更宽：
+截至 **2026-04-09**，仓库现实已经比“只有网页翻译”更宽：
 
 - 网页翻译、文章提取、站点自动化、划词/悬停/输入框翻译已经是当前核心面
 - PDF、EPUB、字幕文件、YouTube 双语字幕已经有第一版产品面和 benchmark 覆盖

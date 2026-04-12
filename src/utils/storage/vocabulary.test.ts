@@ -2,6 +2,8 @@ import { beforeEach, describe, expect, it } from "vitest"
 
 import { createMockBrowser, setMockBrowser } from "../../../test/utils/mockBrowser"
 import {
+  applyVocabularySyncMutations,
+  buildSyncSafeVocabularyEntry,
   getVocabularyCount,
   getVocabularyEntries,
   removeVocabularyEntry,
@@ -87,5 +89,47 @@ describe("vocabulary storage", () => {
     const entries = await getVocabularyEntries()
     expect(entries).toEqual([])
     expect(await getVocabularyCount()).toBe(0)
+  })
+
+  it("builds a sync-safe vocabulary entry without SRS fields and with sanitized urls", async () => {
+    const entry = await saveVocabularyEntry({
+      text: "router",
+      translation: "路由器",
+      url: "https://example.com/page?x=1#fragment",
+    })
+
+    const synced = buildSyncSafeVocabularyEntry(entry)
+    expect(synced).not.toHaveProperty("srsBox")
+    expect(synced.url).toBe("https://example.com/page")
+  })
+
+  it("applies synced vocabulary updates while preserving local review progress", async () => {
+    const existing = await saveVocabularyEntry({
+      text: "review",
+      translation: "复习",
+      srsBox: 4,
+      nextReviewAt: 200,
+      reviewCount: 3,
+      lastReviewedAt: 150,
+    })
+
+    const nextEntries = applyVocabularySyncMutations(await getVocabularyEntries(), [{
+      recordId: existing.id,
+      operation: "upsert",
+      payload: {
+        id: existing.id,
+        text: "review",
+        translation: "回顾",
+        savedAt: existing.savedAt,
+      },
+    }])
+
+    expect(nextEntries[0]).toMatchObject({
+      id: existing.id,
+      translation: "回顾",
+      srsBox: 4,
+      reviewCount: 3,
+      lastReviewedAt: 150,
+    })
   })
 })

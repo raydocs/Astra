@@ -14,11 +14,19 @@ import type { VideoPlatformConfig } from "./types"
 import { startYouTubeHybridSubtitleSession, youtubePlatform } from "./youtube"
 import { bilibiliPlatform } from "./bilibili"
 import { netflixPlatform } from "./netflix"
+import { primevideoPlatform } from "./primevideo"
+import { disneyplusPlatform } from "./disneyplus"
+import { udemyPlatform } from "./udemy"
+import { courseraPlatform } from "./coursera"
 
 const ALL_PLATFORMS: VideoPlatformConfig[] = [
   youtubePlatform,
   bilibiliPlatform,
   netflixPlatform,
+  primevideoPlatform,
+  disneyplusPlatform,
+  udemyPlatform,
+  courseraPlatform,
 ]
 
 const ASTRA_SUBTITLE_CLASS = "astra-video-subtitle"

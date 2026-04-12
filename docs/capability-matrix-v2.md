@@ -1,9 +1,11 @@
 # Astra Capability Matrix v2
 
 _Proposed protocol foundation for Astra v2 capability conquest._
-_Last updated: 2026-03-28_
+_Last updated: 2026-04-09_
 
 This matrix turns the v2 conquest plan into a decision-complete tracking sheet. It stays **protocol-first**: a capability is not considered conquered until it is measurable in deterministic bench, live, holdout, and proof lanes.
+
+> 平台支持等级与对外 claim 边界不由本文件定义，统一以 `docs/investigations/support-matrix-2026-q2.md` 为 canonical 来源。
 
 This file tracks the user-facing capability rows defined in `bench-opt/capabilities.ts`. Cross-cutting platform work such as provider routing, AI quality-control, and rules-system UX matters a lot, but it is tracked as a supporting execution stream rather than a separate capability row here.
 

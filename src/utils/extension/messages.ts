@@ -254,6 +254,15 @@ export async function toggleCurrentTabTranslation(
   })
 }
 
+export async function retryActiveTabFailedBlocks(): Promise<ContentCommandResponse> {
+  try {
+    const tabId = await getActiveTabId()
+    return sendContentCommand(tabId, { type: "content/retry-failed" })
+  } catch (error) {
+    return { ok: false, error: toTranslationError(error, "CONTENT_UNAVAILABLE") }
+  }
+}
+
 export function getResponseState(
   response: ContentCommandResponse,
 ): TranslationSnapshot | null {

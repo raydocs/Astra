@@ -1,7 +1,14 @@
 import { beforeEach, describe, expect, it } from "vitest"
 
 import { DEFAULT_ASTRA_CONFIG } from "@/types/config"
-import { ASTRA_CONFIG_STORAGE_KEY, readConfig, saveConfig } from "./config"
+import {
+  ASTRA_CONFIG_STORAGE_KEY,
+  applySyncSafeConfig,
+  readConfig,
+  readConfigContinuitySummary,
+  readSyncSafeConfig,
+  saveConfig,
+} from "./config"
 import { createMockBrowser, setMockBrowser } from "../../../test/utils/mockBrowser"
 
 describe("config storage", () => {
@@ -26,6 +33,7 @@ describe("config storage", () => {
       hoverTrigger: "alt",
       contentScope: "page",
       inputTranslation: "enabled",
+      inputTranslationMode: "replace",
       languageLevel: "intermediate",
       privacyMode: false,
       provider: {
@@ -34,6 +42,13 @@ describe("config storage", () => {
         apiKey: "",
         relayBaseURL: "https://example.com/v1",
         model: "gpt-4.1-mini",
+      },
+      tts: {
+        enabled: true,
+        engine: "browser",
+        rate: 0.9,
+        pitch: 1.0,
+        highlightSentences: true,
       },
       presentation: {
         mode: "bilingual",
@@ -135,6 +150,25 @@ describe("config storage", () => {
     expect(config.inputTranslation).toBe("disabled")
     expect(config.privacyMode).toBe(true)
     expect(browser.__storage[ASTRA_CONFIG_STORAGE_KEY]).toEqual(config)
+  })
+
+  it("persists TTS settings and normalizes blank voice names", async () => {
+    const config = await saveConfig({
+      tts: {
+        enabled: false,
+        engine: "browser",
+        voiceName: "  ",
+        rate: 1.2,
+      },
+    })
+
+    expect(config.tts).toEqual({
+      enabled: false,
+      engine: "browser",
+      rate: 1.2,
+      pitch: 1.0,
+      highlightSentences: true,
+    })
   })
 
   it("prunes default site rules when saving", async () => {
@@ -265,6 +299,92 @@ describe("config storage", () => {
       },
     })
     expect(config.sites).toEqual({})
+  })
+
+  it("returns a sync-safe config snapshot without secrets or device voice metadata", async () => {
+    await saveConfig({
+      provider: {
+        apiKey: "sk-live",
+        accessToken: "astra-session",
+        relayBaseURL: "https://relay.example/v1",
+      },
+      tts: {
+        voiceName: "Samantha",
+      },
+    })
+
+    const syncSafeConfig = await readSyncSafeConfig()
+
+    expect(syncSafeConfig.provider).toEqual({
+      id: "openai",
+      model: "gpt-5.4-nano",
+    })
+    expect(syncSafeConfig.tts).not.toHaveProperty("voiceName")
+  })
+
+  it("applies sync-safe config updates without overwriting local secrets", async () => {
+    await saveConfig({
+      provider: {
+        apiKey: "sk-live",
+        accessToken: "astra-session",
+        relayBaseURL: "https://relay.example/v1",
+      },
+      tts: {
+        voiceName: "Samantha",
+      },
+    })
+
+    const config = await applySyncSafeConfig({
+      version: 1,
+      targetLang: "ja",
+      connectionMode: "astra",
+      hoverTrigger: "always",
+      contentScope: "article",
+      inputTranslation: "enabled",
+      inputTranslationMode: "replace",
+      languageLevel: "advanced",
+      privacyMode: true,
+      provider: {
+        id: "gemini",
+        model: "gemini-3.1-flash-lite-preview",
+      },
+      tts: {
+        enabled: true,
+        engine: "browser",
+        rate: 1.1,
+        pitch: 1,
+        highlightSentences: true,
+      },
+      presentation: DEFAULT_ASTRA_CONFIG.presentation,
+      sites: {},
+      customActions: [],
+    })
+
+    expect(config.targetLang).toBe("ja")
+    expect(config.provider.apiKey).toBe("sk-live")
+    expect(config.provider.accessToken).toBe("astra-session")
+    expect(config.provider.relayBaseURL).toBe("https://relay.example/v1")
+    expect(config.tts.voiceName).toBe("Samantha")
+  })
+
+  it("summarizes config continuity-local fields", async () => {
+    await saveConfig({
+      provider: {
+        apiKey: "sk-live",
+        relayBaseURL: "https://relay.example/v1",
+      },
+      tts: {
+        voiceName: "Samantha",
+      },
+    })
+
+    const summary = await readConfigContinuitySummary()
+
+    expect(summary.localOnlyFields).toEqual([
+      "provider.apiKey",
+      "provider.relayBaseURL",
+      "tts.voiceName",
+    ])
   })
 
   it("clears site overrides back to inheritance when saving an empty site snapshot", async () => {

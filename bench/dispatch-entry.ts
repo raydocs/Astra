@@ -6,7 +6,7 @@ import { buildDispatchArtifact, createDispatchPrompt, renderDispatchMarkdown } f
 import type { ExecutorAttempt } from "./types.ts"
 
 function parseArgs(argv: string[]) {
-  let model = process.env.ASTRA_EXECUTOR_MODEL ?? "gpt-4o-mini"
+  let model = process.env.ASTRA_EXECUTOR_MODEL ?? "gpt-4.1-nano"
   let baseURL = process.env.ASTRA_EXECUTOR_BASE_URL ?? ""
   let mockResponse = process.env.ASTRA_EXECUTOR_MOCK_RESPONSE ?? ""
 

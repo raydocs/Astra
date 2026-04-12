@@ -87,7 +87,7 @@ describe("Astra relay provider", () => {
       providerId: "openai",
       accessToken: "astra-token",
       relayBaseURL: "https://astra.example/v1",
-      model: "gpt-4o-mini",
+      model: "gpt-5.4-nano",
       texts: ["hello"],
       targetLang: "zh-CN",
     })).rejects.toMatchObject({
@@ -106,7 +106,7 @@ describe("Astra relay provider", () => {
       providerId: "openai",
       accessToken: "astra-token",
       relayBaseURL: "https://astra.example/v1",
-      model: "gpt-4o-mini",
+      model: "gpt-5.4-nano",
       texts: ["hello"],
       targetLang: "zh-CN",
     })).rejects.toMatchObject({
@@ -122,7 +122,7 @@ describe("Astra relay provider", () => {
       providerId: "openai",
       accessToken: "astra-token",
       relayBaseURL: "https://astra.example/v1",
-      model: "gpt-4o-mini",
+      model: "gpt-5.4-nano",
       texts: ["hello"],
       targetLang: "zh-CN",
     })).rejects.toMatchObject({
@@ -141,7 +141,7 @@ describe("Astra relay provider", () => {
       providerId: "openai",
       accessToken: "astra-token",
       relayBaseURL: "https://astra.example/v1",
-      model: "gpt-4o-mini",
+      model: "gpt-5.4-nano",
       texts: ["hello"],
       targetLang: "zh-CN",
     })).rejects.toMatchObject({
@@ -159,7 +159,7 @@ describe("Astra relay provider", () => {
       providerId: "openai",
       accessToken: "astra-token",
       relayBaseURL: "https://astra.example/v1",
-      model: "gpt-4o-mini",
+      model: "gpt-5.4-nano",
       texts: ["hello"],
       targetLang: "zh-CN",
     })).rejects.toMatchObject({

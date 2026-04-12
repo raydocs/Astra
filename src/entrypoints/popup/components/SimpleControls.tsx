@@ -1,4 +1,4 @@
-import type { TranslationMode } from "@/types/config"
+import type { LanguageLevel, TranslationMode } from "@/types/config"
 import { t } from "@/utils/i18n"
 import { labelStyle, inputStyle } from "./styles"
 
@@ -16,15 +16,19 @@ const LANGUAGE_OPTIONS = [
 export interface SimpleControlsProps {
   targetLang: string
   translationMode: "bilingual" | "translation-only"
+  languageLevel: LanguageLevel
   onTargetLangChange: (lang: string) => void
   onModeChange: (mode: "bilingual" | "translation-only") => void
+  onLanguageLevelChange: (level: LanguageLevel) => void
 }
 
 export default function SimpleControls({
   targetLang,
   translationMode,
+  languageLevel,
   onTargetLangChange,
   onModeChange,
+  onLanguageLevelChange,
 }: SimpleControlsProps) {
   return (
     <div style={{ marginBottom: 12 }}>
@@ -47,6 +51,17 @@ export default function SimpleControls({
       >
         <option value="bilingual">{t("modeBilingual")}</option>
         <option value="translation-only">{t("modeTranslationOnly")}</option>
+      </select>
+
+      <label style={{ ...labelStyle, marginTop: 8 }}>{t("label_languageLevel")}</label>
+      <select
+        value={languageLevel}
+        onChange={(e) => onLanguageLevelChange(e.target.value as LanguageLevel)}
+        style={inputStyle}
+      >
+        <option value="beginner">{t("label_beginner")}</option>
+        <option value="intermediate">{t("label_intermediate")}</option>
+        <option value="advanced">{t("label_advanced")}</option>
       </select>
     </div>
   )

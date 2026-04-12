@@ -5,6 +5,7 @@ import {
   recordPageTranslation,
   getReadingHistory,
   clearReadingHistory,
+  buildReadingHistoryRecordId,
 } from "./reading-history"
 import { createMockBrowser, setMockBrowser } from "../../../test/utils/mockBrowser"
 
@@ -31,12 +32,12 @@ describe("reading-history storage", () => {
       wordsTranslated: 120,
       visitedAt: 1000,
     })
-    expect(history[0].id).toBeDefined()
+    expect(history[0].id).toBe(buildReadingHistoryRecordId("https://example.com/article"))
   })
 
-  it("deduplicates by URL and updates existing entry", async () => {
+  it("deduplicates by sanitized URL and updates existing entry", async () => {
     await recordPageTranslation({
-      url: "https://example.com/page",
+      url: "https://example.com/page?first=1#section-a",
       hostname: "example.com",
       title: "Old Title",
       wordsTranslated: 50,
@@ -44,7 +45,7 @@ describe("reading-history storage", () => {
     })
 
     await recordPageTranslation({
-      url: "https://example.com/page",
+      url: "https://example.com/page?second=1#section-b",
       hostname: "example.com",
       title: "New Title",
       wordsTranslated: 100,
@@ -53,6 +54,8 @@ describe("reading-history storage", () => {
 
     const history = await getReadingHistory()
     expect(history).toHaveLength(1)
+    expect(history[0].url).toBe("https://example.com/page")
+    expect(history[0].id).toBe("https://example.com/page")
     expect(history[0].title).toBe("New Title")
     expect(history[0].wordsTranslated).toBe(100)
     expect(history[0].visitedAt).toBe(2000)
@@ -93,7 +96,7 @@ describe("reading-history storage", () => {
   it("respects MAX_ENTRIES limit (200)", async () => {
     // Pre-fill storage with 200 entries
     const entries = Array.from({ length: 200 }, (_, i) => ({
-      id: `https://example.com/page-${i}@${i}`,
+      id: `https://example.com/page-${i}`,
       url: `https://example.com/page-${i}`,
       hostname: "example.com",
       title: `Page ${i}`,
@@ -117,8 +120,8 @@ describe("reading-history storage", () => {
     const history = await getReadingHistory()
     expect(history).toHaveLength(200)
     expect(history[0].url).toBe("https://example.com/new-page")
-    // The oldest entry (page-199, at the end of the list) should be evicted
-    expect(history.find((e) => e.url === "https://example.com/page-199")).toBeUndefined()
+    // The oldest entry (page-0) should be evicted once the new item is prepended.
+    expect(history.find((e) => e.url === "https://example.com/page-0")).toBeUndefined()
   })
 
   it("clears all history", async () => {

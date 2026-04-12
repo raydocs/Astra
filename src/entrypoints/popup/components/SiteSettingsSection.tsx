@@ -8,7 +8,10 @@ import type {
   TranslationTheme,
 } from "@/types/config"
 import { t } from "@/utils/i18n"
-import { labelStyle, inputStyle, checkboxRowStyle, warningStyle } from "./styles"
+import { exportSingleSiteRule, importSiteRules } from "@/utils/storage/site-rules"
+import { labelStyle, inputStyle, checkboxRowStyle, warningStyle, btnSecondary } from "./styles"
+import { browser } from "#imports"
+import type { ContentDetectArticleResponse } from "@/types/messages"
 
 const INHERIT_VALUE = "__inherit__"
 
@@ -37,6 +40,28 @@ const textareaStyle: React.CSSProperties = {
   fontSize: 12,
 }
 
+const cssEditorStyle: React.CSSProperties = {
+  ...inputStyle,
+  minHeight: 80,
+  resize: "vertical",
+  fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace",
+  fontSize: 12,
+  background: "#1e293b",
+  color: "#e2e8f0",
+  border: "1px solid #334155",
+  borderRadius: 6,
+  padding: "8px 10px",
+  lineHeight: 1.5,
+}
+
+const PARAGRAPH_SLIDER_MAX = 60
+const PARAGRAPH_SLIDER_LABELS: Array<{ value: number; label: string }> = [
+  { value: 0, label: "0" },
+  { value: 10, label: "10" },
+  { value: 30, label: "30" },
+  { value: 50, label: "50" },
+]
+
 function getHoverTriggerLabel(trigger: HoverTrigger): string {
   const option = HOVER_TRIGGER_OPTIONS.find((o) => o.value === trigger)
   return option ? t(option.labelKey) : trigger
@@ -59,6 +84,7 @@ function hasAdvancedRules(siteRule?: SiteConfig): boolean {
   return !!siteRule?.selectors?.length
     || !!siteRule?.excludeSelectors?.length
     || siteRule?.paragraphMinLength != null
+    || !!siteRule?.customCss
 }
 
 function getInvalidSelectors(selectors?: string[]): string[] {
@@ -72,6 +98,13 @@ function getInvalidSelectors(selectors?: string[]): string[] {
       return true
     }
   })
+}
+
+function getParagraphLengthLabel(value: number | undefined): string {
+  if (value == null || value === 0) return t("label_paragraphFilterNone")
+  if (value <= 10) return t("label_paragraphFilterShort")
+  if (value <= 30) return t("label_paragraphFilterMedium")
+  return t("label_paragraphFilterLong")
 }
 
 export interface SiteSettingsSectionProps {
@@ -96,13 +129,47 @@ export default function SiteSettingsSection({
   const [excludeSelectorsValue, setExcludeSelectorsValue] = useState(() => toMultilineValue(rawSiteRule?.excludeSelectors))
   const [selectorsError, setSelectorsError] = useState<string | null>(null)
   const [excludeSelectorsError, setExcludeSelectorsError] = useState<string | null>(null)
+  const [customCssValue, setCustomCssValue] = useState(() => rawSiteRule?.customCss ?? "")
+  const [detectingArticle, setDetectingArticle] = useState(false)
+  const [ruleStatus, setRuleStatus] = useState<string | null>(null)
+
+  const paragraphSliderValue = rawSiteRule?.paragraphMinLength ?? 0
 
   useEffect(() => {
     setSelectorsValue(toMultilineValue(rawSiteRule?.selectors))
     setExcludeSelectorsValue(toMultilineValue(rawSiteRule?.excludeSelectors))
     setSelectorsError(null)
     setExcludeSelectorsError(null)
-  }, [activeSiteKey, rawSiteRule?.selectors, rawSiteRule?.excludeSelectors])
+    setCustomCssValue(rawSiteRule?.customCss ?? "")
+  }, [activeSiteKey, rawSiteRule?.selectors, rawSiteRule?.excludeSelectors, rawSiteRule?.customCss])
+
+  async function handleDetectArticle() {
+    setDetectingArticle(true)
+    try {
+      const [tab] = await browser.tabs.query({ active: true, currentWindow: true })
+      if (!tab?.id) return
+
+      const response = await browser.tabs.sendMessage(tab.id, {
+        type: "content/detect-article",
+      }) as ContentDetectArticleResponse
+
+      if (response?.ok && response.selector) {
+        const current = fromMultilineValue(selectorsValue) ?? []
+        if (!current.includes(response.selector)) {
+          const next = [...current, response.selector]
+          setSelectorsValue(next.join("\n"))
+          onSiteRuleChange((siteRule) => ({
+            ...siteRule,
+            selectors: next,
+          }))
+        }
+      }
+    } catch {
+      // Content script may not be available
+    } finally {
+      setDetectingArticle(false)
+    }
+  }
 
   return (
     <details open style={{ marginBottom: 12 }}>
@@ -260,6 +327,70 @@ export default function SiteSettingsSection({
           <option value="article">{t("scopeArticle")}</option>
         </select>
 
+        <div style={{ display: "flex", gap: 6, marginTop: 10 }}>
+          <button
+            data-testid="site-export-rule-btn"
+            type="button"
+            style={{ ...btnSecondary, flex: "none", padding: "4px 10px", fontSize: 11 }}
+            onClick={() => {
+              const siteConfig: SiteConfig = rawSiteRule ?? { enabled: true, alwaysTranslate: false }
+              const json = exportSingleSiteRule(activeSiteKey, siteConfig)
+              void navigator.clipboard.writeText(json).then(() => {
+                setRuleStatus(t("siteRules_ruleExported"))
+                setTimeout(() => setRuleStatus(null), 2000)
+              })
+            }}
+          >
+            {t("siteRules_exportRule")}
+          </button>
+          <button
+            data-testid="site-import-rule-btn"
+            type="button"
+            style={{ ...btnSecondary, flex: "none", padding: "4px 10px", fontSize: 11 }}
+            onClick={async () => {
+              try {
+                const text = await navigator.clipboard.readText()
+                const dummyConfig = {
+                  ...globalConfig,
+                  version: 1 as const,
+                  connectionMode: "astra" as const,
+                  inputTranslation: "enabled" as const,
+                  inputTranslationMode: "replace" as const,
+                  languageLevel: "intermediate" as const,
+                  privacyMode: false,
+                  provider: { id: "openai" as const, accessToken: "", apiKey: "", model: "gpt-5.4-nano" },
+                  tts: { enabled: true, engine: "browser" as const, rate: 0.9, pitch: 1.0, highlightSentences: true },
+                  sites: {},
+                  customActions: [],
+                }
+                const result = importSiteRules(text, dummyConfig)
+                const importedRule = result.sites[activeSiteKey]
+                if (importedRule) {
+                  onSiteRuleChange(() => importedRule)
+                  setRuleStatus(t("siteRules_ruleImported"))
+                } else {
+                  // If the imported JSON has a different hostname, apply the first rule found
+                  const firstHostname = Object.keys(result.sites)[0]
+                  if (firstHostname && result.sites[firstHostname]) {
+                    onSiteRuleChange(() => result.sites[firstHostname])
+                    setRuleStatus(t("siteRules_ruleImported"))
+                  } else {
+                    setRuleStatus(t("siteRules_invalidRuleFormat"))
+                  }
+                }
+              } catch {
+                setRuleStatus(t("siteRules_invalidRuleFormat"))
+              }
+              setTimeout(() => setRuleStatus(null), 2000)
+            }}
+          >
+            {t("siteRules_importRule")}
+          </button>
+        </div>
+        {ruleStatus && (
+          <div data-testid="site-rule-status" style={{ fontSize: 11, color: "#059669", marginTop: 4 }}>{ruleStatus}</div>
+        )}
+
         <details data-testid="site-advanced-rules" style={{ marginTop: 12 }}>
           <summary style={{ cursor: "pointer", fontSize: 12, color: "#475569", display: "flex", alignItems: "center", gap: 6 }}>
             {t("label_siteAdvancedRules")}
@@ -270,7 +401,24 @@ export default function SiteSettingsSection({
             )}
           </summary>
           <div style={{ marginTop: 10 }}>
-            <label style={labelStyle}>{t("label_siteIncludeSelectors")}</label>
+            <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
+              <label style={{ ...labelStyle, marginBottom: 0, marginTop: 0, flex: 1 }}>{t("label_siteIncludeSelectors")}</label>
+              <button
+                data-testid="site-detect-article-btn"
+                type="button"
+                onClick={() => void handleDetectArticle()}
+                disabled={detectingArticle || !(rawSiteRule?.enabled ?? true)}
+                style={{
+                  ...btnSecondary,
+                  flex: "none",
+                  padding: "3px 8px",
+                  fontSize: 11,
+                  opacity: detectingArticle ? 0.6 : 1,
+                }}
+              >
+                {detectingArticle ? "..." : t("label_detectArticle")}
+              </button>
+            </div>
             <textarea
               data-testid="site-selectors-input"
               value={selectorsValue}
@@ -338,32 +486,70 @@ export default function SiteSettingsSection({
               <div data-testid="site-exclude-selectors-error" style={warningStyle}>{excludeSelectorsError}</div>
             )}
 
-            <label style={labelStyle}>{t("label_siteParagraphMinLength")}</label>
-            <input
-              data-testid="site-paragraph-min-length-input"
-              type="number"
-              min="0"
-              step="1"
-              value={rawSiteRule?.paragraphMinLength?.toString() ?? ""}
-              onChange={(e) => onSiteRuleChange((siteRule) => {
-                const nextSiteRule: SiteConfig = { ...siteRule }
-                const trimmed = e.target.value.trim()
-                if (!trimmed) {
-                  delete nextSiteRule.paragraphMinLength
+            <label style={labelStyle}>
+              {t("label_siteParagraphMinLength")}
+              <span style={{ marginLeft: 8, fontSize: 11, color: "#94a3b8" }}>
+                {getParagraphLengthLabel(rawSiteRule?.paragraphMinLength)}
+              </span>
+            </label>
+            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+              <input
+                data-testid="site-paragraph-min-length-input"
+                type="range"
+                min="0"
+                max={PARAGRAPH_SLIDER_MAX}
+                step="1"
+                value={paragraphSliderValue}
+                onChange={(e) => onSiteRuleChange((siteRule) => {
+                  const nextSiteRule: SiteConfig = { ...siteRule }
+                  const parsed = Number.parseInt(e.target.value, 10)
+                  if (parsed === 0) {
+                    delete nextSiteRule.paragraphMinLength
+                  } else {
+                    nextSiteRule.paragraphMinLength = parsed
+                  }
                   return nextSiteRule
-                }
-
-                const parsed = Number.parseInt(trimmed, 10)
-                if (Number.isFinite(parsed)) {
-                  nextSiteRule.paragraphMinLength = Math.max(0, parsed)
-                }
-                return nextSiteRule
-              })}
-              placeholder={t("label_inheritBlank")}
-              style={inputStyle}
-              disabled={!(rawSiteRule?.enabled ?? true)}
-            />
+                })}
+                style={{ flex: 1, cursor: "pointer" }}
+                disabled={!(rawSiteRule?.enabled ?? true)}
+              />
+              <span style={{ fontSize: 12, color: "#64748b", minWidth: 24, textAlign: "right" }}>
+                {paragraphSliderValue}
+              </span>
+            </div>
+            <div style={{ display: "flex", justifyContent: "space-between", fontSize: 10, color: "#94a3b8", marginTop: 2 }}>
+              {PARAGRAPH_SLIDER_LABELS.map((mark) => (
+                <span key={mark.value}>{mark.label}</span>
+              ))}
+            </div>
             <div style={{ fontSize: 11, color: "#94a3b8", marginTop: 4 }}>{t("hint_siteParagraphMinLength")}</div>
+
+            <label style={{ ...labelStyle, display: "flex", alignItems: "center", gap: 6, marginTop: 12 }}>
+              {t("label_siteCustomCss")}
+              <span style={{ fontSize: 10, color: "#94a3b8", fontWeight: 400 }}>{t("label_preview")}</span>
+            </label>
+            <textarea
+              data-testid="site-custom-css-input"
+              value={customCssValue}
+              onChange={(e) => {
+                const nextValue = e.target.value
+                setCustomCssValue(nextValue)
+                onSiteRuleChange((siteRule) => {
+                  const nextSiteRule: SiteConfig = { ...siteRule }
+                  if (nextValue.trim()) {
+                    nextSiteRule.customCss = nextValue
+                  } else {
+                    delete nextSiteRule.customCss
+                  }
+                  return nextSiteRule
+                })
+              }}
+              placeholder={`.sidebar { display: none; }\n.content { max-width: 100%; }`}
+              style={cssEditorStyle}
+              disabled={!(rawSiteRule?.enabled ?? true)}
+              maxLength={5000}
+            />
+            <div style={{ fontSize: 11, color: "#94a3b8", marginTop: 4 }}>{t("hint_siteCustomCss")}</div>
           </div>
         </details>
       </div>

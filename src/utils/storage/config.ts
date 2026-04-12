@@ -3,12 +3,19 @@ import { browser } from "#imports"
 import {
   AstraConfigInputSchema,
   AstraConfigSchema,
+  AstraSyncedConfigSchema,
   DEFAULT_ASTRA_CONFIG,
+  buildSyncSafeConfig,
   getDefaultProviderModel,
+  mergeSyncSafeConfig,
   normalizeConfig,
   normalizeSiteKey,
+  summarizeConfigContinuity,
   type AstraConfig,
+  type AstraConfigContinuitySummary,
   type AstraConfigInput,
+  type AstraConfigSyncOptions,
+  type AstraSyncedConfig,
 } from "@/types/config"
 
 export const ASTRA_CONFIG_STORAGE_KEY = "astra.config.v1"
@@ -58,6 +65,7 @@ export async function migrateLegacyConfig(): Promise<AstraConfig> {
         ? { relayBaseURL: legacy.baseURL }
         : {}),
     },
+    tts: DEFAULT_ASTRA_CONFIG.tts,
     presentation: DEFAULT_ASTRA_CONFIG.presentation,
     sites: {},
   })
@@ -78,6 +86,33 @@ export async function readConfig(): Promise<AstraConfig> {
   }
 
   return migrateLegacyConfig()
+}
+
+export async function readSyncSafeConfig(
+  options: AstraConfigSyncOptions = {},
+): Promise<AstraSyncedConfig> {
+  const config = await readConfig()
+  return buildSyncSafeConfig(config, options)
+}
+
+export async function replaceConfig(config: AstraConfig): Promise<AstraConfig> {
+  const normalized = normalizeConfig(config)
+  await persistConfig(normalized)
+  return normalized
+}
+
+export async function applySyncSafeConfig(input: AstraSyncedConfig): Promise<AstraConfig> {
+  const syncedConfig = AstraSyncedConfigSchema.parse(input)
+  const currentConfig = await readConfig()
+  const nextConfig = mergeSyncSafeConfig(currentConfig, syncedConfig)
+
+  await persistConfig(nextConfig)
+  return nextConfig
+}
+
+export async function readConfigContinuitySummary(): Promise<AstraConfigContinuitySummary> {
+  const config = await readConfig()
+  return summarizeConfigContinuity(config)
 }
 
 export async function saveConfig(input: AstraConfigInput): Promise<AstraConfig> {
@@ -102,6 +137,7 @@ export async function saveConfig(input: AstraConfigInput): Promise<AstraConfig> 
         ...(value.selectors?.length ? { selectors: value.selectors } : {}),
         ...(value.excludeSelectors?.length ? { excludeSelectors: value.excludeSelectors } : {}),
         ...(value.paragraphMinLength != null ? { paragraphMinLength: value.paragraphMinLength } : {}),
+        ...(value.customCss ? { customCss: value.customCss } : {}),
       }
     })
   }
@@ -116,6 +152,9 @@ export async function saveConfig(input: AstraConfigInput): Promise<AstraConfig> 
     ...(parsedInput.contentScope ? { contentScope: parsedInput.contentScope } : {}),
     ...(parsedInput.inputTranslation !== undefined
       ? { inputTranslation: parsedInput.inputTranslation }
+      : {}),
+    ...(parsedInput.inputTranslationMode !== undefined
+      ? { inputTranslationMode: parsedInput.inputTranslationMode }
       : {}),
     ...(parsedInput.languageLevel !== undefined
       ? { languageLevel: parsedInput.languageLevel }
@@ -150,6 +189,10 @@ export async function saveConfig(input: AstraConfigInput): Promise<AstraConfig> 
               : { relayBaseURL: undefined }),
           }
         : {}),
+    },
+    tts: {
+      ...currentConfig.tts,
+      ...parsedInput.tts,
     },
     presentation: {
       ...currentConfig.presentation,

@@ -6,13 +6,14 @@ import type {
   SiteConfig,
   TranslationMode,
 } from "@/types/config"
-import type { AstraAccount, AstraSession } from "@/types/auth"
+import type { AstraAccount, AstraDeviceIdentity, AstraSession } from "@/types/auth"
 import type { PageStudyContext } from "@/types/messages"
 import type { TranslationSnapshot } from "@/types/translation"
 import type { QuotaInfo } from "@/utils/astra/quota"
 import {
   getActiveTabStudyContext,
   getActiveTabTranslationState,
+  retryActiveTabFailedBlocks,
   saveConfigInBackground,
   startActiveTabTranslation,
   stopActiveTabTranslation,
@@ -26,7 +27,14 @@ import {
 } from "@/types/config"
 import { getReadingHistory, type ReadingHistoryEntry } from "@/utils/storage/reading-history"
 import {
+  getPageDigest,
+  savePageDigest,
+  type PageDigestRecord,
+} from "@/utils/storage/page-digests"
+import { generatePageDigest } from "@/utils/reading/assist"
+import {
   clearAstraSession,
+  ensureAstraDeviceIdentity,
   readAstraSession,
   saveAstraSession,
 } from "@/utils/storage/auth"
@@ -37,14 +45,19 @@ import {
 } from "@/utils/astra/auth"
 import {
   fetchAstraAccount,
+  fetchAstraContinuitySnapshot,
 } from "@/utils/astra/account"
 import { getQuotaInfo } from "@/utils/astra/quota"
 import { getDueVocabularyCount } from "@/utils/storage/vocabulary"
+import { getTranslationUsageSummary, type TranslationUsageSummary } from "@/utils/storage/translation-usage"
+import { buildContinuityStatus, type AstraContinuityRemoteSnapshot, type AstraContinuityStatus } from "@/utils/storage/config-sync"
+import { deriveStudyLoopViewModel, getStudyProgress, type StudyLoopViewModel } from "@/utils/storage/study-progress"
 import TranslationStatusCard from "./components/TranslationStatusCard"
 import SimpleControls from "./components/SimpleControls"
 import QuotaBar from "./components/QuotaBar"
 import SiteSettingsSection from "./components/SiteSettingsSection"
 import StudySection from "./components/StudySection"
+import UsageInsightsCard from "./components/UsageInsightsCard"
 import { btnPrimary, btnSecondary, btnDisabled, warningStyle, inputStyle, labelStyle } from "./components/styles"
 
 async function getActiveSiteKey(): Promise<string | null> {
@@ -52,6 +65,87 @@ async function getActiveSiteKey(): Promise<string | null> {
   if (!tab?.url) return null
   if (!/^https?:/i.test(tab.url)) return null
   return normalizeSiteKey(tab.url)
+}
+
+function formatContinuityTimestamp(value: string | null | undefined): string {
+  if (!value) return "not yet"
+
+  const parsed = new Date(value)
+  if (Number.isNaN(parsed.getTime())) {
+    return value
+  }
+
+  return parsed.toLocaleString()
+}
+
+interface IosBootstrapRuntimeStatus {
+  lastSessionId: string | null
+  lastBootstrapAt: string | null
+}
+
+interface IosBootstrapHistoryEvent {
+  sessionId: string
+  source: string
+  issuedAt: string | null
+  launchURL: string | null
+}
+
+interface IosBootstrapRuntimeResponse {
+  ok?: boolean
+  bridgeAvailable?: boolean
+  opened?: boolean
+  status?: IosBootstrapRuntimeStatus | null
+  history?: IosBootstrapHistoryEvent[]
+}
+
+async function fetchIosBootstrapRuntimeStatus(): Promise<{
+  bridgeAvailable: boolean
+  status: IosBootstrapRuntimeStatus | null
+  history: IosBootstrapHistoryEvent[]
+}> {
+  try {
+    const response = await browser.runtime.sendMessage({
+      type: "runtime/ios-bootstrap-status",
+    }) as IosBootstrapRuntimeResponse
+
+    return {
+      bridgeAvailable: response.bridgeAvailable === true,
+      status: response.status ?? null,
+      history: Array.isArray(response.history) ? response.history : [],
+    }
+  } catch {
+    return {
+      bridgeAvailable: false,
+      status: null,
+      history: [],
+    }
+  }
+}
+
+async function consumeIosBootstrapFromPopup(source: string): Promise<IosBootstrapRuntimeResponse> {
+  try {
+    const response = await browser.runtime.sendMessage({
+      type: "runtime/ios-bootstrap-consume",
+      source,
+    }) as IosBootstrapRuntimeResponse
+
+    return response
+  } catch {
+    return { ok: false, bridgeAvailable: false, opened: false, status: null, history: [] }
+  }
+}
+
+async function replayIosBootstrapFromPopup(sessionId?: string): Promise<IosBootstrapRuntimeResponse> {
+  try {
+    const response = await browser.runtime.sendMessage({
+      type: "runtime/ios-bootstrap-replay",
+      sessionId,
+    }) as IosBootstrapRuntimeResponse
+
+    return response
+  } catch {
+    return { ok: false, bridgeAvailable: false, opened: false, status: null, history: [] }
+  }
 }
 
 export default function App() {
@@ -63,6 +157,9 @@ export default function App() {
   const [activeSiteKey, setActiveSiteKey] = useState<string | null>(null)
   const [authSession, setAuthSession] = useState<AstraSession | null>(null)
   const [authAccount, setAuthAccount] = useState<AstraAccount | null>(null)
+  const [deviceIdentity, setDeviceIdentity] = useState<AstraDeviceIdentity | null>(null)
+  const [continuityRemote, setContinuityRemote] = useState<AstraContinuityRemoteSnapshot | null>(null)
+  const [continuityStatus, setContinuityStatus] = useState<AstraContinuityStatus | null>(null)
   const [authEmail, setAuthEmail] = useState("")
   const [authPassword, setAuthPassword] = useState("")
   const [authBusy, setAuthBusy] = useState(false)
@@ -70,6 +167,16 @@ export default function App() {
   const [studyContext, setStudyContext] = useState<PageStudyContext | null>(null)
   const [dueCount, setDueCount] = useState(0)
   const [quotaInfo, setQuotaInfo] = useState<QuotaInfo | null>(null)
+  const [usageSummary, setUsageSummary] = useState<TranslationUsageSummary | null>(null)
+  const [studyLoop, setStudyLoop] = useState<StudyLoopViewModel | null>(null)
+  const [pageDigest, setPageDigest] = useState<PageDigestRecord | null>(null)
+  const [digestLoading, setDigestLoading] = useState(false)
+  const [iosBootstrapStatus, setIosBootstrapStatus] = useState<{
+    bridgeAvailable: boolean
+    status: IosBootstrapRuntimeStatus | null
+    history: IosBootstrapHistoryEvent[]
+  }>({ bridgeAvailable: false, status: null, history: [] })
+  const [iosBridgeActionMessage, setIosBridgeActionMessage] = useState("")
   const hasUnsavedChangesRef = useRef(false)
   const isMountedRef = useRef(true)
   const saveSequenceRef = useRef<Promise<void>>(Promise.resolve())
@@ -96,38 +203,83 @@ export default function App() {
   }
 
   const refreshAll = async () => {
-    const [config, siteKey, storedSession, history, currentDueCount, studyContextResponse] = await Promise.all([
+    const [config, siteKey, device, storedSession, history, currentDueCount, studyContextResponse, usage, studyStore, iosStatus] = await Promise.all([
       readConfig(),
       getActiveSiteKey(),
+      ensureAstraDeviceIdentity(),
       readAstraSession(),
       getReadingHistory(),
       getDueVocabularyCount(),
       getActiveTabStudyContext(),
+      getTranslationUsageSummary(),
+      getStudyProgress(),
+      fetchIosBootstrapRuntimeStatus(),
     ])
     setRecentHistory(history.slice(0, 3))
     setDueCount(currentDueCount)
     setStudyContext(studyContextResponse.ok ? studyContextResponse.context : null)
+    setUsageSummary(usage)
+    setIosBootstrapStatus(iosStatus)
+
+    // Derive study loop view model from current tab URL
+    const [activeTab] = await browser.tabs.query({ active: true, currentWindow: true })
+    const currentUrl = activeTab?.url && /^https?:/i.test(activeTab.url) ? activeTab.url : undefined
+    setStudyLoop(deriveStudyLoopViewModel(studyStore, currentUrl))
+
+    // Load cached page digest for the current URL
+    if (currentUrl) {
+      try {
+        const digest = await getPageDigest(currentUrl)
+        setPageDigest(digest)
+      } catch {
+        setPageDigest(null)
+      }
+    } else {
+      setPageDigest(null)
+    }
+
     let session = storedSession
     let account: AstraAccount | null = null
-    if (storedSession) {
+    let remote: AstraContinuityRemoteSnapshot | null = null
+    let continuityMessage: string | null = null
+    if (storedSession?.identityMode === "authenticated") {
       try {
         session = await refreshAstraSession({
           baseURL: storedSession.relayBaseURL,
           sessionToken: storedSession.sessionToken,
         })
         await saveAstraSession(session)
-        try {
-          account = await fetchAstraAccount({
-            baseURL: session.relayBaseURL,
-            sessionToken: session.sessionToken,
-          })
-        } catch {
-          account = null
-        }
-      } catch {
+      } catch (error) {
+        continuityMessage = error instanceof Error ? error.message : "Failed to refresh Astra session"
         await clearAstraSession()
         session = null
         account = null
+        remote = {
+          error: continuityMessage,
+        }
+      }
+
+      if (session) {
+        const [accountResult, continuityResult] = await Promise.allSettled([
+          fetchAstraAccount({
+            baseURL: session.relayBaseURL,
+            sessionToken: session.sessionToken,
+          }),
+          fetchAstraContinuitySnapshot({
+            baseURL: session.relayBaseURL,
+            sessionToken: session.sessionToken,
+            deviceId: device.deviceId,
+            includePull: false,
+          }),
+        ])
+        account = accountResult.status === "fulfilled" ? accountResult.value : null
+        remote = continuityResult.status === "fulfilled"
+          ? continuityResult.value
+          : {
+              error: continuityResult.reason instanceof Error
+                ? continuityResult.reason.message
+                : "Failed to load continuity status.",
+            }
       }
     }
     if (!hasUnsavedChangesRef.current) {
@@ -137,6 +289,14 @@ export default function App() {
     setActiveSiteKey(siteKey)
     setAuthSession(session)
     setAuthAccount(account)
+    setDeviceIdentity(device)
+    setContinuityRemote(remote)
+    setContinuityStatus(buildContinuityStatus({
+      config,
+      session,
+      device,
+      remote,
+    }))
 
     // Fetch quota info (best-effort)
     try {
@@ -147,11 +307,56 @@ export default function App() {
     }
 
     await refreshTranslationState()
+    if (continuityMessage) {
+      setStatusMessage(continuityMessage)
+    }
   }
 
   useEffect(() => {
     void refreshAll()
   }, [])
+
+  useEffect(() => {
+    if (!deviceIdentity) return
+    setContinuityStatus(buildContinuityStatus({
+      config: persistedConfig,
+      session: authSession,
+      device: deviceIdentity,
+      remote: continuityRemote,
+    }))
+  }, [authSession, continuityRemote, deviceIdentity, persistedConfig])
+
+  const handleGenerateDigest = async () => {
+    if (!studyContext) return
+    setDigestLoading(true)
+    try {
+      const digest = await generatePageDigest({
+        pageTitle: studyContext.pageTitle ?? "",
+        contentSummary: studyContext.contentSummary ?? studyContext.metaDescription ?? "",
+        targetLang: configDraft.targetLang,
+        languageLevel: configDraft.languageLevel,
+      })
+      const [activeTab] = await browser.tabs.query({ active: true, currentWindow: true })
+      const url = activeTab?.url ?? studyContext.pageUrl ?? ""
+      const hostname = studyContext.hostname ?? ""
+      const record = await savePageDigest(
+        {
+          url,
+          hostname,
+          title: studyContext.pageTitle ?? "",
+          targetLang: configDraft.targetLang,
+          languageLevel: configDraft.languageLevel,
+          contentSummary: studyContext.contentSummary,
+        },
+        digest,
+      )
+      setPageDigest(record)
+    } catch {
+      // Digest generation failed — silently ignore
+    } finally {
+      setDigestLoading(false)
+    }
+  }
 
   useEffect(() => {
     const handleWindowFocus = () => {
@@ -376,13 +581,18 @@ export default function App() {
     void handleSaveConfig({ presentation: { ...configDraft.presentation, mode } })
   }
 
-  const translate = async () => {
+  const handleConfigChange = (patch: Partial<AstraConfig>) => {
+    setConfigDraft((current) => ({ ...current, ...patch }))
+    void handleSaveConfig(patch)
+  }
+
+  const startTranslation = async (contentScope: "page" | "article") => {
     try {
       const response = await startActiveTabTranslation({
         targetLang: persistedResolvedSite.targetLang,
         translationMode: persistedResolvedSite.presentation.mode,
         translationTheme: persistedResolvedSite.presentation.theme,
-        contentScope: persistedResolvedSite.contentScope,
+        contentScope,
       })
       if (response.ok) {
         setTranslationState(response.state)
@@ -397,6 +607,10 @@ export default function App() {
       setStatusMessage(error instanceof Error ? error.message : "Translation request failed")
     }
   }
+
+  const translate = async () => startTranslation("page")
+
+  const translateArticle = async () => startTranslation("article")
 
   const removeTranslation = async () => {
     try {
@@ -436,22 +650,52 @@ export default function App() {
   // Compute daily words translated from quota/session
   const wordsTranslated = quotaInfo ? Math.round(quotaInfo.used / 5) : 0
 
+  const isAuthenticatedSession = authSession?.identityMode === "authenticated"
+  const sessionStatusLabel = !authSession
+    ? t("popup_notConnected")
+    : isAuthenticatedSession
+      ? t("popup_connected")
+      : "Guest session"
+
   // Determine plan label
-  const planLabel = authAccount?.plan === "pro"
+  const planLabel = isAuthenticatedSession && authAccount?.plan === "pro"
     ? "Pro Plan"
     : quotaInfo?.plan === "custom"
       ? "Custom"
       : "Free Plan"
 
-  const hydrateAccountState = async (session: AstraSession) => {
-    try {
-      const account = await fetchAstraAccount({
+  const localOnlyLabel = continuityStatus?.sync.localOnly.localOnlyFields.join(", ")
+  const remoteConfigCollection = continuityStatus?.remote.configCollection ?? null
+  const remoteReadingHistoryCollection = continuityStatus?.remote.readingHistoryCollection ?? null
+  const remoteStudyProgressCollection = continuityStatus?.remote.studyProgressCollection ?? null
+  const remoteCurrentDevice = continuityStatus?.remote.currentDevice ?? null
+
+  const hydrateAccountState = async (
+    session: AstraSession,
+    device: AstraDeviceIdentity,
+  ): Promise<{ account: AstraAccount | null; remote: AstraContinuityRemoteSnapshot | null }> => {
+    const [accountResult, continuityResult] = await Promise.allSettled([
+      fetchAstraAccount({
         baseURL: session.relayBaseURL,
         sessionToken: session.sessionToken,
-      })
-      return { account }
-    } catch {
-      return { account: null }
+      }),
+      fetchAstraContinuitySnapshot({
+        baseURL: session.relayBaseURL,
+        sessionToken: session.sessionToken,
+        deviceId: device.deviceId,
+        includePull: false,
+      }),
+    ])
+
+    return {
+      account: accountResult.status === "fulfilled" ? accountResult.value : null,
+      remote: continuityResult.status === "fulfilled"
+        ? continuityResult.value
+        : {
+            error: continuityResult.reason instanceof Error
+              ? continuityResult.reason.message
+              : "Failed to load continuity status.",
+          },
     }
   }
 
@@ -464,10 +708,19 @@ export default function App() {
         email: authEmail,
         password: authPassword,
       })
-      const { account } = await hydrateAccountState(session)
-      await saveAstraSession(session)
-      setAuthSession(session)
+      const persistedSession = await saveAstraSession(session)
+      const activeDevice = deviceIdentity ?? await ensureAstraDeviceIdentity()
+      const { account, remote } = await hydrateAccountState(persistedSession, activeDevice)
+      setAuthSession(persistedSession)
       setAuthAccount(account)
+      setDeviceIdentity(activeDevice)
+      setContinuityRemote(remote)
+      setContinuityStatus(buildContinuityStatus({
+        config: persistedConfig,
+        session: persistedSession,
+        device: activeDevice,
+        remote,
+      }))
       setAuthPassword("")
       setStatusMessage("")
       await refreshTranslationState()
@@ -482,7 +735,7 @@ export default function App() {
     try {
       setAuthBusy(true)
       setStatusMessage("")
-      if (authSession) {
+      if (authSession?.identityMode === "authenticated") {
         await revokeAstraSession({
           baseURL: authSession.relayBaseURL,
           sessionToken: authSession.sessionToken,
@@ -494,7 +747,16 @@ export default function App() {
       await clearAstraSession()
       setAuthSession(null)
       setAuthAccount(null)
+      setContinuityRemote(null)
       setAuthPassword("")
+      if (deviceIdentity) {
+        setContinuityStatus(buildContinuityStatus({
+          config: persistedConfig,
+          session: null,
+          device: deviceIdentity,
+          remote: null,
+        }))
+      }
       setAuthBusy(false)
       await refreshTranslationState()
     }
@@ -514,12 +776,53 @@ export default function App() {
     void browser.tabs.create({ url })
   }
 
+  const handleOpenInAstraApp = async () => {
+    setIosBridgeActionMessage("")
+    const response = await consumeIosBootstrapFromPopup("popup-open-in-app")
+    setIosBootstrapStatus({
+      bridgeAvailable: response.bridgeAvailable === true,
+      status: response.status ?? null,
+      history: Array.isArray(response.history) ? response.history : iosBootstrapStatus.history,
+    })
+
+    if (response.bridgeAvailable !== true) {
+      setIosBridgeActionMessage("iOS bridge unavailable in this runtime.")
+      return
+    }
+
+    setIosBridgeActionMessage(response.opened
+      ? "Sent handoff to Astra app."
+      : "Bridge available, but launch was not opened.")
+  }
+
+  const handleReplayLatestBridgeEvent = async () => {
+    setIosBridgeActionMessage("")
+    const latestEvent = iosBootstrapStatus.history[0]
+    const response = await replayIosBootstrapFromPopup(latestEvent?.sessionId)
+    setIosBootstrapStatus({
+      bridgeAvailable: response.bridgeAvailable === true,
+      status: response.status ?? iosBootstrapStatus.status,
+      history: Array.isArray(response.history) ? response.history : iosBootstrapStatus.history,
+    })
+
+    if (response.bridgeAvailable !== true) {
+      setIosBridgeActionMessage("iOS bridge unavailable in this runtime.")
+      return
+    }
+
+    setIosBridgeActionMessage(response.opened
+      ? "Replayed latest bridge event to Astra app."
+      : "No replayable bridge event yet.")
+  }
+
   const currentPageHistory = studyContext?.pageUrl
     ? recentHistory.find((entry) => entry.url === studyContext.pageUrl) ?? null
     : null
+  const studyReady = !!(studyContext?.contentSummary || studyContext?.metaDescription || currentPageHistory)
+  const shouldShowSignIn = !isAuthenticatedSession
 
   return (
-    <div style={{ width: 340, padding: 16, fontFamily: "system-ui, sans-serif" }}>
+    <div style={{ width: "100%", maxWidth: 400, minWidth: 280, padding: 16, fontFamily: "system-ui, sans-serif", boxSizing: "border-box" }}>
       {/* Header */}
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
         <h2 style={{ margin: 0, fontSize: 18, display: "flex", alignItems: "center", gap: 8 }}>
@@ -593,11 +896,11 @@ export default function App() {
             width: 8,
             height: 8,
             borderRadius: "50%",
-            background: authSession ? "#22c55e" : "#94a3b8",
+            background: isAuthenticatedSession ? "#22c55e" : continuityStatus?.device.ready ? "#6366f1" : "#94a3b8",
           }} />
           <span>
-            {authSession ? t("popup_connected") : t("popup_notConnected")}
-            {" \u00b7 "}
+            {sessionStatusLabel}
+            {" · "}
             {planLabel}
           </span>
         </div>
@@ -605,6 +908,118 @@ export default function App() {
         {wordsTranslated > 0 && (
           <div style={{ fontSize: 11, color: "#94a3b8", marginTop: 4 }}>
             {t("popup_wordsTranslatedToday", wordsTranslated.toLocaleString())}
+          </div>
+        )}
+        <div style={{ fontSize: 11, color: "#64748b", marginTop: 6, lineHeight: 1.45 }}>
+          <div>
+            iOS bridge: {iosBootstrapStatus.bridgeAvailable ? "available" : "unavailable"}
+            {iosBootstrapStatus.status?.lastBootstrapAt
+              ? ` · Last bootstrap ${formatContinuityTimestamp(iosBootstrapStatus.status.lastBootstrapAt)}`
+              : " · No bootstrap yet"}
+          </div>
+          <div>
+            Launch path: popup/onboarding → extension bridge → astra-shell://bootstrap → host app handoff
+          </div>
+          {iosBootstrapStatus.status?.lastSessionId && (
+            <div>
+              Last iOS session: {iosBootstrapStatus.status.lastSessionId}
+            </div>
+          )}
+          {iosBootstrapStatus.history.length > 0 && (
+            <div>
+              Recent bridge events: {iosBootstrapStatus.history.length}
+            </div>
+          )}
+          <div style={{ display: "flex", gap: 6, marginTop: 6 }}>
+            <button
+              type="button"
+              onClick={() => { void handleOpenInAstraApp() }}
+              style={{
+                ...btnSecondary,
+                fontSize: 11,
+                padding: "4px 8px",
+                ...(iosBootstrapStatus.bridgeAvailable ? {} : btnDisabled),
+              }}
+              disabled={!iosBootstrapStatus.bridgeAvailable}
+            >
+              Open in Astra App
+            </button>
+            <button
+              type="button"
+              onClick={() => { void handleReplayLatestBridgeEvent() }}
+              style={{
+                ...btnSecondary,
+                fontSize: 11,
+                padding: "4px 8px",
+                ...((!iosBootstrapStatus.bridgeAvailable || iosBootstrapStatus.history.length === 0) ? btnDisabled : {}),
+              }}
+              disabled={!iosBootstrapStatus.bridgeAvailable || iosBootstrapStatus.history.length === 0}
+            >
+              Replay last handoff
+            </button>
+          </div>
+          {iosBridgeActionMessage && (
+            <div>
+              {iosBridgeActionMessage}
+            </div>
+          )}
+          {iosBootstrapStatus.history.slice(0, 3).map((event) => (
+            <div key={event.sessionId}>
+              · {event.sessionId} ({event.source}) {formatContinuityTimestamp(event.issuedAt)}
+            </div>
+          ))}
+        </div>
+        {continuityStatus && (
+          <div style={{ fontSize: 11, color: "#64748b", marginTop: 6, lineHeight: 1.45 }}>
+            <div>
+              Device: {deviceIdentity?.label ?? "Preparing device identity"}
+            </div>
+            {isAuthenticatedSession && (
+              continuityStatus.remote.available
+                ? (
+                    <>
+                      <div>
+                        Astra continuity · {continuityStatus.remote.deviceCount} device{continuityStatus.remote.deviceCount === 1 ? "" : "s"} · {continuityStatus.remote.activeDeviceCount} active
+                      </div>
+                      {remoteCurrentDevice && (
+                        <div>
+                          Current device: {remoteCurrentDevice.status} · Last seen {formatContinuityTimestamp(remoteCurrentDevice.lastSeenAt)} · Last sync {formatContinuityTimestamp(remoteCurrentDevice.lastSyncAt)}
+                        </div>
+                      )}
+                      {remoteConfigCollection && (
+                        <div>
+                          Config bootstrap: {remoteConfigCollection.enabled ? "enabled" : "disabled"} · Cursor {remoteConfigCollection.bootstrapCursor ?? "none"}
+                          {remoteConfigCollection.hasPull ? ` · Latest pull ${remoteConfigCollection.deltaCount} delta${remoteConfigCollection.deltaCount === 1 ? "" : "s"}` : ""}
+                        </div>
+                      )}
+                    </>
+                  )
+                : continuityStatus.remote.error
+                  ? (
+                      <div>
+                        Continuity check: {continuityStatus.remote.error}
+                      </div>
+                    )
+                  : null
+            )}
+            {remoteReadingHistoryCollection && (
+              <div>
+                Reading history sync: {remoteReadingHistoryCollection.enabled ? "enabled" : "off"} · {remoteReadingHistoryCollection.enabled ? `Cursor ${remoteReadingHistoryCollection.bootstrapCursor ?? "none"}` : "Optional"}
+              </div>
+            )}
+            {remoteStudyProgressCollection && (
+              <div>
+                Study progress sync: {remoteStudyProgressCollection.enabled ? "enabled" : "off"} · {remoteStudyProgressCollection.enabled ? `Cursor ${remoteStudyProgressCollection.bootstrapCursor ?? "none"}` : "Optional"} · Daily stats stay local
+              </div>
+            )}
+            <div>
+              Config continuity ready · Optional collections available in Settings
+            </div>
+            {localOnlyLabel && (
+              <div>
+                Local only: {localOnlyLabel}
+              </div>
+            )}
           </div>
         )}
       </div>
@@ -620,6 +1035,13 @@ export default function App() {
             progress={currentProgress ?? null}
             lastError={translationState?.lastError ?? null}
             siteEnabled={statusSiteEnabled}
+            onRetryFailed={() => {
+              void retryActiveTabFailedBlocks().then((response) => {
+                if (response.ok) {
+                  setTranslationState(response.state)
+                }
+              })
+            }}
           />
         </div>
       )}
@@ -629,8 +1051,12 @@ export default function App() {
         <SimpleControls
           targetLang={configDraft.targetLang}
           translationMode={configDraft.presentation.mode}
+          languageLevel={configDraft.languageLevel}
           onTargetLangChange={handleTargetLangChange}
           onModeChange={handleModeChange}
+          onLanguageLevelChange={(level) => {
+            handleConfigChange({ languageLevel: level })
+          }}
         />
       </div>
 
@@ -639,10 +1065,27 @@ export default function App() {
         dueCount={dueCount}
         recentHistory={recentHistory}
         studyContext={studyContext}
+        canReadArticle={studyReady && !translateDisabled}
+        studyLoop={studyLoop}
+        pageDigest={pageDigest}
+        digestLoading={digestLoading}
+        onGenerateDigest={() => { void handleGenerateDigest() }}
         onOpenHistoryEntry={openUrlInTab}
         onOpenReview={openReviewPage}
         onOpenVocabulary={openVocabularyPage}
+        onReadArticle={() => {
+          void translateArticle()
+        }}
+        onExplainSentence={() => {
+          // Focus the active tab so user can select text for explanation
+          void browser.tabs.query({ active: true, currentWindow: true }).then(([tab]) => {
+            if (tab?.id) void browser.tabs.update(tab.id, { active: true })
+          })
+          window.close()
+        }}
       />
+
+      <UsageInsightsCard summary={usageSummary} />
 
       {activeSiteKey && (
         <div style={{ marginTop: 12 }}>
@@ -661,7 +1104,7 @@ export default function App() {
       )}
 
       {/* Auth section (simplified) */}
-      {!authSession && (
+      {shouldShowSignIn && (
         <details style={{ marginTop: 4, marginBottom: 8 }}>
           <summary style={{ cursor: "pointer", fontSize: 13, color: "#6366f1" }}>
             {t("popup_signInToAstra")}
@@ -701,7 +1144,7 @@ export default function App() {
         </details>
       )}
 
-      {authSession && (
+      {isAuthenticatedSession && authSession && (
         <div style={{ fontSize: 12, color: "#64748b", marginTop: 4, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
           <span>{authAccount?.email ?? authSession.email}</span>
           <button
@@ -721,6 +1164,12 @@ export default function App() {
           >
             {t("popup_signOut")}
           </button>
+        </div>
+      )}
+
+      {!isAuthenticatedSession && authSession?.identityMode === "anonymous" && (
+        <div style={{ fontSize: 11, color: "#64748b", marginTop: 4 }}>
+          This device has a local Astra guest session. Sign in to enable account continuity later.
         </div>
       )}
 

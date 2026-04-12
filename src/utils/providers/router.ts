@@ -1,4 +1,5 @@
 import { AstraError, type TranslationErrorCode } from "@/types/translation"
+import { trackEvent } from "@/utils/telemetry"
 
 import { translateWithGemini } from "./gemini"
 import { translateWithOpenAI } from "./openai"
@@ -93,12 +94,18 @@ function hasRelayAccess(provider: ConfiguredProvider): boolean {
   return provider.accessToken.length > 0 && (provider.relayBaseURL?.length ?? 0) > 0
 }
 
+const NETWORK_ERROR_PATTERNS = /\b(fetch|network|econnrefused|econnreset|enotfound|timeout|abort|socket|dns|tls|ssl|connect|epipe|ehostunreach|enetunreach)\b/i
+
 export function classifyProviderFailure(error: unknown): ProviderFailurePolicy {
-  if (!(error instanceof AstraError)) {
-    return "fail-fast"
+  if (error instanceof AstraError) {
+    return PROVIDER_FAILURE_POLICY[error.code]
   }
 
-  return PROVIDER_FAILURE_POLICY[error.code]
+  if (error instanceof Error && NETWORK_ERROR_PATTERNS.test(error.message)) {
+    return "fallback-to-relay"
+  }
+
+  return "fail-fast"
 }
 
 function metadataFor(
@@ -195,7 +202,18 @@ export async function translateWithProviderDetailed(
       }
     } catch (error) {
       if (!relayAvailable || classifyProviderFailure(error) !== "fallback-to-relay") {
-        throw wrapProviderRoutingError(error, attemptedTransports, null)
+        const wrapped = wrapProviderRoutingError(error, attemptedTransports, null)
+        trackEvent({
+          type: "translation_error",
+          data: {
+            code: wrapped.code,
+            message: wrapped.message,
+            providerId: normalizedProvider.id,
+            transport: "direct",
+            attemptedTransports: [...attemptedTransports],
+          },
+        })
+        throw wrapped
       }
     }
   }
@@ -209,15 +227,36 @@ export async function translateWithProviderDetailed(
         metadata: metadataFor(attemptedTransports, "relay") as ProviderRoutingSuccessMetadata,
       }
     } catch (error) {
-      throw wrapProviderRoutingError(error, attemptedTransports, "relay")
+      const wrapped = wrapProviderRoutingError(error, attemptedTransports, "relay")
+      trackEvent({
+        type: "translation_error",
+        data: {
+          code: wrapped.code,
+          message: wrapped.message,
+          providerId: normalizedProvider.id,
+          transport: "relay",
+          attemptedTransports: [...attemptedTransports],
+        },
+      })
+      throw wrapped
     }
   }
 
-  throw new ProviderRoutingError(
+  const configError = new ProviderRoutingError(
     "CONFIG_MISSING",
     "No API key or Astra access token configured. Open Astra popup to configure your provider.",
     metadataFor(attemptedTransports, null),
   )
+  trackEvent({
+    type: "translation_error",
+    data: {
+      code: configError.code,
+      message: configError.message,
+      providerId: normalizedProvider.id,
+      attemptedTransports: [...attemptedTransports],
+    },
+  })
+  throw configError
 }
 
 export async function translateWithProvider(

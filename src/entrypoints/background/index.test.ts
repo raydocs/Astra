@@ -1,13 +1,17 @@
 import { beforeEach, describe, expect, it, vi } from "vitest"
 
 import { createMockBrowser, setMockBrowser } from "../../../test/utils/mockBrowser"
+import { STUDY_PROGRESS_STORAGE_KEY } from "@/utils/storage/study-progress"
 
 const readConfigMock = vi.fn()
 const saveConfigMock = vi.fn()
+const ensureAstraDeviceIdentityMock = vi.fn()
 const readAstraSessionMock = vi.fn()
+const saveAstraSessionMock = vi.fn()
 const translateWithProviderDetailedMock = vi.fn()
 const executeTabCommandMock = vi.fn()
 const getProviderRoutingMetadataFromErrorMock = vi.fn()
+const runPhaseOneCollectionSyncMock = vi.fn()
 
 vi.mock("@/utils/storage/config", () => ({
   readConfig: readConfigMock,
@@ -15,12 +19,18 @@ vi.mock("@/utils/storage/config", () => ({
 }))
 
 vi.mock("@/utils/storage/auth", () => ({
+  ensureAstraDeviceIdentity: ensureAstraDeviceIdentityMock,
   readAstraSession: readAstraSessionMock,
+  saveAstraSession: saveAstraSessionMock,
 }))
 
 vi.mock("@/utils/providers/router", () => ({
   translateWithProviderDetailed: translateWithProviderDetailedMock,
   getProviderRoutingMetadataFromError: getProviderRoutingMetadataFromErrorMock,
+}))
+
+vi.mock("@/utils/storage/config-sync", () => ({
+  runPhaseOneCollectionSync: runPhaseOneCollectionSyncMock,
 }))
 
 vi.mock("./frame-coordinator", () => ({
@@ -36,14 +46,64 @@ describe("background runtime translation routing", () => {
   beforeEach(() => {
     setMockBrowser(createMockBrowser())
     vi.resetModules()
+    ensureAstraDeviceIdentityMock.mockReset()
     readConfigMock.mockReset()
     saveConfigMock.mockReset()
     readAstraSessionMock.mockReset()
+    saveAstraSessionMock.mockReset()
     translateWithProviderDetailedMock.mockReset()
     executeTabCommandMock.mockReset()
     getProviderRoutingMetadataFromErrorMock.mockReset()
+    runPhaseOneCollectionSyncMock.mockReset()
+    runPhaseOneCollectionSyncMock.mockResolvedValue({
+      skipped: true,
+      reason: "no-session",
+      pushed: { config: 0, vocabulary: 0, reading_history: 0, study_progress: 0 },
+      pulled: { config: 0, vocabulary: 0, reading_history: 0, study_progress: 0 },
+      rejected: 0,
+    })
+    ensureAstraDeviceIdentityMock.mockResolvedValue({
+      version: 1,
+      deviceId: "device-123",
+      label: "Chrome on macOS",
+      platform: "macos",
+      browserFamily: "chrome",
+      appKind: "extension",
+      appVersion: "0.1.0-test",
+      createdAt: "2026-04-09T00:00:00.000Z",
+      updatedAt: "2026-04-09T00:00:00.000Z",
+    })
     readAstraSessionMock.mockResolvedValue(null)
+    saveAstraSessionMock.mockResolvedValue(undefined)
     getProviderRoutingMetadataFromErrorMock.mockReturnValue(null)
+  })
+
+  it("schedules a phase-1 collection sync on startup", async () => {
+    const background = (await import("./index")).default
+    background.main()
+
+    await Promise.resolve()
+
+    expect(runPhaseOneCollectionSyncMock).toHaveBeenCalledTimes(1)
+  })
+
+  it("schedules a collection sync when study progress changes locally", async () => {
+    const browser = getMockBrowser()
+    const background = (await import("./index")).default
+    background.main()
+
+    runPhaseOneCollectionSyncMock.mockClear()
+
+    await browser.__emitStorageChange({
+      [STUDY_PROGRESS_STORAGE_KEY]: {
+        oldValue: undefined,
+        newValue: { pages: [], dailyStats: { date: "2026-04-09", pagesStudied: 0, sentencesExplained: 0, vocabSaved: 0, vocabReviewed: 0 } },
+      },
+    }, "local")
+
+    await Promise.resolve()
+
+    expect(runPhaseOneCollectionSyncMock).toHaveBeenCalledTimes(1)
   })
 
   it("returns a success response for translate batch requests", async () => {
@@ -60,10 +120,30 @@ describe("background runtime translation routing", () => {
     readAstraSessionMock.mockResolvedValue({
       version: 1,
       sessionToken: "astra-session",
+      sessionId: null,
+      deviceId: "device-123",
+      identityMode: "authenticated",
       relayBaseURL: "https://astra.example/v1",
       email: "user@example.com",
       plan: "pro",
+      subscriptionStatus: "active",
       providerEntitlements: ["openai", "gemini"],
+      quota: {
+        dailyRequestsLimit: 0,
+        dailyCharactersLimit: 0,
+        requestsPerMinuteLimit: 0,
+        remainingDailyRequests: 0,
+        remainingDailyCharacters: 0,
+      },
+      usage: {
+        totalRequests: 0,
+        totalCharacters: 0,
+        dailyRequestsUsed: 0,
+        dailyCharactersUsed: 0,
+        lastRequestAt: null,
+        recentEvents: [],
+      },
+      issuedAt: null,
       expiresAt: null,
     })
     translateWithProviderDetailedMock.mockResolvedValue({
@@ -379,5 +459,17 @@ describe("background runtime translation routing", () => {
         }),
       }),
     }))
+    expect(runPhaseOneCollectionSyncMock).toHaveBeenCalledTimes(2)
+  })
+
+  it("does not throw when browser.omnibox is undefined (compat guard)", async () => {
+    const mockBrowser = createMockBrowser()
+    // Remove omnibox to simulate environments where it is unavailable
+    const browserWithoutOmnibox = { ...mockBrowser } as Record<string, unknown>
+    delete browserWithoutOmnibox.omnibox
+    setMockBrowser(browserWithoutOmnibox)
+
+    const background = (await import("./index")).default
+    expect(() => background.main()).not.toThrow()
   })
 })

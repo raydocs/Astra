@@ -202,6 +202,22 @@ export async function getCachedTranslations(
   entries: Array<{ text: string; targetLang: string; cacheContext?: TranslationCacheContext }>,
 ): Promise<Map<number, string>> {
   const results = new Map<number, string>()
+
+  // 1. Batch-compute all SHA-256 hashes in parallel
+  const hashes = await Promise.all(
+    entries.map((entry) => computeHash(entry.text, entry.targetLang, entry.cacheContext)),
+  )
+
+  // 2. Single multi-key Dexie query
+  const rows = await db.translations.where("hash").anyOf(hashes).toArray()
+  const rowsByHash = new Map<string, CachedTranslation>()
+  for (const row of rows) {
+    rowsByHash.set(row.hash, row)
+  }
+
+  // 3. Map results back, preserving order and TTL/expiry logic
+  const expiredIds: number[] = []
+  const now = Date.now()
   const aggregates = new Map<string, {
     cacheContext?: TranslationCacheContext
     lookups: number
@@ -220,19 +236,23 @@ export async function getCachedTranslations(
     }
     aggregate.lookups += 1
 
-    const cached = await getCachedTranslation(
-      entry.text,
-      entry.targetLang,
-      entry.cacheContext,
-    )
-    if (cached !== null) {
-      results.set(i, cached)
+    const row = rowsByHash.get(hashes[i])
+    if (row && now - row.createdAt <= TTL_MS) {
+      results.set(i, row.translation)
       aggregate.hits += 1
     } else {
+      if (row) {
+        expiredIds.push(row.id!)
+      }
       aggregate.misses += 1
     }
 
     aggregates.set(bucketKey, aggregate)
+  }
+
+  // Clean up expired entries
+  if (expiredIds.length > 0) {
+    await db.translations.bulkDelete(expiredIds)
   }
 
   await Promise.all(Array.from(aggregates.values()).map((aggregate) => updateMetricRecord(

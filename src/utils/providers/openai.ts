@@ -147,7 +147,7 @@ export async function translateWithOpenAI(
   const {
     apiKey,
     baseURL,
-    model = "gpt-4o-mini",
+    model = "gpt-4.1-nano",
     texts,
     targetLang,
     sourceLang,

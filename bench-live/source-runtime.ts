@@ -3,7 +3,7 @@ import { writeFile } from "node:fs/promises"
 
 import { JSDOM } from "jsdom"
 
-import type { AstraConfig } from "@/types/config"
+import { DEFAULT_ASTRA_CONFIG, type AstraConfig } from "@/types/config"
 import type { RuntimeResponse } from "@/types/messages"
 import type { PageTranslationExecution } from "../bench/evaluators/page-translation"
 import {
@@ -746,6 +746,7 @@ export async function runSourceBackedPageTranslation(params: {
       hoverTrigger: "alt",
       contentScope,
       inputTranslation: "disabled",
+      inputTranslationMode: "replace",
       languageLevel: "intermediate",
       privacyMode: params.privacyMode ?? false,
       provider: {
@@ -754,6 +755,7 @@ export async function runSourceBackedPageTranslation(params: {
         apiKey: "live-bench-test-key",
         model: "gpt-5.4-nano",
       },
+      tts: DEFAULT_ASTRA_CONFIG.tts,
       presentation: {
         mode: translationMode,
         theme: "default",
@@ -770,6 +772,10 @@ export async function runSourceBackedPageTranslation(params: {
         provider: {
           ...defaultConfig.provider,
           ...params.browserConfig?.provider,
+        },
+        tts: {
+          ...defaultConfig.tts,
+          ...params.browserConfig?.tts,
         },
         presentation: {
           ...defaultConfig.presentation,
@@ -885,6 +891,7 @@ export async function runSourceBackedSiteRuleUpdateAutomation(params: {
       hoverTrigger: "alt",
       contentScope: "page",
       inputTranslation: "disabled",
+      inputTranslationMode: "replace",
       languageLevel: "intermediate",
       privacyMode: false,
       provider: {
@@ -893,6 +900,7 @@ export async function runSourceBackedSiteRuleUpdateAutomation(params: {
         apiKey: "live-bench-test-key",
         model: "gpt-5.4-nano",
       },
+      tts: DEFAULT_ASTRA_CONFIG.tts,
       presentation: {
         mode: "bilingual",
         theme: "default",
@@ -1080,6 +1088,7 @@ export async function runSourceBackedProviderSwitchAutomation(params: {
       hoverTrigger: "alt",
       contentScope: "page",
       inputTranslation: "disabled",
+      inputTranslationMode: "replace",
       languageLevel: "intermediate",
       privacyMode: false,
       provider: {
@@ -1089,6 +1098,7 @@ export async function runSourceBackedProviderSwitchAutomation(params: {
         relayBaseURL: "https://astra.example/v1",
         model: "gpt-5.4-nano",
       },
+      tts: DEFAULT_ASTRA_CONFIG.tts,
       presentation: {
         mode: "bilingual",
         theme: "default",
@@ -1301,6 +1311,7 @@ export async function runSourceBackedBackgroundRelayOnlyPageTranslation(params: 
       hoverTrigger: "alt",
       contentScope: "page",
       inputTranslation: "disabled",
+      inputTranslationMode: "replace",
       languageLevel: "intermediate",
       privacyMode: false,
       provider: {
@@ -1310,6 +1321,7 @@ export async function runSourceBackedBackgroundRelayOnlyPageTranslation(params: 
         relayBaseURL: "https://astra.example/v1",
         model: "gpt-5.4-nano",
       },
+      tts: DEFAULT_ASTRA_CONFIG.tts,
       presentation: {
         mode: "bilingual",
         theme: "default",
@@ -1462,6 +1474,7 @@ export async function runSourceBackedBackgroundDirectSuccessPageTranslation(para
       hoverTrigger: "alt",
       contentScope: "page",
       inputTranslation: "disabled",
+      inputTranslationMode: "replace",
       languageLevel: "intermediate",
       privacyMode: false,
       provider: {
@@ -1471,6 +1484,7 @@ export async function runSourceBackedBackgroundDirectSuccessPageTranslation(para
         relayBaseURL: "https://astra.example/v1",
         model: "gpt-5.4-nano",
       },
+      tts: DEFAULT_ASTRA_CONFIG.tts,
       presentation: {
         mode: "bilingual",
         theme: "default",
@@ -1629,6 +1643,7 @@ export async function runSourceBackedBackgroundDirectRelayFallbackPageTranslatio
       hoverTrigger: "alt",
       contentScope: "page",
       inputTranslation: "disabled",
+      inputTranslationMode: "replace",
       languageLevel: "intermediate",
       privacyMode: false,
       provider: {
@@ -1638,6 +1653,7 @@ export async function runSourceBackedBackgroundDirectRelayFallbackPageTranslatio
         relayBaseURL: "https://astra.example/v1",
         model: "gpt-5.4-nano",
       },
+      tts: DEFAULT_ASTRA_CONFIG.tts,
       presentation: {
         mode: "bilingual",
         theme: "default",
@@ -1796,6 +1812,7 @@ export async function runSourceBackedProviderAndSiteRuleUpdateAutomation(params:
       hoverTrigger: "alt",
       contentScope: "page",
       inputTranslation: "disabled",
+      inputTranslationMode: "replace",
       languageLevel: "intermediate",
       privacyMode: false,
       provider: {
@@ -1805,6 +1822,7 @@ export async function runSourceBackedProviderAndSiteRuleUpdateAutomation(params:
         relayBaseURL: "https://astra.example/v1",
         model: "gpt-5.4-nano",
       },
+      tts: DEFAULT_ASTRA_CONFIG.tts,
       presentation: {
         mode: "bilingual",
         theme: "default",
@@ -2035,6 +2053,7 @@ export async function runSourceBackedSpaNavigationAutomation(params: {
       hoverTrigger: "alt",
       contentScope: "page",
       inputTranslation: "disabled",
+      inputTranslationMode: "replace",
       languageLevel: "intermediate",
       privacyMode: false,
       provider: {
@@ -2043,6 +2062,7 @@ export async function runSourceBackedSpaNavigationAutomation(params: {
         apiKey: "live-bench-test-key",
         model: "gpt-5.4-nano",
       },
+      tts: DEFAULT_ASTRA_CONFIG.tts,
       presentation: {
         mode: "bilingual",
         theme: "default",
@@ -2217,6 +2237,7 @@ export async function runSourceBackedRapidSpaNavigationAutomation(params: {
       hoverTrigger: "alt",
       contentScope: "page",
       inputTranslation: "disabled",
+      inputTranslationMode: "replace",
       languageLevel: "intermediate",
       privacyMode: false,
       provider: {
@@ -2225,6 +2246,7 @@ export async function runSourceBackedRapidSpaNavigationAutomation(params: {
         apiKey: "live-bench-test-key",
         model: "gpt-5.4-nano",
       },
+      tts: DEFAULT_ASTRA_CONFIG.tts,
       presentation: {
         mode: "bilingual",
         theme: "default",

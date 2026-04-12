@@ -52,7 +52,7 @@ describe("translateTexts", () => {
     if (result.ok) {
       expect(result.translations).toEqual([longText])
     }
-    expect(requestTranslationBatchMock).toHaveBeenCalledTimes(3)
+    expect(requestTranslationBatchMock).toHaveBeenCalledTimes(2)
   })
 
   it("passes translation context through each batch request", async () => {

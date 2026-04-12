@@ -15,7 +15,7 @@ export async function executeWithOpenAI(options: OpenAIExecutorOptions): Promise
   })
 
   const { text } = await generateText({
-    model: openai(options.model ?? "gpt-4o-mini"),
+    model: openai(options.model ?? "gpt-4.1-nano"),
     system: [
       "You are a senior software engineer executing a restricted patch pass.",
       "Stay inside the provided write scope unless the prompt explicitly justifies a narrow expansion.",

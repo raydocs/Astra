@@ -1,4 +1,4 @@
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import { browser } from "#imports"
 import { saveConfig } from "@/utils/storage/config"
 
@@ -22,8 +22,14 @@ const TARGET_LANGUAGES = [
   { value: "es", label: "Español" },
 ]
 
+const LEVEL_OPTIONS = [
+  { value: "beginner", label: "Beginner", description: "Simple explanations, basic vocabulary" },
+  { value: "intermediate", label: "Intermediate", description: "Balanced explanations with grammar context" },
+  { value: "advanced", label: "Advanced", description: "Detailed analysis with nuanced explanations" },
+]
+
 const BRAND_COLOR = "#6366f1"
-const TOTAL_STEPS = 3
+const TOTAL_STEPS = 4
 
 const containerStyle: React.CSSProperties = {
   minHeight: "100vh",
@@ -120,6 +126,89 @@ const summaryBoxStyle: React.CSSProperties = {
   textAlign: "center",
 }
 
+interface IosBootstrapRuntimeStatus {
+  lastSessionId: string | null
+  lastBootstrapAt: string | null
+}
+
+interface IosBootstrapHistoryEvent {
+  sessionId: string
+  source: string
+  issuedAt: string | null
+  launchURL: string | null
+}
+
+interface IosBootstrapRuntimeResponse {
+  ok?: boolean
+  bridgeAvailable?: boolean
+  opened?: boolean
+  status?: IosBootstrapRuntimeStatus | null
+  history?: IosBootstrapHistoryEvent[]
+}
+
+async function fetchIosBootstrapRuntimeStatus(): Promise<{
+  bridgeAvailable: boolean
+  status: IosBootstrapRuntimeStatus | null
+  history: IosBootstrapHistoryEvent[]
+}> {
+  try {
+    const response = await browser.runtime.sendMessage({
+      type: "runtime/ios-bootstrap-status",
+    }) as IosBootstrapRuntimeResponse
+
+    return {
+      bridgeAvailable: response.bridgeAvailable === true,
+      status: response.status ?? null,
+      history: Array.isArray(response.history) ? response.history : [],
+    }
+  } catch {
+    return {
+      bridgeAvailable: false,
+      status: null,
+      history: [],
+    }
+  }
+}
+
+async function consumeIosBootstrapForOnboarding(source: string): Promise<IosBootstrapRuntimeResponse> {
+  try {
+    const response = await browser.runtime.sendMessage({
+      type: "runtime/ios-bootstrap-consume",
+      source,
+    }) as IosBootstrapRuntimeResponse
+
+    return response
+  } catch {
+    return { ok: false, bridgeAvailable: false, opened: false, status: null, history: [] }
+  }
+}
+
+async function replayIosBootstrapForOnboarding(sessionId?: string): Promise<IosBootstrapRuntimeResponse> {
+  try {
+    const response = await browser.runtime.sendMessage({
+      type: "runtime/ios-bootstrap-replay",
+      sessionId,
+    }) as IosBootstrapRuntimeResponse
+
+    return response
+  } catch {
+    return { ok: false, bridgeAvailable: false, opened: false, status: null, history: [] }
+  }
+}
+
+function formatStatusTime(value: string | null): string {
+  if (!value) {
+    return "not yet"
+  }
+
+  const parsed = new Date(value)
+  if (Number.isNaN(parsed.getTime())) {
+    return value
+  }
+
+  return parsed.toLocaleString()
+}
+
 function StepDots({ current }: { current: number }) {
   return (
     <div style={dotContainerStyle}>
@@ -176,14 +265,18 @@ function StepWelcome({ onNext }: { onNext: () => void }) {
 function StepLanguage({
   sourceLang,
   targetLang,
+  languageLevel,
   onSourceChange,
   onTargetChange,
+  onLevelChange,
   onNext,
 }: {
   sourceLang: string
   targetLang: string
+  languageLevel: string
   onSourceChange: (lang: string) => void
   onTargetChange: (lang: string) => void
+  onLevelChange: (level: string) => void
   onNext: () => void
 }) {
   return (
@@ -208,7 +301,7 @@ function StepLanguage({
         </select>
       </div>
 
-      <div style={{ marginBottom: 28 }}>
+      <div style={{ marginBottom: 20 }}>
         <label style={labelTextStyle}>I want translations in:</label>
         <select
           value={targetLang}
@@ -223,11 +316,98 @@ function StepLanguage({
         </select>
       </div>
 
+      <div style={{ marginBottom: 28 }}>
+        <label style={labelTextStyle}>Your language level:</label>
+        <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+          {LEVEL_OPTIONS.map((level) => (
+            <button
+              key={level.value}
+              type="button"
+              onClick={() => onLevelChange(level.value)}
+              style={{
+                display: "flex",
+                flexDirection: "column",
+                alignItems: "flex-start",
+                padding: "12px 16px",
+                border: languageLevel === level.value ? `2px solid ${BRAND_COLOR}` : "1px solid #e2e8f0",
+                borderRadius: 10,
+                background: languageLevel === level.value ? "#eff6ff" : "#fff",
+                cursor: "pointer",
+                textAlign: "left",
+              }}
+            >
+              <span style={{ fontSize: 14, fontWeight: 600, color: "#1e293b" }}>{level.label}</span>
+              <span style={{ fontSize: 12, color: "#64748b", marginTop: 2 }}>{level.description}</span>
+            </button>
+          ))}
+        </div>
+      </div>
+
       <button
         type="button"
         onClick={onNext}
         style={primaryButtonStyle}
       >
+        Continue
+      </button>
+    </div>
+  )
+}
+
+function StepFeatures({ onNext }: { onNext: () => void }) {
+  const features = [
+    { icon: "Tr", title: "Translate any page", desc: "Click the Astra icon or press Alt+A to translate" },
+    { icon: "Ex", title: "Explain sentences", desc: "Select text and click Explain for grammar breakdowns" },
+    { icon: "Sv", title: "Save vocabulary", desc: "Build your personal glossary as you read" },
+    { icon: "Rv", title: "Review & learn", desc: "Spaced repetition flashcards for saved words" },
+  ]
+
+  return (
+    <div>
+      <h1 style={{ ...titleStyle, fontSize: 24, marginBottom: 4 }}>How Astra Works</h1>
+      <p style={{ ...taglineStyle, marginBottom: 24 }}>
+        Your AI-powered reading companion.
+      </p>
+
+      <div style={{ display: "flex", flexDirection: "column", gap: 12, marginBottom: 28 }}>
+        {features.map((f) => (
+          <div
+            key={f.title}
+            style={{
+              display: "flex",
+              gap: 14,
+              alignItems: "center",
+              padding: "12px 16px",
+              background: "#f8fafc",
+              borderRadius: 10,
+              border: "1px solid #e2e8f0",
+            }}
+          >
+            <div style={{
+              width: 40,
+              height: 40,
+              borderRadius: 10,
+              background: `${BRAND_COLOR}14`,
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              fontSize: 14,
+              fontWeight: 700,
+              color: BRAND_COLOR,
+              flexShrink: 0,
+            }}
+            >
+              {f.icon}
+            </div>
+            <div>
+              <div style={{ fontSize: 14, fontWeight: 600, color: "#1e293b" }}>{f.title}</div>
+              <div style={{ fontSize: 12, color: "#64748b", marginTop: 2 }}>{f.desc}</div>
+            </div>
+          </div>
+        ))}
+      </div>
+
+      <button type="button" onClick={onNext} style={primaryButtonStyle}>
         Continue
       </button>
     </div>
@@ -260,6 +440,9 @@ function StepReady({
         <div style={{ fontSize: 13, color: "#64748b", marginTop: 8, lineHeight: 1.5 }}>
           You get free daily translations. No API key needed.
         </div>
+        <div style={{ fontSize: 12, color: "#64748b", marginTop: 8, lineHeight: 1.5 }}>
+          On iOS Safari, use Open in Astra App for bridge handoff when you want to verify host launch/open flow.
+        </div>
       </div>
 
       <button
@@ -283,13 +466,82 @@ export default function OnboardingApp() {
   const [step, setStep] = useState(0)
   const [sourceLang, setSourceLang] = useState("en")
   const [targetLang, setTargetLang] = useState("zh-CN")
+  const [languageLevel, setLanguageLevel] = useState("intermediate")
   const [completing, setCompleting] = useState(false)
+  const [iosBootstrapStatus, setIosBootstrapStatus] = useState<{
+    bridgeAvailable: boolean
+    status: IosBootstrapRuntimeStatus | null
+    history: IosBootstrapHistoryEvent[]
+  }>({ bridgeAvailable: false, status: null, history: [] })
+  const [iosBridgeActionMessage, setIosBridgeActionMessage] = useState("")
+
+  useEffect(() => {
+    void fetchIosBootstrapRuntimeStatus().then(setIosBootstrapStatus)
+  }, [])
+
+  const handleOpenInAstraApp = async () => {
+    setIosBridgeActionMessage("")
+    const response = await consumeIosBootstrapForOnboarding("onboarding-open-in-app")
+    setIosBootstrapStatus({
+      bridgeAvailable: response.bridgeAvailable === true,
+      status: response.status ?? iosBootstrapStatus.status,
+      history: Array.isArray(response.history) ? response.history : iosBootstrapStatus.history,
+    })
+
+    if (response.bridgeAvailable !== true) {
+      setIosBridgeActionMessage("iOS bridge unavailable in this runtime.")
+      return
+    }
+
+    setIosBridgeActionMessage(response.opened
+      ? "Opened Astra app via bridge handoff."
+      : "Bridge available, but launch was not opened.")
+  }
+
+  const handleReplayLatestBridgeEvent = async () => {
+    setIosBridgeActionMessage("")
+    const latest = iosBootstrapStatus.history[0]
+    const response = await replayIosBootstrapForOnboarding(latest?.sessionId)
+    setIosBootstrapStatus({
+      bridgeAvailable: response.bridgeAvailable === true,
+      status: response.status ?? iosBootstrapStatus.status,
+      history: Array.isArray(response.history) ? response.history : iosBootstrapStatus.history,
+    })
+
+    if (response.bridgeAvailable !== true) {
+      setIosBridgeActionMessage("iOS bridge unavailable in this runtime.")
+      return
+    }
+
+    setIosBridgeActionMessage(response.opened
+      ? "Replayed latest bridge event."
+      : "No replayable bridge event yet.")
+  }
 
   const handleComplete = async () => {
     setCompleting(true)
     try {
-      await saveConfig({ targetLang })
+      await saveConfig({
+        targetLang,
+        languageLevel: languageLevel as "beginner" | "intermediate" | "advanced",
+      })
       await browser.storage.local.set({ "astra.onboarding.completed": true })
+
+      // Bootstrap Astra managed session so the popup doesn't show "Not connected".
+      // If the background isn't ready yet, that's OK — the popup will retry on next open.
+      try {
+        await browser.runtime.sendMessage({ type: "runtime/ensure-astra-session" })
+      } catch {
+        // Best-effort: background may not be ready yet
+      }
+
+      // Best-effort iOS thin-host bootstrap handoff.
+      const iosBootstrap = await consumeIosBootstrapForOnboarding("onboarding-complete")
+      setIosBootstrapStatus({
+        bridgeAvailable: iosBootstrap.bridgeAvailable === true,
+        status: iosBootstrap.status ?? null,
+        history: Array.isArray(iosBootstrap.history) ? iosBootstrap.history : iosBootstrapStatus.history,
+      })
 
       // Close this tab
       const tabs = await browser.tabs.query({ active: true, currentWindow: true })
@@ -297,7 +549,6 @@ export default function OnboardingApp() {
         await browser.tabs.remove(tabs[0].id)
       }
     } catch {
-      // If closing the tab fails, at least mark onboarding as done
       setCompleting(false)
     }
   }
@@ -307,18 +558,90 @@ export default function OnboardingApp() {
       <div style={cardStyle}>
         <StepDots current={step} />
 
+        <div
+          style={{
+            fontSize: 12,
+            color: "#64748b",
+            textAlign: "left",
+            marginBottom: 20,
+            lineHeight: 1.45,
+            background: "#f8fafc",
+            border: "1px solid #e2e8f0",
+            borderRadius: 10,
+            padding: "10px 12px",
+          }}
+        >
+          <div>
+            iOS bridge: {iosBootstrapStatus.bridgeAvailable ? "available" : "unavailable"}
+            {" · "}
+            Last bootstrap: {formatStatusTime(iosBootstrapStatus.status?.lastBootstrapAt ?? null)}
+          </div>
+          <div>
+            Launch path: popup/onboarding → extension bridge → astra-shell://bootstrap → host app
+          </div>
+          {iosBootstrapStatus.history.length > 0 && (
+            <div>
+              Recent bridge events: {iosBootstrapStatus.history.length}
+            </div>
+          )}
+          <div style={{ display: "flex", gap: 8, marginTop: 8, flexWrap: "wrap" }}>
+            <button
+              type="button"
+              onClick={() => { void handleOpenInAstraApp() }}
+              style={{
+                ...primaryButtonStyle,
+                width: "auto",
+                padding: "8px 12px",
+                fontSize: 12,
+                ...(iosBootstrapStatus.bridgeAvailable ? {} : { opacity: 0.5, cursor: "not-allowed" }),
+              }}
+              disabled={!iosBootstrapStatus.bridgeAvailable}
+            >
+              Open in Astra App
+            </button>
+            <button
+              type="button"
+              onClick={() => { void handleReplayLatestBridgeEvent() }}
+              style={{
+                ...primaryButtonStyle,
+                width: "auto",
+                padding: "8px 12px",
+                fontSize: 12,
+                background: "#0f172a",
+                ...((!iosBootstrapStatus.bridgeAvailable || iosBootstrapStatus.history.length === 0) ? { opacity: 0.5, cursor: "not-allowed" } : {}),
+              }}
+              disabled={!iosBootstrapStatus.bridgeAvailable || iosBootstrapStatus.history.length === 0}
+            >
+              Replay last handoff
+            </button>
+          </div>
+          {iosBridgeActionMessage && (
+            <div style={{ marginTop: 8 }}>
+              {iosBridgeActionMessage}
+            </div>
+          )}
+          {iosBootstrapStatus.history.slice(0, 2).map((event) => (
+            <div key={event.sessionId}>
+              · {event.sessionId} ({event.source}) {formatStatusTime(event.issuedAt)}
+            </div>
+          ))}
+        </div>
+
         <div style={{ transition: "opacity 0.2s ease" }}>
           {step === 0 && <StepWelcome onNext={() => setStep(1)} />}
           {step === 1 && (
             <StepLanguage
               sourceLang={sourceLang}
               targetLang={targetLang}
+              languageLevel={languageLevel}
               onSourceChange={setSourceLang}
               onTargetChange={setTargetLang}
+              onLevelChange={setLanguageLevel}
               onNext={() => setStep(2)}
             />
           )}
-          {step === 2 && (
+          {step === 2 && <StepFeatures onNext={() => setStep(3)} />}
+          {step === 3 && (
             <StepReady
               targetLang={targetLang}
               onComplete={() => void handleComplete()}

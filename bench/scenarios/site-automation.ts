@@ -54,6 +54,9 @@ const UI_HOST_IDS = [
 const BENCH_SESSION: AstraSession = {
   version: 1 as const,
   sessionToken: "astra-bench-session",
+  sessionId: "bench-session-site-automation",
+  deviceId: "bench-device-site-automation",
+  identityMode: "authenticated",
   relayBaseURL: "https://astra.example/v1",
   email: "bench@astra.local",
   plan: "pro" as const,
@@ -74,6 +77,7 @@ const BENCH_SESSION: AstraSession = {
     lastRequestAt: "2026-03-26T00:00:00.000Z",
     recentEvents: [],
   },
+  issuedAt: "2026-03-26T00:00:00.000Z",
   expiresAt: null,
 }
 

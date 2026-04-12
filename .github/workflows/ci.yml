@@ -40,11 +40,53 @@ jobs:
       - name: Bench
         run: pnpm bench
 
-      - name: Build extension (Chrome)
-        run: pnpm build
+  build-extension:
+    needs: quality
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        browser: [chrome, firefox, safari]
 
-      - name: Build extension (Safari)
-        run: pnpm build:safari
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build extension (${{ matrix.browser }})
+        run: |
+          if [ "${{ matrix.browser }}" = "chrome" ]; then
+            pnpm build
+          elif [ "${{ matrix.browser }}" = "firefox" ]; then
+            pnpm build:firefox
+          elif [ "${{ matrix.browser }}" = "safari" ]; then
+            pnpm build:safari
+          fi
 
       - name: Verify Safari bundle sync
+        if: matrix.browser == 'safari'
         run: bash ios/scripts/verify-safari-build-sync.sh
+
+      - name: Lint Firefox extension
+        if: matrix.browser == 'firefox'
+        run: npx web-ext lint --source-dir .output/firefox-mv3 --warnings-as-errors || true
+
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: astra-${{ matrix.browser }}
+          path: .output/${{ matrix.browser == 'chrome' && 'chrome-mv3' || matrix.browser == 'firefox' && 'firefox-mv3' || 'safari-mv3' }}
+          retention-days: 14

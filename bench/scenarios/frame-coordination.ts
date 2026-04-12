@@ -47,6 +47,9 @@ type BenchmarkScenarioWithHint = BenchmarkScenario<FrameCoordinationExecution> &
 const SESSION: AstraSession = {
   version: 1,
   sessionToken: "astra-bench-session",
+  sessionId: "bench-session-frame-coordination",
+  deviceId: "bench-device-frame-coordination",
+  identityMode: "authenticated",
   relayBaseURL: "https://astra.example/v1",
   email: "bench@astra.local",
   plan: "pro",
@@ -67,6 +70,7 @@ const SESSION: AstraSession = {
     lastRequestAt: "2026-03-26T00:00:00.000Z",
     recentEvents: [],
   },
+  issuedAt: "2026-03-26T00:00:00.000Z",
   expiresAt: null,
 }
 

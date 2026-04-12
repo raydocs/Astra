@@ -6,6 +6,7 @@ import type { AstraAccount, AstraSession } from "@/types/auth"
 const {
   readConfigMock,
   saveConfigInBackgroundMock,
+  ensureAstraDeviceIdentityMock,
   readAstraSessionMock,
   saveAstraSessionMock,
   clearAstraSessionMock,
@@ -13,6 +14,7 @@ const {
   refreshAstraSessionMock,
   revokeAstraSessionMock,
   fetchAstraAccountMock,
+  fetchAstraContinuitySnapshotMock,
   fetchAstraUsageSnapshotMock,
   getActiveTabStudyContextMock,
   getActiveTabTranslationStateMock,
@@ -21,9 +23,15 @@ const {
   getDueVocabularyCountMock,
   getQuotaInfoMock,
   getReadingHistoryMock,
+  getTranslationUsageSummaryMock,
+  getStudyProgressMock,
+  getPageDigestMock,
+  generatePageDigestMock,
+  savePageDigestMock,
 } = vi.hoisted(() => ({
   readConfigMock: vi.fn(),
   saveConfigInBackgroundMock: vi.fn(),
+  ensureAstraDeviceIdentityMock: vi.fn(),
   readAstraSessionMock: vi.fn(),
   saveAstraSessionMock: vi.fn(),
   clearAstraSessionMock: vi.fn(),
@@ -31,6 +39,7 @@ const {
   refreshAstraSessionMock: vi.fn(),
   revokeAstraSessionMock: vi.fn(),
   fetchAstraAccountMock: vi.fn(),
+  fetchAstraContinuitySnapshotMock: vi.fn(),
   fetchAstraUsageSnapshotMock: vi.fn(),
   getActiveTabStudyContextMock: vi.fn(),
   getActiveTabTranslationStateMock: vi.fn(),
@@ -39,6 +48,11 @@ const {
   getDueVocabularyCountMock: vi.fn(),
   getQuotaInfoMock: vi.fn(),
   getReadingHistoryMock: vi.fn(),
+  getTranslationUsageSummaryMock: vi.fn(),
+  getStudyProgressMock: vi.fn(),
+  getPageDigestMock: vi.fn(),
+  generatePageDigestMock: vi.fn(),
+  savePageDigestMock: vi.fn(),
 }))
 
 vi.mock("@/utils/storage/config", () => ({
@@ -46,6 +60,7 @@ vi.mock("@/utils/storage/config", () => ({
 }))
 
 vi.mock("@/utils/storage/auth", () => ({
+  ensureAstraDeviceIdentity: ensureAstraDeviceIdentityMock,
   readAstraSession: readAstraSessionMock,
   saveAstraSession: saveAstraSessionMock,
   clearAstraSession: clearAstraSessionMock,
@@ -59,6 +74,7 @@ vi.mock("@/utils/astra/auth", () => ({
 
 vi.mock("@/utils/astra/account", () => ({
   fetchAstraAccount: fetchAstraAccountMock,
+  fetchAstraContinuitySnapshot: fetchAstraContinuitySnapshotMock,
   fetchAstraUsageSnapshot: fetchAstraUsageSnapshotMock,
 }))
 
@@ -74,13 +90,51 @@ vi.mock("@/utils/extension/messages", () => ({
   stopActiveTabTranslation: stopActiveTabTranslationMock,
 }))
 
-vi.mock("@/utils/storage/reading-history", () => ({
-  getReadingHistory: getReadingHistoryMock,
+vi.mock("@/utils/storage/reading-history", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/utils/storage/reading-history")>()
+  return {
+    ...actual,
+    getReadingHistory: getReadingHistoryMock,
+  }
+})
+
+vi.mock("@/utils/storage/vocabulary", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/utils/storage/vocabulary")>()
+  return {
+    ...actual,
+    getDueVocabularyCount: getDueVocabularyCountMock,
+  }
+})
+
+vi.mock("@/utils/storage/translation-usage", () => ({
+  getTranslationUsageSummary: getTranslationUsageSummaryMock,
 }))
 
-vi.mock("@/utils/storage/vocabulary", () => ({
-  getDueVocabularyCount: getDueVocabularyCountMock,
+vi.mock("@/utils/storage/page-digests", () => ({
+  getPageDigest: getPageDigestMock,
+  savePageDigest: savePageDigestMock,
+  computeFingerprint: vi.fn(() => "test-fingerprint"),
+  isDigestStale: vi.fn(() => false),
 }))
+
+vi.mock("@/utils/reading/assist", () => ({
+  generatePageDigest: generatePageDigestMock,
+}))
+
+vi.mock("@/utils/storage/study-progress", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/utils/storage/study-progress")>()
+  return {
+    ...actual,
+    getStudyProgress: getStudyProgressMock,
+    deriveStudyLoopViewModel: vi.fn(() => ({
+      currentPage: null,
+      nextStep: "read" as const,
+      completionPercent: 0,
+      dailyStats: { date: "2026-04-03", pagesStudied: 0, sentencesExplained: 0, vocabSaved: 0, vocabReviewed: 0 },
+      recentPages: [],
+    })),
+  }
+})
 
 import type { AstraConfig } from "@/types/config"
 import { DEFAULT_ASTRA_CONFIG } from "@/types/config"
@@ -138,6 +192,9 @@ function createSession(patch: Partial<AstraSession> = {}): AstraSession {
   return {
     version: 1,
     sessionToken: "astra-session",
+    sessionId: null,
+    deviceId: "device-123",
+    identityMode: "authenticated",
     relayBaseURL: "https://astra.example/v1",
     email: "user@example.com",
     plan: "pro",
@@ -158,6 +215,7 @@ function createSession(patch: Partial<AstraSession> = {}): AstraSession {
       lastRequestAt: "2026-03-26T00:00:00.000Z",
       recentEvents: [],
     },
+    issuedAt: null,
     expiresAt: null,
     ...patch,
   }
@@ -190,6 +248,17 @@ describe("popup App", () => {
     browserMock = (globalThis as { __ASTRA_TEST_BROWSER__?: any }).__ASTRA_TEST_BROWSER__
     browserMock.tabs.query.mockResolvedValue([{ id: 1, url: "https://example.com/article" }])
 
+    ensureAstraDeviceIdentityMock.mockResolvedValue({
+      version: 1,
+      deviceId: "device-123",
+      label: "Chrome on macOS",
+      platform: "macos",
+      browserFamily: "chrome",
+      appKind: "extension",
+      appVersion: "0.1.0-test",
+      createdAt: "2026-04-09T00:00:00.000Z",
+      updatedAt: "2026-04-09T00:00:00.000Z",
+    })
     readConfigMock.mockResolvedValue(createConfig())
     saveConfigInBackgroundMock.mockImplementation(async (input: Partial<AstraConfig>) => ({
       ok: true,
@@ -202,6 +271,70 @@ describe("popup App", () => {
     refreshAstraSessionMock.mockResolvedValue(createSession())
     revokeAstraSessionMock.mockResolvedValue(undefined)
     fetchAstraAccountMock.mockResolvedValue(createAccount())
+    fetchAstraContinuitySnapshotMock.mockImplementation(async (params: { includePull?: boolean }) => ({
+      devices: [{
+        deviceId: "device-123",
+        label: "Chrome on macOS",
+        platform: "macos",
+        browserFamily: "chrome",
+        appKind: "extension",
+        appVersion: "0.1.0-test",
+        firstSeenAt: "2026-04-09T00:00:00.000Z",
+        lastSeenAt: "2026-04-09T01:00:00.000Z",
+        lastSyncAt: "2026-04-09T01:05:00.000Z",
+        status: "active",
+        isCurrentDevice: true,
+      }],
+      bootstrap: {
+        serverTime: "2026-04-09T01:05:00.000Z",
+        deviceId: "device-123",
+        collections: {
+          config: { enabled: true, defaultEnabled: true, cursor: "cfg-3" },
+          vocabulary: { enabled: false, defaultEnabled: false, cursor: null },
+          reading_history: { enabled: false, defaultEnabled: false, cursor: null },
+          study_progress: { enabled: false, defaultEnabled: false, cursor: null },
+        },
+        limits: {
+          maxMutationsPerRequest: 100,
+        },
+        transport: {
+          deviceHeader: "X-Astra-Device-Id",
+          idempotencyKey: "clientMutationId",
+          cursorMode: "per-collection",
+        },
+      },
+      pull: params.includePull
+        ? {
+            serverTime: "2026-04-09T01:06:00.000Z",
+            deltas: {
+              config: [{
+                collection: "config",
+                schemaVersion: 1,
+                recordId: "settings",
+                operation: "upsert",
+                clientMutationId: "mut-1",
+                deviceId: "device-123",
+                clientUpdatedAt: "2026-04-09T01:04:00.000Z",
+                payload: { targetLang: "ja" },
+                ownerId: "usr_demo",
+                email: "user@example.com",
+                serverMutationId: "srv-1",
+                serverUpdatedAt: "2026-04-09T01:05:30.000Z",
+                cursor: "cfg-4",
+              }],
+              vocabulary: [],
+              reading_history: [],
+              study_progress: [],
+            },
+            nextCursors: {
+              config: "cfg-4",
+              vocabulary: null,
+              reading_history: null,
+              study_progress: null,
+            },
+          }
+        : null,
+    }))
     fetchAstraUsageSnapshotMock.mockResolvedValue(undefined)
     getActiveTabTranslationStateMock.mockResolvedValue(createIdleState())
     getActiveTabStudyContextMock.mockResolvedValue({
@@ -218,6 +351,74 @@ describe("popup App", () => {
     getDueVocabularyCountMock.mockResolvedValue(3)
     getQuotaInfoMock.mockResolvedValue({ used: 100000, limit: 200000, plan: "free", resetsAt: "" })
     getReadingHistoryMock.mockResolvedValue([])
+    getTranslationUsageSummaryMock.mockResolvedValue({
+      sessionStartedAt: 1000,
+      session: {
+        requests: 2,
+        texts: 3,
+        chars: 48,
+        estimatedInputTokens: 12,
+        estimatedOutputTokens: 15,
+        estimatedCostUsd: 0.001,
+        directRequests: 1,
+        relayRequests: 1,
+        fallbackRequests: 1,
+        failedRequests: 1,
+        avgDurationMs: 200,
+        bySource: {},
+      },
+      today: {
+        requests: 4,
+        texts: 7,
+        chars: 96,
+        estimatedInputTokens: 24,
+        estimatedOutputTokens: 30,
+        estimatedCostUsd: 0.002,
+        directRequests: 2,
+        relayRequests: 2,
+        fallbackRequests: 1,
+        failedRequests: 1,
+        avgDurationMs: 180,
+        bySource: { "page-translation": 3, "selection": 1 },
+      },
+      lastEvent: {
+        id: "evt-1",
+        timestamp: 1234,
+        providerId: "openai",
+        model: "gpt-5.4-nano",
+        task: "translate",
+        textCount: 1,
+        charCount: 12,
+        estimatedInputTokens: 3,
+        attemptedTransports: ["direct", "relay"],
+        finalTransport: "relay",
+        fallbackUsed: true,
+        success: false,
+        errorCode: "PROVIDER_REQUEST_FAILED",
+      },
+    })
+
+    getPageDigestMock.mockResolvedValue(null)
+    generatePageDigestMock.mockResolvedValue({
+      headline: "Test headline",
+      summary: "Test summary",
+      keyPoints: ["Point 1", "Point 2"],
+    })
+    savePageDigestMock.mockImplementation(async (_params: unknown, digest: unknown) => ({
+      ...(digest as Record<string, unknown>),
+      url: "https://example.com/article",
+      hostname: "example.com",
+      title: "Example article",
+      targetLang: "zh-CN",
+      languageLevel: "beginner",
+      generatedAt: Date.now(),
+      sourceFingerprint: "test-fingerprint",
+    }))
+
+    getStudyProgressMock.mockResolvedValue({
+      pages: [],
+      dailyStats: { date: "2026-04-03", pagesStudied: 0, sentencesExplained: 0, vocabSaved: 0, vocabReviewed: 0 },
+    })
 
     container = document.createElement("div")
     document.body.appendChild(container)
@@ -294,6 +495,11 @@ describe("popup App", () => {
 
     expect(container.textContent).toContain(t("popup_connected"))
     expect(container.textContent).toContain("Pro Plan")
+    expect(container.textContent).toContain("Astra continuity · 1 device · 1 active")
+    expect(container.textContent).toContain("Config bootstrap: enabled · Cursor cfg-3")
+    expect(container.textContent).toContain("Reading history sync: off · Optional")
+    expect(container.textContent).toContain("Study progress sync: off · Optional · Daily stats stay local")
+    expect(container.textContent).toContain("Config continuity ready · Optional collections available in Settings")
   })
 
   it("shows quota bar with usage info", async () => {
@@ -401,6 +607,40 @@ describe("popup App", () => {
     expect(container.textContent).toContain("A concise summary of the current article for study mode.")
     expect(container.textContent).toContain("待复习 3 个")
     expect(container.textContent).toContain("120 词")
+    expect(container.textContent).toContain("阅读文章")
+  })
+
+  it("starts article-mode translation from the study hub", async () => {
+    await flushApp()
+
+    const readArticleButton = getButtons().find((button) => button.textContent === "阅读文章")
+    expect(readArticleButton).toBeDefined()
+
+    await act(async () => {
+      readArticleButton?.click()
+      await Promise.resolve()
+      await Promise.resolve()
+    })
+
+    expect(startActiveTabTranslationMock).toHaveBeenCalledWith({
+      targetLang: "zh-CN",
+      translationMode: "bilingual",
+      translationTheme: "default",
+      contentScope: "article",
+    })
+  })
+
+  it("shows usage and routing feedback in the popup", async () => {
+    await flushApp()
+
+    expect(container.textContent).toContain("用量与路由")
+    // Grid layout renders i18n-ized metrics
+    expect(container.textContent).toContain("4")
+    expect(container.textContent).toContain("请求数")
+    expect(container.textContent).toContain("24")
+    expect(container.textContent).toContain("openai / gpt-5.4-nano")
+    expect(container.textContent).toContain("direct → relay")
+    expect(container.textContent).toContain("这里只统计发起过的翻译请求；命中缓存的内容不会出现在这里。")
   })
 
   it("persists site advanced rules from the popup", async () => {

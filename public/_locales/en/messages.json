@@ -89,6 +89,18 @@
   "actionStop": {
     "message": "Stop"
   },
+  "actionShare": {
+    "message": "Share"
+  },
+  "actionShared": {
+    "message": "Copied!"
+  },
+  "actionGrammar": {
+    "message": "Grammar"
+  },
+  "actionGrammarLoading": {
+    "message": "Analyzing\u2026"
+  },
   "actionOperationFailed": {
     "message": "Operation failed"
   },
@@ -103,6 +115,12 @@
   },
   "inputTranslateButton": {
     "message": "Tr"
+  },
+  "inputTranslateModeReplace": {
+    "message": "Replace"
+  },
+  "inputTranslateModeBilingual": {
+    "message": "Bilingual"
   },
   "translateButton": {
     "message": "Tr"
@@ -163,6 +181,51 @@
     "placeholders": {
       "1": { "content": "$1" }
     }
+  },
+  "popup_readArticle": {
+    "message": "Read article"
+  },
+  "popup_usageTitle": {
+    "message": "Usage & routing"
+  },
+  "popup_usageEmpty": {
+    "message": "No live AI requests have been sent in this session yet."
+  },
+  "popup_usageTodayLabel": {
+    "message": "Today"
+  },
+  "popup_usageSessionLabel": {
+    "message": "Session"
+  },
+  "popup_usageRequests": {
+    "message": "req"
+  },
+  "popup_usageApproxTokens": {
+    "message": "est. tokens"
+  },
+  "popup_usageFallbacks": {
+    "message": "fallback"
+  },
+  "popup_usageFailures": {
+    "message": "failed"
+  },
+  "popup_usageLastLabel": {
+    "message": "Last"
+  },
+  "popup_usageViaDirect": {
+    "message": "direct"
+  },
+  "popup_usageViaRelay": {
+    "message": "relay"
+  },
+  "popup_usageFallbackRoute": {
+    "message": "direct → relay"
+  },
+  "popup_usageNoRoute": {
+    "message": "no route info"
+  },
+  "popup_usageLiveOnly": {
+    "message": "This only counts translation attempts. Cache hits stay invisible here."
   },
   "label_targetLanguage": {
     "message": "Target Language"
@@ -348,5 +411,333 @@
   },
   "popup_currentSite": {
     "message": "Current Site"
+  },
+
+  "popup_studyStepRead": {
+    "message": "Read"
+  },
+  "popup_studyStepGuidedRead": {
+    "message": "Guided Read"
+  },
+  "popup_studyStepExplain": {
+    "message": "Explain"
+  },
+  "popup_studyStepSaveWords": {
+    "message": "Save Words"
+  },
+  "popup_studyStepReview": {
+    "message": "Review"
+  },
+  "popup_studyStepDone": {
+    "message": " (done)"
+  },
+  "popup_studyAllComplete": {
+    "message": "All study steps complete for this page!"
+  },
+  "popup_studyNext": {
+    "message": "Next:"
+  },
+  "popup_studyStartGuidedRead": {
+    "message": "Start Guided Read"
+  },
+  "popup_studyExplainSentence": {
+    "message": "Explain a Sentence"
+  },
+  "popup_studySaveWords": {
+    "message": "Save Words"
+  },
+  "popup_studyStatPages": {
+    "message": "$1 pages",
+    "placeholders": {
+      "1": { "content": "$1" }
+    }
+  },
+  "popup_studyStatExplained": {
+    "message": "$1 explained",
+    "placeholders": {
+      "1": { "content": "$1" }
+    }
+  },
+  "popup_studyStatSaved": {
+    "message": "$1 saved",
+    "placeholders": {
+      "1": { "content": "$1" }
+    }
+  },
+  "popup_studyStatReviewed": {
+    "message": "$1 reviewed",
+    "placeholders": {
+      "1": { "content": "$1" }
+    }
+  },
+
+  "popup_usageMetricRequests": {
+    "message": "Requests"
+  },
+  "popup_usageMetricTokensIn": {
+    "message": "Tokens in"
+  },
+  "popup_usageMetricEstCost": {
+    "message": "Est. cost"
+  },
+  "popup_usageMetricChars": {
+    "message": "Chars"
+  },
+  "popup_usageMetricFallbacks": {
+    "message": "Fallbacks"
+  },
+  "popup_usageMetricFailed": {
+    "message": "Failed"
+  },
+  "popup_usageBySource": {
+    "message": "By source"
+  },
+  "popup_usageSourcePage": {
+    "message": "Page"
+  },
+  "popup_usageSourceSelection": {
+    "message": "Selection"
+  },
+  "popup_usageSourceHover": {
+    "message": "Hover"
+  },
+  "popup_usageSourceInput": {
+    "message": "Input"
+  },
+  "popup_usageSourcePdf": {
+    "message": "PDF"
+  },
+  "popup_usageSourceEpub": {
+    "message": "EPUB"
+  },
+  "popup_usageSourceSubtitle": {
+    "message": "Subtitle"
+  },
+  "popup_usageAvgResponse": {
+    "message": "Avg response: $1ms",
+    "placeholders": {
+      "1": { "content": "$1" }
+    }
+  },
+  "popup_usageCostFree": {
+    "message": "Free"
+  },
+
+  "options_diagProviderStatus": {
+    "message": "Provider Status"
+  },
+  "options_diagDirectApi": {
+    "message": "Direct API"
+  },
+  "options_diagAstraRelay": {
+    "message": "Astra Relay"
+  },
+  "options_diagApiKeyConfigured": {
+    "message": "API key configured for $1",
+    "placeholders": {
+      "1": { "content": "$1" }
+    }
+  },
+  "options_diagNoApiKey": {
+    "message": "No API key set"
+  },
+  "options_diagRelayActive": {
+    "message": "Session active with relay server"
+  },
+  "options_diagNoRelay": {
+    "message": "No relay connection"
+  },
+  "options_diagTransportRoutes": {
+    "message": "Transport Routes"
+  },
+  "options_diagDirect": {
+    "message": "Direct:"
+  },
+  "options_diagYes": {
+    "message": "Yes"
+  },
+  "options_diagNo": {
+    "message": "No"
+  },
+  "options_diagRelay": {
+    "message": "Relay:"
+  },
+  "options_diagCostPerPage": {
+    "message": "Cost/page:"
+  },
+  "options_diagProviderCapabilities": {
+    "message": "Provider Capabilities"
+  },
+  "options_diagColModel": {
+    "message": "Model"
+  },
+  "options_diagColInputCost": {
+    "message": "Input $/1k"
+  },
+  "options_diagColOutputCost": {
+    "message": "Output $/1k"
+  },
+  "options_diagColContext": {
+    "message": "Context"
+  },
+  "options_diagRecommended": {
+    "message": "Recommended"
+  },
+  "options_diagActive": {
+    "message": "Active"
+  },
+  "options_diagFree": {
+    "message": "Free"
+  },
+  "options_diagMaxBatch": {
+    "message": "Max batch: $1 items · Max chars/request: $2",
+    "placeholders": {
+      "1": { "content": "$1" },
+      "2": { "content": "$2" }
+    }
+  },
+  "options_diagWorkflowConfig": {
+    "message": "Workflow Configuration"
+  },
+  "options_diagConnectionMode": {
+    "message": "Connection mode:"
+  },
+  "options_diagAstraManaged": {
+    "message": "Astra Managed"
+  },
+  "options_diagCustomKey": {
+    "message": "Custom (bring your own key)"
+  },
+  "options_ttsEngine": {
+    "message": "Engine"
+  },
+  "options_ttsVoice": {
+    "message": "Voice"
+  },
+  "options_ttsPitch": {
+    "message": "Pitch: $1x",
+    "placeholders": {
+      "1": { "content": "$1" }
+    }
+  },
+  "options_ttsSpeechRate": {
+    "message": "Speech rate: $1x",
+    "placeholders": {
+      "1": { "content": "$1" }
+    }
+  },
+  "popup_generateDigest": {
+    "message": "Generate Digest"
+  },
+  "popup_digestGenerating": {
+    "message": "Generating digest..."
+  },
+  "label_siteCustomCss": {
+    "message": "Custom CSS"
+  },
+  "label_preview": {
+    "message": "Preview"
+  },
+  "hint_siteCustomCss": {
+    "message": "Injected into the page when this site is active (max 5000 chars)"
+  },
+  "label_detectArticle": {
+    "message": "Auto-detect article"
+  },
+  "label_paragraphFilterNone": {
+    "message": "No filter"
+  },
+  "label_paragraphFilterShort": {
+    "message": "Short"
+  },
+  "label_paragraphFilterMedium": {
+    "message": "Medium"
+  },
+  "label_paragraphFilterLong": {
+    "message": "Long"
+  },
+  "vocab_note": {
+    "message": "Note"
+  },
+  "vocab_tags": {
+    "message": "Tags"
+  },
+  "vocab_searchVocabulary": {
+    "message": "Search vocabulary"
+  },
+  "vocab_addNote": {
+    "message": "Add note"
+  },
+  "vocab_addTags": {
+    "message": "Add tags"
+  },
+  "options_exportSettings": {
+    "message": "Export Settings"
+  },
+  "options_importSettings": {
+    "message": "Import Settings"
+  },
+  "options_settingsExported": {
+    "message": "Settings exported successfully."
+  },
+  "options_settingsImported": {
+    "message": "Settings imported successfully. Reloading..."
+  },
+  "options_invalidConfigFile": {
+    "message": "Invalid config file"
+  },
+  "options_backupTitle": {
+    "message": "Backup & Restore"
+  },
+  "options_backupHint": {
+    "message": "Export your settings, vocabulary and reading history to a JSON file, or import a previously exported backup."
+  },
+  "fileType_markdown": {
+    "message": "Markdown"
+  },
+  "fileType_plainText": {
+    "message": "Plain text"
+  },
+  "fileType_html": {
+    "message": "HTML document"
+  },
+  "siteRules_exportRule": {
+    "message": "Export rule"
+  },
+  "siteRules_importRule": {
+    "message": "Import rule"
+  },
+  "siteRules_exportAllRules": {
+    "message": "Export all rules"
+  },
+  "siteRules_importRules": {
+    "message": "Import rules"
+  },
+  "siteRules_ruleExported": {
+    "message": "Rule exported"
+  },
+  "siteRules_ruleImported": {
+    "message": "Rule imported"
+  },
+  "siteRules_rulesImported": {
+    "message": "Rules imported"
+  },
+  "siteRules_invalidRuleFormat": {
+    "message": "Invalid rule format"
+  },
+  "siteRules_allRulesExported": {
+    "message": "All rules exported"
+  },
+  "contextMenu_translateSelection": {
+    "message": "Translate with Astra"
+  },
+  "contextMenu_openPdfReader": {
+    "message": "Open PDF in Astra Reader"
+  },
+  "contextMenu_translateImage": {
+    "message": "Translate image text with Astra"
+  },
+  "omnibox_defaultSuggestion": {
+    "message": "Translate: %s"
   }
 }

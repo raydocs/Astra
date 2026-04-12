@@ -17,7 +17,24 @@ vi.mock("@/utils/translate/translate", () => ({
   translateTexts: translateTextsMock,
 }))
 
+vi.mock("@/utils/reading/assist", () => ({
+  generateGrammarGuide: vi.fn().mockResolvedValue({
+    overview: "mock overview",
+    structure: [],
+    keyPatterns: [],
+    vocabularyNotes: [],
+  }),
+  generateWordAnnotation: vi.fn().mockResolvedValue({
+    word: "mock",
+    partOfSpeech: "noun",
+    meaning: "mock meaning",
+    shortExplanation: "mock explanation",
+  }),
+  isLexicalCandidate: vi.fn().mockReturnValue(false),
+}))
+
 import { DEFAULT_ASTRA_CONFIG } from "@/types/config"
+import * as tts from "@/utils/tts"
 import {
   getInteractionSuppressionState,
 } from "../interaction-coordination"
@@ -67,6 +84,7 @@ describe("SelectionToolbar interaction suppression", () => {
     document.getElementById(HOST_ID)?.remove()
     Object.keys(documentListeners).forEach((key) => delete documentListeners[key])
     Object.keys(windowListeners).forEach((key) => delete windowListeners[key])
+    vi.restoreAllMocks()
     vi.useRealTimers()
   })
 
@@ -346,5 +364,104 @@ describe("SelectionToolbar interaction suppression", () => {
     expect(buttonTexts).toContain("翻译")
     expect(buttonTexts).toContain("解释")
     expect(buttonTexts).toContain("复制")
+  })
+
+  it("hides the speak button when TTS is disabled in config", async () => {
+    document.getElementById(HOST_ID)?.remove()
+    readConfigMock.mockResolvedValue({
+      ...DEFAULT_ASTRA_CONFIG,
+      tts: {
+        ...DEFAULT_ASTRA_CONFIG.tts,
+        enabled: false,
+      },
+    })
+
+    await act(async () => {
+      mountSelectionToolbar()
+      await Promise.resolve()
+    })
+
+    const target = document.getElementById("target") as HTMLElement
+
+    await triggerDocumentMouseDown(target)
+    setSelection("Hello world")
+    await triggerDocumentMouseUp(target)
+
+    const host = document.getElementById(HOST_ID)!
+    const shadow = host.shadowRoot!
+    const buttons = shadow.querySelectorAll("button")
+    const buttonTexts = Array.from(buttons).map((btn) => btn.textContent)
+
+    expect(buttonTexts).not.toContain("朗读")
+  })
+
+  it("refreshes TTS visibility before showing the toolbar", async () => {
+    document.getElementById(HOST_ID)?.remove()
+    readConfigMock
+      .mockResolvedValueOnce(DEFAULT_ASTRA_CONFIG)
+      .mockResolvedValueOnce({
+        ...DEFAULT_ASTRA_CONFIG,
+        tts: {
+          ...DEFAULT_ASTRA_CONFIG.tts,
+          enabled: false,
+        },
+      })
+
+    await act(async () => {
+      mountSelectionToolbar()
+      await Promise.resolve()
+    })
+
+    const target = document.getElementById("target") as HTMLElement
+
+    await triggerDocumentMouseDown(target)
+    setSelection("Hello world")
+    await triggerDocumentMouseUp(target)
+
+    const host = document.getElementById(HOST_ID)!
+    const shadow = host.shadowRoot!
+    const buttonTexts = Array.from(shadow.querySelectorAll("button")).map((btn) => btn.textContent)
+
+    expect(buttonTexts).not.toContain("朗读")
+  })
+
+  it("passes saved voice and rate into speak", async () => {
+    const speakHighlightSpy = vi.spyOn(tts, "speakWithHighlight").mockReturnValue(() => {})
+    readConfigMock.mockResolvedValue({
+      ...DEFAULT_ASTRA_CONFIG,
+      tts: {
+        ...DEFAULT_ASTRA_CONFIG.tts,
+        voiceName: "Microsoft Xiaoxiao Online",
+        rate: 1.2,
+      },
+    })
+
+    const target = document.getElementById("target") as HTMLElement
+
+    await triggerDocumentMouseDown(target)
+    setSelection("Hello world")
+    await triggerDocumentMouseUp(target)
+
+    const host = document.getElementById(HOST_ID)!
+    const shadow = host.shadowRoot!
+    const buttons = shadow.querySelectorAll("button")
+    const speakBtn = Array.from(buttons).find((btn) => btn.textContent === "朗读")
+
+    expect(speakBtn).toBeDefined()
+
+    await act(async () => {
+      speakBtn!.click()
+      await Promise.resolve()
+      await Promise.resolve()
+    })
+
+    expect(speakHighlightSpy).toHaveBeenCalledWith("Hello world", expect.objectContaining({
+      voiceName: "Microsoft Xiaoxiao Online",
+      rate: 1.2,
+      pitch: 1.0,
+      engine: "browser",
+      onEnd: expect.any(Function),
+      onError: expect.any(Function),
+    }))
   })
 })

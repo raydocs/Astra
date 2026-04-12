@@ -33,7 +33,8 @@ export default function AuthSection({
   onOpenPortal,
   onSignOut,
 }: AuthSectionProps) {
-  const resolvedAccount = account ?? (session ? {
+  const isAuthenticatedSession = session?.identityMode === "authenticated"
+  const resolvedAccount = account ?? (isAuthenticatedSession && session ? {
     id: "session-fallback",
     relayBaseURL: session.relayBaseURL,
     email: session.email,
@@ -43,7 +44,7 @@ export default function AuthSection({
     subscriptionStatus: session.subscriptionStatus,
     providerEntitlements: session.providerEntitlements,
   } : null)
-  const resolvedUsage = usage ?? (session ? {
+  const resolvedUsage = usage ?? (isAuthenticatedSession && session ? {
     generatedAt: session.usage.lastRequestAt ?? "unknown",
     quota: session.quota,
     usage: session.usage,
@@ -55,7 +56,7 @@ export default function AuthSection({
         {t("popup_astraAccount")}
       </summary>
       <div style={{ marginTop: 8 }}>
-        {session ? (
+        {isAuthenticatedSession && session ? (
           <div style={statusCardStyle}>
             <div style={{ fontSize: 13, color: "#0f172a", fontWeight: 600 }}>{resolvedAccount?.email ?? session.email}</div>
             <div style={{ fontSize: 12, color: "#475569", marginTop: 4 }}>
@@ -105,6 +106,12 @@ export default function AuthSection({
                 ))}
               </div>
             ) : null}
+            {session.sessionId && (
+              <div style={{ fontSize: 12, color: "#64748b", marginTop: 4 }}>
+                Session：{session.sessionId}
+                {session.deviceId ? ` · Device ${session.deviceId}` : ""}
+              </div>
+            )}
             {session.expiresAt && (
               <div style={{ fontSize: 12, color: "#64748b", marginTop: 4 }}>
                 {t("popup_expiresAt")}：{session.expiresAt}
@@ -113,6 +120,11 @@ export default function AuthSection({
           </div>
         ) : (
           <>
+            {session?.identityMode === "anonymous" && (
+              <div style={{ ...statusCardStyle, fontSize: 12, color: "#475569", marginBottom: 10 }}>
+                This device has a guest Astra session. Sign in to attach continuity to your account.
+              </div>
+            )}
             <label style={labelStyle}>{t("label_email")}</label>
             <input
               type="email"
@@ -134,7 +146,7 @@ export default function AuthSection({
         )}
 
         <div style={{ display: "flex", gap: 8, marginTop: 10, flexWrap: "wrap" }}>
-          {session ? (
+          {isAuthenticatedSession && session ? (
             <>
               {resolvedAccount?.plan !== "pro" && (
                 <button

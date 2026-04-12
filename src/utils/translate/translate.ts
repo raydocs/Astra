@@ -19,6 +19,7 @@ import {
   type TranslationCacheContext,
 } from "@/utils/cache/translation-cache"
 import { readConfig } from "@/utils/storage/config"
+import { validateTranslationBatch } from "./quality-check"
 
 export interface TranslateRequest {
   texts: string[]
@@ -43,9 +44,9 @@ export interface TranslateErrorResponse {
 
 export type TranslateResult = TranslateResponse | TranslateErrorResponse
 
-const MAX_BATCH_ITEMS = 8
-const MAX_BATCH_CHARS = 4000
-const MAX_CONCURRENCY = 3
+const MAX_BATCH_ITEMS = 12
+const MAX_BATCH_CHARS = 8000
+const MAX_CONCURRENCY = 4
 
 interface TranslateBatch {
   originalIndices: number[]
@@ -318,6 +319,21 @@ export async function translateTexts(
   }
   for (let i = 0; i < uncachedEntries.length; i++) {
     translations[uncachedEntries[i].originalIndex] = uncachedTranslations[i]
+  }
+
+  // --- advisory quality check (non-blocking) ---
+  try {
+    const qualityResults = validateTranslationBatch(texts, translations)
+    for (let i = 0; i < qualityResults.length; i++) {
+      if (!qualityResults[i].valid) {
+        console.warn(
+          `[Astra] Translation quality warning for item ${i}:`,
+          qualityResults[i].warnings.join("; "),
+        )
+      }
+    }
+  } catch {
+    // Quality check failure is non-fatal — never block the translation pipeline.
   }
 
   return { ok: true, translations }

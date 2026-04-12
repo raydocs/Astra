@@ -1,51 +1,26 @@
-/**
- * Vocabulary storage for saved words and phrases.
- * Phase 2 learning loop seed — stores entries from SelectionToolbar.
- * Includes optional SRS (spaced repetition) fields for flashcard review.
- */
-
 import { browser } from "#imports"
-import { z } from "zod"
-import { createDefaultSrsFields, getDueCards as getDueCardsFromSrs } from "@/utils/srs/leitner"
-
-const VocabularyEntrySchema = z.object({
-  id: z.string(),
-  text: z.string(),
-  translation: z.string().optional(),
-  explanation: z.string().optional(),
-  context: z.string().optional(),
-  url: z.string().optional(),
-  hostname: z.string().optional(),
-  savedAt: z.number(),
-  // SRS fields (optional for backward compatibility with legacy entries)
-  srsBox: z.number().optional(),
-  nextReviewAt: z.number().optional(),
-  reviewCount: z.number().optional(),
-  lastReviewedAt: z.number().nullable().optional(),
-})
-
-export type VocabularyEntry = z.infer<typeof VocabularyEntrySchema>
+import {
+  createDefaultSrsFields,
+  getDueCards as getDueCardsFromSrs,
+} from "@/utils/srs/leitner"
+import {
+  SyncedVocabularyEntrySchema,
+  VocabularyEntrySchema,
+  applyVocabularySyncMutation,
+  applyVocabularySyncMutations,
+  buildSyncSafeVocabularyEntry,
+  ensureSrsFields,
+  sanitizeVocabularyUrl,
+  type SyncedVocabularyEntry,
+  type VocabularyEntry,
+  type VocabularySyncMutationLike,
+} from "./vocabulary-core"
 
 export const VOCABULARY_STORAGE_KEY = "astra.vocabulary.v1"
 const MAX_ENTRIES = 2000
 
 function generateId(): string {
   return `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
-}
-
-/** Backfill SRS fields for legacy entries that lack them. */
-export function ensureSrsFields(entry: VocabularyEntry): VocabularyEntry {
-  if (entry.srsBox !== undefined && entry.nextReviewAt !== undefined) {
-    return entry
-  }
-  const defaults = createDefaultSrsFields(entry.savedAt)
-  return {
-    ...entry,
-    srsBox: entry.srsBox ?? defaults.srsBox,
-    nextReviewAt: entry.nextReviewAt ?? defaults.nextReviewAt,
-    reviewCount: entry.reviewCount ?? defaults.reviewCount,
-    lastReviewedAt: entry.lastReviewedAt ?? defaults.lastReviewedAt,
-  }
 }
 
 async function readEntries(): Promise<VocabularyEntry[]> {
@@ -59,6 +34,10 @@ async function writeEntries(entries: VocabularyEntry[]): Promise<void> {
   await browser.storage.local.set({
     [VOCABULARY_STORAGE_KEY]: entries.slice(0, MAX_ENTRIES),
   })
+}
+
+export async function replaceVocabularyEntries(entries: VocabularyEntry[]): Promise<void> {
+  await writeEntries(entries.map(ensureSrsFields))
 }
 
 export async function saveVocabularyEntry(entry: Omit<VocabularyEntry, "id" | "savedAt">): Promise<VocabularyEntry> {
@@ -96,6 +75,22 @@ export async function getVocabularyEntries(): Promise<VocabularyEntry[]> {
   return entries.map(ensureSrsFields)
 }
 
+export async function readSyncSafeVocabularyEntries(): Promise<SyncedVocabularyEntry[]> {
+  const entries = await getVocabularyEntries()
+  return entries.map((entry) => buildSyncSafeVocabularyEntry(entry))
+}
+
+export function buildVocabularySyncRecordMap(
+  entries: Array<VocabularyEntry | SyncedVocabularyEntry>,
+): Record<string, SyncedVocabularyEntry> {
+  return Object.fromEntries(
+    entries.map((entry) => {
+      const synced = buildSyncSafeVocabularyEntry(entry as VocabularyEntry)
+      return [synced.id, synced]
+    }),
+  )
+}
+
 export async function removeVocabularyEntry(id: string): Promise<void> {
   const entries = await readEntries()
   await writeEntries(entries.filter((e) => e.id !== id))
@@ -125,4 +120,87 @@ export async function updateVocabularyEntry(
 export async function getDueVocabularyCount(now?: number): Promise<number> {
   const entries = await getVocabularyEntries()
   return getDueCardsFromSrs(entries, now).length
+}
+
+// ---------------------------------------------------------------------------
+// Glossary helpers — enable vocabulary entries to be used as translation terms
+// ---------------------------------------------------------------------------
+
+/** Toggle glossary state for a vocabulary entry. */
+export async function setGlossaryState(
+  id: string,
+  patch: { glossaryEnabled?: boolean; glossaryScope?: "hostname" | "global"; glossaryTargetText?: string },
+): Promise<VocabularyEntry | null> {
+  return updateVocabularyEntry(id, patch)
+}
+
+const MAX_GLOSSARY_ENTRIES = 20
+const MAX_GLOSSARY_CHARS = 800
+
+/**
+ * Get glossary entries for a specific hostname.
+ * Returns hostname-scoped entries first, then global, deduped by normalized source text.
+ */
+export async function listGlossaryEntriesForHostname(
+  hostname: string,
+  options: { limit?: number } = {},
+): Promise<VocabularyEntry[]> {
+  const entries = await getVocabularyEntries()
+  const limit = options.limit ?? MAX_GLOSSARY_ENTRIES
+
+  const glossaryEntries = entries
+    .filter((e) => e.glossaryEnabled === true && (e.translation || e.glossaryTargetText))
+
+  // Sort: hostname-scoped first, then global; newest first within each scope
+  const hostnameEntries = glossaryEntries
+    .filter((e) => e.glossaryScope === "hostname" && e.hostname === hostname)
+    .sort((a, b) => b.savedAt - a.savedAt)
+  const globalEntries = glossaryEntries
+    .filter((e) => e.glossaryScope === "global")
+    .sort((a, b) => b.savedAt - a.savedAt)
+
+  // Deduplicate by normalized source text (hostname-scoped wins)
+  const seen = new Set<string>()
+  const result: VocabularyEntry[] = []
+  let charCount = 0
+
+  for (const entry of [...hostnameEntries, ...globalEntries]) {
+    const normalizedText = entry.text.trim().toLowerCase()
+    if (seen.has(normalizedText)) continue
+    seen.add(normalizedText)
+
+    const target = entry.glossaryTargetText || entry.translation || ""
+    const lineChars = entry.text.length + target.length + 4 // " => " separator
+    if (charCount + lineChars > MAX_GLOSSARY_CHARS) break
+    if (result.length >= limit) break
+
+    charCount += lineChars
+    result.push(entry)
+  }
+
+  return result
+}
+
+/**
+ * Serialize glossary entries into a format suitable for the terminologyGlossary field.
+ * Output: "source => target" per line, deterministic.
+ */
+export function serializeGlossary(entries: VocabularyEntry[]): string {
+  return entries
+    .map((e) => `${e.text} => ${e.glossaryTargetText || e.translation || ""}`)
+    .join("\n")
+}
+
+export {
+  SyncedVocabularyEntrySchema,
+  applyVocabularySyncMutation,
+  applyVocabularySyncMutations,
+  buildSyncSafeVocabularyEntry,
+  ensureSrsFields,
+  sanitizeVocabularyUrl,
+}
+export type {
+  SyncedVocabularyEntry,
+  VocabularyEntry,
+  VocabularySyncMutationLike,
 }

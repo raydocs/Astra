@@ -9,8 +9,15 @@ import {
   parseSubtitles,
   exportBilingualSrt,
   exportBilingualVtt,
+  exportMarkdownBilingual,
+  detectDocumentFormat,
+  parseDocument,
+  formatLabel,
   type SubtitleCue,
   type SubtitleFormat,
+  type DocumentEntry,
+  type DocumentFormat,
+  type FileFormat,
 } from "./subtitle-parser"
 
 type Phase = "idle" | "parsed" | "translating" | "done" | "error"
@@ -31,43 +38,71 @@ export function SubtitleReaderApp() {
   const [phase, setPhase] = useState<Phase>("idle")
   const [error, setError] = useState<string | null>(null)
   const [fileName, setFileName] = useState("")
-  const [format, setFormat] = useState<SubtitleFormat>("unknown")
+  const [fileFormat, setFileFormat] = useState<FileFormat>("unknown")
   const [cues, setCues] = useState<SubtitleCue[]>([])
+  const [docEntries, setDocEntries] = useState<DocumentEntry[]>([])
   const [translations, setTranslations] = useState<Map<number, string>>(new Map())
   const [progress, setProgress] = useState({ current: 0, total: 0 })
   const fileInputRef = useRef<HTMLInputElement>(null)
 
+  /** Whether the current file is a document (not subtitle) */
+  const isDocument = fileFormat === "markdown" || fileFormat === "txt" || fileFormat === "html"
+  /** Unified count of translatable items */
+  const itemCount = isDocument ? docEntries.length : cues.length
+
   const loadFile = async (file: File) => {
     try {
       const text = await file.text()
+
+      // Try document format first (by extension)
+      const docFormat = detectDocumentFormat(file.name)
+      if (docFormat) {
+        const entries = parseDocument(text, docFormat)
+        if (entries.length === 0) {
+          setPhase("error")
+          setError("File appears to be empty.")
+          return
+        }
+        setFileName(file.name)
+        setFileFormat(docFormat)
+        setDocEntries(entries)
+        setCues([])
+        setTranslations(new Map())
+        setPhase("parsed")
+        return
+      }
+
+      // Fall back to subtitle parsing
       const result = parseSubtitles(text)
 
       if (result.format === "unknown" || result.cues.length === 0) {
         setPhase("error")
-        setError("Unrecognized subtitle format. Supports SRT, VTT, and ASS.")
+        setError("Unrecognized file format. Supports SRT, VTT, ASS, Markdown, TXT, and HTML.")
         return
       }
 
       setFileName(file.name)
-      setFormat(result.format)
+      setFileFormat(result.format)
       setCues(result.cues)
+      setDocEntries([])
       setTranslations(new Map())
       setPhase("parsed")
     } catch (err) {
       setPhase("error")
-      setError(err instanceof Error ? err.message : "Failed to parse subtitle file")
+      setError(err instanceof Error ? err.message : "Failed to parse file")
     }
   }
 
   const startTranslation = async () => {
+    const items: { text: string }[] = isDocument ? docEntries : cues
     setPhase("translating")
-    setProgress({ current: 0, total: cues.length })
+    setProgress({ current: 0, total: items.length })
     const newTranslations = new Map<number, string>()
 
-    for (let i = 0; i < cues.length; i += BATCH_SIZE) {
-      const batch = cues.slice(i, i + BATCH_SIZE)
+    for (let i = 0; i < items.length; i += BATCH_SIZE) {
+      const batch = items.slice(i, i + BATCH_SIZE)
       const texts = batch.map((c) => c.text.replace(/\n/g, " "))
-      setProgress({ current: Math.min(i + BATCH_SIZE, cues.length), total: cues.length })
+      setProgress({ current: Math.min(i + BATCH_SIZE, items.length), total: items.length })
 
       try {
         const response: RuntimeResponse = await browser.runtime.sendMessage({
@@ -90,10 +125,15 @@ export function SubtitleReaderApp() {
     setPhase("done")
   }
 
-  const handleExport = (exportFormat: "srt" | "vtt") => {
-    const content = exportFormat === "vtt"
-      ? exportBilingualVtt(cues, translations)
-      : exportBilingualSrt(cues, translations)
+  const handleExport = (exportFormat: "srt" | "vtt" | "md") => {
+    let content: string
+    if (exportFormat === "md") {
+      content = exportMarkdownBilingual(docEntries, translations)
+    } else if (exportFormat === "vtt") {
+      content = exportBilingualVtt(cues, translations)
+    } else {
+      content = exportBilingualSrt(cues, translations)
+    }
 
     const blob = new Blob([content], { type: "text/plain;charset=utf-8" })
     const url = URL.createObjectURL(blob)
@@ -119,8 +159,12 @@ export function SubtitleReaderApp() {
   return (
     <div style={containerStyle}>
       <header style={headerStyle}>
-        <h1 style={{ margin: 0, fontSize: 18, color: "#6366f1" }}>Astra Subtitle Translator</h1>
-        {fileName && <span style={{ fontSize: 13, color: "#64748b" }}>{fileName} ({format.toUpperCase()}, {cues.length} cues)</span>}
+        <h1 style={{ margin: 0, fontSize: 18, color: "#6366f1" }}>Astra File Translator</h1>
+        {fileName && (
+          <span style={{ fontSize: 13, color: "#64748b" }}>
+            {fileName} ({formatLabel(fileFormat)}, {itemCount} {isDocument ? "paragraphs" : "cues"})
+          </span>
+        )}
       </header>
 
       {phase === "idle" && (
@@ -133,13 +177,13 @@ export function SubtitleReaderApp() {
           <input
             ref={fileInputRef}
             type="file"
-            accept=".srt,.vtt,.ass,.ssa"
+            accept=".srt,.vtt,.ass,.ssa,.md,.txt,.html"
             onChange={handleFileSelect}
             style={{ display: "none" }}
           />
-          <div style={{ fontSize: 48, marginBottom: 16 }}>SUB</div>
-          <div style={{ fontSize: 16, color: "#334155" }}>Drop a subtitle file here or click to select</div>
-          <div style={{ fontSize: 13, color: "#94a3b8", marginTop: 8 }}>Supports SRT, VTT, and ASS formats</div>
+          <div style={{ fontSize: 48, marginBottom: 16 }}>FILE</div>
+          <div style={{ fontSize: 16, color: "#334155" }}>Drop a file here or click to select</div>
+          <div style={{ fontSize: 13, color: "#94a3b8", marginTop: 8 }}>Supports SRT, VTT, ASS, Markdown, TXT, and HTML</div>
         </div>
       )}
 
@@ -150,7 +194,7 @@ export function SubtitleReaderApp() {
       {phase === "parsed" && (
         <div style={{ textAlign: "center", padding: 24 }}>
           <div style={{ fontSize: 14, color: "#334155", marginBottom: 16 }}>
-            Parsed {cues.length} cues from {format.toUpperCase()} file
+            Parsed {itemCount} {isDocument ? "paragraphs" : "cues"} from {formatLabel(fileFormat)} file
           </div>
           <button type="button" onClick={() => void startTranslation()} style={btnStyle}>
             Translate All
@@ -160,7 +204,7 @@ export function SubtitleReaderApp() {
 
       {phase === "translating" && (
         <div style={{ textAlign: "center", padding: 16, color: "#6366f1" }}>
-          Translating {progress.current}/{progress.total} cues...
+          Translating {progress.current}/{progress.total} {isDocument ? "paragraphs" : "cues"}...
         </div>
       )}
 
@@ -168,35 +212,64 @@ export function SubtitleReaderApp() {
         <>
           {phase === "done" && (
             <div style={{ display: "flex", gap: 8, marginBottom: 16 }}>
-              <button type="button" onClick={() => handleExport("srt")} style={btnStyle}>Export SRT</button>
-              <button type="button" onClick={() => handleExport("vtt")} style={btnStyle}>Export VTT</button>
+              {isDocument ? (
+                <button type="button" onClick={() => handleExport("md")} style={btnStyle}>Export Markdown</button>
+              ) : (
+                <>
+                  <button type="button" onClick={() => handleExport("srt")} style={btnStyle}>Export SRT</button>
+                  <button type="button" onClick={() => handleExport("vtt")} style={btnStyle}>Export VTT</button>
+                </>
+              )}
             </div>
           )}
 
-          <table style={tableStyle}>
-            <thead>
-              <tr>
-                <th style={thStyle}>#</th>
-                <th style={thStyle}>Time</th>
-                <th style={thStyle}>Original</th>
-                <th style={thStyle}>Translation</th>
-              </tr>
-            </thead>
-            <tbody>
-              {cues.map((cue, i) => (
-                <tr key={i}>
-                  <td style={tdStyle}>{cue.index}</td>
-                  <td style={{ ...tdStyle, whiteSpace: "nowrap", fontSize: 11, color: "#64748b" }}>
-                    {cue.startTime}
-                  </td>
-                  <td style={tdStyle}>{cue.text}</td>
-                  <td style={{ ...tdStyle, color: "#6366f1" }}>
-                    {translations.get(i) ?? (phase === "translating" ? "..." : "")}
-                  </td>
+          {isDocument ? (
+            <table style={tableStyle}>
+              <thead>
+                <tr>
+                  <th style={thStyle}>#</th>
+                  <th style={thStyle}>Original</th>
+                  <th style={thStyle}>Translation</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {docEntries.map((entry, i) => (
+                  <tr key={i}>
+                    <td style={tdStyle}>{entry.index}</td>
+                    <td style={tdStyle}>{entry.text}</td>
+                    <td style={{ ...tdStyle, color: "#6366f1" }}>
+                      {translations.get(i) ?? (phase === "translating" ? "..." : "")}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          ) : (
+            <table style={tableStyle}>
+              <thead>
+                <tr>
+                  <th style={thStyle}>#</th>
+                  <th style={thStyle}>Time</th>
+                  <th style={thStyle}>Original</th>
+                  <th style={thStyle}>Translation</th>
+                </tr>
+              </thead>
+              <tbody>
+                {cues.map((cue, i) => (
+                  <tr key={i}>
+                    <td style={tdStyle}>{cue.index}</td>
+                    <td style={{ ...tdStyle, whiteSpace: "nowrap", fontSize: 11, color: "#64748b" }}>
+                      {cue.startTime}
+                    </td>
+                    <td style={tdStyle}>{cue.text}</td>
+                    <td style={{ ...tdStyle, color: "#6366f1" }}>
+                      {translations.get(i) ?? (phase === "translating" ? "..." : "")}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
         </>
       )}
     </div>

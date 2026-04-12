@@ -89,6 +89,18 @@
   "actionStop": {
     "message": "停止"
   },
+  "actionShare": {
+    "message": "分享"
+  },
+  "actionShared": {
+    "message": "已复制!"
+  },
+  "actionGrammar": {
+    "message": "语法"
+  },
+  "actionGrammarLoading": {
+    "message": "分析中…"
+  },
   "actionOperationFailed": {
     "message": "操作失败"
   },
@@ -103,6 +115,12 @@
   },
   "inputTranslateButton": {
     "message": "译"
+  },
+  "inputTranslateModeReplace": {
+    "message": "替换"
+  },
+  "inputTranslateModeBilingual": {
+    "message": "双语"
   },
   "translateButton": {
     "message": "译"
@@ -163,6 +181,51 @@
     "placeholders": {
       "1": { "content": "$1" }
     }
+  },
+  "popup_readArticle": {
+    "message": "阅读文章"
+  },
+  "popup_usageTitle": {
+    "message": "用量与路由"
+  },
+  "popup_usageEmpty": {
+    "message": "本次会话里还没有真实发出的 AI 请求。"
+  },
+  "popup_usageTodayLabel": {
+    "message": "今日"
+  },
+  "popup_usageSessionLabel": {
+    "message": "本次会话"
+  },
+  "popup_usageRequests": {
+    "message": "请求"
+  },
+  "popup_usageApproxTokens": {
+    "message": "估算 tokens"
+  },
+  "popup_usageFallbacks": {
+    "message": "回退"
+  },
+  "popup_usageFailures": {
+    "message": "失败"
+  },
+  "popup_usageLastLabel": {
+    "message": "最近一次"
+  },
+  "popup_usageViaDirect": {
+    "message": "直连"
+  },
+  "popup_usageViaRelay": {
+    "message": "relay"
+  },
+  "popup_usageFallbackRoute": {
+    "message": "direct → relay"
+  },
+  "popup_usageNoRoute": {
+    "message": "无路由信息"
+  },
+  "popup_usageLiveOnly": {
+    "message": "这里只统计发起过的翻译请求；命中缓存的内容不会出现在这里。"
   },
   "label_targetLanguage": {
     "message": "目标语言"
@@ -348,5 +411,333 @@
   },
   "popup_currentSite": {
     "message": "当前站点"
+  },
+
+  "popup_studyStepRead": {
+    "message": "阅读"
+  },
+  "popup_studyStepGuidedRead": {
+    "message": "引导阅读"
+  },
+  "popup_studyStepExplain": {
+    "message": "讲解"
+  },
+  "popup_studyStepSaveWords": {
+    "message": "保存生词"
+  },
+  "popup_studyStepReview": {
+    "message": "复习"
+  },
+  "popup_studyStepDone": {
+    "message": "（已完成）"
+  },
+  "popup_studyAllComplete": {
+    "message": "本页所有学习步骤已完成！"
+  },
+  "popup_studyNext": {
+    "message": "下一步："
+  },
+  "popup_studyStartGuidedRead": {
+    "message": "开始引导阅读"
+  },
+  "popup_studyExplainSentence": {
+    "message": "讲解句子"
+  },
+  "popup_studySaveWords": {
+    "message": "保存生词"
+  },
+  "popup_studyStatPages": {
+    "message": "$1 页",
+    "placeholders": {
+      "1": { "content": "$1" }
+    }
+  },
+  "popup_studyStatExplained": {
+    "message": "讲解 $1 句",
+    "placeholders": {
+      "1": { "content": "$1" }
+    }
+  },
+  "popup_studyStatSaved": {
+    "message": "保存 $1 词",
+    "placeholders": {
+      "1": { "content": "$1" }
+    }
+  },
+  "popup_studyStatReviewed": {
+    "message": "复习 $1 词",
+    "placeholders": {
+      "1": { "content": "$1" }
+    }
+  },
+
+  "popup_usageMetricRequests": {
+    "message": "请求数"
+  },
+  "popup_usageMetricTokensIn": {
+    "message": "输入 tokens"
+  },
+  "popup_usageMetricEstCost": {
+    "message": "预估费用"
+  },
+  "popup_usageMetricChars": {
+    "message": "字符数"
+  },
+  "popup_usageMetricFallbacks": {
+    "message": "回退次数"
+  },
+  "popup_usageMetricFailed": {
+    "message": "失败次数"
+  },
+  "popup_usageBySource": {
+    "message": "按来源"
+  },
+  "popup_usageSourcePage": {
+    "message": "页面"
+  },
+  "popup_usageSourceSelection": {
+    "message": "选中文本"
+  },
+  "popup_usageSourceHover": {
+    "message": "悬停"
+  },
+  "popup_usageSourceInput": {
+    "message": "输入框"
+  },
+  "popup_usageSourcePdf": {
+    "message": "PDF"
+  },
+  "popup_usageSourceEpub": {
+    "message": "EPUB"
+  },
+  "popup_usageSourceSubtitle": {
+    "message": "字幕"
+  },
+  "popup_usageAvgResponse": {
+    "message": "平均响应：$1ms",
+    "placeholders": {
+      "1": { "content": "$1" }
+    }
+  },
+  "popup_usageCostFree": {
+    "message": "免费"
+  },
+
+  "options_diagProviderStatus": {
+    "message": "提供方状态"
+  },
+  "options_diagDirectApi": {
+    "message": "直连 API"
+  },
+  "options_diagAstraRelay": {
+    "message": "Astra 中继"
+  },
+  "options_diagApiKeyConfigured": {
+    "message": "已为 $1 配置 API 密钥",
+    "placeholders": {
+      "1": { "content": "$1" }
+    }
+  },
+  "options_diagNoApiKey": {
+    "message": "未设置 API 密钥"
+  },
+  "options_diagRelayActive": {
+    "message": "已连接到中继服务器"
+  },
+  "options_diagNoRelay": {
+    "message": "未连接中继"
+  },
+  "options_diagTransportRoutes": {
+    "message": "传输路由"
+  },
+  "options_diagDirect": {
+    "message": "直连："
+  },
+  "options_diagYes": {
+    "message": "是"
+  },
+  "options_diagNo": {
+    "message": "否"
+  },
+  "options_diagRelay": {
+    "message": "中继："
+  },
+  "options_diagCostPerPage": {
+    "message": "单页费用："
+  },
+  "options_diagProviderCapabilities": {
+    "message": "提供方能力"
+  },
+  "options_diagColModel": {
+    "message": "模型"
+  },
+  "options_diagColInputCost": {
+    "message": "输入 $/1k"
+  },
+  "options_diagColOutputCost": {
+    "message": "输出 $/1k"
+  },
+  "options_diagColContext": {
+    "message": "上下文"
+  },
+  "options_diagRecommended": {
+    "message": "推荐"
+  },
+  "options_diagActive": {
+    "message": "当前"
+  },
+  "options_diagFree": {
+    "message": "免费"
+  },
+  "options_diagMaxBatch": {
+    "message": "最大批量：$1 条 · 单次最大字符：$2",
+    "placeholders": {
+      "1": { "content": "$1" },
+      "2": { "content": "$2" }
+    }
+  },
+  "options_diagWorkflowConfig": {
+    "message": "工作流配置"
+  },
+  "options_diagConnectionMode": {
+    "message": "连接模式："
+  },
+  "options_diagAstraManaged": {
+    "message": "Astra 托管"
+  },
+  "options_diagCustomKey": {
+    "message": "自定义（自带密钥）"
+  },
+  "options_ttsEngine": {
+    "message": "引擎"
+  },
+  "options_ttsVoice": {
+    "message": "语音"
+  },
+  "options_ttsPitch": {
+    "message": "音调：$1x",
+    "placeholders": {
+      "1": { "content": "$1" }
+    }
+  },
+  "options_ttsSpeechRate": {
+    "message": "语速：$1x",
+    "placeholders": {
+      "1": { "content": "$1" }
+    }
+  },
+  "popup_generateDigest": {
+    "message": "生成摘要"
+  },
+  "popup_digestGenerating": {
+    "message": "正在生成摘要…"
+  },
+  "label_siteCustomCss": {
+    "message": "自定义 CSS"
+  },
+  "label_preview": {
+    "message": "预览"
+  },
+  "hint_siteCustomCss": {
+    "message": "启用此站点时注入页面的自定义样式（最多 5000 字符）"
+  },
+  "label_detectArticle": {
+    "message": "自动检测文章区域"
+  },
+  "label_paragraphFilterNone": {
+    "message": "不过滤"
+  },
+  "label_paragraphFilterShort": {
+    "message": "短"
+  },
+  "label_paragraphFilterMedium": {
+    "message": "中等"
+  },
+  "label_paragraphFilterLong": {
+    "message": "长"
+  },
+  "vocab_note": {
+    "message": "笔记"
+  },
+  "vocab_tags": {
+    "message": "标签"
+  },
+  "vocab_searchVocabulary": {
+    "message": "搜索词汇"
+  },
+  "vocab_addNote": {
+    "message": "添加笔记"
+  },
+  "vocab_addTags": {
+    "message": "添加标签"
+  },
+  "options_exportSettings": {
+    "message": "导出设置"
+  },
+  "options_importSettings": {
+    "message": "导入设置"
+  },
+  "options_settingsExported": {
+    "message": "设置已成功导出。"
+  },
+  "options_settingsImported": {
+    "message": "设置已成功导入，正在重新加载..."
+  },
+  "options_invalidConfigFile": {
+    "message": "无效的配置文件"
+  },
+  "options_backupTitle": {
+    "message": "备份与恢复"
+  },
+  "options_backupHint": {
+    "message": "将设置、词汇表和阅读记录导出为 JSON 文件，或导入之前导出的备份。"
+  },
+  "fileType_markdown": {
+    "message": "Markdown"
+  },
+  "fileType_plainText": {
+    "message": "纯文本"
+  },
+  "fileType_html": {
+    "message": "HTML 文档"
+  },
+  "siteRules_exportRule": {
+    "message": "导出规则"
+  },
+  "siteRules_importRule": {
+    "message": "导入规则"
+  },
+  "siteRules_exportAllRules": {
+    "message": "导出所有规则"
+  },
+  "siteRules_importRules": {
+    "message": "导入规则"
+  },
+  "siteRules_ruleExported": {
+    "message": "规则已导出"
+  },
+  "siteRules_ruleImported": {
+    "message": "规则已导入"
+  },
+  "siteRules_rulesImported": {
+    "message": "规则已导入"
+  },
+  "siteRules_invalidRuleFormat": {
+    "message": "规则格式无效"
+  },
+  "siteRules_allRulesExported": {
+    "message": "所有规则已导出"
+  },
+  "contextMenu_translateSelection": {
+    "message": "用 Astra 翻译"
+  },
+  "contextMenu_openPdfReader": {
+    "message": "在 Astra 阅读器中打开 PDF"
+  },
+  "contextMenu_translateImage": {
+    "message": "用 Astra 翻译图片文字"
+  },
+  "omnibox_defaultSuggestion": {
+    "message": "翻译：%s"
   }
 }
