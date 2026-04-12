@@ -233,6 +233,12 @@ export const pageTranslationFeedCardChurnHoldoutScenario: LiveScenarioDefinition
             expectedTexts: [],
             snapshotPhase: "idle",
             failedBlocks: 0,
+            payloadContext: null,
+            requestTexts: [],
+            requestPlaceholderCount: 0,
+            translatedHtmlSnippets: [],
+            placeholderLeakCount: 0,
+            restoredRichTextTagCount: 0,
             notes: ["browser-unavailable"],
           },
           holdoutMetrics: {

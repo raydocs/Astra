@@ -9,7 +9,10 @@ export type BenchmarkSurface =
   | "selection-explain"
   | "input-translation"
   | "subtitle"
+  | "subtitle-file"
   | "pdf"
+  | "epub"
+  | "provider-routing"
 
 export type BenchmarkSplit = "train" | "validation" | "holdout"
 

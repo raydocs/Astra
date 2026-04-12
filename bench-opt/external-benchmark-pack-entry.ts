@@ -12,6 +12,7 @@ import path from "node:path"
 import { pathToFileURL } from "node:url"
 
 import {
+  createDraftCapabilityBenchmarkPackV2,
   createOfficialBenchmarkPack,
   exportBenchmarkPack,
   renderBenchmarkPackSpec,
@@ -20,6 +21,7 @@ import {
   type BenchmarkPackValidationResult,
 } from "./external-benchmark-pack.ts"
 import type { ProofSuiteResult } from "./proof-suite.ts"
+import type { BenchOptStatusArtifact } from "./types.ts"
 
 // ---------------------------------------------------------------------------
 // Arg parsing
@@ -29,12 +31,16 @@ interface ParsedArgs {
   help: boolean
   exportDir: string | null
   validatePath: string | null
+  statusPath: string | null
+  packVersion: "v1" | "v2"
 }
 
 function parseArgs(argv: string[]): ParsedArgs {
   let help = false
   let exportDir: string | null = null
   let validatePath: string | null = null
+  let statusPath: string | null = null
+  let packVersion: "v1" | "v2" = "v1"
 
   for (let i = 0; i < argv.length; i++) {
     const arg = argv[i]
@@ -55,9 +61,24 @@ function parseArgs(argv: string[]): ParsedArgs {
       i++
       continue
     }
+
+    if (arg === "--status" || arg === "-s") {
+      statusPath = path.resolve(argv[i + 1] ?? "")
+      i++
+      continue
+    }
+
+    if (arg === "--pack") {
+      const value = argv[i + 1]
+      if (value === "v2") {
+        packVersion = "v2"
+      }
+      i++
+      continue
+    }
   }
 
-  return { help, exportDir, validatePath }
+  return { help, exportDir, validatePath, statusPath, packVersion }
 }
 
 function printHelp(): void {
@@ -68,11 +89,14 @@ function printHelp(): void {
   console.log("Options:")
   console.log("  --export, -e <dir>        Export the benchmark pack spec to a directory")
   console.log("  --validate, -v <path>     Validate a proof suite result JSON against the pack")
+  console.log("  --status, -s <path>       Optional status artifact JSON for capability-gate validation")
+  console.log("  --pack <v1|v2>            Choose the benchmark pack version (default: v1)")
   console.log("  --help, -h                Show this help message")
   console.log("")
   console.log("Examples:")
   console.log("  npx tsx bench-opt/external-benchmark-pack-entry.ts --export bench-opt-results/benchmark-pack/")
   console.log("  npx tsx bench-opt/external-benchmark-pack-entry.ts --validate bench-opt-results/proof-suite/latest.proof-suite.json")
+  console.log("  npx tsx bench-opt/external-benchmark-pack-entry.ts --pack v2 --validate bench-opt-results/proof-suite/latest.proof-suite.json --status bench-opt-results/latest.status.json")
   console.log("  npx tsx bench-opt/external-benchmark-pack-entry.ts --export bench-opt-results/benchmark-pack/ --validate bench-opt-results/proof-suite/latest.proof-suite.json")
 }
 
@@ -138,7 +162,9 @@ export async function runBenchmarkPackEntry(
     return null
   }
 
-  const pack = createOfficialBenchmarkPack()
+  const pack = parsed.packVersion === "v2"
+    ? createDraftCapabilityBenchmarkPackV2()
+    : createOfficialBenchmarkPack()
   let exportPaths: { jsonPath: string; markdownPath: string } | null = null
   let validation: BenchmarkPackValidationResult | null = null
 
@@ -156,6 +182,7 @@ export async function runBenchmarkPackEntry(
     console.log(`Validating against: ${parsed.validatePath}`)
 
     let suiteResult: ProofSuiteResult
+    let statusArtifact: BenchOptStatusArtifact | null = null
     try {
       const raw = await readFile(parsed.validatePath, "utf-8")
       suiteResult = JSON.parse(raw) as ProofSuiteResult
@@ -165,7 +192,18 @@ export async function runBenchmarkPackEntry(
       process.exit(1)
     }
 
-    validation = validateBenchmarkPackResults(pack, suiteResult)
+    if (parsed.statusPath) {
+      try {
+        const rawStatus = await readFile(parsed.statusPath, "utf-8")
+        statusArtifact = JSON.parse(rawStatus) as BenchOptStatusArtifact
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err)
+        console.error(`Failed to read or parse status artifact: ${msg}`)
+        process.exit(1)
+      }
+    }
+
+    validation = validateBenchmarkPackResults(pack, suiteResult, statusArtifact)
 
     // Write validation result
     if (parsed.exportDir) {

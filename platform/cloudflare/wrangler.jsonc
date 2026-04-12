@@ -1,0 +1,285 @@
+{
+  "name": "astra-platform",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-04-09",
+
+  "observability": {
+    "enabled": true,
+    "logs": {
+      "head_sampling_rate": 1
+    },
+    "traces": {
+      "enabled": true,
+      "head_sampling_rate": 0.1
+    }
+  },
+
+  // Configure ASTRA_SESSION_SECRET with `wrangler secret put ASTRA_SESSION_SECRET` per environment.
+  "vars": {
+    "NODE_RELAY_ORIGIN": "http://127.0.0.1:8788",
+      "ARTICLE_IMPORT_MODE": "proxy",
+      "ARTICLE_IMPORT_MODE_OVERRIDES": "web=proxy",
+      "AUTH_ANONYMOUS_ISSUE_MODE": "proxy",
+      "AUTH_SESSION_ISSUE_MODE": "proxy",
+      "AUTH_SESSION_READ_MODE": "proxy",
+      "AUTH_SESSION_REVOKE_WRITE_MODE": "proxy",
+      "SESSION_PUBLIC_BASE_URL": "",
+      "ASTRA_FREE_DAILY_REQUESTS": "200",
+      "ASTRA_FREE_DAILY_CHARACTERS": "200000",
+      "ASTRA_FREE_RPM": "20",
+      "ASTRA_SESSION_TTL_MS": "2592000000",
+      "ACCOUNT_SUMMARY_READ_MODE": "proxy",
+      "DEVICE_LIST_READ_MODE": "proxy",
+      "DEVICE_REVOKE_WRITE_MODE": "proxy",
+      "SYNC_BOOTSTRAP_READ_MODE": "proxy",
+      "SYNC_PULL_READ_MODE": "proxy",
+      "SYNC_PUSH_WRITE_MODE": "proxy",
+      "ASTRA_SYNC_MAX_MUTATIONS_PER_REQUEST": "200",
+    "ARTICLE_IMPORT_ALLOWED_HOSTS": "",
+    "ARTICLE_IMPORT_BLOCKED_HOSTS": "",
+    "ARTICLE_IMPORT_FORCE_PROXY_HOSTS": "",
+    "ARTICLE_IMPORT_RATE_LIMIT_MAX": "",
+    "ARTICLE_IMPORT_RATE_LIMIT_WINDOW_SECONDS": "60",
+    "ARTICLE_IMPORT_MAX_SHADOW_BYTES": "262144",
+    "ARTICLE_IMPORT_MAX_NATIVE_BYTES": "2097152",
+    "ARTICLE_IMPORT_MAX_QUEUE_ATTEMPTS": "3",
+    "ARTICLE_IMPORT_ARTIFACT_RETENTION_DAYS": "7",
+    "ARTICLE_IMPORT_ARTIFACT_RETENTION_CLASS": "import-shadow",
+    "CONTINUITY_EXPORT_ARTIFACT_RETENTION_DAYS": "7",
+    "CONTINUITY_DELETE_GRACE_PERIOD_SECONDS": "604800",
+    "CONTINUITY_JOB_HISTORY_RETENTION_DAYS": "90",
+    "CONTINUITY_TOMBSTONE_RETENTION_DAYS": "30",
+    "SYNC_TOMBSTONE_RETENTION_DAYS": "30",
+    "SYNC_COMPACTION_BATCH_SIZE": "500",
+    "SYNC_COMPACTION_DRY_RUN": "true",
+    "ASTRA_ENV": "local"
+  },
+
+  "d1_databases": [
+    {
+      "binding": "ASTRA_PLATFORM_DB",
+      "database_name": "astra-platform-local",
+      "database_id": "REPLACE_WITH_LOCAL_D1_DATABASE_ID"
+    }
+  ],
+
+  "r2_buckets": [
+    {
+      "binding": "ASTRA_IMPORT_PAYLOADS",
+      "bucket_name": "astra-import-payloads-local"
+    }
+  ],
+
+  "kv_namespaces": [
+    {
+      "binding": "ASTRA_IDEMPOTENCY_KV",
+      "id": "REPLACE_WITH_LOCAL_KV_NAMESPACE_ID"
+    }
+  ],
+
+  "queues": {
+    "producers": [
+      {
+        "binding": "ARTICLE_IMPORT_QUEUE",
+        "queue": "astra-article-import-local"
+      },
+      {
+        "binding": "CONTINUITY_LIFECYCLE_QUEUE",
+        "queue": "astra-continuity-lifecycle-local"
+      }
+    ],
+    "consumers": [
+      {
+        "queue": "astra-article-import-local",
+        "max_batch_size": 10,
+        "max_batch_timeout": 5,
+        "max_retries": 3
+      },
+      {
+        "queue": "astra-continuity-lifecycle-local",
+        "max_batch_size": 10,
+        "max_batch_timeout": 5,
+        "max_retries": 3
+      }
+    ]
+  },
+
+  // Durable Objects are intentionally omitted in this scaffold.
+  // Add a per-user sync coordinator namespace only when native sync writes
+  // require serialized per-user coordination.
+
+  "env": {
+    "staging": {
+      "vars": {
+        "NODE_RELAY_ORIGIN": "https://staging-relay.astra.example",
+          "ARTICLE_IMPORT_MODE": "proxy",
+          "ARTICLE_IMPORT_MODE_OVERRIDES": "web=shadow",
+          "AUTH_ANONYMOUS_ISSUE_MODE": "proxy",
+          "AUTH_SESSION_ISSUE_MODE": "proxy",
+          "AUTH_SESSION_READ_MODE": "proxy",
+            "AUTH_SESSION_REVOKE_WRITE_MODE": "proxy",
+            "SESSION_PUBLIC_BASE_URL": "",
+            "ASTRA_FREE_DAILY_REQUESTS": "200",
+            "ASTRA_FREE_DAILY_CHARACTERS": "200000",
+            "ASTRA_FREE_RPM": "20",
+            "ASTRA_SESSION_TTL_MS": "2592000000",
+            "ACCOUNT_SUMMARY_READ_MODE": "proxy",
+          "DEVICE_LIST_READ_MODE": "proxy",
+          "DEVICE_REVOKE_WRITE_MODE": "proxy",
+          "SYNC_BOOTSTRAP_READ_MODE": "proxy",
+          "SYNC_PULL_READ_MODE": "proxy",
+          "SYNC_PUSH_WRITE_MODE": "proxy",
+          "ASTRA_SYNC_MAX_MUTATIONS_PER_REQUEST": "200",
+        "ARTICLE_IMPORT_ALLOWED_HOSTS": "",
+        "ARTICLE_IMPORT_BLOCKED_HOSTS": "",
+        "ARTICLE_IMPORT_FORCE_PROXY_HOSTS": "",
+        "ARTICLE_IMPORT_RATE_LIMIT_MAX": "30",
+        "ARTICLE_IMPORT_RATE_LIMIT_WINDOW_SECONDS": "60",
+        "ARTICLE_IMPORT_MAX_SHADOW_BYTES": "262144",
+        "ARTICLE_IMPORT_MAX_NATIVE_BYTES": "2097152",
+        "ARTICLE_IMPORT_MAX_QUEUE_ATTEMPTS": "3",
+        "ARTICLE_IMPORT_ARTIFACT_RETENTION_DAYS": "7",
+        "ARTICLE_IMPORT_ARTIFACT_RETENTION_CLASS": "import-shadow",
+        "CONTINUITY_EXPORT_ARTIFACT_RETENTION_DAYS": "7",
+        "CONTINUITY_DELETE_GRACE_PERIOD_SECONDS": "604800",
+        "CONTINUITY_JOB_HISTORY_RETENTION_DAYS": "90",
+        "CONTINUITY_TOMBSTONE_RETENTION_DAYS": "30",
+        "SYNC_TOMBSTONE_RETENTION_DAYS": "30",
+        "SYNC_COMPACTION_BATCH_SIZE": "500",
+        "SYNC_COMPACTION_DRY_RUN": "true",
+        "ASTRA_ENV": "staging"
+      },
+      "d1_databases": [
+        {
+          "binding": "ASTRA_PLATFORM_DB",
+          "database_name": "astra-platform-staging",
+          "database_id": "REPLACE_WITH_STAGING_D1_DATABASE_ID"
+        }
+      ],
+      "r2_buckets": [
+        {
+          "binding": "ASTRA_IMPORT_PAYLOADS",
+          "bucket_name": "astra-import-payloads-staging"
+        }
+      ],
+      "kv_namespaces": [
+        {
+          "binding": "ASTRA_IDEMPOTENCY_KV",
+          "id": "REPLACE_WITH_STAGING_KV_NAMESPACE_ID"
+        }
+      ],
+      "queues": {
+        "producers": [
+          {
+            "binding": "ARTICLE_IMPORT_QUEUE",
+            "queue": "astra-article-import-staging"
+          },
+          {
+            "binding": "CONTINUITY_LIFECYCLE_QUEUE",
+            "queue": "astra-continuity-lifecycle-staging"
+          }
+        ],
+        "consumers": [
+          {
+            "queue": "astra-article-import-staging",
+            "max_batch_size": 10,
+            "max_batch_timeout": 5,
+            "max_retries": 3
+          },
+          {
+            "queue": "astra-continuity-lifecycle-staging",
+            "max_batch_size": 10,
+            "max_batch_timeout": 5,
+            "max_retries": 3
+          }
+        ]
+      }
+    },
+    "production": {
+      "vars": {
+        "NODE_RELAY_ORIGIN": "https://relay.astra.example",
+          "ARTICLE_IMPORT_MODE": "proxy",
+          "ARTICLE_IMPORT_MODE_OVERRIDES": "web=proxy",
+          "AUTH_ANONYMOUS_ISSUE_MODE": "proxy",
+          "AUTH_SESSION_ISSUE_MODE": "proxy",
+          "AUTH_SESSION_READ_MODE": "proxy",
+            "AUTH_SESSION_REVOKE_WRITE_MODE": "proxy",
+            "SESSION_PUBLIC_BASE_URL": "",
+            "ASTRA_FREE_DAILY_REQUESTS": "200",
+            "ASTRA_FREE_DAILY_CHARACTERS": "200000",
+            "ASTRA_FREE_RPM": "20",
+            "ASTRA_SESSION_TTL_MS": "2592000000",
+            "ACCOUNT_SUMMARY_READ_MODE": "proxy",
+          "DEVICE_LIST_READ_MODE": "proxy",
+          "DEVICE_REVOKE_WRITE_MODE": "proxy",
+          "SYNC_BOOTSTRAP_READ_MODE": "proxy",
+          "SYNC_PULL_READ_MODE": "proxy",
+          "SYNC_PUSH_WRITE_MODE": "proxy",
+          "ASTRA_SYNC_MAX_MUTATIONS_PER_REQUEST": "200",
+        "ARTICLE_IMPORT_ALLOWED_HOSTS": "",
+        "ARTICLE_IMPORT_BLOCKED_HOSTS": "",
+        "ARTICLE_IMPORT_FORCE_PROXY_HOSTS": "",
+        "ARTICLE_IMPORT_RATE_LIMIT_MAX": "20",
+        "ARTICLE_IMPORT_RATE_LIMIT_WINDOW_SECONDS": "60",
+        "ARTICLE_IMPORT_MAX_SHADOW_BYTES": "262144",
+        "ARTICLE_IMPORT_MAX_NATIVE_BYTES": "2097152",
+        "ARTICLE_IMPORT_MAX_QUEUE_ATTEMPTS": "3",
+        "ARTICLE_IMPORT_ARTIFACT_RETENTION_DAYS": "7",
+        "ARTICLE_IMPORT_ARTIFACT_RETENTION_CLASS": "import-shadow",
+        "CONTINUITY_EXPORT_ARTIFACT_RETENTION_DAYS": "7",
+        "CONTINUITY_DELETE_GRACE_PERIOD_SECONDS": "604800",
+        "CONTINUITY_JOB_HISTORY_RETENTION_DAYS": "90",
+        "CONTINUITY_TOMBSTONE_RETENTION_DAYS": "30",
+        "SYNC_TOMBSTONE_RETENTION_DAYS": "30",
+        "SYNC_COMPACTION_BATCH_SIZE": "500",
+        "SYNC_COMPACTION_DRY_RUN": "true",
+        "ASTRA_ENV": "production"
+      },
+      "d1_databases": [
+        {
+          "binding": "ASTRA_PLATFORM_DB",
+          "database_name": "astra-platform-production",
+          "database_id": "REPLACE_WITH_PRODUCTION_D1_DATABASE_ID"
+        }
+      ],
+      "r2_buckets": [
+        {
+          "binding": "ASTRA_IMPORT_PAYLOADS",
+          "bucket_name": "astra-import-payloads-production"
+        }
+      ],
+      "kv_namespaces": [
+        {
+          "binding": "ASTRA_IDEMPOTENCY_KV",
+          "id": "REPLACE_WITH_PRODUCTION_KV_NAMESPACE_ID"
+        }
+      ],
+      "queues": {
+        "producers": [
+          {
+            "binding": "ARTICLE_IMPORT_QUEUE",
+            "queue": "astra-article-import-production"
+          },
+          {
+            "binding": "CONTINUITY_LIFECYCLE_QUEUE",
+            "queue": "astra-continuity-lifecycle-production"
+          }
+        ],
+        "consumers": [
+          {
+            "queue": "astra-article-import-production",
+            "max_batch_size": 10,
+            "max_batch_timeout": 5,
+            "max_retries": 3
+          },
+          {
+            "queue": "astra-continuity-lifecycle-production",
+            "max_batch_size": 10,
+            "max_batch_timeout": 5,
+            "max_retries": 3
+          }
+        ]
+      }
+    }
+  }
+}

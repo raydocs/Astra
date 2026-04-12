@@ -1,4 +1,5 @@
 node_modules/
+.pnpm-store/
 .output/
 .wxt/
 dist/
@@ -7,6 +8,8 @@ dist/
 .env
 .env.local
 .env.production
+.dev.vars
+.wrangler/
 logs/
 bench-results/
 bench-opt-results/

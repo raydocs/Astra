@@ -22,9 +22,15 @@ Astra 想做的不是另一个“把网页翻成中文”的工具，而是一�
 - **站点级规则**：支持站点启用/禁用、自动翻译、目标语言、悬停方式、范围与展示样式
 - **字幕翻译**：处理页面可访问的字幕或 caption track
 - **内置 Astra provider 路径**：当前支持 OpenAI 与 Gemini，经 Astra relay 调用
-- **Chrome / Safari 构建链路**：仓库内还带有 **iOS Safari 壳工程骨架**
+- **Chromium / Firefox / desktop Safari 构建链路**：仓库内还带有 **iOS Safari 壳工程骨架（实验性路径）**
 
-当前能力真值表见 [docs/capability-matrix.md](/Users/ruirui/Downloads/GitHub/Astra/docs/capability-matrix.md)。
+当前平台支持等级与对外 claim 边界以 **Q2 canonical support matrix** 为准：
+
+- [docs/investigations/support-matrix-2026-q2.md](/Users/ruirui/Downloads/GitHub/Astra/docs/investigations/support-matrix-2026-q2.md)
+
+功能能力矩阵（非平台支持口径）见：
+
+- [docs/capability-matrix-v2.md](/Users/ruirui/Downloads/GitHub/Astra/docs/capability-matrix-v2.md)
 
 ## 为什么 Astra 不只是另一个翻译插件
 
@@ -110,7 +116,7 @@ pnpm build
 
 然后在浏览器扩展管理页中加载 `.output/chrome-mv3/` 作为 unpacked extension。
 
-### Safari 与 iOS Safari
+### Desktop Safari（Beta）与 iOS Safari 壳（Experimental）
 
 桌面 Safari 开发：
 
@@ -126,6 +132,9 @@ open ios/AstraShell.xcodeproj
 ```
 
 iOS 目录只是打包和宿主壳，不是 Astra 的核心产品面。详细接入说明见 [ios/README.md](/Users/ruirui/Downloads/GitHub/Astra/ios/README.md)，验证清单见 [docs/ios-safari-smoke-test.md](/Users/ruirui/Downloads/GitHub/Astra/docs/ios-safari-smoke-test.md)。
+
+平台支持口径（Supported/Beta/Experimental）与可对外宣称边界请以：
+[docs/investigations/support-matrix-2026-q2.md](/Users/ruirui/Downloads/GitHub/Astra/docs/investigations/support-matrix-2026-q2.md)
 
 ## Privacy 与 AI Provider
 
@@ -182,7 +191,8 @@ Astra 当前在翻译安全性上采取保守策略：
 
 如果你想先理解当前能力和方向，再决定提什么改动，建议先读：
 
-- [docs/capability-matrix.md](/Users/ruirui/Downloads/GitHub/Astra/docs/capability-matrix.md)
+- [docs/investigations/support-matrix-2026-q2.md](/Users/ruirui/Downloads/GitHub/Astra/docs/investigations/support-matrix-2026-q2.md)
+- [docs/capability-matrix-v2.md](/Users/ruirui/Downloads/GitHub/Astra/docs/capability-matrix-v2.md)
 - [docs/bench-harness.md](/Users/ruirui/Downloads/GitHub/Astra/docs/bench-harness.md)
 - [docs/product-roadmap.md](/Users/ruirui/Downloads/GitHub/Astra/docs/product-roadmap.md)
 - [docs/adr/0002-astra-managed-auth-relay.md](/Users/ruirui/Downloads/GitHub/Astra/docs/adr/0002-astra-managed-auth-relay.md)

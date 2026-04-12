@@ -31,16 +31,33 @@ interface FrameSnapshot {
 }
 
 async function getTabFrames(tabId: number): Promise<FrameEntry[]> {
-  try {
-    const frames = await browser.webNavigation.getAllFrames({ tabId })
-    return (frames ?? []).map((f) => ({
-      frameId: f.frameId,
-      parentFrameId: f.parentFrameId,
-      url: f.url,
-    }))
-  } catch {
-    return []
+  // Try full frame enumeration via webNavigation (may be unavailable in compat builds)
+  if (browser.webNavigation?.getAllFrames) {
+    try {
+      const frames = await browser.webNavigation.getAllFrames({ tabId })
+      if (frames && frames.length > 0) {
+        return frames.map((f) => ({
+          frameId: f.frameId,
+          parentFrameId: f.parentFrameId,
+          url: f.url,
+        }))
+      }
+    } catch {
+      // Fall through to top-frame fallback
+    }
   }
+
+  // Top-frame fallback — synthesize a frame entry from tab metadata
+  try {
+    const tab = await browser.tabs.get(tabId)
+    if (tab?.url) {
+      return [{ frameId: 0, parentFrameId: -1, url: tab.url }]
+    }
+  } catch {
+    // Tab not accessible
+  }
+
+  return []
 }
 
 function isTranslatableFrame(frame: FrameEntry): boolean {

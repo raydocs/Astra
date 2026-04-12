@@ -13,6 +13,7 @@ export function buildLivePdfEvaluation(
   options: {
     successSummary: string
     failureSummary: string
+    requirePrivacyIsolation?: boolean
   },
 ) {
   if (!execution.pdfTranslation) {
@@ -34,7 +35,9 @@ export function buildLivePdfEvaluation(
     } as unknown as Partial<LiveEvaluationResult>
   }
 
-  const benchmark = evaluatePdfTranslation(execution.pdfTranslation)
+  const benchmark = evaluatePdfTranslation(execution.pdfTranslation, {
+    requirePrivacyIsolation: options.requirePrivacyIsolation,
+  })
   const issues = benchmark.issues.map((issue) => issue.evidence ? `${issue.message} (${issue.evidence})` : issue.message)
 
   return {

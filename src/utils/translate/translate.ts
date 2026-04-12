@@ -3,7 +3,11 @@
  */
 
 import { requestTranslationBatch } from "@/utils/extension/messages"
-import type { TranslationRequestContext, TranslationTask } from "@/types/messages"
+import type {
+  TranslationPlaceholderFormat,
+  TranslationRequestContext,
+  TranslationTask,
+} from "@/types/messages"
 import {
   createTranslationError,
   toTranslationError,
@@ -12,7 +16,10 @@ import {
 import {
   getCachedTranslations,
   setCachedTranslation,
+  type TranslationCacheContext,
 } from "@/utils/cache/translation-cache"
+import { readConfig } from "@/utils/storage/config"
+import { validateTranslationBatch } from "./quality-check"
 
 export interface TranslateRequest {
   texts: string[]
@@ -21,6 +28,8 @@ export interface TranslateRequest {
   context?: TranslationRequestContext
   task?: TranslationTask
   customSystemPrompt?: string
+  placeholderFormat?: TranslationPlaceholderFormat
+  cacheContext?: TranslationCacheContext
 }
 
 export interface TranslateResponse {
@@ -35,9 +44,9 @@ export interface TranslateErrorResponse {
 
 export type TranslateResult = TranslateResponse | TranslateErrorResponse
 
-const MAX_BATCH_ITEMS = 8
-const MAX_BATCH_CHARS = 4000
-const MAX_CONCURRENCY = 3
+const MAX_BATCH_ITEMS = 12
+const MAX_BATCH_CHARS = 8000
+const MAX_CONCURRENCY = 4
 
 interface TranslateBatch {
   originalIndices: number[]
@@ -50,8 +59,15 @@ interface TranslateSegment {
   text: string
 }
 
-function splitIntoSegments(texts: string[]): TranslateSegment[] {
+function splitIntoSegments(
+  texts: string[],
+  options: { preservePlaceholderTokens?: boolean } = {},
+): TranslateSegment[] {
   return texts.flatMap((text, originalIndex) => {
+    if (options.preservePlaceholderTokens) {
+      return [{ originalIndex, text }]
+    }
+
     const codePoints = Array.from(text)
     if (codePoints.length <= MAX_BATCH_CHARS) {
       return [{ originalIndex, text }]
@@ -122,27 +138,91 @@ async function withConcurrency<T>(
 }
 
 /** Cache is only used for standard translate tasks without custom prompts. */
-function isCacheable(task: TranslationTask, customSystemPrompt?: string): boolean {
-  return task === "translate" && !customSystemPrompt
+function isCacheable(
+  task: TranslationTask,
+  customSystemPrompt?: string,
+  placeholderFormat?: TranslationPlaceholderFormat,
+): boolean {
+  return task === "translate" && !customSystemPrompt && !placeholderFormat
+}
+
+function serializeTranslationRequestContext(
+  context?: TranslationRequestContext,
+): string {
+  return JSON.stringify({
+    pageTitle: context?.pageTitle?.trim() || "",
+    pageUrl: context?.pageUrl?.trim() || "",
+    hostname: context?.hostname?.trim() || "",
+    metaDescription: context?.metaDescription?.trim() || "",
+    contentSummary: context?.contentSummary?.trim() || "",
+    selectionContext: context?.selectionContext?.trim() || "",
+    terminologyGlossary: context?.terminologyGlossary?.trim() || "",
+  })
+}
+
+function buildTranslationCacheContext(
+  config: Awaited<ReturnType<typeof readConfig>>,
+  request: TranslateRequest,
+): TranslationCacheContext {
+  const relayBaseURL = config.provider.relayBaseURL?.trim()
+
+  return {
+    providerId: config.provider.id,
+    model: config.provider.model,
+    connectionMode: config.connectionMode,
+    routingKey: config.connectionMode === "astra"
+      ? "astra"
+      : relayBaseURL && relayBaseURL.length > 0
+        ? relayBaseURL
+        : "custom",
+    languageLevel: config.languageLevel,
+    sourceLang: request.sourceLang,
+    requestContextKey: serializeTranslationRequestContext(request.context),
+  }
+}
+
+async function resolveTranslationCacheContext(
+  request: TranslateRequest,
+): Promise<TranslationCacheContext | null> {
+  if (request.cacheContext) {
+    return request.cacheContext
+  }
+
+  try {
+    const config = await readConfig()
+    return buildTranslationCacheContext(config, request)
+  } catch {
+    return null
+  }
 }
 
 export async function translateTexts(
   request: TranslateRequest,
 ): Promise<TranslateResult> {
-  const { texts, targetLang, sourceLang, context, task = "translate", customSystemPrompt } = request
+  const {
+    texts,
+    targetLang,
+    sourceLang,
+    context,
+    task = "translate",
+    customSystemPrompt,
+    placeholderFormat,
+  } = request
 
   if (texts.length === 0) {
     return { ok: true, translations: [] }
   }
 
-  const cacheable = isCacheable(task, customSystemPrompt)
+  const cacheable = isCacheable(task, customSystemPrompt, placeholderFormat)
+  const cacheContext = cacheable ? await resolveTranslationCacheContext(request) : null
+  const shouldUseCache = cacheable && cacheContext !== null
 
   // --- cache lookup ---
   let cachedResults = new Map<number, string>()
-  if (cacheable) {
+  if (shouldUseCache) {
     try {
       cachedResults = await getCachedTranslations(
-        texts.map((text) => ({ text, targetLang })),
+        texts.map((text) => ({ text, targetLang, cacheContext })),
       )
     } catch {
       // Cache read failure is non-fatal — proceed without cache.
@@ -164,7 +244,9 @@ export async function translateTexts(
 
   // --- translate uncached texts ---
   const uncachedTexts = uncachedEntries.map((e) => e.text)
-  const segments = splitIntoSegments(uncachedTexts)
+  const segments = splitIntoSegments(uncachedTexts, {
+    preservePlaceholderTokens: placeholderFormat === "astra-rich-text-v1",
+  })
   const batches = createBatches(segments)
   const tasks = batches.map((batch) => async () => {
     try {
@@ -175,6 +257,7 @@ export async function translateTexts(
         ...(context ? { context } : {}),
         ...(task !== "translate" ? { task } : {}),
         ...(customSystemPrompt ? { customSystemPrompt } : {}),
+        ...(placeholderFormat ? { placeholderFormat } : {}),
       })
     } catch (error) {
       return {
@@ -220,12 +303,12 @@ export async function translateTexts(
   }
 
   // --- write fresh translations to cache ---
-  if (cacheable) {
+  if (shouldUseCache && cacheContext) {
     for (let i = 0; i < uncachedEntries.length; i++) {
       const { text } = uncachedEntries[i]
       const translation = uncachedTranslations[i]
       // Fire-and-forget; cache write failure should not block the response.
-      setCachedTranslation(text, targetLang, translation).catch(() => {})
+      setCachedTranslation(text, targetLang, translation, cacheContext).catch(() => {})
     }
   }
 
@@ -236,6 +319,21 @@ export async function translateTexts(
   }
   for (let i = 0; i < uncachedEntries.length; i++) {
     translations[uncachedEntries[i].originalIndex] = uncachedTranslations[i]
+  }
+
+  // --- advisory quality check (non-blocking) ---
+  try {
+    const qualityResults = validateTranslationBatch(texts, translations)
+    for (let i = 0; i < qualityResults.length; i++) {
+      if (!qualityResults[i].valid) {
+        console.warn(
+          `[Astra] Translation quality warning for item ${i}:`,
+          qualityResults[i].warnings.join("; "),
+        )
+      }
+    }
+  } catch {
+    // Quality check failure is non-fatal — never block the translation pipeline.
   }
 
   return { ok: true, translations }

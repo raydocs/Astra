@@ -2,12 +2,16 @@ import { beforeEach, describe, expect, it } from "vitest"
 
 import { createBlockRegistry, type BlockRegistry } from "./page-translate-registry"
 
-function createBlock(id: string, text = `Text for ${id}`): { element: HTMLElement; text: string } {
+function createBlock(
+  id: string,
+  text = `Text for ${id}`,
+  requestText = text,
+): { element: HTMLElement; sourceText: string; requestText: string } {
   const el = document.createElement("p")
   el.id = id
   el.textContent = text
   document.body.appendChild(el)
-  return { element: el, text }
+  return { element: el, sourceText: text, requestText }
 }
 
 describe("page-translate-registry", () => {
@@ -37,7 +41,7 @@ describe("page-translate-registry", () => {
       const el = document.createElement("p")
       el.textContent = "Not attached"
 
-      const added = registry.registerBlocks([{ element: el, text: "Not attached" }])
+      const added = registry.registerBlocks([{ element: el, sourceText: "Not attached", requestText: "Not attached" }])
 
       expect(added).toBe(0)
       expect(registry.has(el)).toBe(false)
@@ -129,7 +133,7 @@ describe("page-translate-registry", () => {
       expect(inflight[0].revision).toBe(0)
 
       // Source changes while in-flight — bumps revision to 1
-      registry.markSourceChanged(block.element, "Updated text")
+      registry.markContentChanged(block.element, { sourceText: "Updated text", requestText: "Updated text" })
 
       // Try to mark translated with the old revision
       const accepted = registry.markTranslated([
@@ -149,7 +153,7 @@ describe("page-translate-registry", () => {
       registry.markInFlight([block.element])
 
       // Source changes while in-flight
-      registry.markSourceChanged(block.element, "Updated text")
+      registry.markContentChanged(block.element, { sourceText: "Updated text", requestText: "Updated text" })
 
       const accepted = registry.markFailed([{ element: block.element, revision: 0 }])
 
@@ -158,7 +162,7 @@ describe("page-translate-registry", () => {
     })
   })
 
-  describe("markSourceChanged", () => {
+  describe("markContentChanged", () => {
     it("bumps revision and resets state", () => {
       const block = createBlock("change")
       registry.registerBlocks([block])
@@ -173,7 +177,10 @@ describe("page-translate-registry", () => {
       expect(registry.getBlock(block.element)?.state).toBe("translated")
       expect(registry.getBlock(block.element)?.lastTranslation).toBe("Translated")
 
-      const changed = registry.markSourceChanged(block.element, "New source text")
+      const changed = registry.markContentChanged(block.element, {
+        sourceText: "New source text",
+        requestText: "New source text",
+      })
 
       expect(changed).toBe(true)
       expect(registry.getBlock(block.element)?.revision).toBe(1)
@@ -186,17 +193,41 @@ describe("page-translate-registry", () => {
       const block = createBlock("same", "Original text")
       registry.registerBlocks([block])
 
-      const changed = registry.markSourceChanged(block.element, "Original text")
+      const changed = registry.markContentChanged(block.element, {
+        sourceText: "Original text",
+        requestText: "Original text",
+      })
 
       expect(changed).toBe(false)
       expect(registry.getBlock(block.element)?.revision).toBe(0)
+    })
+
+    it("bumps revision when requestText changes even if plain text does not", () => {
+      const block = createBlock(
+        "rich-text",
+        "Original text",
+        "Original __ASTRA_RT_0_OPEN_STRONG__text__ASTRA_RT_0_CLOSE__",
+      )
+      registry.registerBlocks([block])
+
+      const changed = registry.markContentChanged(block.element, {
+        sourceText: "Original text",
+        requestText: "Original __ASTRA_RT_1_OPEN_EM__text__ASTRA_RT_1_CLOSE__",
+      })
+
+      expect(changed).toBe(true)
+      expect(registry.getBlock(block.element)?.revision).toBe(1)
+      expect(registry.getBlock(block.element)?.requestText).toContain("__ASTRA_RT_1_OPEN_EM__")
     })
 
     it("returns false for unknown elements", () => {
       const el = document.createElement("p")
       document.body.appendChild(el)
 
-      const changed = registry.markSourceChanged(el, "anything")
+      const changed = registry.markContentChanged(el, {
+        sourceText: "anything",
+        requestText: "anything",
+      })
 
       expect(changed).toBe(false)
     })

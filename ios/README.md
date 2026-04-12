@@ -88,6 +88,8 @@ The directory is committed as a generated bootstrap snapshot, but the authoritat
 - [ ] Host app launches successfully
 - [ ] Safari extension can be enabled from iOS Settings
 - [ ] Popup opens inside Safari
+- [ ] Astra Web / PWA sign-in succeeds through the shared front-door `POST /v1/auth/session` contract on mobile Safari
+- [ ] `GET /v1/auth/session` and `DELETE /v1/auth/session` behave correctly after that sign-in on mobile Safari/PWA
 - [ ] API key can be saved
 - [ ] `browser.storage.local` persists config after reload
 - [ ] Page translation can start and stop
@@ -115,6 +117,96 @@ Treat this as a **validation item**, not a reason to block the shell skeleton wo
 
 Desktop-oriented capabilities such as keyboard shortcuts should not be treated as required on iOS.
 
+## Minimal Host Bridge (Deep Link + Bootstrap Handoff)
+
+The iOS shell includes a **thin host bridge** for launch/open/handoff validation:
+
+- `SceneDelegate` + `AppDelegate` accept deep links in the form `astra-shell://bootstrap?...`
+- Host bootstrap state is stored in-memory (`HostBridgeBootstrapStore`) with a short history buffer
+- `ViewController` shows latest state + recent history and publishes:
+  - `window.AstraHostBootstrap`
+  - `window.AstraHostBootstrapHistory`
+- `SafariWebExtensionHandler` supports native-message bridge commands:
+  - `sessionBootstrap` → returns `sessionBootstrapAck` with generated `launchURL`
+  - `bootstrapStatus` → returns latest bridge snapshot
+  - `bootstrapHistory` → returns recent bridge events for replay UX
+
+This remains launcher/handoff scope only. It does **not** implement shared keychain sync, full native auth, or full mobile account management.
+
+### Launch / Open / Handoff narrative
+
+1. User opens popup/onboarding in iOS Safari.
+2. Extension sends `sessionBootstrap` through the native bridge.
+3. Handler returns `astra-shell://bootstrap?...` launch URL.
+4. Extension opens that URL (`Open in Astra App`).
+5. Host consumes deep link and surfaces bridge status/history.
+
+### Install + Open-in-app path
+
+1. Install `AstraShell` from Xcode build.
+2. Enable extension in **Settings → Apps → Safari → Extensions → AstraShell**.
+3. Open Safari and open Astra popup/onboarding.
+4. Tap **Open in Astra App**.
+5. Optional: use **Replay last handoff** from popup/onboarding if a prior bridge event exists.
+
+### Responsibility split (Host / Extension / Web)
+
+- **Host app (`ios/AstraShell`)**
+  - Accept deep links
+  - Hold in-memory bootstrap state + history for visibility
+  - Render host-side bridge status UI
+- **Safari extension (`src` + `ios/AstraShell Extension`)**
+  - Trigger bootstrap handshake
+  - Show bridge availability, history, and replay/open actions in popup/onboarding
+  - Continue to own translation/session logic in extension runtime
+- **Web app (`web/`)**
+  - Not the bridge state owner for iOS host launch/open/handoff
+  - Acts as the portable cloud/control-plane surface for sign-in/session validation plus account summary, export, delete, and manual sync repair
+  - Reuses the shared front-door auth/session contract, but does not take over native launch/open/handoff UI or imply full native auth/session materialization
+
+### Example native message (extension -> handler)
+
+```json
+{ "type": "sessionBootstrap", "sessionId": "abc123", "source": "popup" }
+```
+
+### Example ack payload
+
+```json
+{
+  "ok": true,
+  "type": "sessionBootstrapAck",
+  "sessionId": "abc123",
+  "source": "popup",
+  "launchURL": "astra-shell://bootstrap?sessionId=abc123&source=popup&issuedAt=..."
+}
+```
+
+### Example history payload
+
+```json
+{
+  "ok": true,
+  "type": "bootstrapHistory",
+  "events": [
+    {
+      "sessionId": "abc123",
+      "source": "popup-open-in-app",
+      "issuedAt": "2026-04-11T00:00:00Z",
+      "launchURL": "astra-shell://bootstrap?..."
+    }
+  ]
+}
+```
+
+## Current stage boundary
+
+This phase stays **bridge-first / Web-PWA-first**:
+
+- use the iOS shell to validate launch/open/handoff behavior
+- use Astra Web on mobile Safari/PWA for portable sign-in/session + cloud control-plane tasks
+- do **not** reinterpret that portable web coverage as Android work, native parity, or full mobile account/session ownership
+
 ## Suggested Next Step
 
-After this skeleton lands, the next practical step is a real device / simulator smoke test pass and then fixing only the Safari-specific runtime gaps that are actually reproduced.
+Run the iOS smoke test checklist with bridge history/replay checks plus the mobile web control-plane checkpoint, then fix only reproduced Safari-runtime gaps.

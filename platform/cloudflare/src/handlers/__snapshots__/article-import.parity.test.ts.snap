@@ -1,0 +1,284 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`article import parity fixtures > captures native-versus-relay deltas for representative article fixtures 1`] = `
+[
+  {
+    "diff": {
+      "blockCountDelta": 0,
+      "bylineMatch": true,
+      "nativeOnlySample": [],
+      "overlapRatio": 1,
+      "relayOnlySample": [],
+      "scopeMatch": true,
+      "summaryMatch": true,
+      "titleMatch": true,
+    },
+    "fixtureDescription": "clean article root with minimal chrome",
+    "fixtureId": "article-basic",
+    "native": {
+      "blockCount": 4,
+      "byline": null,
+      "sampleBlocks": [
+        "Astra turns long-form reading into bilingual learning.",
+        "Readers can keep the original text visible while reviewing a translation below it.",
+      ],
+      "scope": "article",
+      "summary": "Astra turns long-form reading into bilingual learning. Readers can keep the original text visible while reviewing a translation below it. This fixture represents a straightforward article page with a clear main content root. The goal is to test article-centric extraction without noisy chrome.",
+      "title": "Astra turns long-form reading into bilingual learning.",
+    },
+    "nativeRoute": "native",
+    "relay": {
+      "blockCount": 4,
+      "byline": null,
+      "sampleBlocks": [
+        "Astra turns long-form reading into bilingual learning.",
+        "Readers can keep the original text visible while reviewing a translation below it.",
+      ],
+      "scope": "article",
+      "summary": "Astra turns long-form reading into bilingual learning. Readers can keep the original text visible while reviewing a translation below it. This fixture represents a straightforward article page with a clear main content root. The goal is to test article-centric extraction without noisy chrome.",
+      "title": "Astra turns long-form reading into bilingual learning.",
+    },
+    "sourcePath": "test/fixtures/pages/article-basic.html",
+  },
+  {
+    "diff": {
+      "blockCountDelta": 0,
+      "bylineMatch": true,
+      "nativeOnlySample": [],
+      "overlapRatio": 1,
+      "relayOnlySample": [],
+      "scopeMatch": true,
+      "summaryMatch": true,
+      "titleMatch": true,
+    },
+    "fixtureDescription": "article with nav + sidebar noise",
+    "fixtureId": "article-with-sidebar",
+    "native": {
+      "blockCount": 7,
+      "byline": null,
+      "sampleBlocks": [
+        "Understanding Modern Web Accessibility Standards",
+        "Web accessibility ensures that websites and web applications are usable by everyone, including people with disabilities. This encompasses a wide range of conditions including visual, auditory, physical, speech, cognitive, and neurological impairments. By following accessibility best practices, developers create more inclusive digital experiences that benefit all users regardless of their abilities or the devices they use to access the web.",
+      ],
+      "scope": "article",
+      "summary": "Understanding Modern Web Accessibility Standards Web accessibility ensures that websites and web applications are usable by everyone, including people with disabilities. This encompasses a wide range of conditions including visual, auditory, physical, speech, cognitive, and neurological impairments. By following accessibility best practices, developers create more inclusive digital experiences that benefit all users regardless of their abilities or the devices they use to access the web. The Web Content Accessibility Guidelines, commonly known as WCAG, provide a comprehensive framework for making web content more accessible. These guidelines are organized around four core principles: perceivable, operable, understandable, and robust. Each principle contains specific criteria that developer…",
+      "title": "Understanding Modern Web Accessibility Standards",
+    },
+    "nativeRoute": "native",
+    "relay": {
+      "blockCount": 7,
+      "byline": null,
+      "sampleBlocks": [
+        "Understanding Modern Web Accessibility Standards",
+        "Web accessibility ensures that websites and web applications are usable by everyone, including people with disabilities. This encompasses a wide range of conditions including visual, auditory, physical, speech, cognitive, and neurological impairments. By following accessibility best practices, developers create more inclusive digital experiences that benefit all users regardless of their abilities or the devices they use to access the web.",
+      ],
+      "scope": "article",
+      "summary": "Understanding Modern Web Accessibility Standards Web accessibility ensures that websites and web applications are usable by everyone, including people with disabilities. This encompasses a wide range of conditions including visual, auditory, physical, speech, cognitive, and neurological impairments. By following accessibility best practices, developers create more inclusive digital experiences that benefit all users regardless of their abilities or the devices they use to access the web. The Web Content Accessibility Guidelines, commonly known as WCAG, provide a comprehensive framework for making web content more accessible. These guidelines are organized around four core principles: perceivable, operable, understandable, and robust. Each principle contains specific criteria that developer…",
+      "title": "Understanding Modern Web Accessibility Standards",
+    },
+    "sourcePath": "test/fixtures/pages/article-with-sidebar.html",
+  },
+  {
+    "diff": {
+      "blockCountDelta": 0,
+      "bylineMatch": true,
+      "nativeOnlySample": [],
+      "overlapRatio": 1,
+      "relayOnlySample": [],
+      "scopeMatch": true,
+      "summaryMatch": true,
+      "titleMatch": true,
+    },
+    "fixtureDescription": "article body mixed with lower-value comments",
+    "fixtureId": "blog-comments-mixed",
+    "native": {
+      "blockCount": 5,
+      "byline": null,
+      "sampleBlocks": [
+        "Shipping inline explanations without UI clutter",
+        "Inline explanation cards need to appear fast enough to feel responsive while staying out of the way of text selection, hover translation, and page scrolling.",
+      ],
+      "scope": "article",
+      "summary": "Shipping inline explanations without UI clutter Inline explanation cards need to appear fast enough to feel responsive while staying out of the way of text selection, hover translation, and page scrolling. A resilient implementation caches successful answers, cools down after failures, and keeps explanation generation separate from the base translation request to avoid unnecessary cost. Product polish comes from predictable suppression rules, stable overlay positioning, and concise output that reads like an assistant rather than raw model completions. This fixture intentionally mixes a valid article with lower-value user comments to verify that readability tests keep the main content isolated.",
+      "title": "Shipping inline explanations without UI clutter",
+    },
+    "nativeRoute": "native",
+    "relay": {
+      "blockCount": 5,
+      "byline": null,
+      "sampleBlocks": [
+        "Shipping inline explanations without UI clutter",
+        "Inline explanation cards need to appear fast enough to feel responsive while staying out of the way of text selection, hover translation, and page scrolling.",
+      ],
+      "scope": "article",
+      "summary": "Shipping inline explanations without UI clutter Inline explanation cards need to appear fast enough to feel responsive while staying out of the way of text selection, hover translation, and page scrolling. A resilient implementation caches successful answers, cools down after failures, and keeps explanation generation separate from the base translation request to avoid unnecessary cost. Product polish comes from predictable suppression rules, stable overlay positioning, and concise output that reads like an assistant rather than raw model completions. This fixture intentionally mixes a valid article with lower-value user comments to verify that readability tests keep the main content isolated.",
+      "title": "Shipping inline explanations without UI clutter",
+    },
+    "sourcePath": "test/fixtures/pages/blog-comments-mixed.html",
+  },
+  {
+    "diff": {
+      "blockCountDelta": 0,
+      "bylineMatch": true,
+      "nativeOnlySample": [],
+      "overlapRatio": 1,
+      "relayOnlySample": [],
+      "scopeMatch": true,
+      "summaryMatch": true,
+      "titleMatch": true,
+    },
+    "fixtureDescription": "knowledge-base longform with side navigation",
+    "fixtureId": "knowledge-base-longform",
+    "native": {
+      "blockCount": 5,
+      "byline": null,
+      "sampleBlocks": [
+        "Troubleshooting provider failures",
+        "Provider failures are usually caused by malformed credentials, temporary upstream throttling, or invalid JSON returned by a model that ignored the requested response shape.",
+      ],
+      "scope": "article",
+      "summary": "Troubleshooting provider failures Provider failures are usually caused by malformed credentials, temporary upstream throttling, or invalid JSON returned by a model that ignored the requested response shape. The recommended recovery path is to keep the batch small, preserve deterministic prompt instructions, and surface a typed translation error so the popup can explain what failed. Long knowledge-base entries should still resolve as a single article root even when the page includes side navigation, related links, and multiple utility callouts. Regression fixtures for readability extraction help ensure future algorithm changes do not accidentally classify support content as a generic page or choose a navigation wrapper.",
+      "title": "Troubleshooting provider failures",
+    },
+    "nativeRoute": "native",
+    "relay": {
+      "blockCount": 5,
+      "byline": null,
+      "sampleBlocks": [
+        "Troubleshooting provider failures",
+        "Provider failures are usually caused by malformed credentials, temporary upstream throttling, or invalid JSON returned by a model that ignored the requested response shape.",
+      ],
+      "scope": "article",
+      "summary": "Troubleshooting provider failures Provider failures are usually caused by malformed credentials, temporary upstream throttling, or invalid JSON returned by a model that ignored the requested response shape. The recommended recovery path is to keep the batch small, preserve deterministic prompt instructions, and surface a typed translation error so the popup can explain what failed. Long knowledge-base entries should still resolve as a single article root even when the page includes side navigation, related links, and multiple utility callouts. Regression fixtures for readability extraction help ensure future algorithm changes do not accidentally classify support content as a generic page or choose a navigation wrapper.",
+      "title": "Troubleshooting provider failures",
+    },
+    "sourcePath": "test/fixtures/pages/knowledge-base-longform.html",
+  },
+  {
+    "diff": {
+      "blockCountDelta": 0,
+      "bylineMatch": true,
+      "nativeOnlySample": [],
+      "overlapRatio": 1,
+      "relayOnlySample": [],
+      "scopeMatch": true,
+      "summaryMatch": true,
+      "titleMatch": true,
+    },
+    "fixtureDescription": "documentation page with dense sidebar chrome",
+    "fixtureId": "docs-sidebar-heavy",
+    "native": {
+      "blockCount": 5,
+      "byline": null,
+      "sampleBlocks": [
+        "Contextual translation pipeline",
+        "Astra processes each visible text block through a translation pipeline that preserves local formatting while attaching contextual metadata for better model disambiguation.",
+      ],
+      "scope": "article",
+      "summary": "Contextual translation pipeline Astra processes each visible text block through a translation pipeline that preserves local formatting while attaching contextual metadata for better model disambiguation. The content script collects stable blocks, batches them conservatively, and sends each batch through a background runtime bridge so provider secrets never leave extension storage. Documentation pages often contain sidebars and utility chrome, so the extraction layer must prefer longform instructional content over navigation labels or page furniture. When a user asks for an inline explanation, Astra should reuse page summary context to clarify terminology, pronouns, and the tone of the surrounding article.",
+      "title": "Contextual translation pipeline",
+    },
+    "nativeRoute": "native",
+    "relay": {
+      "blockCount": 5,
+      "byline": null,
+      "sampleBlocks": [
+        "Contextual translation pipeline",
+        "Astra processes each visible text block through a translation pipeline that preserves local formatting while attaching contextual metadata for better model disambiguation.",
+      ],
+      "scope": "article",
+      "summary": "Contextual translation pipeline Astra processes each visible text block through a translation pipeline that preserves local formatting while attaching contextual metadata for better model disambiguation. The content script collects stable blocks, batches them conservatively, and sends each batch through a background runtime bridge so provider secrets never leave extension storage. Documentation pages often contain sidebars and utility chrome, so the extraction layer must prefer longform instructional content over navigation labels or page furniture. When a user asks for an inline explanation, Astra should reuse page summary context to clarify terminology, pronouns, and the tone of the surrounding article.",
+      "title": "Contextual translation pipeline",
+    },
+    "sourcePath": "test/fixtures/pages/docs-sidebar-heavy.html",
+  },
+  {
+    "diff": {
+      "blockCountDelta": 1,
+      "bylineMatch": true,
+      "nativeOnlySample": [
+        "How do you debug flaky translation requests?",
+      ],
+      "overlapRatio": 1,
+      "relayOnlySample": [],
+      "scopeMatch": true,
+      "summaryMatch": false,
+      "titleMatch": true,
+    },
+    "fixtureDescription": "forum thread with lower-signal replies and metadata clutter",
+    "fixtureId": "forum-thread",
+    "native": {
+      "blockCount": 8,
+      "byline": null,
+      "sampleBlocks": [
+        "How do you debug flaky translation requests?",
+        "Original post",
+      ],
+      "scope": "page",
+      "summary": "How do you debug flaky translation requests? Original post I am seeing intermittent request failures in a browser extension and want advice on whether to retry in content scripts or keep the retry logic in the background worker. My current setup uses several short posts in a thread rather than one coherent article, so this page should not be treated as a single longform reading surface. Reply one Keep retries centralised and typed so popup state and inline actions can surface the same failure semantics.",
+      "title": "How do you debug flaky translation requests?",
+    },
+    "nativeRoute": "native",
+    "relay": {
+      "blockCount": 7,
+      "byline": null,
+      "sampleBlocks": [
+        "Original post",
+        "I am seeing intermittent request failures in a browser extension and want advice on whether to retry in content scripts or keep the retry logic in the background worker.",
+      ],
+      "scope": "page",
+      "summary": "Original post I am seeing intermittent request failures in a browser extension and want advice on whether to retry in content scripts or keep the retry logic in the background worker. My current setup uses several short posts in a thread rather than one coherent article, so this page should not be treated as a single longform reading surface. Reply one Keep retries centralised and typed so popup state and inline actions can surface the same failure semantics. Reply two",
+      "title": "How do you debug flaky translation requests?",
+    },
+    "sourcePath": "test/fixtures/pages/forum-thread.html",
+  },
+  {
+    "diff": {
+      "blockCountDelta": 0,
+      "bylineMatch": true,
+      "nativeOnlySample": [],
+      "overlapRatio": 1,
+      "relayOnlySample": [],
+      "scopeMatch": true,
+      "summaryMatch": true,
+      "titleMatch": true,
+    },
+    "fixtureDescription": "article-like content with nested layout containers",
+    "fixtureId": "nested-blocks",
+    "native": {
+      "blockCount": 2,
+      "byline": null,
+      "sampleBlocks": [
+        "Nested paragraph inside multiple block wrappers.",
+        "Another nested paragraph to validate nearest-block tracking.",
+      ],
+      "scope": "page",
+      "summary": "Nested paragraph inside multiple block wrappers. Another nested paragraph to validate nearest-block tracking.",
+      "title": "fixtures.astra.test",
+    },
+    "nativeRoute": "native",
+    "relay": {
+      "blockCount": 2,
+      "byline": null,
+      "sampleBlocks": [
+        "Nested paragraph inside multiple block wrappers.",
+        "Another nested paragraph to validate nearest-block tracking.",
+      ],
+      "scope": "page",
+      "summary": "Nested paragraph inside multiple block wrappers. Another nested paragraph to validate nearest-block tracking.",
+      "title": "fixtures.astra.test",
+    },
+    "sourcePath": "test/fixtures/pages/nested-blocks.html",
+  },
+]
+`;
+
+exports[`article import parity fixtures > captures native-versus-relay deltas for representative article fixtures 2`] = `
+"fixture=article-basic | route=native | overlap=1 | blockDelta=0 | mismatch=none | nativeOnly=- | relayOnly=-
+fixture=article-with-sidebar | route=native | overlap=1 | blockDelta=0 | mismatch=none | nativeOnly=- | relayOnly=-
+fixture=blog-comments-mixed | route=native | overlap=1 | blockDelta=0 | mismatch=none | nativeOnly=- | relayOnly=-
+fixture=knowledge-base-longform | route=native | overlap=1 | blockDelta=0 | mismatch=none | nativeOnly=- | relayOnly=-
+fixture=docs-sidebar-heavy | route=native | overlap=1 | blockDelta=0 | mismatch=none | nativeOnly=- | relayOnly=-
+fixture=forum-thread | route=native | overlap=1 | blockDelta=1 | mismatch=summary | nativeOnly=How do you debug flaky translation requests? | relayOnly=-
+fixture=nested-blocks | route=native | overlap=1 | blockDelta=0 | mismatch=none | nativeOnly=- | relayOnly=-"
+`;

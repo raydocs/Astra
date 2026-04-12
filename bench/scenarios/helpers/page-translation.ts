@@ -3,6 +3,7 @@ import {
   ASTRA_SOURCE_HIDDEN_ATTR,
   ASTRA_TRANSLATION_ATTR,
 } from "@/utils/dom/inject"
+import { countRichTextPlaceholders } from "@/utils/dom/rich-text-placeholders"
 
 import type { PageTranslationExecution } from "../../evaluators/page-translation"
 
@@ -14,6 +15,20 @@ const INTERACTIVE_TRANSLATION_SELECTOR = [
   `button ${TRANSLATED_SELECTOR}`,
   `input + ${TRANSLATED_SELECTOR}`,
 ].join(", ")
+
+const RICH_TEXT_TAG_SELECTOR = [
+  "strong",
+  "em",
+  "code",
+  "b",
+  "i",
+  "mark",
+  "small",
+  "sub",
+  "sup",
+  "u",
+  "s",
+].map((tag) => `${TRANSLATED_SELECTOR} .astra-translation-inner ${tag}`).join(", ")
 
 function withDocumentGlobals<T>(doc: Document, callback: () => T): T {
   const view = doc.defaultView
@@ -69,8 +84,13 @@ export function buildPageTranslationExecutionFromDocument(params: {
   requestCount: number
   snapshotPhase: string
   failedBlocks: number
+  payloadContext?: Record<string, unknown> | null
+  requestTexts?: string[]
   notes?: string[]
-}) {
+}): PageTranslationExecution {
+  const translatedHtmlSnippets = Array.from(params.doc.querySelectorAll(`${TRANSLATED_SELECTOR} .astra-translation-inner`))
+    .map((element) => (element instanceof HTMLElement ? element.innerHTML : ""))
+
   return {
     translatedNodeCount: params.doc.querySelectorAll(TRANSLATED_SELECTOR).length,
     expectedNodeCount: params.expectedTexts.length,
@@ -82,6 +102,12 @@ export function buildPageTranslationExecutionFromDocument(params: {
     expectedTexts: params.expectedTexts,
     snapshotPhase: params.snapshotPhase,
     failedBlocks: params.failedBlocks,
+    payloadContext: params.payloadContext ?? null,
+    requestTexts: params.requestTexts ?? [],
+    requestPlaceholderCount: (params.requestTexts ?? []).reduce((sum, text) => sum + countRichTextPlaceholders(text), 0),
+    translatedHtmlSnippets,
+    placeholderLeakCount: translatedHtmlSnippets.reduce((sum, html) => sum + countRichTextPlaceholders(html), 0),
+    restoredRichTextTagCount: params.doc.querySelectorAll(RICH_TEXT_TAG_SELECTOR).length,
     notes: params.notes ?? [],
   } satisfies PageTranslationExecution
 }

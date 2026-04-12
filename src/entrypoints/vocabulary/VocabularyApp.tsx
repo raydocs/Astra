@@ -4,6 +4,7 @@ import {
   getVocabularyEntries,
   removeVocabularyEntry,
   getDueVocabularyCount,
+  updateVocabularyEntry,
 } from "@/utils/storage/vocabulary"
 import ReviewMode from "./ReviewMode"
 
@@ -84,6 +85,8 @@ export default function VocabularyApp() {
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
   const [dueCount, setDueCount] = useState(0)
+  const [expandedId, setExpandedId] = useState<string | null>(null)
+  const [activeTagFilter, setActiveTagFilter] = useState<string | null>(null)
 
   const loadEntries = async () => {
     const [data, due] = await Promise.all([
@@ -105,13 +108,38 @@ export default function VocabularyApp() {
     await loadEntries()
   }
 
+  const handleNoteChange = async (id: string, note: string) => {
+    await updateVocabularyEntry(id, { note: note || undefined })
+    setEntries((prev) => prev.map((e) => e.id === id ? { ...e, note: note || undefined } : e))
+  }
+
+  const handleTagsChange = async (id: string, tagsStr: string) => {
+    const tags = tagsStr
+      .split(",")
+      .map((t) => t.trim())
+      .filter(Boolean)
+    await updateVocabularyEntry(id, { tags: tags.length > 0 ? tags : undefined })
+    setEntries((prev) => prev.map((e) => e.id === id ? { ...e, tags: tags.length > 0 ? tags : undefined } : e))
+  }
+
+  // Collect all unique tags across entries for the filter chips
+  const allTags = Array.from(
+    new Set(entries.flatMap((e) => e.tags ?? [])),
+  ).sort()
+
   const filtered = entries.filter((e) => {
+    // Tag filter
+    if (activeTagFilter && !(e.tags ?? []).includes(activeTagFilter)) return false
+    // Text search
     if (!search) return true
     const q = search.toLowerCase()
     return (
       e.text.toLowerCase().includes(q)
       || (e.translation?.toLowerCase().includes(q) ?? false)
       || (e.context?.toLowerCase().includes(q) ?? false)
+      || (e.explanation?.toLowerCase().includes(q) ?? false)
+      || (e.note?.toLowerCase().includes(q) ?? false)
+      || (e.tags ?? []).some((tag) => tag.toLowerCase().includes(q))
     )
   })
 
@@ -321,7 +349,7 @@ export default function VocabularyApp() {
           <div style={{ marginBottom: 12 }}>
             <input
               type="text"
-              placeholder="Search words, translations, or context..."
+              placeholder="Search words, translations, context, notes, or tags..."
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               style={searchInputStyle}
@@ -363,6 +391,31 @@ export default function VocabularyApp() {
             </button>
           </div>
 
+          {allTags.length > 0 && (
+            <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 12 }}>
+              {allTags.map((tag) => (
+                <button
+                  type="button"
+                  key={tag}
+                  style={{
+                    border: "1px solid",
+                    borderColor: activeTagFilter === tag ? "#6366f1" : "#e2e8f0",
+                    background: activeTagFilter === tag ? "rgba(99, 102, 241, 0.08)" : "#fff",
+                    color: activeTagFilter === tag ? "#6366f1" : "#64748b",
+                    borderRadius: 999,
+                    padding: "3px 10px",
+                    fontSize: 12,
+                    fontWeight: 500,
+                    cursor: "pointer",
+                  }}
+                  onClick={() => setActiveTagFilter(activeTagFilter === tag ? null : tag)}
+                >
+                  {tag}
+                </button>
+              ))}
+            </div>
+          )}
+
           {sorted.length === 0 && (
             <div style={emptyStyle}>
               {search
@@ -373,17 +426,96 @@ export default function VocabularyApp() {
 
           {sorted.map((entry) => (
             <div key={entry.id} style={cardStyle}>
-              <div style={wordStyle}>{entry.text}</div>
-              {entry.translation && (
-                <div style={translationStyle}>{entry.translation}</div>
-              )}
-              {entry.context && (
-                <div style={contextStyle}>
-                  {entry.context.length > 200
-                    ? `${entry.context.slice(0, 200)}...`
-                    : entry.context}
+              <div
+                style={{ cursor: "pointer" }}
+                onClick={() => setExpandedId(expandedId === entry.id ? null : entry.id)}
+              >
+                <div style={wordStyle}>{entry.text}</div>
+                {entry.translation && (
+                  <div style={translationStyle}>{entry.translation}</div>
+                )}
+                {entry.context && (
+                  <div style={contextStyle}>
+                    {entry.context.length > 200
+                      ? `${entry.context.slice(0, 200)}...`
+                      : entry.context}
+                  </div>
+                )}
+                {entry.note && expandedId !== entry.id && (
+                  <div style={{ fontSize: 12, color: "#64748b", marginBottom: 4 }}>
+                    Note: {entry.note.length > 80 ? `${entry.note.slice(0, 80)}...` : entry.note}
+                  </div>
+                )}
+                {(entry.tags ?? []).length > 0 && (
+                  <div style={{ display: "flex", gap: 4, flexWrap: "wrap", marginBottom: 6 }}>
+                    {entry.tags!.map((tag) => (
+                      <span
+                        key={tag}
+                        style={{
+                          fontSize: 11,
+                          background: "rgba(99, 102, 241, 0.08)",
+                          color: "#6366f1",
+                          borderRadius: 999,
+                          padding: "1px 8px",
+                          fontWeight: 500,
+                        }}
+                      >
+                        {tag}
+                      </span>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              {expandedId === entry.id && (
+                <div style={{ marginTop: 8, borderTop: "1px solid #f1f5f9", paddingTop: 8 }}>
+                  <div style={{ marginBottom: 8 }}>
+                    <label style={{ fontSize: 12, fontWeight: 600, color: "#475569", display: "block", marginBottom: 4 }}>
+                      Note
+                    </label>
+                    <textarea
+                      style={{
+                        width: "100%",
+                        minHeight: 60,
+                        padding: "6px 10px",
+                        fontSize: 13,
+                        border: "1px solid #e2e8f0",
+                        borderRadius: 6,
+                        resize: "vertical",
+                        fontFamily: "inherit",
+                        boxSizing: "border-box",
+                        outline: "none",
+                      }}
+                      placeholder="Add note..."
+                      defaultValue={entry.note ?? ""}
+                      maxLength={1000}
+                      onBlur={(e) => void handleNoteChange(entry.id, e.target.value)}
+                    />
+                  </div>
+                  <div>
+                    <label style={{ fontSize: 12, fontWeight: 600, color: "#475569", display: "block", marginBottom: 4 }}>
+                      Tags
+                    </label>
+                    <input
+                      type="text"
+                      style={{
+                        width: "100%",
+                        padding: "6px 10px",
+                        fontSize: 13,
+                        border: "1px solid #e2e8f0",
+                        borderRadius: 6,
+                        fontFamily: "inherit",
+                        boxSizing: "border-box",
+                        outline: "none",
+                      }}
+                      placeholder="Add tags (comma-separated)..."
+                      defaultValue={(entry.tags ?? []).join(", ")}
+                      onBlur={(e) => void handleTagsChange(entry.id, e.target.value)}
+                    />
+                  </div>
                 </div>
               )}
+
               <div style={metaRowStyle}>
                 <div style={metaStyle}>
                   {entry.hostname && (

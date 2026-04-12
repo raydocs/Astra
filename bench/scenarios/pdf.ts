@@ -51,7 +51,7 @@ function createPdfScenario(params: {
       })
       return execution
     },
-    evaluate: (execution) => evaluatePdfTranslation(execution),
+    evaluate: (execution) => evaluatePdfTranslation(execution, { requirePrivacyIsolation: true }),
   }
 }
 

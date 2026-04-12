@@ -27,6 +27,7 @@ export async function translateWithGemini(
     task = "translate",
     customSystemPrompt,
     languageLevel,
+    placeholderFormat,
   } = options
 
   const google = createGoogleGenerativeAI({ apiKey })
@@ -39,6 +40,7 @@ export async function translateWithGemini(
     task,
     customSystemPrompt,
     languageLevel,
+    placeholderFormat,
   })
 
   const systemMessage = task === "custom" && customSystemPrompt

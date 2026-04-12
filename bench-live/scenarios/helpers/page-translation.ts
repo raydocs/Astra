@@ -12,6 +12,7 @@ export function buildLivePageTranslationEvaluation(
   runtime: LiveEvaluationResult["runtime"],
   options: {
     requireTranslationOnly?: boolean
+    requireRichTextPlaceholderPreservation?: boolean
     successSummary: string
     failureSummary: string
   },
@@ -37,18 +38,20 @@ export function buildLivePageTranslationEvaluation(
 
   const benchmark = evaluatePageTranslation(execution.pageTranslation, {
     requireTranslationOnly: options.requireTranslationOnly,
+    requireRichTextPlaceholderPreservation: options.requireRichTextPlaceholderPreservation,
   })
   const issues = benchmark.issues.map((issue) => issue.evidence ? `${issue.message} (${issue.evidence})` : issue.message)
+  const skipped = execution.status === "skipped"
 
   return {
     runId,
     scenario,
-    status: benchmark.pass ? "pass" : "fail",
-    pass: benchmark.pass,
-    score: benchmark.total,
+    status: skipped ? "skipped" : benchmark.pass ? "pass" : "fail",
+    pass: skipped ? false : benchmark.pass,
+    score: skipped ? 0 : benchmark.total,
     summary: benchmark.pass ? options.successSummary : options.failureSummary,
-    issues,
-    nextActions: benchmark.nextActions,
+    issues: skipped ? [] : issues,
+    nextActions: skipped ? [] : benchmark.nextActions,
     notes: [...(execution.notes ?? []), ...(Array.isArray(benchmark.artifacts.notes) ? benchmark.artifacts.notes : [])],
     rubrics: [],
     artifacts: {

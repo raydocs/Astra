@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react"
+import { useCallback, useEffect, useRef, useState } from "react"
 import { browser } from "#imports"
 import type {
   AstraConfig,
@@ -8,9 +8,11 @@ import type {
   InputTranslation,
   ProviderId,
   SiteConfig,
+  TTSSettings,
   TranslationMode,
   TranslationTheme,
 } from "@/types/config"
+import type { AstraDeviceIdentity, AstraSession } from "@/types/auth"
 import {
   DEFAULT_ASTRA_CONFIG,
   getDefaultProviderModel,
@@ -18,8 +20,18 @@ import {
   normalizeSiteKey,
 } from "@/types/config"
 import { readConfig, saveConfig } from "@/utils/storage/config"
+import { clearAstraSession, ensureAstraDeviceIdentity, readAstraSession, saveAstraSession } from "@/utils/storage/auth"
+import { refreshAstraSession } from "@/utils/astra/auth"
+import { fetchAstraContinuitySnapshot, revokeAstraDevice, updateAstraSyncCollectionPreference } from "@/utils/astra/account"
+import { buildContinuityStatus, exportConfig, importConfig, downloadConfigFile, readConfigFile, runPhaseOneCollectionSync, type AstraContinuityRemoteSnapshot, type AstraContinuityStatus } from "@/utils/storage/config-sync"
+import { exportSiteRules, importSiteRules } from "@/utils/storage/site-rules"
+import { clearTranslationCache, getCacheStats } from "@/utils/cache/translation-cache"
+import { isTtsSupported, listVoices, type TTSVoiceOption } from "@/utils/tts"
+import { diagnoseProvider, PROVIDER_CAPABILITIES, type ProviderDiagnostics } from "@/utils/providers/capabilities"
+import { useViewportProfile } from "@/utils/ui/useViewportProfile"
+import { t } from "@/utils/i18n"
 
-type Section = "general" | "providers" | "translation" | "actions" | "sites" | "vocabulary" | "about"
+type Section = "general" | "providers" | "translation" | "actions" | "sites" | "vocabulary" | "diagnostics" | "about"
 
 const LANGUAGE_OPTIONS = [
   { value: "zh-CN", label: "简体中文" },
@@ -72,10 +84,32 @@ const NAV_ITEMS: { key: Section; label: string }[] = [
   { key: "actions", label: "Actions" },
   { key: "sites", label: "Sites" },
   { key: "vocabulary", label: "Vocabulary" },
+  { key: "diagnostics", label: "Diagnostics" },
   { key: "about", label: "About" },
 ]
 
 const BRAND_COLOR = "#6366f1"
+
+function formatContinuityTimestamp(value: string | null | undefined): string {
+  if (!value) return "not yet"
+
+  const parsed = new Date(value)
+  if (Number.isNaN(parsed.getTime())) {
+    return value
+  }
+
+  return parsed.toLocaleString()
+}
+
+function formatDeviceHostLabel(device: {
+  browserFamily: string | null
+  platform: string | null
+  appKind: string
+  appVersion: string | null
+}): string {
+  const segments = [device.browserFamily, device.platform, device.appKind, device.appVersion].filter(Boolean)
+  return segments.length > 0 ? segments.join(" · ") : "Unknown client"
+}
 
 // --- Styles ---
 
@@ -118,14 +152,14 @@ const navBtnBase: React.CSSProperties = {
   fontSize: 14,
   cursor: "pointer",
   color: "#475569",
-  transition: "background 0.15s, color 0.15s",
+  transition: "background 0.15s, color 0.15s, box-shadow 0.15s",
 }
 
 const navBtnActive: React.CSSProperties = {
   background: `${BRAND_COLOR}0d`,
   color: BRAND_COLOR,
   fontWeight: 600,
-  borderRight: `3px solid ${BRAND_COLOR}`,
+  boxShadow: `inset -3px 0 0 ${BRAND_COLOR}`,
 }
 
 const contentStyle: React.CSSProperties = {
@@ -236,10 +270,23 @@ const checkboxRow: React.CSSProperties = {
 function GeneralSection({
   config,
   onChange,
+  onTtsChange,
+  availableVoices,
+  loadingVoices,
+  ttsSupported,
+  onRefreshVoices,
 }: {
   config: AstraConfig
   onChange: (patch: Partial<AstraConfig>) => void
+  onTtsChange: (patch: Partial<TTSSettings>) => void
+  availableVoices: TTSVoiceOption[]
+  loadingVoices: boolean
+  ttsSupported: boolean
+  onRefreshVoices: () => void
 }) {
+  const savedVoiceMissing = !!config.tts.voiceName
+    && !availableVoices.some((voice) => voice.name === config.tts.voiceName)
+
   return (
     <div>
       <h2 style={sectionTitle}>General</h2>
@@ -324,6 +371,131 @@ function GeneralSection({
       </div>
       <div style={{ ...hintStyle, marginTop: -4, marginBottom: 8 }}>
         When enabled, sensitive form fields are excluded from translation.
+      </div>
+
+      <div style={{ ...fieldGroup, marginTop: 28 }}>
+        <h3 style={{ fontSize: 16, fontWeight: 600, marginBottom: 12, color: "#0f172a" }}>Text to speech</h3>
+
+        <div style={checkboxRow}>
+          <input
+            type="checkbox"
+            id="tts-enabled"
+            checked={config.tts.enabled}
+            onChange={(e) => onTtsChange({ enabled: e.target.checked })}
+          />
+          <label htmlFor="tts-enabled" style={{ fontSize: 14, color: "#334155" }}>
+            Enable TTS in the selection toolbar
+          </label>
+        </div>
+        <div style={{ ...hintStyle, marginTop: -4, marginBottom: 12 }}>
+          Adds a speak button when you select text on the page.
+        </div>
+
+        <div style={fieldGroup}>
+          <label style={labelStyle}>{t("options_ttsEngine")}</label>
+          <select
+            style={selectStyle}
+            value={config.tts.engine}
+            disabled={!config.tts.enabled}
+            onChange={(e) => onTtsChange({ engine: e.target.value as "browser" | "edge", voiceName: undefined })}
+          >
+            <option value="browser">Browser (Web Speech API)</option>
+            <option value="edge">Edge TTS (Neural voices)</option>
+          </select>
+          <div style={hintStyle}>
+            {config.tts.engine === "edge"
+              ? "Microsoft Edge neural voices — high quality, requires network."
+              : "Uses voices installed on your device via the browser."}
+          </div>
+        </div>
+
+        <div style={fieldGroup}>
+          <label style={labelStyle}>{t("options_ttsVoice")}</label>
+          <div style={{ display: "flex", gap: 8, alignItems: "center", maxWidth: 520 }}>
+            <select
+              style={{ ...selectStyle, flex: 1, maxWidth: "none" }}
+              value={config.tts.voiceName ?? ""}
+              disabled={config.tts.engine === "browser" && (!ttsSupported || !config.tts.enabled || loadingVoices)}
+              onChange={(e) => onTtsChange({ voiceName: e.target.value })}
+            >
+              <option value="">{config.tts.engine === "edge" ? "Auto (match target lang)" : "Browser default"}</option>
+              {savedVoiceMissing && config.tts.voiceName && (
+                <option value={config.tts.voiceName}>{config.tts.voiceName} (saved)</option>
+              )}
+              {availableVoices.map((voice) => (
+                <option key={`${voice.name}:${voice.lang}`} value={voice.name}>
+                  {voice.name} ({voice.lang}){voice.default ? " — Default" : ""}
+                </option>
+              ))}
+            </select>
+            {config.tts.engine === "browser" && (
+              <button
+                type="button"
+                style={btnSecondary}
+                disabled={!ttsSupported || loadingVoices}
+                onClick={onRefreshVoices}
+              >
+                {loadingVoices ? "Loading..." : "Refresh"}
+              </button>
+            )}
+          </div>
+          <div style={hintStyle}>
+            {config.tts.engine === "edge"
+              ? "Neural voices from Microsoft Edge — consistent across all platforms."
+              : !ttsSupported
+                ? "This browser does not expose Web Speech voices here."
+                : loadingVoices
+                  ? "Loading voices from your browser..."
+                  : availableVoices.length > 0
+                    ? "Voices come from the browser and operating system on this device."
+                    : "No voices detected yet. Try Refresh after the browser finishes loading them."}
+          </div>
+        </div>
+
+        <div style={fieldGroup}>
+          <label style={labelStyle}>{t("options_ttsSpeechRate", config.tts.rate.toFixed(1))}</label>
+          <input
+            type="range"
+            min="0.5"
+            max="1.5"
+            step="0.1"
+            value={config.tts.rate}
+            disabled={!config.tts.enabled}
+            onChange={(e) => onTtsChange({ rate: Number(e.target.value) })}
+            style={{ width: "100%", maxWidth: 400 }}
+          />
+          <div style={hintStyle}>Lower values sound steadier for language learners; 0.9x is the default.</div>
+        </div>
+
+        <div style={fieldGroup}>
+          <label style={labelStyle}>{t("options_ttsPitch", config.tts.pitch.toFixed(1))}</label>
+          <input
+            type="range"
+            min="0.5"
+            max="2.0"
+            step="0.1"
+            value={config.tts.pitch}
+            disabled={!config.tts.enabled}
+            onChange={(e) => onTtsChange({ pitch: Number(e.target.value) })}
+            style={{ width: "100%", maxWidth: 400 }}
+          />
+        </div>
+
+        <div style={checkboxRow}>
+          <input
+            type="checkbox"
+            id="tts-highlight"
+            checked={config.tts.highlightSentences}
+            disabled={!config.tts.enabled}
+            onChange={(e) => onTtsChange({ highlightSentences: e.target.checked })}
+          />
+          <label htmlFor="tts-highlight" style={{ fontSize: 14, color: "#334155" }}>
+            Highlight sentences during playback
+          </label>
+        </div>
+        <div style={{ ...hintStyle, marginTop: -4 }}>
+          Reads text sentence by sentence and highlights the current one.
+        </div>
       </div>
     </div>
   )
@@ -470,6 +642,38 @@ function TranslationSection({
   )
 }
 
+function toMultilineValue(values?: string[]): string {
+  return values?.join("\n") ?? ""
+}
+
+function fromMultilineValue(value: string): string[] | undefined {
+  const entries = value
+    .split(/\r?\n/)
+    .map((entry) => entry.trim())
+    .filter(Boolean)
+
+  return entries.length > 0 ? entries : undefined
+}
+
+function getInvalidSelectors(selectors?: string[]): string[] {
+  if (!selectors) return []
+
+  return selectors.filter((selector) => {
+    try {
+      document.querySelector(selector)
+      return false
+    } catch {
+      return true
+    }
+  })
+}
+
+function hasAdvancedRules(siteConfig: SiteConfig): boolean {
+  return !!siteConfig.selectors?.length
+    || !!siteConfig.excludeSelectors?.length
+    || siteConfig.paragraphMinLength != null
+}
+
 function SitesSection({
   config,
   onChange,
@@ -480,6 +684,21 @@ function SitesSection({
   const siteEntries = Object.entries(config.sites)
   const [editingSite, setEditingSite] = useState<string | null>(null)
   const [newSiteKey, setNewSiteKey] = useState("")
+  const [selectorDrafts, setSelectorDrafts] = useState<Record<string, string>>({})
+  const [excludeSelectorDrafts, setExcludeSelectorDrafts] = useState<Record<string, string>>({})
+  const [selectorErrors, setSelectorErrors] = useState<Record<string, string | null>>({})
+  const [excludeSelectorErrors, setExcludeSelectorErrors] = useState<Record<string, string | null>>({})
+  const [rulesStatus, setRulesStatus] = useState<string | null>(null)
+  const [showImport, setShowImport] = useState(false)
+  const [importText, setImportText] = useState("")
+
+  useEffect(() => {
+    const entries = Object.entries(config.sites)
+    setSelectorDrafts(Object.fromEntries(entries.map(([hostname, siteConfig]) => [hostname, toMultilineValue(siteConfig.selectors)])))
+    setExcludeSelectorDrafts(Object.fromEntries(entries.map(([hostname, siteConfig]) => [hostname, toMultilineValue(siteConfig.excludeSelectors)])))
+    setSelectorErrors((current) => Object.fromEntries(entries.map(([hostname]) => [hostname, current[hostname] ?? null])))
+    setExcludeSelectorErrors((current) => Object.fromEntries(entries.map(([hostname]) => [hostname, current[hostname] ?? null])))
+  }, [config.sites])
 
   const deleteSite = (hostname: string) => {
     const nextSites = { ...config.sites }
@@ -487,10 +706,10 @@ function SitesSection({
     onChange({ sites: nextSites })
   }
 
-  const updateSite = (hostname: string, patch: Partial<SiteConfig>) => {
+  const mutateSite = (hostname: string, mutate: (current: SiteConfig) => SiteConfig) => {
     const nextSites = { ...config.sites }
     const current = nextSites[hostname] ?? { enabled: true, alwaysTranslate: false }
-    const updated = { ...current, ...patch }
+    const updated = mutate(current)
     if (isDefaultSiteConfig(updated)) {
       delete nextSites[hostname]
     } else {
@@ -527,6 +746,72 @@ function SitesSection({
         <button type="button" style={btnSecondary} onClick={addSite}>Add site</button>
       </div>
 
+      <div style={{ display: "flex", gap: 8, marginBottom: 16 }}>
+        <button
+          type="button"
+          style={btnSecondary}
+          onClick={() => {
+            const json = exportSiteRules(config)
+            void navigator.clipboard.writeText(json).then(() => {
+              setRulesStatus(t("siteRules_allRulesExported"))
+              setTimeout(() => setRulesStatus(null), 2000)
+            })
+          }}
+        >
+          {t("siteRules_exportAllRules")}
+        </button>
+        <button
+          type="button"
+          style={btnSecondary}
+          onClick={() => setShowImport(!showImport)}
+        >
+          {t("siteRules_importRules")}
+        </button>
+      </div>
+
+      {showImport && (
+        <div style={{ ...cardStyle, marginBottom: 16 }}>
+          <textarea
+            data-testid="import-rules-textarea"
+            style={{ ...inputStyle, maxWidth: "100%", minHeight: 100, resize: "vertical", fontFamily: "monospace", fontSize: 13 }}
+            value={importText}
+            onChange={(e) => setImportText(e.target.value)}
+            placeholder='Paste exported site rules JSON here...'
+          />
+          <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
+            <button
+              type="button"
+              style={btnPrimary}
+              onClick={() => {
+                try {
+                  const result = importSiteRules(importText, config)
+                  onChange({ sites: result.sites })
+                  setRulesStatus(t("siteRules_rulesImported"))
+                  setImportText("")
+                  setShowImport(false)
+                } catch {
+                  setRulesStatus(t("siteRules_invalidRuleFormat"))
+                }
+                setTimeout(() => setRulesStatus(null), 2000)
+              }}
+            >
+              {t("siteRules_importRules")}
+            </button>
+            <button
+              type="button"
+              style={btnSecondary}
+              onClick={() => { setShowImport(false); setImportText("") }}
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
+      )}
+
+      {rulesStatus && (
+        <div style={{ ...successBanner, marginBottom: 16 }}>{rulesStatus}</div>
+      )}
+
       {siteEntries.length === 0 && (
         <div style={{ ...cardStyle, color: "#94a3b8", textAlign: "center" }}>
           No per-site rules configured.
@@ -546,6 +831,11 @@ function SitesSection({
               {siteConfig.alwaysTranslate && (
                 <span style={{ marginLeft: 8, fontSize: 11, color: "#059669", background: "#ecfdf5", padding: "2px 6px", borderRadius: 4 }}>
                   auto-translate
+                </span>
+              )}
+              {hasAdvancedRules(siteConfig) && (
+                <span style={{ marginLeft: 8, fontSize: 11, color: "#0369a1", background: "#e0f2fe", padding: "2px 6px", borderRadius: 4 }}>
+                  advanced
                 </span>
               )}
             </div>
@@ -574,7 +864,10 @@ function SitesSection({
                   type="checkbox"
                   id={`site-enabled-${hostname}`}
                   checked={siteConfig.enabled}
-                  onChange={(e) => updateSite(hostname, { enabled: e.target.checked })}
+                  onChange={(e) => mutateSite(hostname, (current) => ({
+                    ...current,
+                    enabled: e.target.checked,
+                  }))}
                 />
                 <label htmlFor={`site-enabled-${hostname}`}>Enabled</label>
               </div>
@@ -583,7 +876,10 @@ function SitesSection({
                   type="checkbox"
                   id={`site-auto-${hostname}`}
                   checked={siteConfig.alwaysTranslate}
-                  onChange={(e) => updateSite(hostname, { alwaysTranslate: e.target.checked })}
+                  onChange={(e) => mutateSite(hostname, (current) => ({
+                    ...current,
+                    alwaysTranslate: e.target.checked,
+                  }))}
                 />
                 <label htmlFor={`site-auto-${hostname}`}>Auto-translate on load</label>
               </div>
@@ -592,7 +888,15 @@ function SitesSection({
                 <select
                   style={{ ...selectStyle, maxWidth: 220 }}
                   value={siteConfig.targetLang ?? ""}
-                  onChange={(e) => updateSite(hostname, { targetLang: e.target.value || undefined })}
+                  onChange={(e) => mutateSite(hostname, (current) => {
+                    const nextSite = { ...current }
+                    if (e.target.value) {
+                      nextSite.targetLang = e.target.value
+                    } else {
+                      delete nextSite.targetLang
+                    }
+                    return nextSite
+                  })}
                 >
                   <option value="">Use global default</option>
                   {LANGUAGE_OPTIONS.map((o) => (
@@ -605,7 +909,15 @@ function SitesSection({
                 <select
                   style={{ ...selectStyle, maxWidth: 220 }}
                   value={siteConfig.hoverTrigger ?? ""}
-                  onChange={(e) => updateSite(hostname, { hoverTrigger: (e.target.value || undefined) as HoverTrigger | undefined })}
+                  onChange={(e) => mutateSite(hostname, (current) => {
+                    const nextSite = { ...current }
+                    if (e.target.value) {
+                      nextSite.hoverTrigger = e.target.value as HoverTrigger
+                    } else {
+                      delete nextSite.hoverTrigger
+                    }
+                    return nextSite
+                  })}
                 >
                   <option value="">Use global default</option>
                   {HOVER_TRIGGER_OPTIONS.map((o) => (
@@ -613,6 +925,185 @@ function SitesSection({
                   ))}
                 </select>
               </div>
+              <div style={fieldGroup}>
+                <label style={labelStyle}>Content scope override</label>
+                <select
+                  style={{ ...selectStyle, maxWidth: 220 }}
+                  value={siteConfig.contentScope ?? ""}
+                  onChange={(e) => mutateSite(hostname, (current) => {
+                    const nextSite = { ...current }
+                    if (e.target.value) {
+                      nextSite.contentScope = e.target.value as ContentScope
+                    } else {
+                      delete nextSite.contentScope
+                    }
+                    return nextSite
+                  })}
+                >
+                  <option value="">Use global default</option>
+                  {CONTENT_SCOPE_OPTIONS.map((o) => (
+                    <option key={o.value} value={o.value}>{o.label}</option>
+                  ))}
+                </select>
+              </div>
+              <div style={fieldGroup}>
+                <label style={labelStyle}>Presentation mode override</label>
+                <select
+                  style={{ ...selectStyle, maxWidth: 220 }}
+                  value={siteConfig.presentation?.mode ?? ""}
+                  onChange={(e) => mutateSite(hostname, (current) => {
+                    const nextPresentation = { ...(current.presentation ?? {}) }
+                    if (e.target.value) {
+                      nextPresentation.mode = e.target.value as TranslationMode
+                    } else {
+                      delete nextPresentation.mode
+                    }
+
+                    return {
+                      ...current,
+                      ...(Object.keys(nextPresentation).length > 0
+                        ? { presentation: nextPresentation }
+                        : { presentation: undefined }),
+                    }
+                  })}
+                >
+                  <option value="">Use global default</option>
+                  {MODE_OPTIONS.map((o) => (
+                    <option key={o.value} value={o.value}>{o.label}</option>
+                  ))}
+                </select>
+              </div>
+              <div style={fieldGroup}>
+                <label style={labelStyle}>Theme override</label>
+                <select
+                  style={{ ...selectStyle, maxWidth: 220 }}
+                  value={siteConfig.presentation?.theme ?? ""}
+                  onChange={(e) => mutateSite(hostname, (current) => {
+                    const nextPresentation = { ...(current.presentation ?? {}) }
+                    if (e.target.value) {
+                      nextPresentation.theme = e.target.value as TranslationTheme
+                    } else {
+                      delete nextPresentation.theme
+                    }
+
+                    return {
+                      ...current,
+                      ...(Object.keys(nextPresentation).length > 0
+                        ? { presentation: nextPresentation }
+                        : { presentation: undefined }),
+                    }
+                  })}
+                >
+                  <option value="">Use global default</option>
+                  {THEME_OPTIONS.map((o) => (
+                    <option key={o.value} value={o.value}>{o.label}</option>
+                  ))}
+                </select>
+              </div>
+
+              <details data-testid={`advanced-rules-${hostname}`} style={{ marginTop: 12 }}>
+                <summary style={{ cursor: "pointer", fontSize: 13, color: "#475569" }}>Advanced rules</summary>
+                <div style={{ marginTop: 12 }}>
+                  <div style={fieldGroup}>
+                    <label style={labelStyle}>Include selectors</label>
+                    <textarea
+                      style={textareaStyle}
+                      value={selectorDrafts[hostname] ?? ""}
+                      onChange={(e) => {
+                        const nextValue = e.target.value
+                        setSelectorDrafts((current) => ({ ...current, [hostname]: nextValue }))
+                        const selectors = fromMultilineValue(nextValue)
+                        const invalidSelectors = getInvalidSelectors(selectors)
+                        if (invalidSelectors.length > 0) {
+                          setSelectorErrors((current) => ({ ...current, [hostname]: `Invalid CSS selector: ${invalidSelectors.join(", ")}` }))
+                          return
+                        }
+
+                        setSelectorErrors((current) => ({ ...current, [hostname]: null }))
+                        mutateSite(hostname, (current) => {
+                          const nextSite = { ...current }
+                          if (selectors) {
+                            nextSite.selectors = selectors
+                          } else {
+                            delete nextSite.selectors
+                          }
+                          return nextSite
+                        })
+                      }}
+                      placeholder={"article\n.content"}
+                    />
+                    <div style={hintStyle}>One CSS selector per line.</div>
+                    {selectorErrors[hostname] && (
+                      <div style={{ ...successBanner, marginBottom: 0, marginTop: 8, background: "#fef2f2", color: "#dc2626", borderColor: "#fecaca" }}>
+                        {selectorErrors[hostname]}
+                      </div>
+                    )}
+                  </div>
+
+                  <div style={fieldGroup}>
+                    <label style={labelStyle}>Exclude selectors</label>
+                    <textarea
+                      style={textareaStyle}
+                      value={excludeSelectorDrafts[hostname] ?? ""}
+                      onChange={(e) => {
+                        const nextValue = e.target.value
+                        setExcludeSelectorDrafts((current) => ({ ...current, [hostname]: nextValue }))
+                        const excludeSelectors = fromMultilineValue(nextValue)
+                        const invalidSelectors = getInvalidSelectors(excludeSelectors)
+                        if (invalidSelectors.length > 0) {
+                          setExcludeSelectorErrors((current) => ({ ...current, [hostname]: `Invalid CSS selector: ${invalidSelectors.join(", ")}` }))
+                          return
+                        }
+
+                        setExcludeSelectorErrors((current) => ({ ...current, [hostname]: null }))
+                        mutateSite(hostname, (current) => {
+                          const nextSite = { ...current }
+                          if (excludeSelectors) {
+                            nextSite.excludeSelectors = excludeSelectors
+                          } else {
+                            delete nextSite.excludeSelectors
+                          }
+                          return nextSite
+                        })
+                      }}
+                      placeholder={".comments\naside"}
+                    />
+                    <div style={hintStyle}>One CSS selector per line.</div>
+                    {excludeSelectorErrors[hostname] && (
+                      <div style={{ ...successBanner, marginBottom: 0, marginTop: 8, background: "#fef2f2", color: "#dc2626", borderColor: "#fecaca" }}>
+                        {excludeSelectorErrors[hostname]}
+                      </div>
+                    )}
+                  </div>
+
+                  <div style={fieldGroup}>
+                    <label style={labelStyle}>Minimum paragraph length</label>
+                    <input
+                      type="number"
+                      min="0"
+                      step="1"
+                      style={{ ...inputStyle, maxWidth: 220 }}
+                      value={siteConfig.paragraphMinLength?.toString() ?? ""}
+                      onChange={(e) => mutateSite(hostname, (current) => {
+                        const nextSite = { ...current }
+                        const trimmed = e.target.value.trim()
+                        if (!trimmed) {
+                          delete nextSite.paragraphMinLength
+                          return nextSite
+                        }
+
+                        const parsed = Number.parseInt(trimmed, 10)
+                        if (Number.isFinite(parsed)) {
+                          nextSite.paragraphMinLength = Math.max(0, parsed)
+                        }
+                        return nextSite
+                      })}
+                      placeholder="Use global default"
+                    />
+                    <div style={hintStyle}>Leave blank to disable length filtering.</div>
+                  </div>
+                </div>
+              </details>
             </div>
           )}
         </div>
@@ -866,23 +1357,37 @@ function VocabularySection() {
 
   const [cacheInfo, setCacheInfo] = useState<string>("Loading...")
 
+  const refreshCacheInfo = async () => {
+    try {
+      const [bytes, stats] = await Promise.all([
+        browser.storage.local.getBytesInUse?.(),
+        getCacheStats(),
+      ])
+      const localStorageUsage = typeof bytes === "number"
+        ? `${(bytes / 1024).toFixed(1)} KB local storage usage`
+        : "local storage usage unavailable"
+      const hitRate = stats.lookups > 0 ? `${(stats.hitRate * 100).toFixed(0)}%` : "n/a"
+      const hottestBucket = stats.buckets[0]
+      const hottestLabel = hottestBucket
+        ? `${hottestBucket.providerId}/${hottestBucket.model}`
+        : "no buckets yet"
+      setCacheInfo(`${localStorageUsage} · ${stats.count} cached items · ${stats.lookups} lookups · ${hitRate} hit rate · top bucket ${hottestLabel}`)
+    } catch {
+      setCacheInfo("Cache telemetry unavailable")
+    }
+  }
+
   useEffect(() => {
-    void browser.storage.local.getBytesInUse?.()
-      .then((bytes) => {
-        if (typeof bytes === "number") {
-          const kb = (bytes / 1024).toFixed(1)
-          setCacheInfo(`${kb} KB used in local storage`)
-        } else {
-          setCacheInfo("Storage usage unavailable")
-        }
-      })
-      .catch(() => setCacheInfo("Storage usage unavailable"))
+    void refreshCacheInfo()
   }, [])
 
   const clearCache = async () => {
     try {
-      await browser.storage.local.remove("astra.vocab.cache")
-      setCacheInfo("Cache cleared")
+      await Promise.all([
+        browser.storage.local.remove("astra.vocab.cache"),
+        clearTranslationCache(),
+      ])
+      await refreshCacheInfo()
     } catch {
       setCacheInfo("Failed to clear cache")
     }
@@ -915,8 +1420,220 @@ function VocabularySection() {
   )
 }
 
-function AboutSection() {
+function DiagnosticsSection({ config }: { config: AstraConfig }) {
+  const diag = diagnoseProvider({
+    providerId: config.provider.id,
+    model: config.provider.model,
+    apiKey: config.provider.apiKey ?? "",
+    accessToken: config.provider.accessToken ?? "",
+    relayBaseURL: config.provider.relayBaseURL,
+  })
+
+  const capability = PROVIDER_CAPABILITIES[config.provider.id]
+
+  const statusColors: Record<ProviderDiagnostics["status"], string> = {
+    connected: "#16a34a",
+    partial: "#d97706",
+    disconnected: "#dc2626",
+  }
+
+  return (
+    <div>
+      <h2 style={sectionTitle}>Diagnostics</h2>
+
+      <div style={cardStyle}>
+        <h3 style={{ fontSize: 16, fontWeight: 600, marginBottom: 12, color: "#0f172a" }}>{t("options_diagProviderStatus")}</h3>
+
+        <div style={{
+          display: "flex",
+          alignItems: "center",
+          gap: 8,
+          padding: "10px 14px",
+          background: "#f8fafc",
+          borderRadius: 8,
+          border: "1px solid #e2e8f0",
+        }}
+        >
+          <span style={{
+            width: 10,
+            height: 10,
+            borderRadius: "50%",
+            background: statusColors[diag.status],
+            flexShrink: 0,
+          }}
+          />
+          <div>
+            <div style={{ fontSize: 14, fontWeight: 600, color: "#0f172a" }}>
+              {diag.providerName} — {diag.modelLabel ?? diag.model}
+            </div>
+            <div style={{ fontSize: 12, color: "#64748b", marginTop: 2 }}>
+              {t("options_diagDirect")} {diag.directAccess ? t("options_diagYes") : t("options_diagNo")} · {t("options_diagRelay")} {diag.relayAccess ? t("options_diagYes") : t("options_diagNo")} · {t("options_diagCostPerPage")} {diag.estimatedCostPerPage}
+            </div>
+          </div>
+        </div>
+
+        <div style={{ marginTop: 16 }}>
+          <h4 style={{ fontSize: 13, fontWeight: 600, color: "#475569", marginBottom: 8 }}>{t("options_diagTransportRoutes")}</h4>
+          <div style={{ display: "flex", gap: 8 }}>
+            <div style={{
+              flex: 1,
+              padding: "8px 12px",
+              borderRadius: 8,
+              border: "1px solid #e2e8f0",
+              background: diag.directAccess ? "#f0fdf4" : "#fef2f2",
+            }}
+            >
+              <div style={{ fontSize: 12, fontWeight: 600, color: diag.directAccess ? "#166534" : "#991b1b" }}>
+                {t("options_diagDirectApi")}
+              </div>
+              <div style={{ fontSize: 11, color: "#64748b", marginTop: 2 }}>
+                {diag.directAccess ? t("options_diagApiKeyConfigured", diag.providerName) : t("options_diagNoApiKey")}
+              </div>
+            </div>
+            <div style={{
+              flex: 1,
+              padding: "8px 12px",
+              borderRadius: 8,
+              border: "1px solid #e2e8f0",
+              background: diag.relayAccess ? "#f0fdf4" : "#fef2f2",
+            }}
+            >
+              <div style={{ fontSize: 12, fontWeight: 600, color: diag.relayAccess ? "#166534" : "#991b1b" }}>
+                {t("options_diagAstraRelay")}
+              </div>
+              <div style={{ fontSize: 11, color: "#64748b", marginTop: 2 }}>
+                {diag.relayAccess ? t("options_diagRelayActive") : t("options_diagNoRelay")}
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div style={{ ...cardStyle, marginTop: 16 }}>
+        <h3 style={{ fontSize: 16, fontWeight: 600, marginBottom: 12, color: "#0f172a" }}>{t("options_diagProviderCapabilities")}</h3>
+
+        <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
+          <thead>
+            <tr style={{ borderBottom: "2px solid #e2e8f0" }}>
+              <th style={{ textAlign: "left", padding: "6px 8px", color: "#475569" }}>{t("options_diagColModel")}</th>
+              <th style={{ textAlign: "right", padding: "6px 8px", color: "#475569" }}>{t("options_diagColInputCost")}</th>
+              <th style={{ textAlign: "right", padding: "6px 8px", color: "#475569" }}>{t("options_diagColOutputCost")}</th>
+              <th style={{ textAlign: "right", padding: "6px 8px", color: "#475569" }}>{t("options_diagColContext")}</th>
+            </tr>
+          </thead>
+          <tbody>
+            {capability.models.map((model) => (
+              <tr
+                key={model.id}
+                style={{
+                  borderBottom: "1px solid #f1f5f9",
+                  background: model.id === config.provider.model ? "#eff6ff" : "transparent",
+                }}
+              >
+                <td style={{ padding: "6px 8px", color: "#0f172a" }}>
+                  {model.label}
+                  {model.recommended && (
+                    <span style={{ marginLeft: 6, fontSize: 10, color: "#6366f1", fontWeight: 600 }}>{t("options_diagRecommended")}</span>
+                  )}
+                  {model.id === config.provider.model && (
+                    <span style={{ marginLeft: 6, fontSize: 10, color: "#2563eb", fontWeight: 600 }}>{t("options_diagActive")}</span>
+                  )}
+                </td>
+                <td style={{ textAlign: "right", padding: "6px 8px", color: "#64748b" }}>
+                  {model.inputCostPer1kTokens > 0 ? `$${model.inputCostPer1kTokens}` : t("options_diagFree")}
+                </td>
+                <td style={{ textAlign: "right", padding: "6px 8px", color: "#64748b" }}>
+                  {model.outputCostPer1kTokens > 0 ? `$${model.outputCostPer1kTokens}` : t("options_diagFree")}
+                </td>
+                <td style={{ textAlign: "right", padding: "6px 8px", color: "#64748b" }}>
+                  {(model.maxContextTokens / 1000).toFixed(0)}k
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+
+        <div style={{ marginTop: 12, fontSize: 11, color: "#94a3b8" }}>
+          {t("options_diagMaxBatch", [String(capability.maxBatchSize), capability.maxInputCharsPerRequest.toLocaleString()])}
+        </div>
+      </div>
+
+      <div style={{ ...cardStyle, marginTop: 16 }}>
+        <h3 style={{ fontSize: 16, fontWeight: 600, marginBottom: 12, color: "#0f172a" }}>{t("options_diagWorkflowConfig")}</h3>
+        <div style={{ fontSize: 12, color: "#334155", lineHeight: 1.6 }}>
+          <div style={{ marginBottom: 8 }}>
+            <strong>{t("options_diagConnectionMode")}</strong> {config.connectionMode === "astra" ? t("options_diagAstraManaged") : t("options_diagCustomKey")}
+          </div>
+          <div style={{ marginBottom: 8 }}>
+            <strong>Translation scope:</strong> {config.contentScope === "article" ? "Article area only" : "Full page"}
+          </div>
+          <div style={{ marginBottom: 8 }}>
+            <strong>Hover trigger:</strong> {config.hoverTrigger === "alt" ? "Alt + Hover" : config.hoverTrigger === "always" ? "Always" : "Disabled"}
+          </div>
+          <div style={{ marginBottom: 8 }}>
+            <strong>Input translation:</strong> {config.inputTranslation === "enabled" ? "Enabled" : "Disabled"}
+          </div>
+          <div style={{ marginBottom: 8 }}>
+            <strong>Language level:</strong> {config.languageLevel.charAt(0).toUpperCase() + config.languageLevel.slice(1)}
+          </div>
+          <div style={{ marginBottom: 8 }}>
+            <strong>Privacy mode:</strong> {config.privacyMode ? "On" : "Off"}
+          </div>
+          <div>
+            <strong>TTS engine:</strong> {config.tts.engine === "edge" ? "Edge TTS (Neural)" : "Browser (Web Speech)"} · Rate: {config.tts.rate}x
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function AboutSection({
+  continuityStatus,
+  continuityBusy,
+  continuityActionBusyDeviceId,
+  onRefreshContinuity,
+  onRevokeDevice,
+  onToggleReadingHistorySync,
+  onToggleStudyProgressSync,
+}: {
+  continuityStatus: AstraContinuityStatus | null
+  continuityBusy: boolean
+  continuityActionBusyDeviceId: string | null
+  onRefreshContinuity: () => void
+  onRevokeDevice: (deviceId: string) => void
+  onToggleReadingHistorySync: (enabled: boolean) => void
+  onToggleStudyProgressSync: (enabled: boolean) => void
+}) {
   const version = browser.runtime.getManifest?.()?.version ?? "0.1.0"
+  const fileInputRef = useRef<HTMLInputElement>(null)
+  const [backupStatus, setBackupStatus] = useState<{ type: "success" | "error"; message: string } | null>(null)
+  const remoteConfigCollection = continuityStatus?.remote.configCollection ?? null
+  const remoteReadingHistoryCollection = continuityStatus?.remote.readingHistoryCollection ?? null
+  const remoteStudyProgressCollection = continuityStatus?.remote.studyProgressCollection ?? null
+
+  const handleExport = async () => {
+    try {
+      setBackupStatus(null)
+      const json = await exportConfig()
+      downloadConfigFile(json)
+      setBackupStatus({ type: "success", message: t("options_settingsExported") })
+    } catch {
+      setBackupStatus({ type: "error", message: t("options_invalidConfigFile") })
+    }
+  }
+
+  const handleImport = async (file: File) => {
+    try {
+      setBackupStatus(null)
+      const json = await readConfigFile(file)
+      await importConfig(json)
+      setBackupStatus({ type: "success", message: t("options_settingsImported") })
+      setTimeout(() => window.location.reload(), 1500)
+    } catch (err) {
+      setBackupStatus({ type: "error", message: err instanceof Error ? err.message : t("options_invalidConfigFile") })
+    }
+  }
 
   return (
     <div>
@@ -951,6 +1668,211 @@ function AboutSection() {
           </a>
         </div>
       </div>
+
+      <div style={{ ...cardStyle, marginTop: 16 }} data-testid="continuity-status">
+        <h3 style={{ fontSize: 16, fontWeight: 600, marginBottom: 8, color: "#0f172a" }}>
+          Continuity status
+        </h3>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12, gap: 12 }}>
+          <div style={{ ...hintStyle, marginTop: 0 }}>
+            Device/session registry and config bootstrap status from Astra.
+          </div>
+          <button
+            type="button"
+            style={{ ...btnSecondary, padding: "6px 12px", fontSize: 12, whiteSpace: "nowrap" }}
+            data-testid="refresh-continuity-btn"
+            onClick={onRefreshContinuity}
+            disabled={continuityBusy || continuityActionBusyDeviceId !== null}
+          >
+            {continuityBusy ? "Refreshing..." : "Refresh status"}
+          </button>
+        </div>
+        <div style={{ fontSize: 13, color: "#475569", lineHeight: 1.6 }}>
+          <div><strong>Device:</strong> {continuityStatus?.device.label ?? "Preparing device identity"}</div>
+          <div><strong>Session:</strong> {continuityStatus?.session.state ?? "signed-out"}</div>
+          <div><strong>Config sync-safe:</strong> ready</div>
+          <div><strong>Optional collections:</strong> reading history, study progress</div>
+          {continuityStatus?.sync.localOnly.localOnlyFields.length ? (
+            <div><strong>Local only:</strong> {continuityStatus.sync.localOnly.localOnlyFields.join(", ")}</div>
+          ) : (
+            <div><strong>Local only:</strong> none</div>
+          )}
+          {continuityStatus?.session.state === "authenticated" && continuityStatus.remote.available && (
+            <>
+              <div><strong>Server time:</strong> {formatContinuityTimestamp(continuityStatus.remote.serverTime)}</div>
+              <div><strong>Registered devices:</strong> {continuityStatus.remote.deviceCount} total · {continuityStatus.remote.activeDeviceCount} active</div>
+              {remoteConfigCollection && (
+                <div>
+                  <strong>Config bootstrap:</strong> {remoteConfigCollection.enabled ? "enabled" : "disabled"} · cursor {remoteConfigCollection.bootstrapCursor ?? "none"}
+                  {remoteConfigCollection.hasPull ? ` · latest pull ${remoteConfigCollection.deltaCount} delta${remoteConfigCollection.deltaCount === 1 ? "" : "s"}` : ""}
+                </div>
+              )}
+              <div style={{ marginTop: 8, border: "1px solid #e2e8f0", borderRadius: 6, padding: "10px 12px", background: "#f8fafc" }}>
+                <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "center" }}>
+                  <div>
+                    <div>
+                      <strong>Reading history sync:</strong> {remoteReadingHistoryCollection?.enabled ? "enabled" : "disabled"} · optional · sanitized URLs only
+                      {remoteReadingHistoryCollection
+                        ? ` · cursor ${remoteReadingHistoryCollection.bootstrapCursor ?? "none"}`
+                        : ""}
+                    </div>
+                    <div style={{ ...hintStyle, marginTop: 4 }}>
+                      Uploads page history by sanitized URL only.
+                    </div>
+                  </div>
+                  {remoteReadingHistoryCollection && (
+                    <label style={{ display: "inline-flex", alignItems: "center", gap: 8, fontSize: 12, color: "#334155", whiteSpace: "nowrap" }}>
+                      <input
+                        data-testid="reading-history-sync-toggle"
+                        type="checkbox"
+                        checked={remoteReadingHistoryCollection.enabled}
+                        onChange={(event) => onToggleReadingHistorySync(event.currentTarget.checked)}
+                        disabled={continuityBusy || continuityActionBusyDeviceId !== null}
+                      />
+                      <span>{remoteReadingHistoryCollection.enabled ? "On" : "Off"}</span>
+                    </label>
+                  )}
+                </div>
+              </div>
+              <div style={{ marginTop: 8, border: "1px solid #e2e8f0", borderRadius: 6, padding: "10px 12px", background: "#f8fafc" }}>
+                <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "center" }}>
+                  <div>
+                    <div>
+                      <strong>Study progress sync:</strong> {remoteStudyProgressCollection?.enabled ? "enabled" : "disabled"} · optional · per-page durable progress only
+                      {remoteStudyProgressCollection
+                        ? ` · cursor ${remoteStudyProgressCollection.bootstrapCursor ?? "none"}`
+                        : ""}
+                    </div>
+                    <div style={{ ...hintStyle, marginTop: 4 }}>
+                      Uploads durable page progress only. Daily study stats stay local on this device.
+                    </div>
+                  </div>
+                  {remoteStudyProgressCollection && (
+                    <label style={{ display: "inline-flex", alignItems: "center", gap: 8, fontSize: 12, color: "#334155", whiteSpace: "nowrap" }}>
+                      <input
+                        data-testid="study-progress-sync-toggle"
+                        type="checkbox"
+                        checked={remoteStudyProgressCollection.enabled}
+                        onChange={(event) => onToggleStudyProgressSync(event.currentTarget.checked)}
+                        disabled={continuityBusy || continuityActionBusyDeviceId !== null}
+                      />
+                      <span>{remoteStudyProgressCollection.enabled ? "On" : "Off"}</span>
+                    </label>
+                  )}
+                </div>
+              </div>
+              <div style={{ marginTop: 8 }}>
+                <strong>Devices</strong>
+                <div style={{ ...hintStyle, marginTop: 6 }}>
+                  Use popup Sign out for this device. Revoke is only available for other active devices.
+                </div>
+                <div data-testid="continuity-device-list" style={{ marginTop: 6, display: "grid", gap: 8 }}>
+                  {continuityStatus.remote.devices.map((device) => {
+                    const revokeDisabled = continuityBusy || continuityActionBusyDeviceId !== null
+                    const isRevoking = continuityActionBusyDeviceId === device.deviceId
+                    return (
+                      <div key={device.deviceId} style={{ border: "1px solid #e2e8f0", borderRadius: 6, padding: "8px 10px", background: device.isCurrentDevice ? "#eef2ff" : "#f8fafc" }}>
+                        <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "flex-start" }}>
+                          <div>
+                            <div style={{ fontWeight: 600, color: "#334155" }}>
+                              {device.label}
+                              {device.isCurrentDevice ? " · Current device" : ""}
+                            </div>
+                            <div style={{ fontSize: 12, color: "#64748b", marginTop: 4 }}>
+                              {formatDeviceHostLabel(device)}
+                            </div>
+                            <div style={{ fontSize: 12, color: "#64748b", marginTop: 4 }}>
+                              {device.status} · Last seen {formatContinuityTimestamp(device.lastSeenAt)} · Last sync {formatContinuityTimestamp(device.lastSyncAt)}
+                            </div>
+                          </div>
+                          {device.isCurrentDevice ? (
+                            <span style={{ ...hintStyle, marginTop: 0 }}>Use popup Sign out</span>
+                          ) : device.status === "revoked" ? (
+                            <span style={{ ...hintStyle, marginTop: 0 }}>Already revoked</span>
+                          ) : (
+                            <button
+                              type="button"
+                              style={{ ...btnDanger, whiteSpace: "nowrap" }}
+                              onClick={() => onRevokeDevice(device.deviceId)}
+                              disabled={revokeDisabled}
+                            >
+                              {isRevoking ? "Revoking..." : "Revoke access"}
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                    )
+                  })}
+                </div>
+              </div>
+            </>
+          )}
+          {continuityStatus?.session.state === "authenticated" && !continuityStatus.remote.available && continuityStatus.remote.error && (
+            <div><strong>Remote status:</strong> {continuityStatus.remote.error}</div>
+          )}
+          {continuityStatus?.session.state === "authenticated" && !continuityStatus.remote.available && !continuityStatus.remote.error && (
+            <div><strong>Optional sync:</strong> Refresh continuity status to manage the reading history and study progress toggles.</div>
+          )}
+          {continuityStatus?.session.state !== "authenticated" && (
+            <div><strong>Remote status:</strong> Sign in to inspect registered devices and continuity bootstrap.</div>
+          )}
+        </div>
+      </div>
+
+      <div style={{ ...cardStyle, marginTop: 16 }}>
+        <h3 style={{ fontSize: 16, fontWeight: 600, marginBottom: 8, color: "#0f172a" }}>
+          {t("options_backupTitle")}
+        </h3>
+        <div style={{ ...hintStyle, marginBottom: 16 }}>
+          {t("options_backupHint")}
+        </div>
+
+        {backupStatus && (
+          <div
+            data-testid="backup-status"
+            style={{
+              ...successBanner,
+              marginBottom: 12,
+              ...(backupStatus.type === "error"
+                ? { background: "#fef2f2", color: "#dc2626", borderColor: "#fecaca" }
+                : {}),
+            }}
+          >
+            {backupStatus.message}
+          </div>
+        )}
+
+        <div style={{ display: "flex", gap: 12 }}>
+          <button
+            type="button"
+            style={btnPrimary}
+            data-testid="export-settings-btn"
+            onClick={() => void handleExport()}
+          >
+            {t("options_exportSettings")}
+          </button>
+          <button
+            type="button"
+            style={btnSecondary}
+            data-testid="import-settings-btn"
+            onClick={() => fileInputRef.current?.click()}
+          >
+            {t("options_importSettings")}
+          </button>
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept=".json"
+            style={{ display: "none" }}
+            data-testid="import-file-input"
+            onChange={(e) => {
+              const file = e.target.files?.[0]
+              if (file) void handleImport(file)
+              e.target.value = ""
+            }}
+          />
+        </div>
+      </div>
     </div>
   )
 }
@@ -960,19 +1882,196 @@ function AboutSection() {
 export default function OptionsApp() {
   const [section, setSection] = useState<Section>("general")
   const [config, setConfig] = useState<AstraConfig>(DEFAULT_ASTRA_CONFIG)
+  const [availableVoices, setAvailableVoices] = useState<TTSVoiceOption[]>([])
+  const [ttsSupported, setTtsSupported] = useState(false)
+  const [loadingVoices, setLoadingVoices] = useState(false)
+  const [continuityRemote, setContinuityRemote] = useState<AstraContinuityRemoteSnapshot | null>(null)
+  const [continuityStatus, setContinuityStatus] = useState<AstraContinuityStatus | null>(null)
+  const [continuitySession, setContinuitySession] = useState<AstraSession | null>(null)
+  const [continuityDevice, setContinuityDevice] = useState<AstraDeviceIdentity | null>(null)
+  const [continuityBusy, setContinuityBusy] = useState(false)
+  const [continuityActionBusyDeviceId, setContinuityActionBusyDeviceId] = useState<string | null>(null)
   const [saved, setSaved] = useState(false)
   const [dirty, setDirty] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const continuityConfigRef = useRef(config)
+
+  const refreshVoices = useCallback(async (engine?: "browser" | "edge") => {
+    const activeEngine = engine ?? config.tts.engine
+    const supported = isTtsSupported(activeEngine)
+    setTtsSupported(supported)
+
+    if (!supported) {
+      setAvailableVoices([])
+      return
+    }
+
+    setLoadingVoices(true)
+    try {
+      setAvailableVoices(await listVoices(activeEngine))
+    } finally {
+      setLoadingVoices(false)
+    }
+  }, [config.tts.engine])
 
   useEffect(() => {
-    void readConfig().then((c) => setConfig(c))
+    continuityConfigRef.current = config
+  }, [config])
+
+  const refreshContinuityState = useCallback(async (
+    nextConfig?: AstraConfig,
+    options: { forceRemote?: boolean } = {},
+  ) => {
+    const configForStatus = nextConfig ?? continuityConfigRef.current
+    setContinuityBusy(true)
+    try {
+      const [device, storedSession] = await Promise.all([
+        ensureAstraDeviceIdentity(),
+        readAstraSession(),
+      ])
+
+      let session = storedSession
+      let remote: AstraContinuityRemoteSnapshot | null = null
+
+      if (storedSession?.identityMode === "authenticated") {
+        try {
+          session = await refreshAstraSession({
+            baseURL: storedSession.relayBaseURL,
+            sessionToken: storedSession.sessionToken,
+          })
+          session = await saveAstraSession(session)
+        } catch (refreshError) {
+          const message = refreshError instanceof Error ? refreshError.message : "Failed to refresh continuity status."
+          await clearAstraSession()
+          session = null
+          remote = options.forceRemote ? { error: message } : null
+        }
+
+        if (session) {
+          try {
+            remote = await fetchAstraContinuitySnapshot({
+              baseURL: session.relayBaseURL,
+              sessionToken: session.sessionToken,
+              deviceId: device.deviceId,
+              includePull: options.forceRemote,
+            })
+          } catch (remoteError) {
+            remote = {
+              error: remoteError instanceof Error ? remoteError.message : "Failed to refresh continuity status.",
+            }
+          }
+        }
+      }
+
+      setContinuitySession(session)
+      setContinuityDevice(device)
+      setContinuityRemote(remote)
+      setContinuityStatus(buildContinuityStatus({
+        config: configForStatus,
+        session,
+        device,
+        remote,
+      }))
+    } finally {
+      setContinuityBusy(false)
+    }
   }, [])
+
+  useEffect(() => {
+    void (async () => {
+      const loadedConfig = await readConfig()
+      setConfig(loadedConfig)
+      await refreshContinuityState(loadedConfig)
+    })()
+    void refreshVoices()
+  }, [refreshContinuityState, refreshVoices])
+
+  useEffect(() => {
+    if (!continuityDevice) return
+    setContinuityStatus(buildContinuityStatus({
+      config,
+      session: continuitySession,
+      device: continuityDevice,
+      remote: continuityRemote,
+    }))
+  }, [config, continuityDevice, continuityRemote, continuitySession])
 
   const updateConfig = (patch: Partial<AstraConfig>) => {
     setDirty(true)
     setSaved(false)
     setConfig((current) => ({ ...current, ...patch }))
   }
+
+  const handleToggleOptionalCollectionSync = useCallback(async (
+    collection: "reading_history" | "study_progress",
+    enabled: boolean,
+  ) => {
+    if (!continuitySession || !continuityDevice) return
+
+    setError(null)
+    setContinuityBusy(true)
+    try {
+      await updateAstraSyncCollectionPreference({
+        baseURL: continuitySession.relayBaseURL,
+        sessionToken: continuitySession.sessionToken,
+        deviceId: continuityDevice.deviceId,
+        collection,
+        enabled,
+      })
+
+      if (enabled) {
+        await runPhaseOneCollectionSync()
+      }
+
+      await refreshContinuityState(undefined, { forceRemote: true })
+    } catch (err) {
+      const fallbackMessage = collection === "study_progress"
+        ? "Failed to update study progress continuity."
+        : "Failed to update reading history continuity."
+      setError(err instanceof Error ? err.message : fallbackMessage)
+    } finally {
+      setContinuityBusy(false)
+    }
+  }, [continuityDevice, continuitySession, refreshContinuityState])
+
+  const handleToggleReadingHistorySync = useCallback(async (enabled: boolean) => {
+    await handleToggleOptionalCollectionSync("reading_history", enabled)
+  }, [handleToggleOptionalCollectionSync])
+
+  const handleToggleStudyProgressSync = useCallback(async (enabled: boolean) => {
+    await handleToggleOptionalCollectionSync("study_progress", enabled)
+  }, [handleToggleOptionalCollectionSync])
+
+  const handleRevokeContinuityDevice = useCallback(async (targetDeviceId: string) => {
+    if (!continuitySession || !continuityDevice) return
+    if (targetDeviceId === continuityDevice.deviceId) {
+      setError("Use popup Sign out for the current device instead of remote revoke.")
+      return
+    }
+
+    const confirmed = typeof window !== "undefined" && typeof window.confirm === "function"
+      ? window.confirm("Revoke this device's Astra access? It will need to sign in again.")
+      : true
+    if (!confirmed) {
+      return
+    }
+
+    setError(null)
+    setContinuityActionBusyDeviceId(targetDeviceId)
+    try {
+      const devices = await revokeAstraDevice({
+        baseURL: continuitySession.relayBaseURL,
+        sessionToken: continuitySession.sessionToken,
+        deviceId: continuityDevice.deviceId,
+        targetDeviceId,
+      })
+      setContinuityRemote((current) => current ? { ...current, devices } : { devices })
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to revoke device access.")
+    } finally {
+      setContinuityActionBusyDeviceId(null)
+    }
+  }, [continuityDevice, continuitySession])
 
   const updateProvider = (patch: Partial<AstraConfig["provider"]>) => {
     setDirty(true)
@@ -992,6 +2091,24 @@ export default function OptionsApp() {
     }))
   }
 
+  const updateTts = (patch: Partial<AstraConfig["tts"]>) => {
+    setDirty(true)
+    setSaved(false)
+    setConfig((current) => ({
+      ...current,
+      tts: {
+        ...current.tts,
+        ...patch,
+        ...(patch.voiceName !== undefined
+          ? { voiceName: patch.voiceName.trim() || undefined }
+          : {}),
+      },
+    }))
+    if (patch.engine) {
+      void refreshVoices(patch.engine)
+    }
+  }
+
   const handleSave = async () => {
     try {
       setError(null)
@@ -1008,6 +2125,7 @@ export default function OptionsApp() {
           model: config.provider.model,
           apiKey: config.provider.apiKey,
         },
+        tts: config.tts,
         presentation: config.presentation,
         sites: config.sites,
         customActions: config.customActions,
@@ -1024,7 +2142,17 @@ export default function OptionsApp() {
   const renderSection = () => {
     switch (section) {
       case "general":
-        return <GeneralSection config={config} onChange={updateConfig} />
+        return (
+          <GeneralSection
+            config={config}
+            onChange={updateConfig}
+            onTtsChange={updateTts}
+            availableVoices={availableVoices}
+            loadingVoices={loadingVoices}
+            ttsSupported={ttsSupported}
+            onRefreshVoices={() => void refreshVoices()}
+          />
+        )
       case "providers":
         return <ProvidersSection config={config} onProviderChange={updateProvider} />
       case "translation":
@@ -1035,23 +2163,75 @@ export default function OptionsApp() {
         return <SitesSection config={config} onChange={updateConfig} />
       case "vocabulary":
         return <VocabularySection />
+      case "diagnostics":
+        return <DiagnosticsSection config={config} />
       case "about":
-        return <AboutSection />
+        return (
+          <AboutSection
+            continuityStatus={continuityStatus}
+            continuityBusy={continuityBusy}
+            continuityActionBusyDeviceId={continuityActionBusyDeviceId}
+            onRefreshContinuity={() => {
+              void refreshContinuityState(undefined, { forceRemote: true })
+            }}
+            onRevokeDevice={(deviceId) => {
+              void handleRevokeContinuityDevice(deviceId)
+            }}
+            onToggleReadingHistorySync={(enabled) => {
+              void handleToggleReadingHistorySync(enabled)
+            }}
+            onToggleStudyProgressSync={(enabled) => {
+              void handleToggleStudyProgressSync(enabled)
+            }}
+          />
+        )
     }
   }
 
+  const viewport = useViewportProfile()
+  const isMobile = viewport.isCompact
+
   return (
-    <div style={pageStyle}>
-      <nav style={sidebarStyle}>
-        <div style={logoStyle}>Astra</div>
+    <div style={{
+      ...pageStyle,
+      flexDirection: isMobile ? "column" : "row",
+    }}
+    >
+      <nav style={isMobile
+        ? {
+            display: "flex",
+            overflowX: "auto",
+            background: "#fff",
+            borderBottom: "1px solid #e2e8f0",
+            padding: "8px 12px",
+            gap: 4,
+            position: "sticky",
+            top: 0,
+            zIndex: 10,
+          }
+        : sidebarStyle}
+      >
+        {!isMobile && <div style={logoStyle}>Astra</div>}
         {NAV_ITEMS.map((item) => (
           <button
             type="button"
             key={item.key}
-            style={{
-              ...navBtnBase,
-              ...(section === item.key ? navBtnActive : {}),
-            }}
+            style={isMobile
+              ? {
+                  border: "none",
+                  background: section === item.key ? `${BRAND_COLOR}14` : "transparent",
+                  color: section === item.key ? BRAND_COLOR : "#475569",
+                  fontWeight: section === item.key ? 600 : 400,
+                  padding: "6px 12px",
+                  borderRadius: 6,
+                  fontSize: 13,
+                  cursor: "pointer",
+                  whiteSpace: "nowrap",
+                }
+              : {
+                  ...navBtnBase,
+                  ...(section === item.key ? navBtnActive : {}),
+                }}
             onClick={() => setSection(item.key)}
           >
             {item.label}
@@ -1059,7 +2239,12 @@ export default function OptionsApp() {
         ))}
       </nav>
 
-      <main style={contentStyle}>
+      <main style={{
+        ...contentStyle,
+        padding: isMobile ? "16px 12px" : contentStyle.padding,
+        maxWidth: isMobile ? "none" : contentStyle.maxWidth,
+      }}
+      >
         {saved && <div style={successBanner}>Settings saved.</div>}
         {error && (
           <div style={{ ...successBanner, background: "#fef2f2", color: "#dc2626", borderColor: "#fecaca" }}>
@@ -1069,7 +2254,7 @@ export default function OptionsApp() {
 
         {renderSection()}
 
-        {section !== "vocabulary" && section !== "about" && (
+        {section !== "vocabulary" && section !== "about" && section !== "diagnostics" && (
           <div style={{ marginTop: 24, display: "flex", gap: 12, alignItems: "center" }}>
             <button
               type="button"

@@ -10,6 +10,7 @@ export interface TranslationStatusCardProps {
   progress: TranslationProgressSnapshot | null
   lastError: TranslationError | null
   siteEnabled: boolean
+  onRetryFailed?: () => void
 }
 
 export default function TranslationStatusCard({
@@ -20,6 +21,7 @@ export default function TranslationStatusCard({
   progress,
   lastError,
   siteEnabled,
+  onRetryFailed,
 }: TranslationStatusCardProps) {
   return (
     <div style={statusCardStyle}>
@@ -51,6 +53,24 @@ export default function TranslationStatusCard({
         <div style={{ fontSize: 12, color: "#64748b", marginTop: 6 }}>
           queued {progress.queuedBlocks} · in-flight {progress.inFlightBlocks} · failed {progress.failedBlocks}
         </div>
+      )}
+      {progress && progress.failedBlocks > 0 && onRetryFailed && (
+        <button
+          type="button"
+          onClick={onRetryFailed}
+          style={{
+            marginTop: 8,
+            padding: "4px 10px",
+            fontSize: 12,
+            background: "#f59e0b",
+            color: "#fff",
+            border: "none",
+            borderRadius: 4,
+            cursor: "pointer",
+          }}
+        >
+          Retry {progress.failedBlocks} failed block{progress.failedBlocks === 1 ? "" : "s"}
+        </button>
       )}
       {lastError && (
         <div style={warningStyle}>{lastError.message}</div>

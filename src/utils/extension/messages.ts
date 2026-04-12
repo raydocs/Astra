@@ -3,13 +3,19 @@ import { browser } from "#imports"
 import type {
   ContentCommand,
   ContentCommandResponse,
+  ContentStudyContextResponse,
   ContentTranslationOverrides,
+  RuntimeSaveConfigErrorResponse,
+  TranslationPlaceholderFormat,
   TranslationRequestContext,
   TranslationTask,
 } from "@/types/messages"
+import type { AstraConfig, AstraConfigInput } from "@/types/config"
 import {
   isContentCommandResponse,
-  isRuntimeResponse,
+  isContentStudyContextResponse,
+  isRuntimeSaveConfigResponse,
+  isRuntimeTranslateResponse,
 } from "@/types/messages"
 import {
   createTranslationError,
@@ -39,6 +45,10 @@ function mapContentMessagingError(error: unknown): TranslationError {
 
 function mapRuntimeMessagingError(error: unknown): TranslationError {
   return toTranslationError(error, "PROVIDER_REQUEST_FAILED")
+}
+
+function mapRuntimeConfigMessagingError(error: unknown): TranslationError {
+  return toTranslationError(error, "UNKNOWN")
 }
 
 async function getActiveTabId(): Promise<number> {
@@ -109,6 +119,7 @@ export async function requestTranslationBatch(payload: {
   context?: TranslationRequestContext
   task?: TranslationTask
   customSystemPrompt?: string
+  placeholderFormat?: TranslationPlaceholderFormat
 }): Promise<TranslationBatchRequestResult> {
   try {
     const response = await browser.runtime.sendMessage({
@@ -116,7 +127,7 @@ export async function requestTranslationBatch(payload: {
       payload,
     }) as unknown
 
-    if (!isRuntimeResponse(response)) {
+    if (!isRuntimeTranslateResponse(response)) {
       return {
         ok: false,
         error: createTranslationError(
@@ -136,12 +147,68 @@ export async function requestTranslationBatch(payload: {
   }
 }
 
+export async function saveConfigInBackground(
+  payload: AstraConfigInput,
+): Promise<{ ok: true; config: AstraConfig } | { ok: false; error: RuntimeSaveConfigErrorResponse["error"] }> {
+  try {
+    const response = await browser.runtime.sendMessage({
+      type: "runtime/save-config",
+      payload,
+    }) as unknown
+
+    if (!isRuntimeSaveConfigResponse(response)) {
+      return {
+        ok: false,
+        error: createTranslationError(
+          "INVALID_RESPONSE",
+          "Received an invalid config save response.",
+        ),
+      }
+    }
+
+    if (response.type === "runtime/save-config:error") {
+      return { ok: false, error: response.error }
+    }
+
+    return { ok: true, config: response.payload.config }
+  } catch (error) {
+    return { ok: false, error: mapRuntimeConfigMessagingError(error) }
+  }
+}
+
 export async function getActiveTabTranslationState(): Promise<ContentCommandResponse> {
   try {
     const tabId = await getActiveTabId()
     return sendContentCommand(tabId, { type: "content/get-translation-state" })
   } catch (error) {
     return { ok: false, error: toTranslationError(error, "CONTENT_UNAVAILABLE") }
+  }
+}
+
+export async function getActiveTabStudyContext(): Promise<ContentStudyContextResponse> {
+  try {
+    const tabId = await getActiveTabId()
+    const response = await browser.tabs.sendMessage(
+      tabId,
+      {
+        type: "content/get-study-context",
+      },
+      { frameId: 0 },
+    ) as unknown
+
+    if (!isContentStudyContextResponse(response)) {
+      return {
+        ok: false,
+        error: createTranslationError(
+          "UNKNOWN",
+          "Received an unexpected study context response.",
+        ),
+      }
+    }
+
+    return response
+  } catch (error) {
+    return { ok: false, error: mapContentMessagingError(error) }
   }
 }
 
@@ -185,6 +252,15 @@ export async function toggleCurrentTabTranslation(
     type: "content/toggle-translation",
     ...(overrides && Object.keys(overrides).length > 0 ? { payload: overrides } : {}),
   })
+}
+
+export async function retryActiveTabFailedBlocks(): Promise<ContentCommandResponse> {
+  try {
+    const tabId = await getActiveTabId()
+    return sendContentCommand(tabId, { type: "content/retry-failed" })
+  } catch (error) {
+    return { ok: false, error: toTranslationError(error, "CONTENT_UNAVAILABLE") }
+  }
 }
 
 export function getResponseState(

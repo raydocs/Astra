@@ -1,6 +1,8 @@
 import { z } from "zod"
 
 import {
+  AstraConfigInputSchema,
+  AstraConfigSchema,
   ContentScopeSchema,
   TranslationModeSchema,
   TranslationThemeSchema,
@@ -26,6 +28,7 @@ export const ContentTranslationOverridesSchema = z.object({
 })
 
 export const TranslationTaskSchema = z.enum(["translate", "explain", "custom"])
+export const TranslationPlaceholderFormatSchema = z.enum(["astra-rich-text-v1"])
 
 export const TranslateBatchPayloadSchema = z.object({
   texts: z.array(z.string()),
@@ -34,6 +37,7 @@ export const TranslateBatchPayloadSchema = z.object({
   context: TranslationRequestContextSchema.optional(),
   task: TranslationTaskSchema.optional(),
   customSystemPrompt: z.string().max(2000).optional(),
+  placeholderFormat: TranslationPlaceholderFormatSchema.optional(),
 })
 
 const TranslationErrorCodeSchema = z.enum([
@@ -50,6 +54,14 @@ const TranslationErrorCodeSchema = z.enum([
 const TranslationErrorSchema = z.object({
   code: TranslationErrorCodeSchema,
   message: z.string().trim().min(1),
+})
+
+export const PageStudyContextSchema = TranslationRequestContextSchema.pick({
+  pageTitle: true,
+  pageUrl: true,
+  hostname: true,
+  metaDescription: true,
+  contentSummary: true,
 })
 
 const TranslationProgressSnapshotSchema = z.object({
@@ -81,17 +93,49 @@ const TranslationSnapshotSchema = z.object({
   framesTranslating: z.number().int().nonnegative().optional(),
 })
 
-const RuntimeResponseSchema = z.union([
+const ProviderRoutingSuccessMetadataSchema = z.object({
+  attemptedTransports: z.array(z.enum(["direct", "relay"])),
+  finalTransport: z.enum(["direct", "relay"]),
+  fallbackUsed: z.boolean(),
+})
+
+const ProviderRoutingErrorMetadataSchema = z.object({
+  attemptedTransports: z.array(z.enum(["direct", "relay"])),
+  finalTransport: z.enum(["direct", "relay"]).nullable(),
+  fallbackUsed: z.boolean(),
+})
+
+const RuntimeTranslateResponseSchema = z.union([
   z.object({
     type: z.literal("runtime/translate-batch:success"),
     payload: z.object({
       translations: z.array(z.string()),
+      metadata: ProviderRoutingSuccessMetadataSchema.optional(),
     }),
   }),
   z.object({
     type: z.literal("runtime/translate-batch:error"),
     error: TranslationErrorSchema,
+    metadata: ProviderRoutingErrorMetadataSchema.optional(),
   }),
+])
+
+const RuntimeSaveConfigResponseSchema = z.union([
+  z.object({
+    type: z.literal("runtime/save-config:success"),
+    payload: z.object({
+      config: AstraConfigSchema,
+    }),
+  }),
+  z.object({
+    type: z.literal("runtime/save-config:error"),
+    error: TranslationErrorSchema,
+  }),
+])
+
+const RuntimeResponseSchema = z.union([
+  RuntimeTranslateResponseSchema,
+  RuntimeSaveConfigResponseSchema,
 ])
 
 const ContentCommandResponseSchema = z.union([
@@ -106,8 +150,21 @@ const ContentCommandResponseSchema = z.union([
   }),
 ])
 
+const ContentStudyContextResponseSchema = z.union([
+  z.object({
+    ok: z.literal(true),
+    context: PageStudyContextSchema,
+  }),
+  z.object({
+    ok: z.literal(false),
+    error: TranslationErrorSchema,
+  }),
+])
+
 export type TranslationRequestContext = z.infer<typeof TranslationRequestContextSchema>
+export type PageStudyContext = z.infer<typeof PageStudyContextSchema>
 export type TranslationTask = z.infer<typeof TranslationTaskSchema>
+export type TranslationPlaceholderFormat = z.infer<typeof TranslationPlaceholderFormatSchema>
 export type ContentTranslationOverrides = z.infer<typeof ContentTranslationOverridesSchema>
 
 export interface RuntimeTranslateBatchRequest {
@@ -119,12 +176,22 @@ export interface RuntimeTranslateBatchSuccessResponse {
   type: "runtime/translate-batch:success"
   payload: {
     translations: string[]
+    metadata?: {
+      attemptedTransports: Array<"direct" | "relay">
+      finalTransport: "direct" | "relay"
+      fallbackUsed: boolean
+    }
   }
 }
 
 export interface RuntimeTranslateBatchErrorResponse {
   type: "runtime/translate-batch:error"
   error: TranslationError
+  metadata?: {
+    attemptedTransports: Array<"direct" | "relay">
+    finalTransport: "direct" | "relay" | null
+    fallbackUsed: boolean
+  }
 }
 
 export interface RuntimeTabCommandRequest {
@@ -138,13 +205,33 @@ export interface RuntimeCurrentTabCommandRequest {
   command: ContentCommand
 }
 
+export interface RuntimeSaveConfigRequest {
+  type: "runtime/save-config"
+  payload: z.infer<typeof AstraConfigInputSchema>
+}
+
+export interface RuntimeSaveConfigSuccessResponse {
+  type: "runtime/save-config:success"
+  payload: {
+    config: z.infer<typeof AstraConfigSchema>
+  }
+}
+
+export interface RuntimeSaveConfigErrorResponse {
+  type: "runtime/save-config:error"
+  error: TranslationError
+}
+
 export type RuntimeRequest =
   | RuntimeTranslateBatchRequest
   | RuntimeTabCommandRequest
   | RuntimeCurrentTabCommandRequest
+  | RuntimeSaveConfigRequest
 export type RuntimeResponse =
   | RuntimeTranslateBatchSuccessResponse
   | RuntimeTranslateBatchErrorResponse
+  | RuntimeSaveConfigSuccessResponse
+  | RuntimeSaveConfigErrorResponse
 
 export interface ContentGetTranslationStateCommand {
   type: "content/get-translation-state"
@@ -159,9 +246,26 @@ export interface ContentStopTranslationCommand {
   type: "content/stop-translation"
 }
 
+export interface ContentGetStudyContextCommand {
+  type: "content/get-study-context"
+}
+
+export interface ContentDetectArticleCommand {
+  type: "content/detect-article"
+}
+
+export interface ContentDetectArticleResponse {
+  ok: boolean
+  selector?: string
+}
+
 export interface ContentToggleTranslationCommand {
   type: "content/toggle-translation"
   payload?: ContentTranslationOverrides
+}
+
+export interface ContentRetryFailedCommand {
+  type: "content/retry-failed"
 }
 
 export type ContentCommand =
@@ -169,10 +273,15 @@ export type ContentCommand =
   | ContentStartTranslationCommand
   | ContentStopTranslationCommand
   | ContentToggleTranslationCommand
+  | ContentRetryFailedCommand
 
 export type ContentCommandResponse =
   | { ok: true; state: TranslationSnapshot }
   | { ok: false; error: TranslationError; state?: TranslationSnapshot }
+
+export type ContentStudyContextResponse =
+  | { ok: true; context: PageStudyContext }
+  | { ok: false; error: TranslationError }
 
 export function isRuntimeTranslateBatchRequest(
   value: unknown,
@@ -202,8 +311,29 @@ export function isRuntimeCurrentTabCommandRequest(
     && isContentCommand(candidate.command)
 }
 
+export function isRuntimeSaveConfigRequest(
+  value: unknown,
+): value is RuntimeSaveConfigRequest {
+  if (typeof value !== "object" || value === null) return false
+  const candidate = value as Partial<RuntimeSaveConfigRequest>
+  return candidate.type === "runtime/save-config"
+    && AstraConfigInputSchema.safeParse(candidate.payload).success
+}
+
 export function isRuntimeResponse(value: unknown): value is RuntimeResponse {
   return RuntimeResponseSchema.safeParse(value).success
+}
+
+export function isRuntimeTranslateResponse(
+  value: unknown,
+): value is RuntimeTranslateBatchSuccessResponse | RuntimeTranslateBatchErrorResponse {
+  return RuntimeTranslateResponseSchema.safeParse(value).success
+}
+
+export function isRuntimeSaveConfigResponse(
+  value: unknown,
+): value is RuntimeSaveConfigSuccessResponse | RuntimeSaveConfigErrorResponse {
+  return RuntimeSaveConfigResponseSchema.safeParse(value).success
 }
 
 export function isContentCommand(value: unknown): value is ContentCommand {
@@ -214,6 +344,7 @@ export function isContentCommand(value: unknown): value is ContentCommand {
   switch (candidate.type) {
     case "content/get-translation-state":
     case "content/stop-translation":
+    case "content/retry-failed":
       return true
     case "content/start-translation":
     case "content/toggle-translation":
@@ -224,8 +355,28 @@ export function isContentCommand(value: unknown): value is ContentCommand {
   }
 }
 
+export function isContentStudyContextCommand(
+  value: unknown,
+): value is ContentGetStudyContextCommand {
+  if (typeof value !== "object" || value === null) return false
+  return (value as { type?: string }).type === "content/get-study-context"
+}
+
+export function isContentDetectArticleCommand(
+  value: unknown,
+): value is ContentDetectArticleCommand {
+  if (typeof value !== "object" || value === null) return false
+  return (value as { type?: string }).type === "content/detect-article"
+}
+
 export function isContentCommandResponse(
   value: unknown,
 ): value is ContentCommandResponse {
   return ContentCommandResponseSchema.safeParse(value).success
+}
+
+export function isContentStudyContextResponse(
+  value: unknown,
+): value is ContentStudyContextResponse {
+  return ContentStudyContextResponseSchema.safeParse(value).success
 }

@@ -2,15 +2,62 @@
 <html>
 <head>
     <meta http-equiv="Content-Type" content="text/html; charset=utf-8">
-    <meta http-equiv="Content-Security-Policy" content="default-src 'self'">
-
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline'">
     <meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no">
-
     <link rel="stylesheet" href="../Style.css">
 </head>
 <body>
-    <img src="../Icon.png" width="128" height="128" alt="AstraShell Icon">
-    <p>Open Settings → Apps → Safari → Extensions to enable AstraShell.</p>
-    <p>After Web Extension changes, run <code>pnpm ios:prepare</code> before rebuilding in Xcode.</p>
+    <img src="../Icon.png" width="96" height="96" alt="AstraShell Icon">
+
+    <h1>Astra iOS Bridge Host</h1>
+    <p class="subtitle">Thin host only: launch/open/handoff for Safari extension bootstrap.</p>
+
+    <ol class="steps">
+        <li>Install AstraShell and enable the Safari extension in iOS Settings.</li>
+        <li>Open Safari, then open Astra popup or onboarding.</li>
+        <li>Use <strong>Open in Astra App</strong> to trigger handoff via <code>astra-shell://bootstrap</code>.</li>
+        <li>Return to Safari and continue reading with extension features.</li>
+    </ol>
+
+    <section class="status-card">
+        <h2>Bridge Status</h2>
+        <p id="bootstrap-current">Waiting for bootstrap deep link…</p>
+        <p id="bootstrap-meta">History: 0</p>
+        <ul id="bootstrap-history"></ul>
+    </section>
+
+    <p class="hint">After extension code changes, run <code>pnpm ios:prepare</code> before rebuilding in Xcode.</p>
+
+    <script>
+        function renderBootstrapState() {
+            const current = window.AstraHostBootstrap || null
+            const history = Array.isArray(window.AstraHostBootstrapHistory)
+                ? window.AstraHostBootstrapHistory
+                : []
+
+            const currentEl = document.getElementById('bootstrap-current')
+            const metaEl = document.getElementById('bootstrap-meta')
+            const listEl = document.getElementById('bootstrap-history')
+            if (!currentEl || !metaEl || !listEl) return
+
+            if (current && current.sessionId) {
+                currentEl.textContent = `Session ${current.sessionId} · source ${current.source || 'unknown'} · issued ${current.issuedAt || 'unknown'}`
+            } else {
+                currentEl.textContent = 'Waiting for bootstrap deep link…'
+            }
+
+            metaEl.textContent = `History: ${history.length}`
+            listEl.innerHTML = ''
+            history.slice(0, 5).forEach((item) => {
+                const li = document.createElement('li')
+                li.textContent = `${item.sessionId || 'unknown'} · ${item.source || 'unknown'} · ${item.issuedAt || 'unknown'}`
+                listEl.appendChild(li)
+            })
+        }
+
+        window.addEventListener('astra-host-bootstrap', renderBootstrapState)
+        window.addEventListener('astra-host-bootstrap-history', renderBootstrapState)
+        renderBootstrapState()
+    </script>
 </body>
 </html>

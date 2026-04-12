@@ -7,18 +7,34 @@ export interface QuotaInfo {
   resetsAt: string
 }
 
+function defaultQuota(): QuotaInfo {
+  return { used: 0, limit: 200_000, plan: "free", resetsAt: "" }
+}
+
 export async function getQuotaInfo(): Promise<QuotaInfo> {
   try {
     const session = await readAstraSession()
     if (!session?.sessionToken || !session?.relayBaseURL) {
-      return { used: 0, limit: 200000, plan: "free", resetsAt: "" }
+      return defaultQuota()
     }
-    const res = await fetch(`${session.relayBaseURL.replace(/\/+$/, "")}/quota`, {
+    const res = await fetch(`${session.relayBaseURL.replace(/\/+$/, "")}/account/usage`, {
       headers: { Authorization: `Bearer ${session.sessionToken}` },
     })
-    if (!res.ok) return { used: 0, limit: 200000, plan: "free", resetsAt: "" }
-    return await res.json() as QuotaInfo
+    if (!res.ok) return defaultQuota()
+    const snapshot = await res.json() as {
+      quota?: { dailyCharactersLimit?: number; remainingDailyCharacters?: number }
+      usage?: { dailyCharactersUsed?: number }
+      generatedAt?: string
+    }
+    const limit = snapshot.quota?.dailyCharactersLimit ?? 200_000
+    const used = snapshot.usage?.dailyCharactersUsed ?? 0
+    return {
+      used,
+      limit,
+      plan: session.plan === "pro" ? "pro" : "free",
+      resetsAt: snapshot.generatedAt ?? "",
+    }
   } catch {
-    return { used: 0, limit: 200000, plan: "free", resetsAt: "" }
+    return defaultQuota()
   }
 }

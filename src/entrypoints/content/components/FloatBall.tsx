@@ -3,7 +3,7 @@ import ReactDOM from "react-dom/client"
 import { browser } from "#imports"
 import { ErrorBoundary } from "@/components/ErrorBoundary"
 import { t } from "@/utils/i18n"
-import { subscribePageTranslationState } from "../page-translate"
+import { retryFailedBlocks, subscribePageTranslationState } from "../page-translate"
 import { toggleCurrentTabTranslation } from "@/utils/extension/messages"
 import { IDLE_TRANSLATION_SNAPSHOT } from "@/types/translation"
 
@@ -23,15 +23,17 @@ function getFloatBallVisualState(snapshot: typeof IDLE_TRANSLATION_SNAPSHOT) {
       tooltip: snapshot.phase === "starting" ? t("floatball_preparingTranslation") : t("floatball_removingTranslation"),
       disabled: true,
       progressText: null,
+      failedBlocks: 0,
     }
   }
 
   if (snapshot.phase === "running") {
     return {
-      color: COLOR_ACTIVE,
+      color: snapshot.progress.failedBlocks > 0 ? COLOR_ERROR : COLOR_ACTIVE,
       tooltip: `Translated: ${snapshot.progress.translatedBlocks}/${snapshot.progress.totalBlocks} | Failed: ${snapshot.progress.failedBlocks}`,
       disabled: false,
       progressText: `${snapshot.progress.translatedBlocks}/${snapshot.progress.totalBlocks}`,
+      failedBlocks: snapshot.progress.failedBlocks,
     }
   }
 
@@ -41,6 +43,7 @@ function getFloatBallVisualState(snapshot: typeof IDLE_TRANSLATION_SNAPSHOT) {
       tooltip: t("floatball_translationFailed", snapshot.lastError.message),
       disabled: false,
       progressText: null,
+      failedBlocks: 0,
     }
   }
 
@@ -49,6 +52,7 @@ function getFloatBallVisualState(snapshot: typeof IDLE_TRANSLATION_SNAPSHOT) {
     tooltip: t("floatball_translatePage"),
     disabled: false,
     progressText: null,
+    failedBlocks: 0,
   }
 }
 
@@ -123,9 +127,13 @@ function FloatBallButton() {
 
       const visual = getFloatBallVisualState(translationState)
       if (!movedRef.current && !visual.disabled) {
-        void toggleCurrentTabTranslation().catch((error) => {
-          console.error("[Astra] Float ball toggle failed:", error)
-        })
+        if (visual.failedBlocks > 0) {
+          retryFailedBlocks()
+        } else {
+          void toggleCurrentTabTranslation().catch((error) => {
+            console.error("[Astra] Float ball toggle failed:", error)
+          })
+        }
       }
       dragRef.current = null
     },
@@ -184,7 +192,7 @@ function FloatBallButton() {
             textOverflow: "ellipsis",
           }}
         >
-          {visual.tooltip}
+          {visual.failedBlocks > 0 ? `Retry ${visual.failedBlocks} failed` : visual.tooltip}
         </div>
       )}
       {visual.progressText ? (

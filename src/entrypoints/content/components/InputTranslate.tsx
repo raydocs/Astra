@@ -2,7 +2,7 @@ import { useState, useEffect, useRef, useCallback } from "react"
 import { createRoot } from "react-dom/client"
 import { ErrorBoundary } from "@/components/ErrorBoundary"
 import { t } from "@/utils/i18n"
-import { readConfig } from "@/utils/storage/config"
+import { readConfig, saveConfig } from "@/utils/storage/config"
 import { resolveSiteTranslationSettings } from "@/types/config"
 import { isSensitiveInput } from "@/utils/privacy"
 import { runInlineAction } from "../inline-actions"
@@ -179,6 +179,15 @@ function dispatchEditableInputEvent(target: EditableElement, text: string) {
   }
 }
 
+type InputTranslationMode = "replace" | "bilingual"
+
+function formatBilingualOutput(original: string, translation: string, kind: EditableKind): string {
+  if (kind === "input") {
+    return `${original} | ${translation}`
+  }
+  return `${original}\n${translation}`
+}
+
 function InputTranslateApp() {
   const [overlay, setOverlay] = useState<InputOverlayState>({
     visible: false,
@@ -187,8 +196,15 @@ function InputTranslateApp() {
     translating: false,
     error: null,
   })
+  const [mode, setMode] = useState<InputTranslationMode>("replace")
   const activeInput = useRef<EditableElement | null>(null)
   const translatingRef = useRef(false)
+
+  useEffect(() => {
+    readConfig().then((config) => {
+      setMode(config.inputTranslationMode ?? "replace")
+    }).catch(() => {})
+  }, [])
 
   useEffect(() => {
     const handleFocusIn = (event: FocusEvent) => {
@@ -290,9 +306,13 @@ function InputTranslateApp() {
       })
 
       if (result.ok) {
-        setEditableText(input, result.text)
-        restoreEditableSelection(input, selectionSnapshot, result.text)
-        dispatchEditableInputEvent(input, result.text)
+        const kind = getEditableKind(input)
+        const outputText = mode === "bilingual"
+          ? formatBilingualOutput(text, result.text, kind)
+          : result.text
+        setEditableText(input, outputText)
+        restoreEditableSelection(input, selectionSnapshot, outputText)
+        dispatchEditableInputEvent(input, outputText)
       } else {
         const msg = result.message || "Translation failed"
         setOverlay(prev => ({ ...prev, error: msg }))
@@ -302,33 +322,67 @@ function InputTranslateApp() {
       translatingRef.current = false
       setOverlay(prev => ({ ...prev, translating: false }))
     }
+  }, [mode])
+
+  const handleToggleMode = useCallback(() => {
+    setMode(prev => {
+      const next = prev === "replace" ? "bilingual" : "replace"
+      void saveConfig({ inputTranslationMode: next }).catch(() => {})
+      return next
+    })
   }, [])
 
   if (!overlay.visible) return null
 
   return (
-    <button
-      type="button"
+    <div
       style={{
         position: "fixed",
         top: overlay.top,
         left: overlay.left,
         zIndex: 2147483644,
-        background: overlay.error ? "#f59e0b" : BRAND_COLOR,
-        color: "#fff",
-        border: "none",
-        borderRadius: 4,
-        padding: "2px 8px",
-        fontSize: 11,
-        fontWeight: 600,
-        cursor: "pointer",
-        opacity: overlay.translating ? 0.6 : 1,
-        pointerEvents: overlay.translating ? "none" : "auto",
+        display: "flex",
+        gap: 2,
       }}
-      onClick={() => void handleTranslate()}
     >
-      {overlay.error ? "\u26A0" : overlay.translating ? "\u22EF" : t("inputTranslateButton")}
-    </button>
+      <button
+        type="button"
+        data-testid="input-translate-mode"
+        style={{
+          background: "transparent",
+          color: mode === "bilingual" ? BRAND_COLOR : "#94a3b8",
+          border: `1px solid ${mode === "bilingual" ? BRAND_COLOR : "#cbd5e1"}`,
+          borderRadius: 4,
+          padding: "2px 6px",
+          fontSize: 10,
+          fontWeight: 500,
+          cursor: "pointer",
+          lineHeight: "normal",
+        }}
+        title={mode === "bilingual" ? t("inputTranslateModeBilingual") : t("inputTranslateModeReplace")}
+        onClick={handleToggleMode}
+      >
+        {mode === "bilingual" ? "AB" : "A\u2192B"}
+      </button>
+      <button
+        type="button"
+        style={{
+          background: overlay.error ? "#f59e0b" : BRAND_COLOR,
+          color: "#fff",
+          border: "none",
+          borderRadius: 4,
+          padding: "2px 8px",
+          fontSize: 11,
+          fontWeight: 600,
+          cursor: "pointer",
+          opacity: overlay.translating ? 0.6 : 1,
+          pointerEvents: overlay.translating ? "none" : "auto",
+        }}
+        onClick={() => void handleTranslate()}
+      >
+        {overlay.error ? "\u26A0" : overlay.translating ? "\u22EF" : t("inputTranslateButton")}
+      </button>
+    </div>
   )
 }
 

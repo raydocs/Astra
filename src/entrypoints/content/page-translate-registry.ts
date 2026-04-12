@@ -6,7 +6,11 @@
  * TranslationSession.
  */
 
-import type { TextBlock } from "@/utils/dom/traversal"
+export interface RegistrableBlock {
+  element: HTMLElement
+  sourceText: string
+  requestText: string
+}
 
 export type BlockState = "idle" | "queued" | "in-flight" | "translated" | "failed"
 
@@ -15,6 +19,7 @@ export const MAX_BLOCK_RETRIES = 2
 export interface TrackedBlock {
   element: HTMLElement
   sourceText: string
+  requestText: string
   revision: number
   state: BlockState
   retryCount: number
@@ -31,7 +36,7 @@ export interface BlockRegistrySnapshot {
 
 export interface BlockRegistry {
   /** Register new blocks from extraction. Skips already-known elements. Returns count of newly added blocks. */
-  registerBlocks(blocks: TextBlock[]): number
+  registerBlocks(blocks: RegistrableBlock[]): number
 
   /** Get tracked block for an element, or undefined if not tracked. */
   getBlock(element: HTMLElement): TrackedBlock | undefined
@@ -57,8 +62,8 @@ export interface BlockRegistry {
   /** Reset retry counts on failed blocks and move them back to idle. Returns elements that were reset. */
   resetRetryCount(elements: HTMLElement[]): HTMLElement[]
 
-  /** Mark that a block's source text has changed. Increments revision, clears lastTranslation, resets state to idle. */
-  markSourceChanged(element: HTMLElement, nextText: string): boolean
+  /** Mark that a block's source/request text has changed. Increments revision, clears lastTranslation, resets state to idle. */
+  markContentChanged(element: HTMLElement, next: { sourceText: string; requestText: string }): boolean
 
   /** Remove blocks whose elements are no longer connected to the document. Returns removed elements. */
   removeDisconnected(): HTMLElement[]
@@ -104,7 +109,8 @@ export function createBlockRegistry(): BlockRegistry {
         if (!tb.element.isConnected) continue
         blocks.set(tb.element, {
           element: tb.element,
-          sourceText: tb.text,
+          sourceText: tb.sourceText,
+          requestText: tb.requestText,
           revision: 0,
           state: "idle",
           retryCount: 0,
@@ -215,12 +221,13 @@ export function createBlockRegistry(): BlockRegistry {
       return reset
     },
 
-    markSourceChanged(element, nextText) {
+    markContentChanged(element, next) {
       const block = blocks.get(element)
       if (!block) return false
-      if (block.sourceText === nextText) return false
+      if (block.sourceText === next.sourceText && block.requestText === next.requestText) return false
       decrementStateCounter(block.state)
-      block.sourceText = nextText
+      block.sourceText = next.sourceText
+      block.requestText = next.requestText
       block.revision++
       block.lastTranslation = undefined
       block.retryCount = 0

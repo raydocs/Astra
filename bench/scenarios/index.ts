@@ -2,6 +2,7 @@ import { filterScenariosBySplit } from "../splits"
 import type { BenchmarkScenario, BenchmarkSplit, BenchmarkSurface } from "../types"
 import { articleExtractionScenarios } from "./article-extraction"
 import { dynamicContentScenarios } from "./dynamic-content"
+import { epubTranslationScenarios } from "./epub"
 import { frameCoordinationScenarios } from "./frame-coordination"
 import { hoverScenarios } from "./hover"
 import { inputTranslationScenarios } from "./input-translation"
@@ -11,7 +12,9 @@ import { pdfTranslationScenarios } from "./pdf"
 import { selectionExplainScenarios } from "./selection-explain"
 import { siteAutomationScenarios } from "./site-automation"
 import { subtitleScenarios } from "./subtitle"
+import { subtitleFileScenarios } from "./subtitle-file"
 import { youtubeSubtitleScenarios } from "./youtube-subtitle"
+import { providerRoutingScenarios } from "./provider-routing"
 
 export const benchmarkScenarios = [
   ...pageTranslationScenarios,
@@ -24,8 +27,11 @@ export const benchmarkScenarios = [
   ...selectionExplainScenarios,
   ...inputTranslationScenarios,
   ...subtitleScenarios,
+  ...subtitleFileScenarios,
   ...pdfTranslationScenarios,
   ...youtubeSubtitleScenarios,
+  ...epubTranslationScenarios,
+  ...providerRoutingScenarios,
 ]
 
 export function selectBenchmarkScenarios(options: {

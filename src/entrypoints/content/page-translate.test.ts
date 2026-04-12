@@ -220,6 +220,56 @@ describe("page translation controller", () => {
     }))
   })
 
+  it("serializes rich inline text into placeholders and restores safe inline markup", async () => {
+    document.body.innerHTML = `
+      <main>
+        <p id="rich">This has <strong>bold text</strong> and <em>emphasis</em>.</p>
+      </main>
+    `
+    setRect(document.getElementById("rich")!, 40)
+
+    translateTextsMock.mockResolvedValue({
+      ok: true,
+      translations: ["这里有__ASTRA_RT_0_OPEN_STRONG__粗体__ASTRA_RT_0_CLOSE__和__ASTRA_RT_1_OPEN_EM__强调__ASTRA_RT_1_CLOSE__。"],
+    })
+
+    await startPageTranslation({ targetLang: "zh-CN" })
+    await flushPromises()
+
+    expect(translateTextsMock).toHaveBeenCalledWith(expect.objectContaining({
+      texts: [expect.stringContaining("__ASTRA_RT_0_OPEN_STRONG__")],
+      placeholderFormat: "astra-rich-text-v1",
+    }))
+
+    const translationInner = document.querySelector(".astra-translation-inner")
+    expect(translationInner?.textContent).toBe("这里有粗体和强调。")
+    expect(translationInner?.querySelector("strong")?.textContent).toBe("粗体")
+    expect(translationInner?.querySelector("em")?.textContent).toBe("强调")
+    expect(translationInner?.textContent).not.toContain("__ASTRA_RT_")
+  })
+
+  it("falls back to plain text when provider returns malformed placeholders", async () => {
+    document.body.innerHTML = `
+      <main>
+        <p id="rich">This has <strong>bold text</strong>.</p>
+      </main>
+    `
+    setRect(document.getElementById("rich")!, 40)
+
+    translateTextsMock.mockResolvedValue({
+      ok: true,
+      translations: ["这里有__ASTRA_RT_0_OPEN_STRONG__粗体内容。"],
+    })
+
+    await startPageTranslation({ targetLang: "zh-CN" })
+    await flushPromises()
+
+    const translationInner = document.querySelector(".astra-translation-inner")
+    expect(translationInner?.textContent).toBe("这里有粗体内容。")
+    expect(translationInner?.querySelector("strong")).toBeNull()
+    expect(translationInner?.textContent).not.toContain("__ASTRA_RT_")
+  })
+
   it("only scans newly added subtrees during mutation updates", async () => {
     vi.useFakeTimers()
     translateTextsMock.mockResolvedValue({

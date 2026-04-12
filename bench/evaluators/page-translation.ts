@@ -11,6 +11,12 @@ export interface PageTranslationExecution {
   expectedTexts: string[]
   snapshotPhase: string
   failedBlocks: number
+  payloadContext?: Record<string, unknown> | null
+  requestTexts?: string[]
+  requestPlaceholderCount?: number
+  translatedHtmlSnippets?: string[]
+  placeholderLeakCount?: number
+  restoredRichTextTagCount?: number
   notes?: string[]
 }
 
@@ -23,10 +29,26 @@ function addIssue(
   issues.push({ severity, message, evidence })
 }
 
+function isSanitizedPrivacyContext(context: Record<string, unknown> | null | undefined) {
+  if (!context) return false
+  const keys = Object.keys(context).sort()
+  const allowedKeys = ["hostname", "pageUrl"]
+  const onlyAllowedKeys = keys.every((key) => allowedKeys.includes(key))
+  const pageUrl = typeof context.pageUrl === "string" ? context.pageUrl : ""
+
+  return onlyAllowedKeys
+    && typeof context.hostname === "string"
+    && pageUrl.length > 0
+    && !pageUrl.includes("?")
+    && !pageUrl.includes("#")
+}
+
 function buildPatchHints(
   execution: PageTranslationExecution,
   options: {
     requireTranslationOnly?: boolean
+    requirePrivacySanitization?: boolean
+    requireRichTextPlaceholderPreservation?: boolean
   },
   issues: BenchmarkIssue[],
 ): PatchHintArtifact | undefined {
@@ -75,6 +97,32 @@ function buildPatchHints(
     suspectedKeywords.add("hiddenSourceCount")
   }
 
+  if (options.requirePrivacySanitization && !isSanitizedPrivacyContext(execution.payloadContext)) {
+    failingSignals.push("privacy context leaked")
+    suspectedFiles.add("src/utils/privacy.ts")
+    suspectedKeywords.add("privacy")
+    suspectedKeywords.add("sanitizeTranslationContext")
+  }
+
+  if (options.requireRichTextPlaceholderPreservation) {
+    suspectedFiles.add("src/utils/dom/rich-text-placeholders.ts")
+    suspectedFiles.add("src/utils/dom/inject.ts")
+    suspectedKeywords.add("placeholder")
+    suspectedKeywords.add("rich-text")
+
+    if ((execution.requestPlaceholderCount ?? 0) === 0) {
+      failingSignals.push("request text missed rich-text placeholders")
+    }
+
+    if ((execution.restoredRichTextTagCount ?? 0) === 0) {
+      failingSignals.push("translated DOM did not restore inline rich-text tags")
+    }
+
+    if ((execution.placeholderLeakCount ?? 0) > 0) {
+      failingSignals.push("placeholder tokens leaked into rendered translation")
+    }
+  }
+
   const confidence = issues.some((issue) => issue.severity === "critical") ? "high" : "medium"
 
   return {
@@ -90,6 +138,8 @@ export function evaluatePageTranslation(
   execution: PageTranslationExecution,
   options: {
     requireTranslationOnly?: boolean
+    requirePrivacySanitization?: boolean
+    requireRichTextPlaceholderPreservation?: boolean
   } = {},
 ): EvaluationResult {
   const issues: BenchmarkIssue[] = []
@@ -137,12 +187,53 @@ export function evaluatePageTranslation(
     )
   }
 
+  if (options.requirePrivacySanitization && !isSanitizedPrivacyContext(execution.payloadContext)) {
+    addIssue(
+      issues,
+      "high",
+      "Page translation privacy mode leaked more context than the sanitized contract allows.",
+      JSON.stringify(execution.payloadContext),
+    )
+  }
+
+  if (options.requireRichTextPlaceholderPreservation && (execution.requestPlaceholderCount ?? 0) === 0) {
+    addIssue(
+      issues,
+      "high",
+      "Page translation request did not include Astra rich-text placeholders for inline formatting.",
+      JSON.stringify(execution.requestTexts ?? []),
+    )
+  }
+
+  if (options.requireRichTextPlaceholderPreservation && (execution.restoredRichTextTagCount ?? 0) === 0) {
+    addIssue(
+      issues,
+      "high",
+      "Rendered page translation did not restore any inline rich-text tags.",
+      JSON.stringify(execution.translatedHtmlSnippets ?? []),
+    )
+  }
+
+  if (options.requireRichTextPlaceholderPreservation && (execution.placeholderLeakCount ?? 0) > 0) {
+    addIssue(
+      issues,
+      "high",
+      "Rendered page translation leaked Astra placeholder tokens into the DOM.",
+      `placeholderLeakCount=${execution.placeholderLeakCount}`,
+    )
+  }
+
+  const contextSafety = !options.requirePrivacySanitization || isSanitizedPrivacyContext(execution.payloadContext)
+    ? 10
+    : 4
+
   const scores = {
     correctness,
     completeness,
     stability,
     coverage: Math.min(10, coverage),
     dom_preservation: domPreservation,
+    context_safety: contextSafety,
   }
 
   const baseTotal = Math.round((Object.values(scores).reduce((sum, score) => sum + score, 0) / (Object.keys(scores).length * 10)) * 100)

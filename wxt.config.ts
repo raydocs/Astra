@@ -1,45 +1,78 @@
 import { defineConfig } from "wxt"
 
+/**
+ * Build profiles:
+ * - chromium-full: Chrome/Edge full-feature build (default)
+ * - chromium-compat: Conservative build for 360/QQ/Sogou/2345/mobile Chromium
+ * - safari: Safari/iOS
+ * - firefox: Firefox/AMO
+ *
+ * Set ASTRA_BROWSER_CHANNEL=compat to produce a conservative Chromium build.
+ */
+const isCompatChannel = process.env.ASTRA_BROWSER_CHANNEL === "compat"
+
 // https://wxt.dev/api/config.html
 export default defineConfig({
   srcDir: "src",
   imports: false,
   modules: ["@wxt-dev/module-react"],
   manifestVersion: 3,
-  manifest: ({ browser }) => ({
-    name: "__MSG_extName__",
-    description: "__MSG_extDescription__",
-    default_locale: "zh_CN",
-    options_page: "options.html",
-    permissions: [
-      "storage",
-      "tabs",
-      "activeTab",
-      "webNavigation",
-      "contextMenus",
-      "alarms",
-    ],
-    host_permissions: ["*://*/*"],
-    commands: {
-      toggleTranslate: {
-        suggested_key: { default: "Alt+A", mac: "Alt+A" },
-        description: "Toggle page translation",
+  manifest: ({ browser }) => {
+    // Base permissions available in all builds
+    const permissions: string[] = ["storage", "tabs", "activeTab"]
+
+    // Full Chromium builds get additional API permissions
+    if (!isCompatChannel) {
+      permissions.push("webNavigation", "contextMenus", "alarms")
+    }
+
+    return {
+      name: "__MSG_extName__",
+      description: "__MSG_extDescription__",
+      default_locale: "zh_CN",
+      // Use options_ui for broader Chromium-family compatibility
+      options_ui: {
+        page: "options.html",
+        open_in_tab: true,
       },
-      translatePage: {
-        suggested_key: { default: "Alt+W", mac: "Alt+W" },
-        description: "Translate entire page",
-      },
-      toggleHover: {
-        suggested_key: { default: "Alt+H", mac: "Alt+H" },
-        description: "Cycle hover translation mode",
-      },
-    },
-    ...(browser === "safari" && {
-      browser_specific_settings: {
-        safari: {
-          strict_min_version: "16.4",
+      permissions,
+      host_permissions: ["*://*/*"],
+      // Omnibox integration only in full builds (compat builds may not support omnibox API)
+      ...(!isCompatChannel && {
+        omnibox: { keyword: "astra" },
+      }),
+      // Keyboard shortcuts only in full builds (compat builds may not support commands API)
+      ...(!isCompatChannel && {
+        commands: {
+          toggleTranslate: {
+            suggested_key: { default: "Alt+A", mac: "Alt+A" },
+            description: "Toggle page translation",
+          },
+          translatePage: {
+            suggested_key: { default: "Alt+W", mac: "Alt+W" },
+            description: "Translate entire page",
+          },
+          toggleHover: {
+            suggested_key: { default: "Alt+H", mac: "Alt+H" },
+            description: "Cycle hover translation mode",
+          },
         },
-      },
-    }),
-  }),
+      }),
+      ...(browser === "safari" && {
+        browser_specific_settings: {
+          safari: {
+            strict_min_version: "16.4",
+          },
+        },
+      }),
+      ...(browser === "firefox" && {
+        browser_specific_settings: {
+          gecko: {
+            id: "astra@nicepkg.cn",
+            strict_min_version: "109.0",
+          },
+        },
+      }),
+    }
+  },
 })

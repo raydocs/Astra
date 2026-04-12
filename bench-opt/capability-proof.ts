@@ -55,10 +55,13 @@ export interface CapabilityProofResult {
 }
 
 export function createWaveBCapabilityProofConfig(
-  overrides: Partial<Pick<CapabilityProofConfig, "runsPerPrompt" | "sprintsPerRun" | "longRunConfig">> = {},
+  overrides: Partial<Pick<CapabilityProofConfig, "runsPerPrompt" | "sprintsPerRun" | "longRunConfig">> & {
+    includeHoverTranslation?: boolean
+    includeSubtitleFileTranslation?: boolean
+    includeEpubTranslation?: boolean
+  } = {},
 ): CapabilityProofConfig {
-  return {
-    prompts: [
+  const prompts: CapabilityProofPromptSpec[] = [
       {
         id: "wave-b-web-translation",
         prompt:
@@ -91,7 +94,51 @@ export function createWaveBCapabilityProofConfig(
         difficulty: "medium",
         capabilityTargets: ["input-translation", "privacy-mode"],
       },
-    ],
+      {
+        id: "wave-d-privacy-mode",
+        prompt:
+          "Build a privacy-preserving translation system that redacts page metadata, strips query and fragment data, preserves only hostname and canonical path for page translation, and keeps local subtitle-file and sensitive authoring surfaces free of leaked page context.",
+        category: "privacy-sensitive-authoring",
+        difficulty: "medium",
+        capabilityTargets: ["privacy-mode", "web-translation", "input-translation", "subtitle-file-translation"],
+      },
+    ]
+
+  if (overrides.includeHoverTranslation) {
+    prompts.push({
+      id: "wave-c-hover-translation",
+      prompt:
+        "Build a hover translation experience with stable tooltips, request dedupe, moving-target resilience, and clear coordination with selection and input interactions.",
+      category: "interaction-polish",
+      difficulty: "medium",
+      capabilityTargets: ["hover-translation"],
+    })
+  }
+
+  if (overrides.includeSubtitleFileTranslation) {
+    prompts.push({
+      id: "wave-c-subtitle-file-translation",
+      prompt:
+        "Build a subtitle-file translation workflow for .srt and .vtt files with ingest, bilingual preview, malformed timing recovery, and timing-preserving export.",
+      category: "document-translation",
+      difficulty: "medium",
+      capabilityTargets: ["subtitle-file-translation"],
+    })
+  }
+
+  if (overrides.includeEpubTranslation) {
+    prompts.push({
+      id: "wave-c-epub-translation",
+      prompt:
+        "Build an EPUB bilingual reader with chapter navigation, translation-only mode, restored reading state, and resilient long-chapter batching.",
+      category: "document-translation",
+      difficulty: "medium",
+      capabilityTargets: ["epub-bilingual-translation"],
+    })
+  }
+
+  return {
+    prompts,
     runsPerPrompt: overrides.runsPerPrompt ?? 2,
     sprintsPerRun: overrides.sprintsPerRun ?? 5,
     longRunConfig: overrides.longRunConfig,

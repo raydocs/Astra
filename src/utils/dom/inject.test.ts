@@ -106,6 +106,21 @@ describe("inject helpers", () => {
     expect(el.textContent).toContain("Fresh text")
   })
 
+  it("accepts DocumentFragment translation content", () => {
+    document.body.innerHTML = `<p id="target">Hello world</p>`
+    const target = document.getElementById("target") as HTMLElement
+    const fragment = document.createDocumentFragment()
+    const strong = document.createElement("strong")
+    strong.textContent = "你好"
+    fragment.append("请", strong, "阅读")
+
+    injectTranslation(target, fragment)
+
+    const inner = target.querySelector(".astra-translation-inner")
+    expect(inner?.textContent).toBe("请你好阅读")
+    expect(inner?.querySelector("strong")?.textContent).toBe("你好")
+  })
+
   it("removeTranslationFor restores source wrapper in translation-only mode", () => {
     const el = document.createElement("p")
     el.textContent = "Source text"

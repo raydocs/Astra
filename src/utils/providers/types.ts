@@ -1,5 +1,9 @@
 import type { AstraConfig } from "@/types/config"
-import type { TranslationRequestContext, TranslationTask } from "@/types/messages"
+import type {
+  TranslationPlaceholderFormat,
+  TranslationRequestContext,
+  TranslationTask,
+} from "@/types/messages"
 
 export interface ProviderTranslationRequest {
   texts: string[]
@@ -8,6 +12,7 @@ export interface ProviderTranslationRequest {
   context?: TranslationRequestContext
   task?: TranslationTask
   customSystemPrompt?: string
+  placeholderFormat?: TranslationPlaceholderFormat
   languageLevel?: "beginner" | "intermediate" | "advanced"
 }
 

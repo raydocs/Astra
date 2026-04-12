@@ -3,14 +3,17 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 
 const {
   readConfigMock,
+  saveConfigMock,
   runInlineActionMock,
 } = vi.hoisted(() => ({
   readConfigMock: vi.fn(),
+  saveConfigMock: vi.fn(),
   runInlineActionMock: vi.fn(),
 }))
 
 vi.mock("@/utils/storage/config", () => ({
   readConfig: readConfigMock,
+  saveConfig: saveConfigMock,
 }))
 
 vi.mock("../inline-actions", () => ({
@@ -26,10 +29,26 @@ function getHost(): HTMLDivElement | null {
   return document.getElementById(HOST_ID) as HTMLDivElement | null
 }
 
-function getButton(): HTMLButtonElement | null {
+function getTranslateButton(): HTMLButtonElement | null {
   const host = getHost()
   if (!host?.shadowRoot) return null
-  return host.shadowRoot.querySelector("button")
+  const buttons = host.shadowRoot.querySelectorAll("button")
+  // The translate button is the one without data-testid (second button)
+  for (const btn of buttons) {
+    if (!btn.dataset.testid) return btn
+  }
+  return null
+}
+
+function getModeToggle(): HTMLButtonElement | null {
+  const host = getHost()
+  if (!host?.shadowRoot) return null
+  return host.shadowRoot.querySelector("[data-testid='input-translate-mode']") as HTMLButtonElement | null
+}
+
+/** @deprecated alias kept for brevity in existing tests */
+function getButton(): HTMLButtonElement | null {
+  return getTranslateButton()
 }
 
 describe("InputTranslate", () => {
@@ -104,6 +123,10 @@ describe("InputTranslate", () => {
     vi.spyOn(document, "removeEventListener").mockImplementation((() => {}) as typeof document.removeEventListener)
 
     readConfigMock.mockResolvedValue({
+      ...DEFAULT_ASTRA_CONFIG,
+      inputTranslation: "enabled",
+    })
+    saveConfigMock.mockResolvedValue({
       ...DEFAULT_ASTRA_CONFIG,
       inputTranslation: "enabled",
     })

@@ -1,5 +1,7 @@
+import { epubReaderBasicScenario } from "./epub-reader-basic"
 import { fixturePlaywrightSmokeScenario } from "./fixture-playwright-smoke"
 import { frameCoordinationBasicScenario } from "./frame-coordination-basic"
+import { hoverTranslationBasicScenario } from "./hover-translation-basic"
 import { inputTranslationBasicScenario } from "./input-translation-basic"
 import { inputTranslationFieldMatrixScenario } from "./input-translation-field-matrix"
 import { interactionPriorityBasicScenario } from "./interaction-priority-basic"
@@ -9,14 +11,17 @@ import { pageTranslationArticleBasicSourceTranslationOnlyScenario } from "./page
 import { pageTranslationFeedCardListSourceScenario } from "./page-translation-feed-card-list-source"
 import { pageTranslationFormsAndNavSourceScenario } from "./page-translation-forms-and-nav-source"
 import { pageTranslationNestedBlocksSourceScenario } from "./page-translation-nested-blocks-source"
+import { privacyModePageTranslationSourceScenario } from "./privacy-mode-page-translation-source"
 import { pdfReaderBasicScenario } from "./pdf-reader-basic"
 import { placeholderScenario } from "./placeholder"
 import { youtubeSubtitleBasicScenario } from "./youtube-subtitle-basic"
 import { subtitleBasicScenario } from "./subtitle-basic"
-import { holdoutScenarios } from "./holdout/index"
+import { subtitleFileBasicScenario } from "./subtitle-file-basic"
 
+export { epubReaderBasicScenario } from "./epub-reader-basic"
 export { fixturePlaywrightSmokeScenario } from "./fixture-playwright-smoke"
 export { frameCoordinationBasicScenario } from "./frame-coordination-basic"
+export { hoverTranslationBasicScenario } from "./hover-translation-basic"
 export { inputTranslationBasicScenario } from "./input-translation-basic"
 export { inputTranslationFieldMatrixScenario } from "./input-translation-field-matrix"
 export { interactionPriorityBasicScenario } from "./interaction-priority-basic"
@@ -26,26 +31,29 @@ export { pageTranslationArticleBasicSourceTranslationOnlyScenario } from "./page
 export { pageTranslationFeedCardListSourceScenario } from "./page-translation-feed-card-list-source"
 export { pageTranslationFormsAndNavSourceScenario } from "./page-translation-forms-and-nav-source"
 export { pageTranslationNestedBlocksSourceScenario } from "./page-translation-nested-blocks-source"
+export { privacyModePageTranslationSourceScenario } from "./privacy-mode-page-translation-source"
 export { pdfReaderBasicScenario } from "./pdf-reader-basic"
 export { placeholderScenario } from "./placeholder"
 export { youtubeSubtitleBasicScenario } from "./youtube-subtitle-basic"
 export { subtitleBasicScenario } from "./subtitle-basic"
-
+export { subtitleFileBasicScenario } from "./subtitle-file-basic"
 export const liveScenarios = [
   pageTranslationArticleBasicSourceScenario,
   pageTranslationArticleBasicSourceTranslationOnlyScenario,
   pageTranslationArticleBasicScenario,
   pageTranslationFeedCardListSourceScenario,
+  privacyModePageTranslationSourceScenario,
   pageTranslationFormsAndNavSourceScenario,
   pageTranslationNestedBlocksSourceScenario,
   pdfReaderBasicScenario,
   interactionPriorityBasicScenario,
   frameCoordinationBasicScenario,
+  hoverTranslationBasicScenario,
   inputTranslationBasicScenario,
   inputTranslationFieldMatrixScenario,
   youtubeSubtitleBasicScenario,
   subtitleBasicScenario,
-  fixturePlaywrightSmokeScenario,
+  subtitleFileBasicScenario,
+  epubReaderBasicScenario,
   placeholderScenario,
-  ...holdoutScenarios,
 ]

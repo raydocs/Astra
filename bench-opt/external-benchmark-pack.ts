@@ -7,10 +7,26 @@
  */
 
 import type { ProofSuiteResult } from "./proof-suite.ts"
+import type {
+  BenchOptCapabilityStatusSummary,
+  BenchOptStatusArtifact,
+} from "./types.ts"
+import type {
+  AstraCapabilityId,
+  AstraCapabilityLaneStatus,
+  AstraCapabilityVerdict,
+} from "./capabilities.ts"
 
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
+
+export interface BenchmarkPackCapabilityRequirement {
+  id: AstraCapabilityId
+  minimumVerdict: AstraCapabilityVerdict
+  requiredCoverage?: Partial<Record<keyof Pick<BenchOptCapabilityStatusSummary["cards"][number]["currentCoverage"], "bench" | "live" | "holdout" | "proof">, AstraCapabilityLaneStatus>>
+  reason: string
+}
 
 export interface BenchmarkPackConfig {
   version: string                    // "1.0.0"
@@ -53,6 +69,7 @@ export interface BenchmarkPackConfig {
     minAvgScore: number          // e.g., 70
     holdoutPassRate: number      // e.g., 0.9
   }
+  requiredCapabilities?: BenchmarkPackCapabilityRequirement[]
 }
 
 export interface BenchmarkPackValidationResult {
@@ -265,9 +282,58 @@ export function createOfficialBenchmarkPack(): Readonly<BenchmarkPackConfig> {
       minAvgScore: 70,
       holdoutPassRate: 0.9,
     },
+    requiredCapabilities: [],
   }
 
   return Object.freeze(pack)
+}
+
+export function createDraftCapabilityBenchmarkPackV2(): Readonly<BenchmarkPackConfig> {
+  const base = createOfficialBenchmarkPack()
+  const pack: BenchmarkPackConfig = {
+    ...base,
+    version: "2.0.0-draft",
+    name: "astra-capability-conquest-benchmark-v2",
+    description:
+      "Draft capability benchmark pack for Astra v2. Extends the hardened proof pack with capability governance gates, " +
+      "including privacy-mode as a required protocol-level capability.",
+    runbook: {
+      ...base.runbook,
+      verifyCommand:
+        "npx tsx bench-opt/external-benchmark-pack-entry.ts --pack v2 --validate bench-opt-results/proof-suite/latest.proof-suite.json --status bench-opt-results/latest.status.json",
+      reportPath: "bench-opt-results/latest.status.md",
+    },
+    requiredCapabilities: [
+      {
+        id: "privacy-mode",
+        minimumVerdict: "partial",
+        requiredCoverage: {
+          live: "green",
+          holdout: "green",
+          proof: "green",
+        },
+        reason:
+          "Privacy regressions must fail the benchmark pack even before privacy-mode is globally conquered.",
+      },
+    ],
+  }
+
+  return Object.freeze(pack)
+}
+
+const CAPABILITY_VERDICT_RANK: Record<AstraCapabilityVerdict, number> = {
+  "not-started": 0,
+  partial: 1,
+  "bench-pass": 2,
+  "live-pass": 3,
+  "holdout-pass": 4,
+  conquered: 5,
+}
+
+const LANE_STATUS_RANK: Record<AstraCapabilityLaneStatus, number> = {
+  missing: 0,
+  partial: 1,
+  green: 2,
 }
 
 // ---------------------------------------------------------------------------
@@ -281,6 +347,7 @@ export function createOfficialBenchmarkPack(): Readonly<BenchmarkPackConfig> {
 export function validateBenchmarkPackResults(
   pack: BenchmarkPackConfig,
   suiteResult: ProofSuiteResult,
+  statusArtifact: BenchOptStatusArtifact | null = null,
 ): BenchmarkPackValidationResult {
   const conditions: BenchmarkPackValidationResult["conditions"] = []
   const notes: string[] = []
@@ -378,6 +445,51 @@ export function validateBenchmarkPackResults(
     passed: visiblePassed,
   })
 
+  // 7. Required capability governance
+  for (const requirement of pack.requiredCapabilities ?? []) {
+    if (!statusArtifact?.capabilities) {
+      conditions.push({
+        name: `Capability gate: ${requirement.id}`,
+        expected: `${requirement.minimumVerdict}+ with required coverage`,
+        actual: "No status artifact/capability summary provided",
+        passed: false,
+      })
+      notes.push(`Capability requirement ${requirement.id} could not be validated because no status artifact was provided.`)
+      continue
+    }
+
+    const card = statusArtifact.capabilities.cards.find((entry) => entry.id === requirement.id)
+    if (!card) {
+      conditions.push({
+        name: `Capability gate: ${requirement.id}`,
+        expected: `${requirement.minimumVerdict}+ with required coverage`,
+        actual: "Capability missing from status artifact",
+        passed: false,
+      })
+      notes.push(`Capability requirement ${requirement.id} is missing from the status artifact.`)
+      continue
+    }
+
+    const verdictPass = CAPABILITY_VERDICT_RANK[card.verdict] >= CAPABILITY_VERDICT_RANK[requirement.minimumVerdict]
+    const coverageFailures = Object.entries(requirement.requiredCoverage ?? {}).filter(([lane, minStatus]) => {
+      const actual = card.currentCoverage[lane as keyof typeof card.currentCoverage]
+      return LANE_STATUS_RANK[actual] < LANE_STATUS_RANK[minStatus as AstraCapabilityLaneStatus]
+    })
+    const passed = verdictPass && coverageFailures.length === 0
+    const actualCoverage = Object.entries(card.currentCoverage).map(([lane, status]) => `${lane}=${status}`).join(", ")
+
+    conditions.push({
+      name: `Capability gate: ${requirement.id}`,
+      expected: `${requirement.minimumVerdict}+; ${Object.entries(requirement.requiredCoverage ?? {}).map(([lane, status]) => `${lane}=${status}`).join(", ") || "no lane minimums"}`,
+      actual: `verdict=${card.verdict}; ${actualCoverage}`,
+      passed,
+    })
+
+    if (!passed) {
+      notes.push(`Capability requirement ${requirement.id} failed: ${requirement.reason}`)
+    }
+  }
+
   // Overall pass
   const allPassed = conditions.every((c) => c.passed)
 
@@ -422,8 +534,9 @@ export function renderBenchmarkPackSpec(pack: BenchmarkPackConfig): string {
   lines.push("2. [Scoring Rubric](#scoring-rubric)")
   lines.push("3. [Gate Thresholds](#gate-thresholds)")
   lines.push("4. [Pass Conditions](#pass-conditions)")
-  lines.push("5. [Runbook](#runbook)")
-  lines.push("6. [Artifact Layout](#artifact-layout)")
+  lines.push("5. [Required Capabilities](#required-capabilities)")
+  lines.push("6. [Runbook](#runbook)")
+  lines.push("7. [Artifact Layout](#artifact-layout)")
   lines.push("")
 
   // Prompts
@@ -492,6 +605,22 @@ export function renderBenchmarkPackSpec(pack: BenchmarkPackConfig): string {
   lines.push(`3. **Minimum average score:** ${pack.passConditions.minAvgScore}`)
   lines.push(`4. **Holdout pass rate:** ${(pack.passConditions.holdoutPassRate * 100).toFixed(0)}%`)
   lines.push("")
+
+  // Required capabilities
+  lines.push("## Required Capabilities")
+  lines.push("")
+  if (!pack.requiredCapabilities || pack.requiredCapabilities.length === 0) {
+    lines.push("No additional capability governance requirements are enforced by this benchmark pack.")
+    lines.push("")
+  } else {
+    lines.push("| Capability | Minimum verdict | Required coverage | Reason |")
+    lines.push("|------------|-----------------|-------------------|--------|")
+    for (const requirement of pack.requiredCapabilities) {
+      const coverage = Object.entries(requirement.requiredCoverage ?? {}).map(([lane, status]) => `${lane}=${status}`).join(", ") || "none"
+      lines.push(`| ${requirement.id} | ${requirement.minimumVerdict} | ${coverage} | ${requirement.reason} |`)
+    }
+    lines.push("")
+  }
 
   // Runbook
   lines.push("## Runbook")

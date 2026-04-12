@@ -3,6 +3,7 @@ import type { VideoPlatformConfig } from "./types"
 export const bilibiliPlatform: VideoPlatformConfig = {
   id: "bilibili",
   hostnames: ["www.bilibili.com"],
+  preferTextTracks: true,
   // Bilibili uses bpx-player subtitle panel for subtitle text
   captionContainerSelector: ".bpx-player-subtitle-panel",
   captionSegmentSelector: ".bpx-player-subtitle-panel-text",

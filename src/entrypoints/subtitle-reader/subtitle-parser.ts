@@ -13,6 +13,18 @@ export interface SubtitleCue {
 
 export type SubtitleFormat = "srt" | "vtt" | "ass" | "unknown"
 
+/** Supported document (non-subtitle) formats */
+export type DocumentFormat = "markdown" | "txt" | "html"
+
+/** Union of all file formats the reader understands */
+export type FileFormat = SubtitleFormat | DocumentFormat
+
+/** A paragraph entry from a parsed document file */
+export interface DocumentEntry {
+  index: number
+  text: string
+}
+
 export function detectFormat(content: string): SubtitleFormat {
   const trimmed = content.trim()
   if (trimmed.startsWith("WEBVTT")) return "vtt"
@@ -155,4 +167,92 @@ export function exportBilingualVtt(cues: SubtitleCue[], translations: Map<number
     .join("\n\n")
 
   return `WEBVTT\n\n${body}`
+}
+
+// ---------------------------------------------------------------------------
+// Document parsers (Markdown / plain text / HTML)
+// ---------------------------------------------------------------------------
+
+/**
+ * Parse markdown or plain-text content by splitting on double-newlines.
+ * Returns an array of `{ index, text }` entries (1-based index).
+ */
+export function parseMarkdown(content: string): DocumentEntry[] {
+  return content
+    .split(/\n\s*\n/)
+    .map((block) => block.trim())
+    .filter((block) => block.length > 0)
+    .map((text, i) => ({ index: i + 1, text }))
+}
+
+/**
+ * Very lightweight HTML-to-text: strip tags, then split by double-newlines.
+ * This is intentionally simple — no DOM parsing required.
+ */
+export function parseHtml(content: string): DocumentEntry[] {
+  // Replace block-level closing tags with double newlines so paragraphs separate
+  const withBreaks = content
+    .replace(/<\/?(p|div|br|h[1-6]|li|tr|blockquote|section|article|header|footer|pre|hr)[^>]*>/gi, "\n\n")
+    .replace(/<[^>]+>/g, "")           // strip remaining tags
+    .replace(/&nbsp;/gi, " ")
+    .replace(/&lt;/gi, "<")
+    .replace(/&gt;/gi, ">")
+    .replace(/&amp;/gi, "&")
+    .replace(/&#39;/gi, "'")
+    .replace(/&quot;/gi, '"')
+
+  return parseMarkdown(withBreaks)
+}
+
+/**
+ * Detect document format from file extension.
+ * Returns undefined if the extension is not a document type.
+ */
+export function detectDocumentFormat(fileName: string): DocumentFormat | undefined {
+  const ext = fileName.split(".").pop()?.toLowerCase()
+  if (ext === "md" || ext === "markdown") return "markdown"
+  if (ext === "txt") return "txt"
+  if (ext === "html" || ext === "htm") return "html"
+  return undefined
+}
+
+/**
+ * Parse a document file (md/txt/html) into entries.
+ */
+export function parseDocument(content: string, format: DocumentFormat): DocumentEntry[] {
+  switch (format) {
+    case "html":
+      return parseHtml(content)
+    case "markdown":
+    case "txt":
+      return parseMarkdown(content)
+  }
+}
+
+/**
+ * Export bilingual markdown.
+ * Each paragraph shows original text followed by a blockquote translation.
+ */
+export function exportMarkdownBilingual(entries: DocumentEntry[], translations: Map<number, string>): string {
+  return entries
+    .map((entry, i) => {
+      const translation = translations.get(i) ?? ""
+      return translation
+        ? `${entry.text}\n\n> ${translation}`
+        : entry.text
+    })
+    .join("\n\n")
+}
+
+/** Human-readable label for a file format */
+export function formatLabel(format: FileFormat): string {
+  switch (format) {
+    case "srt": return "SRT"
+    case "vtt": return "VTT"
+    case "ass": return "ASS"
+    case "markdown": return "Markdown"
+    case "txt": return "Plain text"
+    case "html": return "HTML document"
+    default: return "Unknown"
+  }
 }

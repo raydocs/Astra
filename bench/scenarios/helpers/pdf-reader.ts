@@ -6,7 +6,7 @@ import { JSDOM } from "jsdom"
 import { extractPdfPages, type PdfPage } from "@/entrypoints/pdf-reader/pdf-extractor"
 import { translatePdfPage } from "@/entrypoints/pdf-reader/pdf-translator"
 
-import { installBenchBrowser, type TranslateCallRecord } from "../../runtime/browser"
+import { installBenchBrowser, type TranslateCallRecord, type TranslationBatchPayload } from "../../runtime/browser"
 import type { PdfTranslationExecution } from "../../evaluators/pdf"
 
 export type PdfReaderMode = "bilingual" | "translation-only"
@@ -50,6 +50,13 @@ export interface PdfReaderHarnessResult {
   renderedHtml: string
   translateCalls: TranslateCallRecord[]
   summary: PdfReaderSkeletonSummary
+}
+
+function normalizeTranslateCallContext(context: TranslationBatchPayload["context"]): Record<string, unknown> | null {
+  if (!context || typeof context !== "object") {
+    return null
+  }
+  return context as Record<string, unknown>
 }
 
 export const PDF_READER_FIRST_CUT_FIXTURE = "pdf-reader-first-cut"
@@ -318,6 +325,8 @@ export async function runPdfReaderHarness(options: {
       pageCount: pages.length,
       blockCount: renderedPages.reduce((sum, page) => sum + page.blocks.length, 0),
       translationRequestCount: browser.getTranslateCalls().length,
+      translateCallContexts: browser.getTranslateCalls().map((call) => normalizeTranslateCallContext(call.payload.context)),
+      privacyContextLeakCount: browser.getTranslateCalls().filter((call) => normalizeTranslateCallContext(call.payload.context) !== null).length,
       bilingual,
       translationOnly,
       notes: [

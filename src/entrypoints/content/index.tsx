@@ -10,6 +10,7 @@ import { mountFloatBall } from "./components/FloatBall"
 import { mountSelectionToolbar } from "./components/SelectionToolbar"
 import { mountHoverTranslate } from "./components/HoverTranslate"
 import { mountInputTranslate } from "./components/InputTranslate"
+import { isHoverCapable } from "@/utils/ui/useViewportProfile"
 import { translatePageSubtitles, removeTranslatedSubtitles } from "./subtitle-translate"
 import {
   isVideoPage,
@@ -18,24 +19,41 @@ import {
   setupVideoNavigationHandler,
 } from "./video-platforms"
 import { detectAndShowPdfBanner } from "./pdf-detect"
+import {
+  isMeetingPage,
+  startMeetingCaptionTranslation,
+  stopMeetingCaptionTranslation,
+} from "./meeting-captions"
+import { extractTextFromImage, isOcrFeatureEnabled } from "@/utils/ocr/image-text"
 import { isTopFrame } from "./frame-context"
 import {
   isContentCommand,
+  isContentStudyContextCommand,
+  isContentDetectArticleCommand,
   type ContentCommand,
   type ContentCommandResponse,
+  type ContentStudyContextResponse,
+  type ContentDetectArticleResponse,
 } from "@/types/messages"
+import { findContentRoot } from "@/utils/dom/traversal"
 import {
   createSiteSnapshot,
   createTranslationError,
   type TranslationSnapshot,
 } from "@/types/translation"
 import { readConfig } from "@/utils/storage/config"
-import { hasResolvedProviderAccess, resolveSiteTranslationSettings } from "@/types/config"
+import { buildInlineTranslationContext } from "./translation-context"
+import {
+  hasResolvedProviderAccess,
+  resolveManagedProviderConfig,
+  resolveSiteTranslationSettings,
+} from "@/types/config"
 import { readAstraSession } from "@/utils/storage/auth"
 
 let siteUiMounted = false
 let inputUiMounted = false
 let stylesInjected = false
+let customCssElement: HTMLStyleElement | null = null
 let autoTranslateSuppressedForPage = false
 let lastAutomationState = {
   enabled: false,
@@ -43,6 +61,10 @@ let lastAutomationState = {
   providerReady: false,
 }
 let lastProviderSnapshot: string | null = null
+let lastTranslationSettingsSnapshot: string | null = null
+let storageChangeGeneration = 0
+let reconcileGeneration = 0
+let providerHotSwitchGeneration = 0
 const spaWatcher = createSPANavigationWatcher()
 let spaRestartTimer: ReturnType<typeof setTimeout> | null = null
 
@@ -50,6 +72,8 @@ export function __resetContentEntrypointForTests() {
   siteUiMounted = false
   inputUiMounted = false
   stylesInjected = false
+  removeCustomCss()
+  stopMeetingCaptionTranslation()
   autoTranslateSuppressedForPage = false
   lastAutomationState = {
     enabled: false,
@@ -57,6 +81,10 @@ export function __resetContentEntrypointForTests() {
     providerReady: false,
   }
   lastProviderSnapshot = null
+  lastTranslationSettingsSnapshot = null
+  storageChangeGeneration = 0
+  reconcileGeneration = 0
+  providerHotSwitchGeneration = 0
   spaWatcher.stop()
   if (spaRestartTimer !== null) {
     clearTimeout(spaRestartTimer)
@@ -79,28 +107,57 @@ export default defineContentScript({
     window.__ASTRA_INJECTED__ = true
 
     browser.runtime.onMessage.addListener((message, _sender, sendResponse) => {
-      if (!isContentCommand(message)) return
+      if (isContentCommand(message)) {
+        void handleContentCommand(message)
+          .then(sendResponse)
+          .catch((error) => {
+            sendResponse({
+              ok: false,
+              error: {
+                code: "UNKNOWN",
+                message: error instanceof Error ? error.message : "Unexpected content error.",
+              },
+              state: getPageTranslationState(),
+            } satisfies ContentCommandResponse)
+          })
 
-      void handleContentCommand(message)
-        .then(sendResponse)
-        .catch((error) => {
-          sendResponse({
-            ok: false,
-            error: {
-              code: "UNKNOWN",
-              message: error instanceof Error ? error.message : "Unexpected content error.",
-            },
-            state: getPageTranslationState(),
-          } satisfies ContentCommandResponse)
-        })
+        return true
+      }
 
-      return true
+      if (isContentStudyContextCommand(message)) {
+        void handleStudyContextCommand()
+          .then(sendResponse)
+          .catch((error) => {
+            sendResponse({
+              ok: false,
+              error: {
+                code: "UNKNOWN",
+                message: error instanceof Error ? error.message : "Unexpected content error.",
+              },
+            } satisfies ContentStudyContextResponse)
+          })
+
+        return true
+      }
+
+      if (isContentDetectArticleCommand(message)) {
+        const root = findContentRoot(document)
+        const selector = buildSelectorForElement(root)
+        sendResponse({ ok: true, selector } satisfies ContentDetectArticleResponse)
+        return true
+      }
+
+      if (isTranslateImageMessage(message)) {
+        void handleTranslateImageMessage(message.payload.imageUrl)
+        return false
+      }
+
+      return
     })
 
     browser.storage.onChanged?.addListener((_changes, areaName) => {
       if (areaName !== "local") return
-      void reconcileSiteAutomation()
-      void handleProviderHotSwitch()
+      void handleStorageChange()
     })
 
     const [config, session] = await Promise.all([
@@ -122,23 +179,142 @@ export default defineContentScript({
           if (isVideoPage()) {
             stopVideoSubtitleTranslation()
           }
+          stopMeetingCaptionTranslation()
+          if (spaRestartTimer !== null) {
+            clearTimeout(spaRestartTimer)
+          }
           spaRestartTimer = setTimeout(() => {
             spaRestartTimer = null
-            void startPageTranslation()
+            void startTranslationForCurrentSettings()
           }, 500)
         }
       })
     }
 
-    // Initialize provider snapshot for hot-switch detection
-    lastProviderSnapshot = JSON.stringify(config.provider ?? {})
+    // Meeting caption auto-detect (Google Meet, Zoom) — gated by site enabled + provider access
+    if (isTopFrame() && isMeetingPage()) {
+      const meetingSiteSettings = resolveSiteTranslationSettings(config, window.location.hostname)
+      if (meetingSiteSettings.enabled && hasResolvedProviderAccess(config.provider, session)) {
+        void startMeetingCaptionTranslation()
+      }
+    }
+
+    // Initialize effective provider snapshot for hot-switch detection
+    lastProviderSnapshot = buildProviderSnapshot(config, session)
   },
 })
+
+function buildTranslationSettingsSnapshot(siteSettings: ReturnType<typeof resolveSiteTranslationSettings>): string {
+  const selectors = normalizeSelectorList(siteSettings.selectors) ?? []
+  const excludeSelectors = normalizeSelectorList(siteSettings.excludeSelectors) ?? []
+
+  return JSON.stringify({
+    enabled: siteSettings.enabled,
+    targetLang: siteSettings.targetLang,
+    contentScope: siteSettings.contentScope,
+    presentationMode: siteSettings.presentation.mode,
+    presentationTheme: siteSettings.presentation.theme,
+    selectors,
+    excludeSelectors,
+    paragraphMinLength: siteSettings.paragraphMinLength ?? null,
+  })
+}
+
+function normalizeSelectorList(selectors?: string[]): string[] | undefined {
+  if (!selectors) return undefined
+
+  const normalized = [...new Set(
+    selectors
+      .map((selector) => selector.trim())
+      .filter((selector) => selector.length > 0),
+  )].sort((left, right) => left.localeCompare(right))
+
+  return normalized.length > 0 ? normalized : undefined
+}
+
+function buildTranslationStartOverrides(
+  siteSettings: ReturnType<typeof resolveSiteTranslationSettings>,
+) {
+  return {
+    targetLang: siteSettings.targetLang,
+    contentScope: siteSettings.contentScope,
+    translationMode: siteSettings.presentation.mode,
+    translationTheme: siteSettings.presentation.theme,
+    selectors: normalizeSelectorList(siteSettings.selectors),
+    excludeSelectors: normalizeSelectorList(siteSettings.excludeSelectors),
+    paragraphMinLength: siteSettings.paragraphMinLength,
+  }
+}
+
+function buildProviderSnapshot(
+  config: Awaited<ReturnType<typeof readConfig>>,
+  session: Awaited<ReturnType<typeof readAstraSession>>,
+) {
+  const provider = resolveManagedProviderConfig(config.provider, session)
+  return JSON.stringify({
+    id: provider.id ?? null,
+    apiKey: (provider.apiKey ?? "").trim(),
+    accessToken: (provider.accessToken ?? "").trim(),
+    relayBaseURL: provider.relayBaseURL?.trim() ?? "",
+    model: (provider.model ?? "").trim(),
+  })
+}
+
+async function startTranslationForCurrentSettings(
+  configOverride?: Awaited<ReturnType<typeof readConfig>>,
+  sessionOverride?: Awaited<ReturnType<typeof readAstraSession>>,
+) {
+  const [config, session] = await Promise.all([
+    configOverride ? Promise.resolve(configOverride) : readConfig(),
+    sessionOverride !== undefined ? Promise.resolve(sessionOverride) : readAstraSession(),
+  ])
+
+  if (!hasResolvedProviderAccess(config.provider, session)) {
+    return false
+  }
+
+  const siteSettings = resolveSiteTranslationSettings(config, window.location.hostname)
+  if (!siteSettings.enabled) {
+    return false
+  }
+
+  await startPageTranslation(buildTranslationStartOverrides(siteSettings))
+  if (isVideoPage()) {
+    void startVideoSubtitleTranslation()
+  }
+  if (isMeetingPage()) {
+    void startMeetingCaptionTranslation()
+  }
+
+  return true
+}
+
+async function handleStorageChange() {
+  const generation = ++storageChangeGeneration
+  const [config, session] = await Promise.all([
+    readConfig(),
+    readAstraSession(),
+  ])
+
+  if (generation !== storageChangeGeneration) {
+    return
+  }
+
+  const reconcileResult = await reconcileSiteAutomation(config, session)
+  if (generation !== storageChangeGeneration) {
+    return
+  }
+
+  await handleProviderHotSwitch(config, session, {
+    activeSessionHandled: reconcileResult.activeSessionHandled,
+  })
+}
 
 async function reconcileSiteAutomation(
   configOverride?: Awaited<ReturnType<typeof readConfig>>,
   sessionOverride?: Awaited<ReturnType<typeof readAstraSession>>,
-) {
+): Promise<{ activeSessionHandled: boolean }> {
+  const generation = ++reconcileGeneration
   const [config, session] = configOverride && sessionOverride !== undefined
     ? [configOverride, sessionOverride]
     : await Promise.all([
@@ -146,9 +322,17 @@ async function reconcileSiteAutomation(
         sessionOverride !== undefined ? Promise.resolve(sessionOverride) : readAstraSession(),
       ])
 
+  if (generation !== reconcileGeneration) {
+    return { activeSessionHandled: false }
+  }
+
   const siteSettings = resolveSiteTranslationSettings(config, window.location.hostname)
   const providerReady = hasResolvedProviderAccess(config.provider, session)
   const currentState = getPageTranslationState()
+  let activeSessionHandled = false
+  const translationSettingsSnapshot = buildTranslationSettingsSnapshot(siteSettings)
+  const translationSettingsChanged = lastTranslationSettingsSnapshot !== null
+    && translationSettingsSnapshot !== lastTranslationSettingsSnapshot
   const automationEligible = siteSettings.enabled && siteSettings.alwaysTranslate && providerReady
   const previousAutomationEligible = lastAutomationState.enabled
     && lastAutomationState.alwaysTranslate
@@ -160,29 +344,93 @@ async function reconcileSiteAutomation(
 
   if (siteSettings.enabled) {
     ensureSiteUiMounted(config)
+    if (siteSettings.customCss) {
+      injectCustomCss(siteSettings.customCss)
+    } else {
+      removeCustomCss()
+    }
   }
 
   if (!siteSettings.enabled || !providerReady) {
+    if (!siteSettings.enabled) {
+      removeCustomCss()
+    }
+
+    if (generation !== reconcileGeneration) {
+      return { activeSessionHandled: false }
+    }
+
     if (currentState.phase !== "idle") {
       stopPageTranslation()
       removeTranslatedSubtitles()
       if (isVideoPage()) {
         stopVideoSubtitleTranslation()
       }
+      stopMeetingCaptionTranslation()
+      activeSessionHandled = true
     }
+
+    if (generation !== reconcileGeneration) {
+      return { activeSessionHandled: false }
+    }
+
     lastAutomationState = {
       enabled: siteSettings.enabled,
       alwaysTranslate: siteSettings.alwaysTranslate,
       providerReady,
     }
-    return
+    lastTranslationSettingsSnapshot = translationSettingsSnapshot
+    return { activeSessionHandled }
   }
 
-  if (siteSettings.alwaysTranslate && currentState.phase === "idle" && !autoTranslateSuppressedForPage) {
-    await startPageTranslation()
+  if (currentState.phase !== "idle" && translationSettingsChanged && !autoTranslateSuppressedForPage) {
+    if (generation !== reconcileGeneration) {
+      return { activeSessionHandled: false }
+    }
+
+    stopPageTranslation()
+    removeTranslatedSubtitles()
+    if (isVideoPage()) {
+      stopVideoSubtitleTranslation()
+    }
+    stopMeetingCaptionTranslation()
+    activeSessionHandled = true
+
+    if (generation !== reconcileGeneration) {
+      return { activeSessionHandled: false }
+    }
+
+    await startPageTranslation(buildTranslationStartOverrides(siteSettings))
+    if (generation !== reconcileGeneration) {
+      return { activeSessionHandled: false }
+    }
     if (isVideoPage()) {
       void startVideoSubtitleTranslation()
     }
+    if (isMeetingPage()) {
+      void startMeetingCaptionTranslation()
+    }
+  }
+
+  if (siteSettings.alwaysTranslate && currentState.phase === "idle" && !autoTranslateSuppressedForPage) {
+    if (generation !== reconcileGeneration) {
+      return { activeSessionHandled: false }
+    }
+
+    await startPageTranslation(buildTranslationStartOverrides(siteSettings))
+    if (generation !== reconcileGeneration) {
+      return { activeSessionHandled: false }
+    }
+    if (isVideoPage()) {
+      void startVideoSubtitleTranslation()
+    }
+    if (isMeetingPage()) {
+      void startMeetingCaptionTranslation()
+    }
+  }
+
+  if (generation !== reconcileGeneration) {
+    return { activeSessionHandled: false }
   }
 
   lastAutomationState = {
@@ -190,19 +438,62 @@ async function reconcileSiteAutomation(
     alwaysTranslate: siteSettings.alwaysTranslate,
     providerReady,
   }
+  lastTranslationSettingsSnapshot = translationSettingsSnapshot
+  return { activeSessionHandled }
 }
 
-async function handleProviderHotSwitch() {
-  const config = await readConfig()
-  const currentProviderSnapshot = JSON.stringify(config.provider ?? {})
-  if (lastProviderSnapshot !== null && currentProviderSnapshot !== lastProviderSnapshot) {
-    lastProviderSnapshot = currentProviderSnapshot
-    const state = getPageTranslationState()
-    if (state.phase !== "idle" && state.progress.failedBlocks > 0) {
-      retryFailedBlocks()
-    }
-  } else {
-    lastProviderSnapshot = currentProviderSnapshot
+async function handleProviderHotSwitch(
+  config: Awaited<ReturnType<typeof readConfig>>,
+  session: Awaited<ReturnType<typeof readAstraSession>>,
+  options: { activeSessionHandled?: boolean } = {},
+) {
+  const generation = ++providerHotSwitchGeneration
+  if (generation !== providerHotSwitchGeneration) return
+
+  const currentProviderSnapshot = buildProviderSnapshot(config, session)
+  const previousProviderSnapshot = lastProviderSnapshot
+  lastProviderSnapshot = currentProviderSnapshot
+
+  if (previousProviderSnapshot === null || currentProviderSnapshot === previousProviderSnapshot) {
+    return
+  }
+
+  if (options.activeSessionHandled) {
+    return
+  }
+
+  const state = getPageTranslationState()
+  if (state.phase === "idle") {
+    return
+  }
+
+  const providerReady = hasResolvedProviderAccess(config.provider, session)
+  if (!providerReady) {
+    return
+  }
+
+  const siteSettings = resolveSiteTranslationSettings(config, window.location.hostname)
+  if (!siteSettings.enabled) {
+    return
+  }
+
+  stopPageTranslation()
+  removeTranslatedSubtitles()
+  if (isVideoPage()) {
+    stopVideoSubtitleTranslation()
+  }
+  stopMeetingCaptionTranslation()
+
+  if (generation !== providerHotSwitchGeneration) return
+
+  await startPageTranslation(buildTranslationStartOverrides(siteSettings))
+  if (generation !== providerHotSwitchGeneration) return
+
+  if (isVideoPage()) {
+    void startVideoSubtitleTranslation()
+  }
+  if (isMeetingPage()) {
+    void startMeetingCaptionTranslation()
   }
 }
 
@@ -211,7 +502,10 @@ function ensureSiteUiMounted(config: Awaited<ReturnType<typeof readConfig>>) {
 
   if (!siteUiMounted) {
     mountSelectionToolbar()
-    mountHoverTranslate()
+    // Only mount hover translation on devices with fine pointer (not touch-primary)
+    if (isHoverCapable()) {
+      mountHoverTranslate()
+    }
 
     if (isTopFrame()) {
       mountFloatBall()
@@ -278,6 +572,7 @@ async function handleContentCommand(
       autoTranslateSuppressedForPage = true
       removeTranslatedSubtitles()
       stopVideoSubtitleTranslation()
+      stopMeetingCaptionTranslation()
       return { ok: true, state: stopPageTranslation() }
 
     case "content/toggle-translation":
@@ -308,10 +603,22 @@ async function handleContentCommand(
       autoTranslateSuppressedForPage = true
       removeTranslatedSubtitles()
       stopVideoSubtitleTranslation()
+      stopMeetingCaptionTranslation()
       return {
         ok: true,
         state: stopPageTranslation(),
       }
+
+    case "content/retry-failed":
+      retryFailedBlocks()
+      return { ok: true, state: getPageTranslationState() }
+  }
+}
+
+async function handleStudyContextCommand(): Promise<ContentStudyContextResponse> {
+  return {
+    ok: true,
+    context: await buildInlineTranslationContext(),
   }
 }
 
@@ -384,4 +691,144 @@ function injectStyles() {
     }
   `
   document.head.appendChild(style)
+}
+
+function injectCustomCss(css: string): void {
+  removeCustomCss()
+  if (!css.trim()) return
+  const el = document.createElement("style")
+  el.dataset.astraCustomCss = "1"
+  el.textContent = css
+  document.head.appendChild(el)
+  customCssElement = el
+}
+
+function removeCustomCss(): void {
+  if (customCssElement) {
+    customCssElement.remove()
+    customCssElement = null
+  }
+}
+
+function buildSelectorForElement(el: HTMLElement): string | undefined {
+  if (el === document.body) return undefined
+
+  if (el.id) return `#${CSS.escape(el.id)}`
+
+  const tag = el.tagName.toLowerCase()
+  if (["article", "main"].includes(tag)) return tag
+
+  const role = el.getAttribute("role")
+  if (role === "main") return `[role="main"]`
+
+  const canEscape = typeof CSS !== "undefined" && typeof CSS.escape === "function"
+  const specialCharsPattern = /[:#./[\]()>+~,\\@!$%^&*=|?{}'"` ]/
+
+  for (const cls of Array.from(el.classList)) {
+    if (!canEscape && specialCharsPattern.test(cls)) continue
+
+    const escaped = canEscape ? CSS.escape(cls) : cls
+    if (document.querySelectorAll(`.${escaped}`).length === 1) {
+      return `.${escaped}`
+    }
+  }
+
+  return tag
+}
+
+// --- Image translation overlay ---
+
+interface TranslateImageMessage {
+  type: "content/translate-image"
+  payload: { imageUrl: string }
+}
+
+function isTranslateImageMessage(value: unknown): value is TranslateImageMessage {
+  if (typeof value !== "object" || value === null) return false
+  const candidate = value as { type?: string; payload?: { imageUrl?: string } }
+  return candidate.type === "content/translate-image"
+    && typeof candidate.payload?.imageUrl === "string"
+}
+
+async function handleTranslateImageMessage(imageUrl: string): Promise<void> {
+  // Only process in the top frame to avoid duplicate handling from iframes
+  if (!isTopFrame()) return
+
+  // Respect the feature flag — bail out if the OCR feature is disabled
+  if (!isOcrFeatureEnabled()) {
+    console.info("[Astra] Image translation is currently disabled (feature flag).")
+    return
+  }
+
+  const config = await readConfig()
+  const siteSettings = resolveSiteTranslationSettings(config, window.location.hostname)
+  const targetLang = siteSettings.targetLang
+
+  // Find the image element on the page to anchor the overlay
+  const imgElement = document.querySelector<HTMLImageElement>(`img[src="${CSS.escape(imageUrl)}"]`)
+
+  let result: Awaited<ReturnType<typeof extractTextFromImage>>
+  try {
+    result = await extractTextFromImage(imageUrl, targetLang)
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : "Unexpected error during image text extraction."
+    console.warn("[Astra] Image text extraction threw:", errorMessage)
+    showImageTranslationOverlay(`[Error] ${errorMessage}`, imgElement)
+    return
+  }
+
+  if (!result.ok) {
+    console.warn("[Astra] Image text extraction failed:", result.message)
+    showImageTranslationOverlay(`[Error] ${result.message}`, imgElement)
+    return
+  }
+
+  showImageTranslationOverlay(result.text, imgElement)
+}
+
+function showImageTranslationOverlay(
+  translatedText: string,
+  anchorImage: HTMLImageElement | null,
+): void {
+  // Remove any existing overlay
+  document.querySelectorAll(".astra-image-overlay").forEach((el) => el.remove())
+
+  const overlay = document.createElement("div")
+  overlay.className = "astra-image-overlay"
+  overlay.textContent = translatedText
+
+  const style = overlay.style
+  style.position = "absolute"
+  style.zIndex = "2147483647"
+  style.background = "rgba(0, 0, 0, 0.85)"
+  style.color = "#fff"
+  style.padding = "10px 14px"
+  style.borderRadius = "6px"
+  style.fontSize = "13px"
+  style.lineHeight = "1.5"
+  style.maxWidth = "400px"
+  style.whiteSpace = "pre-wrap"
+  style.boxShadow = "0 4px 12px rgba(0, 0, 0, 0.3)"
+  style.pointerEvents = "auto"
+  style.cursor = "pointer"
+
+  overlay.addEventListener("click", () => {
+    overlay.remove()
+  })
+
+  if (anchorImage) {
+    const rect = anchorImage.getBoundingClientRect()
+    style.top = `${window.scrollY + rect.bottom + 4}px`
+    style.left = `${window.scrollX + rect.left}px`
+  } else {
+    style.top = "20px"
+    style.right = "20px"
+  }
+
+  document.body.appendChild(overlay)
+
+  // Auto-remove after 30 seconds
+  setTimeout(() => {
+    overlay.remove()
+  }, 30_000)
 }
