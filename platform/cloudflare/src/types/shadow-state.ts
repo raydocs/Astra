@@ -119,8 +119,8 @@ export interface ShadowDeviceSnapshot {
   identityMode: ShadowIdentityMode
   label: string
   platform?: string | null
-  browserFamily?: ShadowBrowserFamily | string | null
-  appKind: ShadowAppKind | string
+  browserFamily?: string | null
+  appKind: string
   appVersion?: string | null
   firstSeenAt: string
   lastSeenAt: string

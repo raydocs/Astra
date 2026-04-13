@@ -1,8 +1,8 @@
-import { resolveExtractionPlan } from "@/utils/dom/extraction"
-
 import { evaluateArticleExtraction, type ArticleExtractionExecution } from "../evaluators/article-extraction"
 import { cleanupDomEnvironment, installDomEnvironment } from "../runtime/dom"
-import { mountFixture, type FixtureSource } from "../runtime/fixtures"
+import { mountFixture } from "../runtime/fixtures"
+import { buildArticleExtractionExecutionFromDocument } from "./helpers/article-extraction"
+import { articleExtractionCaseDefinitions, type ArticleExtractionCaseDefinition } from "./helpers/article-extraction-fixtures"
 import type { BenchmarkScenario, ScenarioCodeHint } from "../types"
 
 const ARTICLE_EXTRACTION_CODE_HINT: ScenarioCodeHint = {
@@ -21,6 +21,10 @@ const ARTICLE_EXTRACTION_CODE_HINT: ScenarioCodeHint = {
     "NAV_SIDEBAR_SELECTOR",
     "article",
     "main content",
+    "empty",
+    "under-extracted",
+    "over-extracted",
+    "wrong-root",
   ],
   fallbackSurfaceFiles: [
     "src/utils/dom/extraction.ts",
@@ -29,71 +33,37 @@ const ARTICLE_EXTRACTION_CODE_HINT: ScenarioCodeHint = {
   risk: "local",
 }
 
-function runExtractionScenario(source: FixtureSource, url: string) {
-  installDomEnvironment(`https://example.com${url}`)
+function runExtractionScenario(definition: ArticleExtractionCaseDefinition): ArticleExtractionExecution {
+  installDomEnvironment(`https://example.com${definition.url}`)
+
   try {
-    mountFixture(source, { url })
-    const plan = resolveExtractionPlan(document, "article")
+    mountFixture({ kind: "page", name: definition.fixtureName }, { url: definition.url })
 
-    const execution: ArticleExtractionExecution = {
-      scope: plan.scope,
-      rootId: plan.root.id || null,
-      blockCount: plan.blocks.length,
-      blockTexts: plan.blocks.map((block) => block.text),
-      leakedTexts: [],
-    }
-
-    return execution
+    return buildArticleExtractionExecutionFromDocument({
+      doc: document,
+      contentScope: "article",
+      shouldExcludeTexts: definition.expected.shouldExcludeTexts,
+      notes: [
+        `fixture=${definition.fixtureName}`,
+        `expected-root=${definition.expected.scope}:${definition.expected.rootId ?? "BODY"}`,
+        `expected-block-range=${definition.expected.minBlockCount ?? 0}-${definition.expected.maxBlockCount ?? "∞"}`,
+        ...(definition.expected.expectedRootNote ? [definition.expected.expectedRootNote] : []),
+      ],
+    })
   } finally {
     cleanupDomEnvironment()
   }
 }
 
-export const articleExtractionScenarios: BenchmarkScenario<ArticleExtractionExecution>[] = [
-  {
-    id: "article-extraction/docs-sidebar-root",
-    title: "Docs fixture resolves the article content root instead of the sidebar",
+export const articleExtractionScenarios: BenchmarkScenario<ArticleExtractionExecution>[] = articleExtractionCaseDefinitions.map(
+  (definition) => ({
+    id: definition.id,
+    title: definition.title,
     surface: "article-extraction",
-    fixture: "docs-sidebar-heavy",
-    task: "Choose the main article container on a documentation page with sidebar chrome.",
+    fixture: definition.fixtureName,
+    task: definition.task,
     codeHint: ARTICLE_EXTRACTION_CODE_HINT,
-    run: async () => runExtractionScenario({ kind: "page", name: "docs-sidebar-heavy" }, "/fixtures/docs-sidebar-heavy"),
-    evaluate: (execution) => evaluateArticleExtraction(execution, {
-      scope: "article",
-      rootId: "docs-article",
-    }),
-  },
-  {
-    id: "article-extraction/blog-comments-rejected",
-    title: "Blog fixture excludes noisy comments from article-mode extraction",
-    surface: "article-extraction",
-    fixture: "blog-comments-mixed",
-    task: "Keep article text while excluding lower-value comment content from article mode.",
-    codeHint: ARTICLE_EXTRACTION_CODE_HINT,
-    run: async () => {
-      const execution = runExtractionScenario({ kind: "page", name: "blog-comments-mixed" }, "/fixtures/blog-comments-mixed")
-      execution.leakedTexts = ["@maya", "@leo"].filter((needle) =>
-        execution.blockTexts.some((text) => text.includes(needle)),
-      )
-      return execution
-    },
-    evaluate: (execution) => evaluateArticleExtraction(execution, {
-      scope: "article",
-      rootId: "blog-article",
-      shouldExcludeTexts: ["@maya", "@leo"],
-    }),
-  },
-  {
-    id: "article-extraction/forum-thread-fallback",
-    title: "Forum fixture falls back to page scope when no article root exists",
-    surface: "article-extraction",
-    fixture: "forum-thread",
-    task: "Stay on page scope instead of forcing an article root for forum-style layouts.",
-    codeHint: ARTICLE_EXTRACTION_CODE_HINT,
-    run: async () => runExtractionScenario({ kind: "page", name: "forum-thread" }, "/fixtures/forum-thread"),
-    evaluate: (execution) => evaluateArticleExtraction(execution, {
-      scope: "page",
-      rootId: null,
-    }),
-  },
-]
+    run: async () => runExtractionScenario(definition),
+    evaluate: (execution) => evaluateArticleExtraction(execution, definition.expected),
+  }),
+)

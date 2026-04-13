@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import { DEFAULT_ASTRA_CONFIG } from "@/types/config"
 import {
   buildInlineTranslationContext,
+  buildPageStudyContext,
   disconnectInlineSummaryObserver,
   getDocumentTranslationContext,
 } from "./translation-context"
@@ -113,6 +114,23 @@ describe("translation-context", () => {
     expect(context.contentSummary).toBeUndefined()
     expect(context.selectionContext).toBeUndefined()
     expect(context.hostname).toBe(window.location.hostname)
+  })
+
+  it("builds a study context with an article excerpt when privacy mode is off", async () => {
+    document.title = "Study page"
+    document.body.innerHTML = `
+      <main>
+        <p>First paragraph with enough text to represent the first important idea in the study excerpt.</p>
+        <p>Second paragraph adds detail so the popup can show a more concrete reading sample.</p>
+        <p>Third paragraph keeps the excerpt grounded in real article language for study actions.</p>
+      </main>
+    `
+
+    const context = await buildPageStudyContext()
+
+    expect(context.pageTitle).toBe("Study page")
+    expect(context.articleExcerpt).toContain("First paragraph")
+    expect(context.articleExcerpt).toContain("Second paragraph")
   })
 
   it("removes the popstate listener when the inline summary observer disconnects", async () => {

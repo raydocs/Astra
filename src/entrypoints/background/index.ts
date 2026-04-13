@@ -1,3 +1,4 @@
+import "@/utils/zod-config"
 import { defineBackground, browser } from "#imports"
 import {
   isRuntimeCurrentTabCommandRequest,
@@ -286,9 +287,9 @@ export default defineBackground({
     // Omnibox integration: "astra <URL>" in address bar opens + auto-translates
     if (browser.omnibox?.onInputEntered) {
       try {
-        browser.omnibox.setDefaultSuggestion({ description: "Translate: %s" })
+        void browser.omnibox.setDefaultSuggestion({ description: "Translate: %s" })
 
-        browser.omnibox.onInputEntered.addListener((text, disposition) => {
+        browser.omnibox.onInputEntered.addListener((text) => {
           void (async () => {
             // Normalize the input into a valid URL
             let url = text.trim()

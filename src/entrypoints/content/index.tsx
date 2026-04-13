@@ -1,3 +1,4 @@
+import "@/utils/zod-config"
 import { defineContentScript, browser } from "#imports"
 import {
   getPageTranslationState,
@@ -42,7 +43,7 @@ import {
   type TranslationSnapshot,
 } from "@/types/translation"
 import { readConfig } from "@/utils/storage/config"
-import { buildInlineTranslationContext } from "./translation-context"
+import { buildPageStudyContext } from "./translation-context"
 import {
   hasResolvedProviderAccess,
   resolveManagedProviderConfig,
@@ -171,7 +172,7 @@ export default defineContentScript({
       detectAndShowPdfBanner()
 
       // SPA navigation: auto-restart translation on significant URL changes
-      spaWatcher.start((_prevUrl, _newUrl) => {
+      spaWatcher.start(() => {
         const state = getPageTranslationState()
         if (state.phase !== "idle") {
           stopPageTranslation()
@@ -618,7 +619,7 @@ async function handleContentCommand(
 async function handleStudyContextCommand(): Promise<ContentStudyContextResponse> {
   return {
     ok: true,
-    context: await buildInlineTranslationContext(),
+    context: await buildPageStudyContext(),
   }
 }
 

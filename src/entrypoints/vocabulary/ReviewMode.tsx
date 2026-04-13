@@ -3,6 +3,7 @@ import type { VocabularyEntry } from "@/utils/storage/vocabulary"
 import { updateVocabularyEntry, getVocabularyEntries } from "@/utils/storage/vocabulary"
 import { applyReview, getDueCards, getBoxDistribution } from "@/utils/srs/leitner"
 import type { SrsFields, BoxDistribution } from "@/utils/srs/leitner"
+import { buildVocabularyReviewStudyEvent, recordStudyEvent } from "@/utils/storage/study-progress"
 import ReviewStats from "./ReviewStats"
 
 type ReviewPhase = "showing-front" | "showing-back" | "session-complete"
@@ -20,6 +21,34 @@ function toSrsFields(entry: VocabularyEntry): SrsFields {
     reviewCount: entry.reviewCount ?? 0,
     lastReviewedAt: entry.lastReviewedAt ?? null,
   }
+}
+
+function getReviewSourceSurfaceLabel(entry: VocabularyEntry): string | null {
+  switch (entry.sourceContext?.surface) {
+    case "popup_deep_read":
+      return "Popup deep-read"
+    case "selection_toolbar":
+      return "Selection toolbar"
+    case "hover_translate":
+      return "Hover translate"
+    default:
+      return null
+  }
+}
+
+function getReviewSourceLabel(entry: VocabularyEntry): string {
+  return entry.sourceContext?.pageTitle
+    ?? entry.hostname
+    ?? entry.url
+    ?? ""
+}
+
+function getReviewSourceSnippet(entry: VocabularyEntry): string {
+  return entry.sourceContext?.sentenceText
+    ?? entry.context
+    ?? entry.sourceContext?.articleExcerpt
+    ?? entry.sourceContext?.contentSummary
+    ?? ""
 }
 
 export default function ReviewMode() {
@@ -59,6 +88,11 @@ export default function ReviewMode() {
       reviewCount: updated.reviewCount,
       lastReviewedAt: updated.lastReviewedAt,
     })
+
+    const studyEvent = buildVocabularyReviewStudyEvent(currentCard)
+    if (studyEvent) {
+      void recordStudyEvent(studyEvent).catch(() => undefined)
+    }
 
     setSummary((prev) => ({
       total: prev.total + 1,
@@ -116,6 +150,9 @@ export default function ReviewMode() {
 
   const dueCount = dueCards.length - currentIndex
   const totalDue = phase === "session-complete" ? 0 : dueCount
+  const sourceSurfaceLabel = currentCard ? getReviewSourceSurfaceLabel(currentCard) : null
+  const sourceLabel = currentCard ? getReviewSourceLabel(currentCard) : ""
+  const sourceSnippet = currentCard ? getReviewSourceSnippet(currentCard) : ""
 
   return (
     <div style={containerStyle}>
@@ -184,11 +221,26 @@ export default function ReviewMode() {
                 {currentCard.explanation && (
                   <div style={explanationTextStyle}>{currentCard.explanation}</div>
                 )}
-                {currentCard.context && (
+                {sourceSurfaceLabel && (
+                  <div style={{ fontSize: 11, color: "#6366f1", fontWeight: 700, marginBottom: 6 }}>
+                    {sourceSurfaceLabel}
+                  </div>
+                )}
+                {sourceLabel && (
+                  <div style={{ fontSize: 12, color: "#334155", fontWeight: 600, marginBottom: 6 }}>
+                    {sourceLabel}
+                  </div>
+                )}
+                {sourceSnippet && (
                   <div style={contextTextStyle}>
-                    {currentCard.context.length > 300
-                      ? `${currentCard.context.slice(0, 300)}...`
-                      : currentCard.context}
+                    {sourceSnippet.length > 300
+                      ? `${sourceSnippet.slice(0, 300)}...`
+                      : sourceSnippet}
+                  </div>
+                )}
+                {(currentCard.sourceContext?.articleExcerpt || currentCard.sourceContext?.contentSummary) && currentCard.sourceContext?.sentenceText !== currentCard.sourceContext?.articleExcerpt && (
+                  <div style={{ ...contextTextStyle, marginTop: 8 }}>
+                    {currentCard.sourceContext?.articleExcerpt ?? currentCard.sourceContext?.contentSummary}
                   </div>
                 )}
                 {currentCard.url && (

@@ -1,0 +1,32 @@
+version: 2
+updates:
+  - package-ecosystem: npm
+    directory: "/"
+    schedule:
+      interval: weekly
+    groups:
+      ai-sdk:
+        patterns:
+          - "ai"
+          - "@ai-sdk/*"
+      test-and-build-tooling:
+        patterns:
+          - "vitest"
+          - "@vitest/*"
+          - "vite"
+          - "@vitejs/*"
+          - "playwright"
+          - "web-ext"
+          - "wxt"
+      linting-and-types:
+        patterns:
+          - "typescript"
+          - "typescript-eslint"
+          - "eslint"
+          - "@eslint/*"
+          - "eslint-plugin-*"
+          - "globals"
+  - package-ecosystem: github-actions
+    directory: "/"
+    schedule:
+      interval: monthly

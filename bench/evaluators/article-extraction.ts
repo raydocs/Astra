@@ -1,5 +1,7 @@
 import type { EvaluationResult, BenchmarkIssue, PatchHintArtifact } from "../types"
 
+export type ArticleExtractionFailureClass = "empty" | "under-extracted" | "over-extracted" | "wrong-root"
+
 export interface ArticleExtractionExecution {
   scope: "page" | "article"
   rootId: string | null
@@ -7,6 +9,15 @@ export interface ArticleExtractionExecution {
   blockTexts: string[]
   leakedTexts: string[]
   notes?: string[]
+}
+
+export interface ArticleExtractionExpectation {
+  scope: "page" | "article"
+  rootId: string | null
+  shouldExcludeTexts?: string[]
+  minBlockCount?: number
+  maxBlockCount?: number
+  expectedRootNote?: string
 }
 
 function issue(
@@ -18,20 +29,55 @@ function issue(
   issues.push({ severity, message, evidence })
 }
 
+function classifyArticleExtractionFailure(
+  execution: ArticleExtractionExecution,
+  expected: ArticleExtractionExpectation,
+): ArticleExtractionFailureClass[] {
+  const failureClasses: ArticleExtractionFailureClass[] = []
+
+  if (execution.scope !== expected.scope || execution.rootId !== expected.rootId) {
+    failureClasses.push("wrong-root")
+  }
+
+  if (execution.blockCount === 0) {
+    failureClasses.push("empty")
+  } else if (typeof expected.minBlockCount === "number" && execution.blockCount < expected.minBlockCount) {
+    failureClasses.push("under-extracted")
+  }
+
+  if (
+    execution.leakedTexts.length > 0
+    || (typeof expected.maxBlockCount === "number" && execution.blockCount > expected.maxBlockCount)
+  ) {
+    failureClasses.push("over-extracted")
+  }
+
+  return failureClasses
+}
+
 function buildPatchHints(
   execution: ArticleExtractionExecution,
-  expected: {
-    scope: "page" | "article"
-    rootId: string | null
-    shouldExcludeTexts?: string[]
-  },
+  expected: ArticleExtractionExpectation,
+  failureClasses: ArticleExtractionFailureClass[],
 ): PatchHintArtifact | undefined {
   const failingSignals: string[] = []
+
+  if (failureClasses.length > 0) {
+    failingSignals.push(`failure classes: ${failureClasses.join(", ")}`)
+  }
 
   if (execution.scope !== expected.scope || execution.rootId !== expected.rootId) {
     failingSignals.push(
       `resolved ${execution.scope}:${execution.rootId ?? "BODY"} instead of ${expected.scope}:${expected.rootId ?? "BODY"}`,
     )
+  }
+
+  if (typeof expected.minBlockCount === "number" && execution.blockCount < expected.minBlockCount) {
+    failingSignals.push(`extracted ${execution.blockCount} blocks, expected at least ${expected.minBlockCount}`)
+  }
+
+  if (typeof expected.maxBlockCount === "number" && execution.blockCount > expected.maxBlockCount) {
+    failingSignals.push(`extracted ${execution.blockCount} blocks, expected at most ${expected.maxBlockCount}`)
   }
 
   if (execution.leakedTexts.length > 0) {
@@ -63,6 +109,10 @@ function buildPatchHints(
       "sidebar",
       "root",
       "leaked",
+      "empty",
+      "under-extracted",
+      "over-extracted",
+      "wrong-root",
     ],
     failingSignals,
     confidence: "high",
@@ -71,18 +121,20 @@ function buildPatchHints(
 
 export function evaluateArticleExtraction(
   execution: ArticleExtractionExecution,
-  expected: {
-    scope: "page" | "article"
-    rootId: string | null
-    shouldExcludeTexts?: string[]
-  },
+  expected: ArticleExtractionExpectation,
 ): EvaluationResult {
   const issues: BenchmarkIssue[] = []
-  const rootSelection = execution.scope === expected.scope && execution.rootId === expected.rootId ? 10 : 3
-  const noiseRejection = execution.leakedTexts.length === 0 ? 10 : 3
-  const coverage = execution.blockCount > 0 ? 10 : 0
+  const failureClasses = classifyArticleExtractionFailure(execution, expected)
+  const rootSelection = failureClasses.includes("wrong-root") ? 3 : 10
+  const noiseRejection = failureClasses.includes("over-extracted") ? 3 : 10
+  const coverage = failureClasses.includes("empty")
+    ? 0
+    : failureClasses.includes("under-extracted")
+      ? 4
+      : 10
+  const taxonomy = failureClasses.length === 0 ? 10 : 4
 
-  if (execution.scope !== expected.scope || execution.rootId !== expected.rootId) {
+  if (failureClasses.includes("wrong-root")) {
     issue(
       issues,
       "critical",
@@ -91,12 +143,38 @@ export function evaluateArticleExtraction(
     )
   }
 
-  if (execution.leakedTexts.length > 0) {
+  if (failureClasses.includes("empty")) {
+    issue(
+      issues,
+      "critical",
+      "Extraction plan produced no readable blocks.",
+      `resolved=${execution.scope}:${execution.rootId ?? "BODY"}`,
+    )
+  }
+
+  if (failureClasses.includes("under-extracted") && typeof expected.minBlockCount === "number") {
     issue(
       issues,
       "high",
-      "Extraction plan leaked text that should have been excluded.",
-      execution.leakedTexts.join(" | "),
+      "Extraction plan under-extracted the readable surface.",
+      `expected_at_least=${expected.minBlockCount}, actual=${execution.blockCount}`,
+    )
+  }
+
+  if (failureClasses.includes("over-extracted")) {
+    const evidence: string[] = []
+    if (typeof expected.maxBlockCount === "number" && execution.blockCount > expected.maxBlockCount) {
+      evidence.push(`expected_at_most=${expected.maxBlockCount}, actual=${execution.blockCount}`)
+    }
+    if (execution.leakedTexts.length > 0) {
+      evidence.push(`leaked=${execution.leakedTexts.join(" | ")}`)
+    }
+
+    issue(
+      issues,
+      "high",
+      "Extraction plan over-extracted page chrome or low-value text.",
+      evidence.join("; ") || undefined,
     )
   }
 
@@ -107,6 +185,7 @@ export function evaluateArticleExtraction(
     root_selection: rootSelection,
     noise_rejection: noiseRejection,
     coverage,
+    failure_taxonomy: taxonomy,
   }
 
   const baseTotal = Math.round((Object.values(scores).reduce((sum, score) => sum + score, 0) / (Object.keys(scores).length * 10)) * 100)
@@ -125,7 +204,7 @@ export function evaluateArticleExtraction(
     }
   }, 0)
   const total = Math.max(0, baseTotal - penalty)
-  const pass = total >= 80 && !issues.some((item) => item.severity === "critical")
+  const pass = failureClasses.length === 0 && total >= 80 && !issues.some((item) => item.severity === "critical")
 
   return {
     scores,
@@ -133,11 +212,25 @@ export function evaluateArticleExtraction(
     pass,
     issues,
     artifacts: {
+      failureClasses,
       blockCount: execution.blockCount,
       blockTexts: execution.blockTexts.slice(0, 8),
+      expectedBlockCountRange: {
+        min: expected.minBlockCount ?? null,
+        max: expected.maxBlockCount ?? null,
+      },
+      expectedRoot: {
+        scope: expected.scope,
+        rootId: expected.rootId,
+        note: expected.expectedRootNote ?? null,
+      },
+      actualRoot: {
+        scope: execution.scope,
+        rootId: execution.rootId,
+      },
       expectedExclusions: expected.shouldExcludeTexts ?? [],
       notes: execution.notes ?? [],
-      patchHints: buildPatchHints(execution, expected),
+      patchHints: buildPatchHints(execution, expected, failureClasses),
     },
     nextActions: issues.map((item) => item.message),
   }

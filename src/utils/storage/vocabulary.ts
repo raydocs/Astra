@@ -10,6 +10,7 @@ import {
   applyVocabularySyncMutations,
   buildSyncSafeVocabularyEntry,
   ensureSrsFields,
+  mergeVocabularySourceContext,
   sanitizeVocabularyUrl,
   type SyncedVocabularyEntry,
   type VocabularyEntry,
@@ -49,9 +50,11 @@ export async function saveVocabularyEntry(entry: Omit<VocabularyEntry, "id" | "s
 
   const now = Date.now()
   const srsDefaults = createDefaultSrsFields(now)
+  const existingEntry = existing >= 0 ? entries[existing] : null
 
   const newEntry: VocabularyEntry = {
     ...entry,
+    sourceContext: mergeVocabularySourceContext(existingEntry?.sourceContext, entry.sourceContext),
     id: existing >= 0 ? entries[existing].id : generateId(),
     savedAt: now,
     srsBox: entry.srsBox ?? srsDefaults.srsBox,

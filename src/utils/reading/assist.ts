@@ -12,10 +12,18 @@ import type { LanguageLevel } from "@/types/config"
 // Page Digest
 // ---------------------------------------------------------------------------
 
+export const DigestVocabularyItemSchema = z.object({
+  term: z.string(),
+  note: z.string(),
+})
+
 export const PageDigestSchema = z.object({
   headline: z.string(),
   summary: z.string(),
   keyPoints: z.array(z.string()),
+  vocabularyFocus: z.array(DigestVocabularyItemSchema).default([]),
+  grammarFocus: z.array(z.string()).default([]),
+  suggestedAction: z.string().default(""),
 })
 
 export type PageDigest = z.infer<typeof PageDigestSchema>
@@ -47,9 +55,17 @@ Instructions:
 {
   "headline": "one-sentence summary",
   "summary": "2-3 paragraph digest of the article",
-  "keyPoints": ["point 1", "point 2", "point 3"]
+  "keyPoints": ["point 1", "point 2", "point 3"],
+  "vocabularyFocus": [
+    { "term": "term 1", "note": "why this term matters in this article" }
+  ],
+  "grammarFocus": ["grammar pattern 1", "grammar pattern 2"],
+  "suggestedAction": "one concrete next study step for the reader"
 }
 - Include 3-5 key points
+- Include 2-4 vocabularyFocus items. Each item should explain why that term or phrase is worth learning from this article.
+- Include 1-3 grammarFocus items about patterns that are worth noticing in the article's language.
+- suggestedAction should be a short, concrete next step for the learner.
 - No markdown, no code fences, just the JSON object`
 
   const result = await requestTranslationBatch({

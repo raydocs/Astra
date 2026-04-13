@@ -89,6 +89,12 @@
   "actionStop": {
     "message": "停止"
   },
+  "actionPrevious": {
+    "message": "上一句"
+  },
+  "actionNext": {
+    "message": "下一句"
+  },
   "actionOperationFailed": {
     "message": "操作失败"
   },
@@ -148,6 +154,30 @@
   },
   "popup_review": {
     "message": "复习"
+  },
+  "popup_studyArticleExcerpt": {
+    "message": "文章摘录"
+  },
+  "popup_studySentenceDeck": {
+    "message": "逐句深读"
+  },
+  "popup_regenerateDigest": {
+    "message": "重新生成摘要"
+  },
+  "popup_digestStale": {
+    "message": "需要刷新"
+  },
+  "popup_digestStaleHint": {
+    "message": "这份摘要已不匹配当前页面概要或学习设置。"
+  },
+  "popup_digestVocabularyFocus": {
+    "message": "重点词汇"
+  },
+  "popup_digestGrammarFocus": {
+    "message": "语法关注点"
+  },
+  "popup_digestNextStep": {
+    "message": "下一步"
   },
   "label_targetLanguage": {
     "message": "目标语言"

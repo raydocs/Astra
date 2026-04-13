@@ -193,12 +193,14 @@ describe("translation-cache", () => {
       await setCachedTranslation("Expired", "zh-CN", "过期")
       vi.spyOn(Date, "now").mockRestore()
 
-      const freshCreatedAt = Date.now()
+      const freshCreatedAtLowerBound = Date.now()
       await setCachedTranslation("Fresh", "zh-CN", "新鲜")
+      const freshCreatedAtUpperBound = Date.now()
 
       const stats = await getCacheStats()
       expect(stats.count).toBe(1)
-      expect(stats.oldestMs).toBe(freshCreatedAt)
+      expect(stats.oldestMs).toBeGreaterThanOrEqual(freshCreatedAtLowerBound)
+      expect(stats.oldestMs).toBeLessThanOrEqual(freshCreatedAtUpperBound)
       expect(await getCachedTranslation("Fresh", "zh-CN")).toBe("新鲜")
     })
 

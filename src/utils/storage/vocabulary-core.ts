@@ -2,12 +2,28 @@ import { z } from "zod"
 
 import { createDefaultSrsFields } from "@/utils/srs/leitner"
 
+export const VocabularySourceContextSurfaceSchema = z.enum([
+  "popup_deep_read",
+  "selection_toolbar",
+  "hover_translate",
+])
+
+export const VocabularySourceContextSchema = z.object({
+  surface: VocabularySourceContextSurfaceSchema,
+  pageTitle: z.string().trim().min(1).optional(),
+  contentSummary: z.string().trim().min(1).optional(),
+  articleExcerpt: z.string().trim().min(1).optional(),
+  sentenceText: z.string().trim().min(1).optional(),
+  sentenceIndex: z.number().int().nonnegative().optional(),
+})
+
 export const VocabularyEntrySchema = z.object({
   id: z.string(),
   text: z.string(),
   translation: z.string().optional(),
   explanation: z.string().optional(),
   context: z.string().optional(),
+  sourceContext: VocabularySourceContextSchema.optional(),
   url: z.string().optional(),
   hostname: z.string().optional(),
   savedAt: z.number(),
@@ -23,6 +39,7 @@ export const VocabularyEntrySchema = z.object({
 })
 
 export type VocabularyEntry = z.infer<typeof VocabularyEntrySchema>
+export type VocabularySourceContext = z.infer<typeof VocabularySourceContextSchema>
 
 export const SyncedVocabularyEntrySchema = VocabularyEntrySchema.omit({
   srsBox: true,
@@ -36,7 +53,7 @@ export type SyncedVocabularyEntry = z.infer<typeof SyncedVocabularyEntrySchema>
 export interface VocabularySyncMutationLike {
   recordId: string
   operation: "upsert" | "delete"
-  payload?: unknown | null
+  payload?: unknown
 }
 
 export function sanitizeVocabularyUrl(url?: string | null): string | undefined {
@@ -76,6 +93,25 @@ export function ensureSrsFields(entry: VocabularyEntry): VocabularyEntry {
   }
 }
 
+function stripUndefinedFields<T extends Record<string, unknown>>(value?: T | null): Partial<T> {
+  if (!value) return {}
+  return Object.fromEntries(
+    Object.entries(value).filter(([, fieldValue]) => fieldValue !== undefined),
+  ) as Partial<T>
+}
+
+export function mergeVocabularySourceContext(
+  existing?: VocabularySourceContext,
+  incoming?: VocabularySourceContext,
+): VocabularySourceContext | undefined {
+  if (!existing && !incoming) return undefined
+
+  return VocabularySourceContextSchema.parse({
+    ...stripUndefinedFields(existing),
+    ...stripUndefinedFields(incoming),
+  })
+}
+
 export function applySyncedVocabularyMutation(
   entries: SyncedVocabularyEntry[],
   mutation: VocabularySyncMutationLike,
@@ -90,11 +126,16 @@ export function applySyncedVocabularyMutation(
   }
 
   const existingIndex = entries.findIndex((entry) => entry.id === syncedEntry.id)
+  const existing = existingIndex >= 0 ? entries[existingIndex] : null
+  const mergedEntry = SyncedVocabularyEntrySchema.parse({
+    ...syncedEntry,
+    sourceContext: mergeVocabularySourceContext(existing?.sourceContext, syncedEntry.sourceContext),
+  })
   const nextEntries = [...entries]
   if (existingIndex >= 0) {
-    nextEntries[existingIndex] = syncedEntry
+    nextEntries[existingIndex] = mergedEntry
   } else {
-    nextEntries.unshift(syncedEntry)
+    nextEntries.unshift(mergedEntry)
   }
 
   return nextEntries
@@ -124,9 +165,10 @@ export function applyVocabularySyncMutation(
   }
 
   const existingIndex = entries.findIndex((entry) => entry.id === syncedEntry.id)
-  const existing = existingIndex >= 0 ? ensureSrsFields(entries[existingIndex]!) : null
+  const existing = existingIndex >= 0 ? ensureSrsFields(entries[existingIndex]) : null
   const mergedEntry = ensureSrsFields({
     ...syncedEntry,
+    sourceContext: mergeVocabularySourceContext(existing?.sourceContext, syncedEntry.sourceContext),
     ...(existing
       ? {
           srsBox: existing.srsBox,

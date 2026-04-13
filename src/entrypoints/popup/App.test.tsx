@@ -21,13 +21,21 @@ const {
   startActiveTabTranslationMock,
   stopActiveTabTranslationMock,
   getDueVocabularyCountMock,
+  getVocabularyEntriesMock,
+  saveVocabularyEntryMock,
   getQuotaInfoMock,
   getReadingHistoryMock,
   getTranslationUsageSummaryMock,
   getStudyProgressMock,
+  recordStudyEventMock,
   getPageDigestMock,
+  isDigestStaleMock,
   generatePageDigestMock,
   savePageDigestMock,
+  translateTextsMock,
+  speakMock,
+  stopSpeakingMock,
+  isTtsSupportedMock,
 } = vi.hoisted(() => ({
   readConfigMock: vi.fn(),
   saveConfigInBackgroundMock: vi.fn(),
@@ -46,13 +54,21 @@ const {
   startActiveTabTranslationMock: vi.fn(),
   stopActiveTabTranslationMock: vi.fn(),
   getDueVocabularyCountMock: vi.fn(),
+  getVocabularyEntriesMock: vi.fn(),
+  saveVocabularyEntryMock: vi.fn(),
   getQuotaInfoMock: vi.fn(),
   getReadingHistoryMock: vi.fn(),
   getTranslationUsageSummaryMock: vi.fn(),
   getStudyProgressMock: vi.fn(),
+  recordStudyEventMock: vi.fn(),
   getPageDigestMock: vi.fn(),
+  isDigestStaleMock: vi.fn(),
   generatePageDigestMock: vi.fn(),
   savePageDigestMock: vi.fn(),
+  translateTextsMock: vi.fn(),
+  speakMock: vi.fn(),
+  stopSpeakingMock: vi.fn(),
+  isTtsSupportedMock: vi.fn(),
 }))
 
 vi.mock("@/utils/storage/config", () => ({
@@ -103,6 +119,8 @@ vi.mock("@/utils/storage/vocabulary", async (importOriginal) => {
   return {
     ...actual,
     getDueVocabularyCount: getDueVocabularyCountMock,
+    getVocabularyEntries: getVocabularyEntriesMock,
+    saveVocabularyEntry: saveVocabularyEntryMock,
   }
 })
 
@@ -114,18 +132,33 @@ vi.mock("@/utils/storage/page-digests", () => ({
   getPageDigest: getPageDigestMock,
   savePageDigest: savePageDigestMock,
   computeFingerprint: vi.fn(() => "test-fingerprint"),
-  isDigestStale: vi.fn(() => false),
+  isDigestStale: isDigestStaleMock,
 }))
 
 vi.mock("@/utils/reading/assist", () => ({
   generatePageDigest: generatePageDigestMock,
 }))
 
+vi.mock("@/utils/translate/translate", () => ({
+  translateTexts: translateTextsMock,
+}))
+
+vi.mock("@/utils/tts", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/utils/tts")>()
+  return {
+    ...actual,
+    speak: speakMock,
+    stopSpeaking: stopSpeakingMock,
+    isTtsSupported: isTtsSupportedMock,
+  }
+})
+
 vi.mock("@/utils/storage/study-progress", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/utils/storage/study-progress")>()
   return {
     ...actual,
     getStudyProgress: getStudyProgressMock,
+    recordStudyEvent: recordStudyEventMock,
     deriveStudyLoopViewModel: vi.fn(() => ({
       currentPage: null,
       nextStep: "read" as const,
@@ -344,11 +377,18 @@ describe("popup App", () => {
         pageUrl: "https://example.com/article",
         hostname: "example.com",
         contentSummary: "A concise summary of the current article for study mode.",
+        articleExcerpt: "First article sentence. Second article sentence with more detail.",
       },
     })
     startActiveTabTranslationMock.mockResolvedValue(createIdleState())
     stopActiveTabTranslationMock.mockResolvedValue(createIdleState())
     getDueVocabularyCountMock.mockResolvedValue(3)
+    getVocabularyEntriesMock.mockResolvedValue([])
+    saveVocabularyEntryMock.mockImplementation(async (entry: unknown) => ({
+      id: "vocab-1",
+      savedAt: Date.now(),
+      ...(entry as Record<string, unknown>),
+    }))
     getQuotaInfoMock.mockResolvedValue({ used: 100000, limit: 200000, plan: "free", resetsAt: "" })
     getReadingHistoryMock.mockResolvedValue([])
     getTranslationUsageSummaryMock.mockResolvedValue({
@@ -399,11 +439,24 @@ describe("popup App", () => {
     })
 
     getPageDigestMock.mockResolvedValue(null)
+    isDigestStaleMock.mockReturnValue(false)
     generatePageDigestMock.mockResolvedValue({
       headline: "Test headline",
       summary: "Test summary",
       keyPoints: ["Point 1", "Point 2"],
+      vocabularyFocus: [
+        { term: "signal", note: "Used to describe the article's key trend." },
+      ],
+      grammarFocus: ["Notice how the article uses contrast to frame the argument."],
+      suggestedAction: "Explain one sentence that uses the key term in context.",
     })
+    translateTextsMock.mockResolvedValue({
+      ok: true,
+      translations: ["Custom study action output"],
+    })
+    speakMock.mockReturnValue(true)
+    stopSpeakingMock.mockReturnValue(undefined)
+    isTtsSupportedMock.mockReturnValue(true)
     savePageDigestMock.mockImplementation(async (_params: unknown, digest: unknown) => ({
       ...(digest as Record<string, unknown>),
       url: "https://example.com/article",
@@ -742,6 +795,437 @@ describe("popup App", () => {
         }),
       }),
     }))
+  })
+
+  it("renders enriched study digest content and offers a stale refresh action", async () => {
+    const generateButton = getButtons().find((button) => button.textContent === t("popup_generateDigest"))
+    expect(generateButton).toBeDefined()
+
+    await act(async () => {
+      generateButton?.click()
+      await Promise.resolve()
+      await Promise.resolve()
+      await Promise.resolve()
+    })
+
+    expect(container.textContent).toContain("Test headline")
+    expect(container.textContent).toContain(t("popup_digestVocabularyFocus"))
+    expect(container.textContent).toContain("signal")
+    expect(container.textContent).toContain(t("popup_digestGrammarFocus"))
+    expect(container.textContent).toContain(t("popup_digestNextStep"))
+    expect(container.textContent).toContain("Explain one sentence that uses the key term in context.")
+
+    getPageDigestMock.mockResolvedValue({
+      url: "https://example.com/article",
+      hostname: "example.com",
+      title: "Example article",
+      targetLang: "zh-CN",
+      languageLevel: "beginner",
+      generatedAt: Date.now(),
+      sourceFingerprint: "stale-fingerprint",
+      headline: "Cached headline",
+      summary: "Cached summary",
+      keyPoints: ["Cached point"],
+      vocabularyFocus: [{ term: "register", note: "Highlights tone in the article." }],
+      grammarFocus: ["Watch the tense shift in the supporting example."],
+      suggestedAction: "Re-run the digest after changing your level.",
+    })
+    isDigestStaleMock.mockReturnValue(true)
+
+    await act(async () => {
+      window.dispatchEvent(new Event("focus"))
+      await Promise.resolve()
+      await Promise.resolve()
+      await Promise.resolve()
+    })
+
+    expect(container.textContent).toContain(t("popup_digestStale"))
+    expect(container.textContent).toContain(t("popup_digestStaleHint"))
+
+    const regenerateButton = getButtons().find((button) => button.textContent === t("popup_regenerateDigest"))
+    expect(regenerateButton).toBeDefined()
+
+    await act(async () => {
+      regenerateButton?.click()
+      await Promise.resolve()
+      await Promise.resolve()
+      await Promise.resolve()
+    })
+
+    expect(generatePageDigestMock).toHaveBeenCalledTimes(2)
+  })
+
+  it("surfaces custom study actions in the popup and runs them against article context", async () => {
+    readConfigMock.mockResolvedValue(createConfig({
+      customActions: [{
+        id: "deep-read",
+        label: "Deep Read",
+        labelZh: "深读",
+        systemPrompt: "Explain this article in {{targetLang}} with focus on: {{text}}",
+        enabled: true,
+      }],
+    }))
+
+    await act(async () => {
+      window.dispatchEvent(new Event("focus"))
+      await Promise.resolve()
+      await Promise.resolve()
+      await Promise.resolve()
+    })
+
+    const actionButton = getButtons().find((button) => button.textContent === "深读")
+    expect(actionButton).toBeDefined()
+
+    await act(async () => {
+      actionButton?.click()
+      await Promise.resolve()
+      await Promise.resolve()
+      await Promise.resolve()
+    })
+
+    expect(translateTextsMock).toHaveBeenCalledWith(expect.objectContaining({
+      targetLang: "zh-CN",
+      task: "custom",
+      texts: ["First article sentence. Second article sentence with more detail."],
+      context: expect.objectContaining({
+        pageTitle: "Example article",
+        hostname: "example.com",
+        articleExcerpt: "First article sentence. Second article sentence with more detail.",
+      }),
+    }))
+    expect(container.textContent).toContain("Custom study action output")
+  })
+
+  it("shows the article excerpt and sentence drills in the study hub when provided", () => {
+    expect(container.textContent).toContain(t("popup_studyArticleExcerpt"))
+    expect(container.textContent).toContain("First article sentence. Second article sentence with more detail.")
+    expect(container.textContent).toContain(t("popup_studySentenceDeck"))
+  })
+
+  it("records read progress when starting guided article reading", async () => {
+    const readArticleButton = getButtons().find((button) => button.textContent === t("popup_readArticle"))
+    expect(readArticleButton).toBeDefined()
+
+    await act(async () => {
+      readArticleButton?.click()
+      await Promise.resolve()
+      await Promise.resolve()
+      await Promise.resolve()
+    })
+
+    expect(startActiveTabTranslationMock).toHaveBeenCalledWith(expect.objectContaining({
+      contentScope: "article",
+    }))
+    expect(recordStudyEventMock).toHaveBeenNthCalledWith(1, expect.objectContaining({
+      url: "https://example.com/article",
+      step: "read",
+    }))
+    expect(recordStudyEventMock).toHaveBeenNthCalledWith(2, expect.objectContaining({
+      url: "https://example.com/article",
+      step: "guided_read",
+    }))
+  })
+
+  it("explains a sentence from the article excerpt inside the popup", async () => {
+    translateTextsMock.mockResolvedValue({
+      ok: true,
+      translations: ["Sentence explanation output"],
+    })
+    getStudyProgressMock.mockResolvedValue({
+      pages: [{
+        url: "https://example.com/article",
+        hostname: "example.com",
+        title: "Example article",
+        completedSteps: ["read", "guided_read", "explain"],
+        sentencesExplained: 1,
+        vocabSaved: 0,
+        startedAt: 1000,
+        lastActivityAt: 2000,
+      }],
+      dailyStats: { date: "2026-04-03", pagesStudied: 1, sentencesExplained: 1, vocabSaved: 0, vocabReviewed: 0 },
+    })
+
+    const explainButtons = getButtons().filter((button) => button.textContent === t("popup_studyExplainSentence"))
+    expect(explainButtons.length).toBeGreaterThan(0)
+
+    await act(async () => {
+      explainButtons[0].click()
+      await Promise.resolve()
+      await Promise.resolve()
+      await Promise.resolve()
+    })
+
+    expect(translateTextsMock).toHaveBeenCalledWith(expect.objectContaining({
+      task: "explain",
+      targetLang: "zh-CN",
+      texts: ["First article sentence."],
+      context: expect.objectContaining({
+        pageTitle: "Example article",
+        articleExcerpt: "First article sentence. Second article sentence with more detail.",
+        selectionContext: "First article sentence.",
+      }),
+    }))
+    expect(recordStudyEventMock).toHaveBeenCalledWith(expect.objectContaining({
+      url: "https://example.com/article",
+      step: "explain",
+    }))
+    expect(container.textContent).toContain("Sentence explanation output")
+  })
+
+  it("reuses cached sentence explanations instead of re-requesting the same sentence", async () => {
+    translateTextsMock.mockResolvedValue({
+      ok: true,
+      translations: ["Sentence explanation output"],
+    })
+
+    const explainButtons = getButtons().filter((button) => button.textContent === t("popup_studyExplainSentence"))
+    expect(explainButtons.length).toBeGreaterThan(0)
+
+    await act(async () => {
+      explainButtons[0].click()
+      await Promise.resolve()
+      await Promise.resolve()
+      await Promise.resolve()
+    })
+
+    await act(async () => {
+      explainButtons[0].click()
+      await Promise.resolve()
+      await Promise.resolve()
+      await Promise.resolve()
+    })
+
+    expect(translateTextsMock).toHaveBeenCalledTimes(1)
+  })
+
+  it("allows retrying sentence explain after a transient failure", async () => {
+    translateTextsMock
+      .mockResolvedValueOnce({
+        ok: false,
+        error: { message: "Temporary relay outage" },
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        translations: ["Recovered explanation output"],
+      })
+
+    const explainButtons = getButtons().filter((button) => button.textContent === t("popup_studyExplainSentence"))
+    expect(explainButtons.length).toBeGreaterThan(0)
+
+    await act(async () => {
+      explainButtons[0].click()
+      await Promise.resolve()
+      await Promise.resolve()
+      await Promise.resolve()
+    })
+
+    expect(container.textContent).toContain("Warning: Temporary relay outage")
+
+    const retryButtons = getButtons().filter((button) => button.textContent === t("popup_studyExplainSentence"))
+    await act(async () => {
+      retryButtons[0].click()
+      await Promise.resolve()
+      await Promise.resolve()
+      await Promise.resolve()
+    })
+
+    expect(translateTextsMock).toHaveBeenCalledTimes(2)
+    expect(container.textContent).toContain("Recovered explanation output")
+    expect(recordStudyEventMock).toHaveBeenCalledWith(expect.objectContaining({
+      url: "https://example.com/article",
+      step: "explain",
+    }))
+  })
+
+  it("supports sentence navigation and single-sentence speech from the popup", async () => {
+    const nextButton = container.querySelector('[data-testid="study-sentence-next"]') as HTMLButtonElement
+    const speakButton = container.querySelector('[data-testid="study-sentence-speak"]') as HTMLButtonElement
+    const prevButton = container.querySelector('[data-testid="study-sentence-prev"]') as HTMLButtonElement
+
+    expect(prevButton.disabled).toBe(true)
+    expect(nextButton.disabled).toBe(false)
+
+    await act(async () => {
+      nextButton.click()
+      await Promise.resolve()
+    })
+
+    await act(async () => {
+      speakButton.click()
+      await Promise.resolve()
+      await Promise.resolve()
+    })
+
+    expect(speakMock).toHaveBeenCalledWith("Second article sentence with more detail.", expect.objectContaining({
+      lang: "zh-CN",
+    }))
+    expect(prevButton.disabled).toBe(false)
+  })
+
+  it("runs the popup deep-read chain from explain to save to review and speak", async () => {
+    translateTextsMock.mockResolvedValue({
+      ok: true,
+      translations: ["Sentence explanation output"],
+    })
+    getStudyProgressMock.mockResolvedValue({
+      pages: [{
+        url: "https://example.com/article",
+        hostname: "example.com",
+        title: "Example article",
+        completedSteps: ["read", "guided_read", "explain", "vocab_save"],
+        sentencesExplained: 1,
+        vocabSaved: 1,
+        startedAt: 1000,
+        lastActivityAt: 2000,
+      }],
+      dailyStats: { date: "2026-04-03", pagesStudied: 1, sentencesExplained: 1, vocabSaved: 1, vocabReviewed: 0 },
+    })
+    getDueVocabularyCountMock.mockResolvedValueOnce(3).mockResolvedValueOnce(4)
+
+    const explainButtons = getButtons().filter((button) => button.textContent === t("popup_studyExplainSentence"))
+    await act(async () => {
+      explainButtons[0].click()
+      await Promise.resolve()
+      await Promise.resolve()
+      await Promise.resolve()
+    })
+
+    const saveButtons = getButtons().filter((button) => button.textContent === t("actionSave"))
+    expect(saveButtons.length).toBeGreaterThan(0)
+
+    await act(async () => {
+      saveButtons[0].click()
+      await Promise.resolve()
+      await Promise.resolve()
+      await Promise.resolve()
+    })
+
+    expect(saveVocabularyEntryMock).toHaveBeenCalledWith(expect.objectContaining({
+      text: "First article sentence.",
+      explanation: "Sentence explanation output",
+      hostname: "example.com",
+      url: "https://example.com/article",
+      sourceContext: expect.objectContaining({
+        surface: "popup_deep_read",
+        pageTitle: "Example article",
+        sentenceText: "First article sentence.",
+        sentenceIndex: 0,
+      }),
+    }))
+    expect(recordStudyEventMock).toHaveBeenCalledWith(expect.objectContaining({
+      url: "https://example.com/article",
+      step: "vocab_save",
+    }))
+    expect(container.textContent).toContain(t("actionSaved"))
+
+    const savedCta = container.querySelector('[data-testid="study-sentence-saved-cta-0"]')
+    const reviewCta = container.querySelector('[data-testid="study-sentence-open-review-0"]') as HTMLButtonElement
+    const speakButton = container.querySelector('[data-testid="study-sentence-speak"]') as HTMLButtonElement
+
+    expect(savedCta).toBeTruthy()
+    expect(reviewCta).toBeTruthy()
+
+    await act(async () => {
+      reviewCta.click()
+      await Promise.resolve()
+    })
+
+    expect(browserMock.tabs.create).toHaveBeenCalledWith(expect.objectContaining({
+      url: expect.stringContaining("/vocabulary.html?tab=review"),
+    }))
+
+    await act(async () => {
+      speakButton.click()
+      await Promise.resolve()
+      await Promise.resolve()
+    })
+
+    expect(speakMock).toHaveBeenCalledWith("First article sentence.", expect.objectContaining({
+      lang: "zh-CN",
+    }))
+  })
+
+  it("shows saved sentence state from existing vocabulary for the current article", async () => {
+    getVocabularyEntriesMock.mockResolvedValue([{
+      id: "saved-sentence-1",
+      text: "First article sentence.",
+      explanation: "Saved earlier",
+      context: "First article sentence. Second article sentence with more detail.",
+      url: "https://example.com/article",
+      hostname: "example.com",
+      savedAt: 1000,
+      srsBox: 1,
+      nextReviewAt: 1000,
+      reviewCount: 0,
+      lastReviewedAt: null,
+      sourceContext: {
+        surface: "popup_deep_read",
+        pageTitle: "Example article",
+        sentenceText: "First article sentence.",
+        sentenceIndex: 0,
+      },
+    }])
+
+    await act(async () => {
+      window.dispatchEvent(new Event("focus"))
+      await Promise.resolve()
+      await Promise.resolve()
+      await Promise.resolve()
+    })
+
+    expect(container.querySelector('[data-testid="study-sentence-saved-cta-0"]')).toBeTruthy()
+    expect(container.textContent).toContain(t("actionSaved"))
+  })
+
+  it("keeps duplicate sentence occurrences separate when only one popup sentence was saved", async () => {
+    getActiveTabStudyContextMock.mockResolvedValue({
+      ok: true,
+      context: {
+        pageTitle: "Example article",
+        pageUrl: "https://example.com/article",
+        hostname: "example.com",
+        contentSummary: "A concise summary of the current article for study mode.",
+        articleExcerpt: "Repeat me. Repeat me.",
+      },
+    })
+    getVocabularyEntriesMock.mockResolvedValue([{
+      id: "saved-sentence-duplicate-1",
+      text: "Repeat me.",
+      explanation: "Saved earlier",
+      context: "Repeat me. Repeat me.",
+      url: "https://example.com/article",
+      hostname: "example.com",
+      savedAt: 1000,
+      srsBox: 1,
+      nextReviewAt: 1000,
+      reviewCount: 0,
+      lastReviewedAt: null,
+      sourceContext: {
+        surface: "popup_deep_read",
+        pageTitle: "Example article",
+        sentenceText: "Repeat me.",
+        sentenceIndex: 0,
+      },
+    }])
+
+    await act(async () => {
+      window.dispatchEvent(new Event("focus"))
+      await Promise.resolve()
+      await Promise.resolve()
+      await Promise.resolve()
+    })
+
+    expect(container.querySelector('[data-testid="study-sentence-saved-cta-0"]')).toBeTruthy()
+
+    const secondSentenceCard = container.querySelector('[data-testid="study-sentence-card-1"]') as HTMLDivElement
+    expect(secondSentenceCard).toBeTruthy()
+
+    await act(async () => {
+      secondSentenceCard.click()
+      await Promise.resolve()
+    })
+
+    expect(container.querySelector('[data-testid="study-sentence-saved-cta-1"]')).toBeFalsy()
   })
 
   it("shows the version footer", async () => {

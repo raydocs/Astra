@@ -10,6 +10,7 @@ import { defineConfig } from "wxt"
  * Set ASTRA_BROWSER_CHANNEL=compat to produce a conservative Chromium build.
  */
 const isCompatChannel = process.env.ASTRA_BROWSER_CHANNEL === "compat"
+const CHROMIUM_EXTENSION_PUBLIC_KEY = "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAxRUh12SsWFI/aepeIXfNLi7Co5E0xlfxgOcRRA2ehhX8TiM8OV3mgJT+BjBpNSHvtYpBVzBomOg9eCbb/Q3BxxNOThaJrByGK95ajL7KKLWTsMK4XMbQXjHyQZEeC+25tAEyWsbVsH/CmXSNGMoHABVwU05qBCzkudjsyGdJjVBE23GaZzkBRV91nZm61DB3ZR5wLicMQrrDNPApVsk0/ha2oFmqMHPTZYfNssNUzf6k/8AujOLpm1PZUNrS32W52AtKZVNVUUHqUoevrvyRP+yGgJnnhXPvINtslh2CCYb6BLWlzDNMtW3ii643q7r/CWCOboAn5+Wkz/66Yt0cVwIDAQAB"
 
 // https://wxt.dev/api/config.html
 export default defineConfig({
@@ -30,6 +31,9 @@ export default defineConfig({
       name: "__MSG_extName__",
       description: "__MSG_extDescription__",
       default_locale: "zh_CN",
+      ...(browser !== "firefox" && browser !== "safari" && {
+        key: CHROMIUM_EXTENSION_PUBLIC_KEY,
+      }),
       // Use options_ui for broader Chromium-family compatibility
       options_ui: {
         page: "options.html",

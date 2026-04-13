@@ -22,6 +22,7 @@ const worker = {
     env: AstraPlatformEnv,
     _execution: AstraWorkerExecutionContext,
   ): Promise<void> {
+    void _execution
     if (batch.queue.includes("article-import")) {
       await consumeArticleImportQueue(batch as MessageBatch<ArticleImportQueueMessage>, env)
       return

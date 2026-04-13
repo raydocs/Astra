@@ -77,6 +77,34 @@ function getInitialTab(): ActiveTab {
   return params.get("tab") === "review" ? "review" : "list"
 }
 
+function getEntrySourceSurfaceLabel(entry: VocabularyEntry): string | null {
+  switch (entry.sourceContext?.surface) {
+    case "popup_deep_read":
+      return "Popup deep-read"
+    case "selection_toolbar":
+      return "Selection toolbar"
+    case "hover_translate":
+      return "Hover translate"
+    default:
+      return null
+  }
+}
+
+function getEntrySourceLabel(entry: VocabularyEntry): string {
+  return entry.sourceContext?.pageTitle
+    ?? entry.hostname
+    ?? entry.url
+    ?? ""
+}
+
+function getEntrySourceSnippet(entry: VocabularyEntry): string {
+  return entry.sourceContext?.sentenceText
+    ?? entry.context
+    ?? entry.sourceContext?.articleExcerpt
+    ?? entry.sourceContext?.contentSummary
+    ?? ""
+}
+
 export default function VocabularyApp() {
   const [activeTab, setActiveTab] = useState<ActiveTab>(getInitialTab)
   const [entries, setEntries] = useState<VocabularyEntry[]>([])
@@ -426,6 +454,13 @@ export default function VocabularyApp() {
 
           {sorted.map((entry) => (
             <div key={entry.id} style={cardStyle}>
+              {(() => {
+                const sourceSurfaceLabel = getEntrySourceSurfaceLabel(entry)
+                const sourceLabel = getEntrySourceLabel(entry)
+                const sourceSnippet = getEntrySourceSnippet(entry)
+
+                return (
+                  <>
               <div
                 style={{ cursor: "pointer" }}
                 onClick={() => setExpandedId(expandedId === entry.id ? null : entry.id)}
@@ -434,11 +469,21 @@ export default function VocabularyApp() {
                 {entry.translation && (
                   <div style={translationStyle}>{entry.translation}</div>
                 )}
-                {entry.context && (
+                {sourceSurfaceLabel && (
+                  <div style={{ fontSize: 11, color: "#6366f1", fontWeight: 700, marginBottom: 4 }}>
+                    {sourceSurfaceLabel}
+                  </div>
+                )}
+                {sourceLabel && (
+                  <div style={{ fontSize: 12, color: "#334155", fontWeight: 600, marginBottom: 4 }}>
+                    {sourceLabel}
+                  </div>
+                )}
+                {sourceSnippet && (
                   <div style={contextStyle}>
-                    {entry.context.length > 200
-                      ? `${entry.context.slice(0, 200)}...`
-                      : entry.context}
+                    {sourceSnippet.length > 200
+                      ? `${sourceSnippet.slice(0, 200)}...`
+                      : sourceSnippet}
                   </div>
                 )}
                 {entry.note && expandedId !== entry.id && (
@@ -469,6 +514,41 @@ export default function VocabularyApp() {
 
               {expandedId === entry.id && (
                 <div style={{ marginTop: 8, borderTop: "1px solid #f1f5f9", paddingTop: 8 }}>
+                  {(entry.sourceContext?.pageTitle || entry.sourceContext?.sentenceText || entry.sourceContext?.articleExcerpt || entry.sourceContext?.contentSummary) && (
+                    <div
+                      style={{
+                        marginBottom: 10,
+                        padding: "8px 10px",
+                        background: "#f8fafc",
+                        border: "1px solid #e2e8f0",
+                        borderRadius: 8,
+                      }}
+                    >
+                      <div style={{ fontSize: 12, fontWeight: 700, color: "#334155", marginBottom: 6 }}>
+                        Source context
+                      </div>
+                      {entry.sourceContext?.pageTitle && (
+                        <div style={{ fontSize: 12, color: "#334155", fontWeight: 600, marginBottom: 4 }}>
+                          {entry.sourceContext.pageTitle}
+                        </div>
+                      )}
+                      {entry.sourceContext?.sentenceText && (
+                        <div style={{ fontSize: 12, color: "#475569", lineHeight: 1.5, marginBottom: 4 }}>
+                          Sentence: {entry.sourceContext.sentenceText}
+                        </div>
+                      )}
+                      {entry.sourceContext?.articleExcerpt && entry.sourceContext.articleExcerpt !== entry.sourceContext.sentenceText && (
+                        <div style={{ fontSize: 12, color: "#64748b", lineHeight: 1.5, whiteSpace: "pre-wrap" }}>
+                          Excerpt: {entry.sourceContext.articleExcerpt}
+                        </div>
+                      )}
+                      {!entry.sourceContext?.articleExcerpt && entry.sourceContext?.contentSummary && (
+                        <div style={{ fontSize: 12, color: "#64748b", lineHeight: 1.5, whiteSpace: "pre-wrap" }}>
+                          Summary: {entry.sourceContext.contentSummary}
+                        </div>
+                      )}
+                    </div>
+                  )}
                   <div style={{ marginBottom: 8 }}>
                     <label style={{ fontSize: 12, fontWeight: 600, color: "#475569", display: "block", marginBottom: 4 }}>
                       Note
@@ -563,6 +643,9 @@ export default function VocabularyApp() {
                   )}
                 </div>
               </div>
+                  </>
+                )
+              })()}
             </div>
           ))}
         </>

@@ -564,6 +564,7 @@ async function preflightAnonymousShadow(
   request: Request,
   env: AstraPlatformEnv,
   ctx: AstraRequestContext,
+  nodeSession: AstraSession | null,
 ): Promise<void> {
   try {
     const body = AnonymousAuthSchema.parse(await request.json())
@@ -584,6 +585,10 @@ async function preflightAnonymousShadow(
     }
     if (!ctx.config.platformMirrorSecret) {
       issues.push("missing_platform_mirror_secret")
+    }
+
+    if (nodeSession && nodeSession.relayBaseURL !== normalizeSessionPublicBaseURL(ctx)) {
+      issues.push("relay_base_url_mismatch")
     }
 
     if (issues.length > 0) {
@@ -638,7 +643,18 @@ export async function handleAuthAnonymous(
       mode,
     })
     if (tagged.ok) {
-      ctx.execution.waitUntil(preflightAnonymousShadow(shadowRequest, env, ctx))
+      ctx.execution.waitUntil((async () => {
+        try {
+          const nodeSession = AstraSessionSchema.parse(await tagged.clone().json())
+          await preflightAnonymousShadow(shadowRequest, env, ctx, nodeSession)
+        } catch (error) {
+          console.log(JSON.stringify({
+            message: "auth anonymous shadow issue preflight failed",
+            requestId: ctx.requestId,
+            error: error instanceof Error ? error.message : String(error),
+          }))
+        }
+      })())
     }
     return tagged
   }

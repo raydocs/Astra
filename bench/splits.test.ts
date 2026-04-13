@@ -37,12 +37,12 @@ describe("benchmark splits", () => {
     const counts = countScenariosBySplit(benchmarkScenarios)
 
     expect(counts).toEqual({
-      train: 34,
+      train: 35,
       validation: 16,
       holdout: 12,
     })
 
-    expect(selectBenchmarkScenarios({ split: "train" })).toHaveLength(34)
+    expect(selectBenchmarkScenarios({ split: "train" })).toHaveLength(35)
     expect(selectBenchmarkScenarios({ split: "validation" })).toHaveLength(16)
     expect(selectBenchmarkScenarios({ split: "holdout" })).toHaveLength(12)
     expect(selectBenchmarkScenarios({})).toHaveLength(benchmarkScenarios.length)

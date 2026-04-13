@@ -89,6 +89,12 @@
   "actionStop": {
     "message": "Stop"
   },
+  "actionPrevious": {
+    "message": "Prev"
+  },
+  "actionNext": {
+    "message": "Next"
+  },
   "actionOperationFailed": {
     "message": "Operation failed"
   },
@@ -148,6 +154,30 @@
   },
   "popup_review": {
     "message": "Review"
+  },
+  "popup_studyArticleExcerpt": {
+    "message": "Article excerpt"
+  },
+  "popup_studySentenceDeck": {
+    "message": "Sentence drills"
+  },
+  "popup_regenerateDigest": {
+    "message": "Regenerate Digest"
+  },
+  "popup_digestStale": {
+    "message": "Needs refresh"
+  },
+  "popup_digestStaleHint": {
+    "message": "This digest no longer matches the current page summary or study settings."
+  },
+  "popup_digestVocabularyFocus": {
+    "message": "Vocabulary focus"
+  },
+  "popup_digestGrammarFocus": {
+    "message": "Grammar focus"
+  },
+  "popup_digestNextStep": {
+    "message": "Next step"
   },
   "label_targetLanguage": {
     "message": "Target Language"

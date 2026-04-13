@@ -89,6 +89,12 @@
   "actionStop": {
     "message": "Stop"
   },
+  "actionPrevious": {
+    "message": "Prev"
+  },
+  "actionNext": {
+    "message": "Next"
+  },
   "actionShare": {
     "message": "Share"
   },
@@ -175,6 +181,12 @@
   },
   "popup_studySummaryEmpty": {
     "message": "Translate the page or save words from the article to build a study context."
+  },
+  "popup_studyArticleExcerpt": {
+    "message": "Article excerpt"
+  },
+  "popup_studySentenceDeck": {
+    "message": "Sentence drills"
   },
   "popup_studyDueCount": {
     "message": "$1 due",
@@ -446,6 +458,24 @@
   "popup_studySaveWords": {
     "message": "Save Words"
   },
+  "popup_studySentenceSelected": {
+    "message": "Selected"
+  },
+  "popup_studySentenceExplaining": {
+    "message": "Explaining"
+  },
+  "popup_studySentenceExplained": {
+    "message": "Explained"
+  },
+  "popup_studySentenceSpeaking": {
+    "message": "Speaking"
+  },
+  "popup_studySavedToVocabulary": {
+    "message": "Saved to vocabulary"
+  },
+  "popup_studySavedContinue": {
+    "message": "Continue in Vocabulary or Review."
+  },
   "popup_studyStatPages": {
     "message": "$1 pages",
     "placeholders": {
@@ -631,6 +661,24 @@
   },
   "popup_digestGenerating": {
     "message": "Generating digest..."
+  },
+  "popup_regenerateDigest": {
+    "message": "Regenerate Digest"
+  },
+  "popup_digestStale": {
+    "message": "Needs refresh"
+  },
+  "popup_digestStaleHint": {
+    "message": "This digest no longer matches the current page summary or study settings."
+  },
+  "popup_digestVocabularyFocus": {
+    "message": "Vocabulary focus"
+  },
+  "popup_digestGrammarFocus": {
+    "message": "Grammar focus"
+  },
+  "popup_digestNextStep": {
+    "message": "Next step"
   },
   "label_siteCustomCss": {
     "message": "Custom CSS"

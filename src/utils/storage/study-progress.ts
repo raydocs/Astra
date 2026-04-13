@@ -6,6 +6,7 @@
 
 import { browser } from "#imports"
 import { z } from "zod"
+import type { VocabularyEntry } from "./vocabulary-core"
 
 export const StudyStepSchema = z.enum([
   "read",           // User started reading / translating the page
@@ -295,6 +296,28 @@ export function deriveStudyLoopViewModel(
     completionPercent,
     dailyStats: store.dailyStats,
     recentPages: store.pages.slice(0, 5),
+  }
+}
+
+export function buildVocabularyReviewStudyEvent(entry: VocabularyEntry): RecordStudyEventInput | null {
+  const rawUrl = entry.url?.trim()
+  if (!rawUrl) return null
+  const sanitizedUrl = buildStudyProgressRecordId(rawUrl)
+
+  let hostname = entry.hostname?.trim() ?? ""
+  if (!hostname) {
+    try {
+      hostname = new URL(rawUrl).hostname
+    } catch {
+      hostname = ""
+    }
+  }
+
+  return {
+    url: sanitizedUrl,
+    hostname,
+    title: entry.sourceContext?.pageTitle ?? entry.hostname ?? entry.text,
+    step: "vocab_review",
   }
 }
 
