@@ -500,6 +500,12 @@
       "1": { "content": "$1" }
     }
   },
+  "review_todayProgressTitle": {
+    "message": "今日学习进度（全页汇总）"
+  },
+  "review_todayProgressAria": {
+    "message": "今日学习进度摘要"
+  },
 
   "popup_usageMetricRequests": {
     "message": "请求数"

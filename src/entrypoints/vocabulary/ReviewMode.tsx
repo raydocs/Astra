@@ -3,7 +3,8 @@ import type { VocabularyEntry } from "@/utils/storage/vocabulary"
 import { updateVocabularyEntry, getVocabularyEntries } from "@/utils/storage/vocabulary"
 import { applyReview, getDueCards, getBoxDistribution } from "@/utils/srs/leitner"
 import type { SrsFields, BoxDistribution } from "@/utils/srs/leitner"
-import { buildVocabularyReviewStudyEvent, recordStudyEvent } from "@/utils/storage/study-progress"
+import { buildVocabularyReviewStudyEvent, getStudyProgress, recordStudyEvent } from "@/utils/storage/study-progress"
+import { t } from "@/utils/i18n"
 import ReviewStats from "./ReviewStats"
 
 type ReviewPhase = "showing-front" | "showing-back" | "session-complete"
@@ -58,6 +59,10 @@ export default function ReviewMode() {
   const [summary, setSummary] = useState<SessionSummary>({ total: 0, correct: 0, incorrect: 0 })
   const [distribution, setDistribution] = useState<BoxDistribution>({ box1: 0, box2: 0, box3: 0, box4: 0, box5: 0, total: 0 })
   const [loading, setLoading] = useState(true)
+  const [dailyPagesStudied, setDailyPagesStudied] = useState(0)
+  const [dailySentencesExplained, setDailySentencesExplained] = useState(0)
+  const [dailyVocabSaved, setDailyVocabSaved] = useState(0)
+  const [dailyVocabReviewed, setDailyVocabReviewed] = useState(0)
 
   const loadDueCards = useCallback(async () => {
     const entries = await getVocabularyEntries()
@@ -67,6 +72,11 @@ export default function ReviewMode() {
     setCurrentIndex(0)
     setPhase(due.length > 0 ? "showing-front" : "session-complete")
     setSummary({ total: 0, correct: 0, incorrect: 0 })
+    const progress = await getStudyProgress()
+    setDailyPagesStudied(progress.dailyStats.pagesStudied)
+    setDailySentencesExplained(progress.dailyStats.sentencesExplained)
+    setDailyVocabSaved(progress.dailyStats.vocabSaved)
+    setDailyVocabReviewed(progress.dailyStats.vocabReviewed)
     setLoading(false)
   }, [])
 
@@ -105,6 +115,11 @@ export default function ReviewMode() {
       // Refresh distribution after session ends
       const entries = await getVocabularyEntries()
       setDistribution(getBoxDistribution(entries))
+      const progress = await getStudyProgress()
+      setDailyPagesStudied(progress.dailyStats.pagesStudied)
+      setDailySentencesExplained(progress.dailyStats.sentencesExplained)
+      setDailyVocabSaved(progress.dailyStats.vocabSaved)
+      setDailyVocabReviewed(progress.dailyStats.vocabReviewed)
       setPhase("session-complete")
     } else {
       setCurrentIndex(nextIndex)
@@ -154,9 +169,27 @@ export default function ReviewMode() {
   const sourceLabel = currentCard ? getReviewSourceLabel(currentCard) : ""
   const sourceSnippet = currentCard ? getReviewSourceSnippet(currentCard) : ""
 
+  const hasDailyProgress =
+    dailyPagesStudied > 0
+    || dailySentencesExplained > 0
+    || dailyVocabSaved > 0
+    || dailyVocabReviewed > 0
+
   return (
     <div style={containerStyle}>
       <ReviewStats distribution={distribution} dueCount={totalDue} />
+
+      {hasDailyProgress && (
+        <div style={dailyProgressStyle} aria-label={t("review_todayProgressAria")}>
+          <div style={dailyProgressTitleStyle}>{t("review_todayProgressTitle")}</div>
+          <div style={dailyProgressRowStyle}>
+            <span>{t("popup_studyStatPages", dailyPagesStudied.toString())}</span>
+            <span>{t("popup_studyStatExplained", dailySentencesExplained.toString())}</span>
+            <span>{t("popup_studyStatSaved", dailyVocabSaved.toString())}</span>
+            <span>{t("popup_studyStatReviewed", dailyVocabReviewed.toString())}</span>
+          </div>
+        </div>
+      )}
 
       {phase === "session-complete" && summary.total === 0 && (
         <div style={emptyStateStyle}>
@@ -294,6 +327,29 @@ export default function ReviewMode() {
 }
 
 // --- Styles ---
+
+const dailyProgressStyle: React.CSSProperties = {
+  marginBottom: 16,
+  padding: "12px 14px",
+  background: "#f8fafc",
+  border: "1px solid #e2e8f0",
+  borderRadius: 10,
+}
+
+const dailyProgressTitleStyle: React.CSSProperties = {
+  fontSize: 12,
+  fontWeight: 700,
+  color: "#475569",
+  marginBottom: 8,
+}
+
+const dailyProgressRowStyle: React.CSSProperties = {
+  display: "flex",
+  flexWrap: "wrap",
+  gap: "8px 14px",
+  fontSize: 12,
+  color: "#64748b",
+}
 
 const containerStyle: React.CSSProperties = {
   maxWidth: 720,

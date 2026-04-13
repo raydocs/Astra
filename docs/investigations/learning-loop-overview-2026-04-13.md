@@ -25,7 +25,8 @@ Artifact root when running live driver: `bench-live-results/<run-id>/` (see `wor
 ## Source-context and progress fields
 
 - **Vocabulary**: `url`, title/snippet where stored — see `vocabulary-core` schema and `ReviewMode` display props.
-- **Study progress**: `recordStudyEvent`, `getStudyProgress`, `deriveStudyLoopViewModel` in `src/utils/storage/study-progress.ts` — events drive popup study bar; review tab shows card index (SRS), not full page-level loop (known gap for Month 3 polish).
+- **Study progress**: `recordStudyEvent`, `getStudyProgress`, `deriveStudyLoopViewModel` in `src/utils/storage/study-progress.ts` — events drive popup study bar.
+- **Review tab (Month 2)**: `ReviewMode` shows the same **today** `dailyStats` row as the popup (pages studied, sentences explained, vocab saved, vocab reviewed), so SRS review and the study loop share one visible progress surface.
 
 ## Required vs optional gates
 

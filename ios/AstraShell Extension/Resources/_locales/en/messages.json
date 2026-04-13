@@ -500,6 +500,12 @@
       "1": { "content": "$1" }
     }
   },
+  "review_todayProgressTitle": {
+    "message": "Today's study loop (all pages)"
+  },
+  "review_todayProgressAria": {
+    "message": "Today's study progress summary"
+  },
 
   "popup_usageMetricRequests": {
     "message": "Requests"

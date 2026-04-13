@@ -7,11 +7,13 @@ const {
   updateVocabularyEntryMock,
   recordStudyEventMock,
   buildVocabularyReviewStudyEventMock,
+  getStudyProgressMock,
 } = vi.hoisted(() => ({
   getVocabularyEntriesMock: vi.fn(),
   updateVocabularyEntryMock: vi.fn(),
   recordStudyEventMock: vi.fn(),
   buildVocabularyReviewStudyEventMock: vi.fn(),
+  getStudyProgressMock: vi.fn(),
 }))
 
 vi.mock("@/utils/storage/vocabulary", () => ({
@@ -22,6 +24,20 @@ vi.mock("@/utils/storage/vocabulary", () => ({
 vi.mock("@/utils/storage/study-progress", () => ({
   buildVocabularyReviewStudyEvent: buildVocabularyReviewStudyEventMock,
   recordStudyEvent: recordStudyEventMock,
+  getStudyProgress: getStudyProgressMock,
+}))
+
+vi.mock("@/utils/i18n", () => ({
+  t: (key: string, sub?: string | string[]) => {
+    const s = typeof sub === "string" ? sub : ""
+    if (key === "review_todayProgressTitle") return "Today's study loop"
+    if (key === "review_todayProgressAria") return "Today's study progress summary"
+    if (key === "popup_studyStatPages") return `${s} pages`
+    if (key === "popup_studyStatExplained") return `${s} explained`
+    if (key === "popup_studyStatSaved") return `${s} saved`
+    if (key === "popup_studyStatReviewed") return `${s} reviewed`
+    return key
+  },
 }))
 
 import ReviewMode from "./ReviewMode"
@@ -63,6 +79,16 @@ describe("ReviewMode", () => {
       step: "vocab_review",
     })
     recordStudyEventMock.mockResolvedValue(undefined)
+    getStudyProgressMock.mockResolvedValue({
+      pages: [],
+      dailyStats: {
+        date: "2026-04-13",
+        pagesStudied: 2,
+        sentencesExplained: 3,
+        vocabSaved: 1,
+        vocabReviewed: 4,
+      },
+    })
 
     container = document.createElement("div")
     document.body.appendChild(container)
@@ -94,6 +120,7 @@ describe("ReviewMode", () => {
       await Promise.resolve()
     })
 
+    expect(container.textContent).toContain("Today's study loop")
     expect(container.textContent).toContain("Popup deep-read")
     expect(container.textContent).toContain("Example article")
     expect(container.textContent).toContain("The ephemeral phase passes quickly.")
