@@ -73,7 +73,12 @@ export default defineConfig({
         browser_specific_settings: {
           gecko: {
             id: "astra@nicepkg.cn",
-            strict_min_version: "109.0",
+            // Firefox requires data_collection_permissions for new submissions.
+            // Mozilla recommends 128+ when this field is present.
+            strict_min_version: "128.0",
+            data_collection_permissions: {
+              required: ["none"],
+            },
           },
         },
       }),

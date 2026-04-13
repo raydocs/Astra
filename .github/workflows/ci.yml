@@ -147,7 +147,7 @@ jobs:
 
       - name: Lint Firefox extension
         if: matrix.browser == 'firefox'
-        run: npx web-ext lint --source-dir .output/firefox-mv3 --warnings-as-errors
+        run: pnpm verify:firefox-lint -- .output/firefox-mv3
 
       - name: Upload build artifact
         uses: actions/upload-artifact@v4
