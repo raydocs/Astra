@@ -36,6 +36,11 @@ export function createSPANavigationWatcher(): {
   let callback: ((prevUrl: string, newUrl: string) => void) | null = null
 
   function checkUrlChange() {
+    // Tests may tear down jsdom / switch to real timers while a debounced timeout is still queued.
+    if (typeof window === "undefined" || typeof window.location === "undefined") {
+      return
+    }
+
     const currentUrl = window.location.href
     if (currentUrl === lastUrl) return
     if (!isSignificantUrlChange(lastUrl, currentUrl)) {
