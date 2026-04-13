@@ -139,7 +139,24 @@ function extensionPersistentContextExtraArgs(): string[] {
     "--disable-dev-shm-usage",
     "--disable-gpu",
     "--disable-software-rasterizer",
+    "--disable-zygote",
   ]
+}
+
+/** Playwright Chromium often hangs on launchPersistentContext+extensions on Linux CI; Google Chrome channel is reliable. */
+function googleChromeChannelForExtensionLive(): boolean {
+  return process.env.CI === "true" && process.env.ASTRA_BENCH_LIVE_USE_GOOGLE_CHROME === "1"
+}
+
+function extensionPersistentContextEnv(): NodeJS.ProcessEnv | undefined {
+  if (process.env.CI !== "true") {
+    return undefined
+  }
+
+  return {
+    ...process.env,
+    DBUS_SESSION_BUS_ADDRESS: process.env.DBUS_SESSION_BUS_ADDRESS ?? "/dev/null",
+  }
 }
 
 function extractExtensionIdFromUrl(url: string): string | null {
@@ -520,13 +537,21 @@ export async function withExtensionBrowserPage(options: {
   const initialUrl = options.initialUrl ?? "about:blank"
   const waitForInject = options.waitForExtensionInject ?? 5000
 
-  const browserExecutablePath = await resolveLiveBrowserExecutablePath({
-    candidates: [chromium.executablePath(), ...DEFAULT_BROWSER_CANDIDATES],
-  })
-  if (!browserExecutablePath) {
-    throw new LiveBrowserUnavailableError(
-      "No supported Chrome/Chromium browser executable was found for the extension-loaded live scenario.",
-    )
+  const useChromeChannel = googleChromeChannelForExtensionLive()
+
+  let browserExecutablePath: string
+  if (useChromeChannel) {
+    browserExecutablePath = "google-chrome (Playwright channel: chrome)"
+  } else {
+    const resolved = await resolveLiveBrowserExecutablePath({
+      candidates: [chromium.executablePath(), ...DEFAULT_BROWSER_CANDIDATES],
+    })
+    if (!resolved) {
+      throw new LiveBrowserUnavailableError(
+        "No supported Chrome/Chromium browser executable was found for the extension-loaded live scenario.",
+      )
+    }
+    browserExecutablePath = resolved
   }
 
   const extensionPathExists = await pathExists(extensionPath)
@@ -541,8 +566,10 @@ export async function withExtensionBrowserPage(options: {
   let context: BrowserContext
   try {
     context = await chromium.launchPersistentContext(userDataDir, {
+      ...(useChromeChannel
+        ? { channel: "chrome" as const }
+        : { executablePath: browserExecutablePath }),
       headless: false,
-      executablePath: browserExecutablePath,
       ignoreDefaultArgs: ["--disable-extensions"],
       args: [
         ...extensionPersistentContextExtraArgs(),
@@ -559,6 +586,7 @@ export async function withExtensionBrowserPage(options: {
         height: 900,
       },
       timeout: process.env.CI === "true" ? 240_000 : 180_000,
+      env: extensionPersistentContextEnv(),
     })
   } catch (error) {
     throw normalizeLiveBrowserLaunchFailure(error, browserExecutablePath)

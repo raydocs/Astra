@@ -49,6 +49,9 @@ jobs:
   live-browser:
     needs: quality
     runs-on: ubuntu-latest
+    env:
+      ASTRA_BENCH_LIVE_USE_GOOGLE_CHROME: "1"
+      DBUS_SESSION_BUS_ADDRESS: /dev/null
 
     steps:
       - name: Checkout repository
@@ -69,7 +72,7 @@ jobs:
         run: pnpm install --frozen-lockfile
 
       - name: Install Playwright browsers (with system deps for Linux)
-        run: npx playwright install --with-deps chromium
+        run: npx playwright install --with-deps chromium chrome
 
       - name: Build Chrome extension
         run: pnpm build
