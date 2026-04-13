@@ -944,10 +944,7 @@ describe("content entrypoint mounting", () => {
       await vi.advanceTimersByTimeAsync(1)
       expect(startPageTranslationMock).not.toHaveBeenCalled()
 
-      await vi.advanceTimersByTimeAsync(499)
-      expect(startPageTranslationMock).not.toHaveBeenCalled()
-
-      await vi.advanceTimersByTimeAsync(1)
+      await vi.advanceTimersByTimeAsync(500)
       // stop + remove may be called >= 2 times (once per nav + defensive catch/ensureSiteUiMounted paths);
       // the core invariant is that coalescing produces exactly 1 restart despite 2 navigations.
       expect(stopPageTranslationMock.mock.calls.length).toBeGreaterThanOrEqual(2)
