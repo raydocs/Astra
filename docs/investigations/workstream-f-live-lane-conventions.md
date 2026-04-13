@@ -1,6 +1,6 @@
 # Workstream F Live Lane Conventions (Month 1 Baseline)
 
-_Last updated: 2026-04-13_
+_Last updated: 2026-04-13 (Month 1 close-out docs/policy sync)_
 
 This document defines the canonical lane naming used by release-proof checks.
 
@@ -12,6 +12,8 @@ This document defines the canonical lane naming used by release-proof checks.
 | `extension-core` | Extension-loaded smoke proof for bootstrap/owned surfaces | `pnpm bench:live:lane:extension-core` | Yes (`CI / live-browser`) |
 | `release-proof` | Aggregate required release-proof gate | `pnpm bench:live:lane:release-proof` | Indirectly (runs both required lanes) |
 | `hover-selection` | Optional browser-backed UX proof for hover + selection explain | `pnpm bench:live:lane:hover-selection` | No (manual/dispatch workflow) |
+| `popup-proof` | Optional standalone browser-backed popup deep-read proof | `pnpm bench:live:lane:popup-proof` | No |
+| `learning-loop` | Optional browser-backed popup-to-vocabulary learning-loop proof | `pnpm bench:live:lane:learning-loop` | No |
 
 Compatibility aliases remain available:
 
@@ -39,6 +41,20 @@ Compatibility aliases remain available:
 
 1. `bench-live/hover-translation-basic` (browser-backed relay-stub flow)
 2. `bench-live/selection-explain-basic` (dedicated standard browser-backed live scenario)
+
+### popup-proof
+
+1. `bench-live/popup-deep-read-proof` (standalone popup deep-read proof)
+
+### learning-loop
+
+1. `bench-live/popup-deep-read-proof` (popup proof anchor)
+2. `bench-live/vocabulary-srs-smoke` (downstream vocabulary continuation)
+
+## Month 1 gate policy decisions
+
+- `hover-selection` remains **optional** for Month 1. The repo now has credible browser-backed proof, but the lane is still a combined UX lane rather than a dedicated required CI gate with separate ownership semantics.
+- `popup-proof` and `learning-loop` remain **optional** for Month 1. They are credible evidence for popup deep-read and downstream learning continuity, but they are not part of the Month 1 required release-proof gate.
 
 ## Notes
 

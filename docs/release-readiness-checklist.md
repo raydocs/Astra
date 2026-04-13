@@ -1,6 +1,6 @@
 # Astra Release Readiness Checklist
 
-_Last updated: 2026-04-12 (Workstream B popup deep-read smoke sync)_
+_Last updated: 2026-04-13 (Month 1 close-out docs/policy sync)_
 
 This checklist defines **release-blocking gates** and the minimum evidence required for a credible release decision.
 
@@ -50,8 +50,9 @@ CI enforces these in `.github/workflows/ci.yml` (`live-browser` job).
 ## Current Month 1 reality notes (not a pass override)
 
 - Required release-proof lanes now cover: page-translation (source-backed), article-extraction (`bench-live/article-extraction-proof`), dynamic-content (source-contract), site-automation (extension-loaded), onboarding (extension-loaded), vocabulary (extension-loaded).
-- Hover and selection-explain now both have browser-backed standard live scenarios (`bench-live/hover-translation-basic`, `bench-live/selection-explain-basic`) but remain **optional** (not required release gates yet).
-- Popup deep-read now has optional live proof via `bench-live/popup-deep-read-smoke` / `pnpm bench:live:lane:learning-loop`, but it is still outside required release-proof lanes and must remain explicit in matrix/RC notes.
+- Month 1 policy decision: hover and selection-explain remain **optional** (`pnpm bench:live:lane:hover-selection`) rather than required release gates. Rationale: current evidence is credible, but the lane is still modeled as a combined UX proof lane, does not yet have separate required-lane semantics in CI, and Month 1 release discipline should not over-promote non-core UX proof before that structure exists.
+- Popup deep-read now has credible optional live proof via `bench-live/popup-deep-read-proof`, `pnpm bench:live:lane:popup-proof`, and `pnpm bench:live:lane:learning-loop`, but it remains outside required release-proof lanes for Month 1 and must stay explicit in matrix/close-out notes.
+- Month 1 gate close-out is recorded in `docs/investigations/month-1-closeout-2026-04-13.md`; the close-out verdict does not by itself override required lane failures.
 
 ## Pre-release execution order
 
@@ -66,7 +67,9 @@ CI enforces these in `.github/workflows/ci.yml` (`live-browser` job).
    - `docs/investigations/workstream-f-live-lane-conventions.md`
    - `docs/investigations/workstream-f-live-flaky-inventory.md`
 8. (Optional confidence boost) Run `pnpm bench:live:lane:hover-selection`
-9. Only then tag release candidate
+9. (Optional confidence boost) Run `pnpm bench:live:lane:popup-proof` or `pnpm bench:live:lane:learning-loop`
+10. Review `docs/investigations/month-1-closeout-2026-04-13.md`
+11. Only then tag release candidate
 
 ## Escalation rule
 

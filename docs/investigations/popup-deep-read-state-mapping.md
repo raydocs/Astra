@@ -1,6 +1,6 @@
 # Popup Deep-Read State Mapping
 
-_Last updated: 2026-04-12 (Month 1 / Workstream B / Milestone 3)_
+_Last updated: 2026-04-13 (Month 1 popup proof canonical naming sync)_
 
 This note is the explainer for the Month 1 popup deep-read close-out slice in plan.md section 8.3.
 
@@ -96,9 +96,15 @@ After a popup save:
 4. vocabulary list renders the popup source label/snippet
 5. review back-side renders the popup source label/snippet
 
-## Replayable smoke
+## Replayable proof
 
-Optional live smoke command:
+Optional standalone popup proof command:
+
+```bash
+pnpm bench:live:lane:popup-proof
+```
+
+Optional learning-loop command:
 
 ```bash
 pnpm bench:live:lane:learning-loop
@@ -106,7 +112,7 @@ pnpm bench:live:lane:learning-loop
 
 Current lane contents:
 
-- `bench-live/popup-deep-read-smoke`
+- `bench-live/popup-deep-read-proof`
 - `bench-live/vocabulary-srs-smoke`
 
-This lane is **optional** for now. It is evidence for popup deep-read credibility, not a required release-proof gate yet.
+Both lanes are **optional** for now. They are evidence for popup deep-read credibility, not required release-proof gates yet.

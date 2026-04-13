@@ -678,7 +678,7 @@ Orchestrator 月末判分时，只有 `gate-ready` 才能计为本月主线完�
 
 对齐 `13O` / `13Q` Month 2 段，本月 closeout 必须能指到：
 
-- `live`：`learning-loop` lane 可重跑记录 + artifact 路径；`popup-deep-read-smoke` 稳定历史至少 1 次绿跑摘要
+- `live`：`learning-loop` lane 可重跑记录 + artifact 路径；`popup-deep-read-proof` 稳定历史至少 1 次绿跑摘要
 - `docs`：`learning-loop overview`（或等价单页）+ source-context / progress 字段说明；若 gate 变化则 release checklist diff
 - `release-policy`：learning-loop 是否纳入 required evidence 的明确结论与模板行（见 Workstream F Detailed Matrix）
 - `claim-impact`：learning-loop 能力边界说明（明确尚未承诺项，避免对外 over-claim）
@@ -4387,7 +4387,7 @@ Months 2-6 的 verdict 也必须直接沿用 `13G`：
   - `bench-live/article-extraction-proof`
   - `bench-live/selection-explain-basic`
   - `bench-live/hover-translation-basic`
-  - `bench-live/popup-deep-read-smoke`
+  - `bench-live/popup-deep-read-proof`
 - Month 1 closeout memo
 
 #### Suggested commands
@@ -4397,7 +4397,7 @@ Months 2-6 的 verdict 也必须直接沿用 `13G`：
 - `pnpm bench:loop -- --skip-bench --max-items 1`
 - `pnpm bench:live:lane:extension-core`
 - `pnpm bench:live:lane:hover-selection`
-- `pnpm bench:live -- --scenario bench-live/popup-deep-read-smoke`
+- `pnpm bench:live -- --scenario bench-live/popup-deep-read-proof`
 
 ### Month 2 required artifacts and commands
 
@@ -4418,7 +4418,7 @@ Months 2-6 的 verdict 也必须直接沿用 `13G`：
 - `pnpm type-check`
 - `pnpm bench:loop -- --skip-bench --max-items 1`
 - `pnpm bench:live:lane:learning-loop`
-- `pnpm bench:live -- --scenario bench-live/popup-deep-read-smoke`
+- `pnpm bench:live -- --scenario bench-live/popup-deep-read-proof`
 - `pnpm bench:live -- --scenario bench-live/vocabulary-srs-review`
 
 ### Month 3 required artifacts and commands
