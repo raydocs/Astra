@@ -95,7 +95,7 @@
     "@types/react": "^19.2.14",
     "@types/react-dom": "^19.2.3",
     "@vitejs/plugin-react": "6.0.1",
-    "@vitest/coverage-v8": "^3.2.4",
+    "@vitest/coverage-v8": "^4.1.4",
     "@wxt-dev/module-react": "^1.2.2",
     "eslint": "^9.24.0",
     "eslint-plugin-react-hooks": "^5.2.0",
@@ -106,8 +106,8 @@
     "typescript": "^6.0.2",
     "typescript-eslint": "^8.58.1",
     "vite": "8.0.8",
-    "vitest": "^3.2.4",
-    "web-ext": "^8.10.0",
-    "wxt": "0.20.20"
+    "vitest": "^4.1.4",
+    "web-ext": "^10.1.0",
+    "wxt": "0.20.21"
   }
 }
