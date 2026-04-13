@@ -967,7 +967,6 @@ describe("content entrypoint mounting", () => {
       expect(startPageTranslationMock).toHaveBeenCalledTimes(1)
     } finally {
       contentModule?.__resetContentEntrypointForTests()
-      vi.clearAllTimers()
       vi.useRealTimers()
     }
   })
