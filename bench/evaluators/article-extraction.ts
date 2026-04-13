@@ -182,9 +182,7 @@ export function evaluateArticleExtraction(
     correctness: rootSelection,
     completeness: coverage,
     stability: 10,
-    root_selection: rootSelection,
     noise_rejection: noiseRejection,
-    coverage,
     failure_taxonomy: taxonomy,
   }
 

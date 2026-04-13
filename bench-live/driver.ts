@@ -122,10 +122,6 @@ async function pathExists(filePath: string) {
   }
 }
 
-function delay(ms: number) {
-  return new Promise((resolve) => setTimeout(resolve, ms))
-}
-
 /**
  * Extra Chromium flags for extension-loaded persistent contexts on Linux CI
  * (xvfb + Playwright Chromium): avoids hangs from sandbox/GPU/shm defaults.
@@ -237,7 +233,7 @@ async function waitForLoadedExtensionArtifact(context: BrowserContext, timeoutMs
       // Poll until the deadline expires.
     }
 
-    await delay(100)
+    await sleep(100)
   }
 
   return contextHasLoadedExtensionArtifact(context)
@@ -490,7 +486,7 @@ export async function resolveExtensionId(
       return awaitedExtensionId
     }
 
-    await delay(100)
+    await sleep(100)
   }
 
   const manifestKeyId = await resolveExtensionIdFromManifestKey(extensionPath)
@@ -936,7 +932,7 @@ export async function openExtensionActionPopup(options: {
       globalThis.open(url, "_blank", "noopener,noreferrer")
     }, popupUrlPrefix).catch(() => undefined)
 
-    await delay(500)
+    await sleep(500)
 
     const hasPopupPage = options.context.pages().some((page) => !knownPages.has(page) && page.url().startsWith(popupUrlPrefix))
     if (!hasPopupPage) {
@@ -958,7 +954,7 @@ export async function openExtensionActionPopup(options: {
         return page
       }
     }
-    await delay(100)
+    await sleep(100)
   }
 
   const existingPopupPage = options.context.pages().find((page) => page.url().startsWith(popupUrlPrefix))
