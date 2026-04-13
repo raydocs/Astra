@@ -737,6 +737,28 @@ Orchestrator 月末判分时，只有 `gate-ready` 才能计为本月主线完�
 - queue / revisit 至少能重开 2 种 source type，并保留 title/source metadata + recent/progress state
 - 至少 3 条 reader/revisit 可重放 artifact 已存在，且不靠新增 surface 掩盖模型未收口
 
+### Month 3 执行快照与规范落地（2026-04-15）
+
+- [x] **Owned reading 数据模型**：`docs/investigations/owned-reading-item-spec-2026-04-15.md`（`OwnedReadingItem` 字段、与 reading history / study progress / vocab 关系、sync 边界）
+- [x] **Saved reading queue v0 说明**：`docs/investigations/saved-reading-queue-spec-2026-04-15.md`（Recent / Saved / In-progress 规则与 v0 与现有入口的映射）
+- [ ] **队列与 OwnedReadingItem 持久化 UI**：仍属实现 backlog；本窗口先锁 schema，避免 reader 面继续分叉
+- [x] **Reader 可重放基线（现有）**：`bench-live` 已含 `pdf-reader-basic`、`epub-reader-basic` 等（见 `bench-live/scenarios/index.ts`）；Month 3 验收的「3 条 artifact」在代码合并后应绑定具体 run id 写入 closeout
+
+### Harness（Month 3）
+
+- 与 Month 2 相同：**`pnpm bench`** 为全仓 deterministic 回归（63 场景）；**reader 专项**以 `bench-live` 场景为准，不要求与 Month 3 schema 同一 PR 内完成。
+
+### Month 3 AI Task Ledger 打勾（2026-04-15）
+
+| 区间 | P | 状态 |
+|------|---|------|
+| 1–7（model pack） | P0/P2 | [x] 规范见 `owned-reading-item-spec-2026-04-15.md`（含 P2 sync 边界节） |
+| 8–10（queue 最小 + 分类 + 恢复） | P0 | [x] 规范见 `saved-reading-queue-spec-2026-04-15.md`；**存储与 UI 未实现** |
+| 11–13 | P1/P2 | [ ] 队列增强（学习状态 badge / 排序筛选） |
+| 14–20（PDF pack） | P0/P2 | [ ] 以 `bench-live`/扩展内 smoke 为准，逐项补 closeout |
+| 21–27（EPUB pack） | P0/P2 | [ ] 同上 |
+| 28–33（revisit + evidence） | P0/P2 | [ ] article/PDF/EPUB revisit 场景与 artifact 命名规范待绑定 CI |
+
 ## Month 4 — Make Video / Subtitle And Revisit Credible
 
 ### Month goal
@@ -769,6 +791,29 @@ Orchestrator 月末判分时，只有 `gate-ready` 才能计为本月主线完�
 - subtitle file 与至少 1 条网页视频字幕路径都能进入 explain/save/revisit 资产链中的至少 1 条可重放路径
 - support matrix / release checklist 已把视频相关 claim 标成 supported / best-effort / experimental（或等价等级），不再笼统写“支持视频”
 
+### Month 4 执行快照与清单（2026-04-15）
+
+- [x] **Adapter 全量清单 + proof level + failure modes**：`docs/investigations/video-subtitle-adapter-inventory-2026-04-15.md`（代码路径：`src/entrypoints/content/video-platforms/`）
+- [x] **Support matrix 视频附录**（claim 分级）：`docs/investigations/support-matrix-video-addendum-2026-04-15.md`（与 `support-matrix-2026-q2.md` 联读）
+- [ ] **YouTube + Bilibili 双 smoke 绿跑摘要**：需绑定 `bench-live` artifact 后勾 `gate-ready`
+- [ ] **Subtitle file 全链路 revisit**：依赖 Month 3 `OwnedReadingItem` 存储落地
+
+### Harness（Month 4）
+
+- Deterministic：**`pnpm bench`**（含 subtitle / provider 等面）
+- Live：在 inventory 中锁 **YouTube + Bilibili** 为 Month 4 主防线后再扩展 lane
+
+### Month 4 AI Task Ledger 打勾（2026-04-15）
+
+| 区间 | P | 状态 |
+|------|---|------|
+| 1–5（inventory） | P0 | [x] 见 `video-subtitle-adapter-inventory-2026-04-15.md` |
+| 6–10（YouTube） | P0/P1 | [ ] smoke 稳定化与 failure class 文档化（与现有 bench-live 对齐） |
+| 11–15（次级 adapter） | P0/P2 | [ ] 选定 Bilibili 后补 smoke（inventory 已预选） |
+| 16–20（subtitle-reader） | P0/P2 | [ ] 与 vocab/revisit 联动待实现 |
+| 21–25（revisit） | P0/P2 | [ ] |
+| 26–30（claim） | P0/P2 | [x] matrix 附录 + `release-readiness-checklist.md` Gate 4 已加 video/subtitle 审查行（默认 No，视频 RC 升为 Yes） |
+
 ## Month 5 — Reduce Control-Plane Drag
 
 ### Month goal
@@ -800,6 +845,27 @@ Orchestrator 月末判分时，只有 `gate-ready` 才能计为本月主线完�
 - extension / web cloud / mobile/iOS bridge 至少 3 个对用户可见面，对 account / usage / plan 的 wording 与状态来源一致
 - lifecycle runbook 覆盖 export / delete / repair / revoke 当前状态；其中至少 2 条高风险流程有可重放 proof
 - Month 5 closeout 能明确说明 remaining control-plane noise、owner、carry-over；major carry-over 最多 1 项
+
+### Month 5 执行快照与后台清单（2026-04-15）
+
+- [x] **Node-owned 控制面路由清单**：`docs/investigations/control-plane-surface-inventory-2026-04-15.md`
+- [x] **Lifecycle 操作 runbook 附录**（export/delete/repair/revoke 期望与 copy 规则）：`docs/investigations/lifecycle-operations-runbook-month5-2026-04-15.md`
+- [ ] **三端文案完全对齐**：需在 extension popup/options、`web`、文档中逐屏 diff（本提交仅锁 inventory + runbook）
+- [ ] **mobile web / iOS bridge smoke**：沿用 `ios/README.md` + web narrow viewport checklist；证据入库后勾验收
+
+### Harness（Month 5）
+
+- 与翻译核心相同：**`pnpm bench`**；控制面以 **`pnpm test`** 中含 `astra-web` / account client 用例 + 手工或 live 账号路径为主。
+
+### Month 5 AI Task Ledger 打勾（2026-04-15）
+
+| 区间 | P | 状态 |
+|------|---|------|
+| 1–5（inventory + 文案规则） | P0/P1 | [x] inventory 文档；**UI copy 对齐** [ ] |
+| 6–12（lifecycle） | P0/P1 | [x] runbook 附录；**各流程 smoke** [ ] |
+| 13–17（mobile/iOS） | P0/P1 | [ ] |
+| 18–22（background） | P0/P2 | [ ] incident 分类 + operator note 待补 |
+| 23–26（release） | P0/P2 | [ ] checklist 增 control-plane evidence 行；matrix 移动口径二次核对 |
 
 ## Month 6 — Harden, Freeze, Publish Honestly
 

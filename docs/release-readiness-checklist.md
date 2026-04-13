@@ -1,6 +1,6 @@
 # Astra Release Readiness Checklist
 
-_Last updated: 2026-04-14 (Month 2 learning-loop policy)_
+_Last updated: 2026-04-15 (Month 4 video claim appendix)_
 
 This checklist defines **release-blocking gates** and the minimum evidence required for a credible release decision.
 
@@ -44,6 +44,7 @@ CI enforces these in `.github/workflows/ci.yml` (`live-browser` job).
 |---|---|---|---|
 | Live coverage matrix reflects current reality | Manual review against scenario registry + CI lanes | `docs/investigations/workstream-a-live-coverage-matrix.md` | Yes |
 | Unsupported/unproven surfaces are marked as gaps | Manual review | Same matrix + RC notes | Yes |
+| Video / subtitle claims reviewed (when RC touches video) | Read `docs/investigations/support-matrix-video-addendum-2026-04-15.md` + `video-subtitle-adapter-inventory-2026-04-15.md` | Same + adapter inventory | No (set **Yes** for Month 4+ video RCs) |
 
 **Block if:** docs claim coverage that is not currently implemented or gated.
 
