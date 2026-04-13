@@ -70,12 +70,12 @@ export async function routeRequest(
 
   const accountExportDownloadMatch = /^\/v1\/account\/export\/([^/]+)\/download$/.exec(url.pathname)
   if (request.method === "GET" && accountExportDownloadMatch) {
-    return handleAccountExportDownload(request, env, ctx, decodeURIComponent(accountExportDownloadMatch[1]!))
+    return handleAccountExportDownload(request, env, ctx, decodeURIComponent(accountExportDownloadMatch[1]))
   }
 
   const accountExportStatusMatch = /^\/v1\/account\/export\/([^/]+)$/.exec(url.pathname)
   if (request.method === "GET" && accountExportStatusMatch) {
-    return handleAccountExportStatus(request, env, ctx, decodeURIComponent(accountExportStatusMatch[1]!))
+    return handleAccountExportStatus(request, env, ctx, decodeURIComponent(accountExportStatusMatch[1]))
   }
 
   if (request.method === "POST" && url.pathname === "/v1/account/cloud-data-delete") {
@@ -84,7 +84,7 @@ export async function routeRequest(
 
   const cloudDataDeleteStatusMatch = /^\/v1\/account\/cloud-data-delete\/([^/]+)$/.exec(url.pathname)
   if (request.method === "GET" && cloudDataDeleteStatusMatch) {
-    return handleCloudDataDeleteStatus(request, env, ctx, decodeURIComponent(cloudDataDeleteStatusMatch[1]!))
+    return handleCloudDataDeleteStatus(request, env, ctx, decodeURIComponent(cloudDataDeleteStatusMatch[1]))
   }
 
   if (request.method === "GET" && url.pathname === "/v1/devices") {
@@ -93,7 +93,7 @@ export async function routeRequest(
 
   const deviceRevokeMatch = /^\/v1\/devices\/([^/]+)\/revoke$/.exec(url.pathname)
   if (request.method === "POST" && deviceRevokeMatch) {
-    return handleDeviceRevoke(request, env, ctx, decodeURIComponent(deviceRevokeMatch[1]!))
+    return handleDeviceRevoke(request, env, ctx, decodeURIComponent(deviceRevokeMatch[1]))
   }
 
   if (request.method === "GET" && url.pathname === "/v1/sync/bootstrap") {

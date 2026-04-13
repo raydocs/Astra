@@ -365,9 +365,9 @@ async function translateCueBatches(
   })
 }
 
-export async function startYouTubeHybridSubtitleSession(
+export function startYouTubeHybridSubtitleSession(
   deps: YouTubeHybridSessionDeps,
-): Promise<YouTubeHybridSession | null> {
+): YouTubeHybridSession | null {
   const video = findYouTubeVideo(deps.rootContainer)
   if (!(video instanceof HTMLVideoElement)) {
     return null
@@ -612,8 +612,13 @@ export async function startYouTubeHybridSubtitleSession(
 export const youtubePlatform: VideoPlatformConfig = {
   id: "youtube",
   hostnames: ["www.youtube.com", "m.youtube.com"],
-  captionContainerSelector: ".ytp-caption-window-container",
-  captionSegmentSelector: ".ytp-caption-segment",
+  captionContainerSelector: [
+    ".ytp-caption-window-container",
+    ".ytp-caption-window-bottom",
+    ".ytp-caption-window-top",
+    "[class*='caption-window']",
+  ].join(", "),
+  captionSegmentSelector: ".ytp-caption-segment, [class*='caption-segment']",
   navigationEvent: "yt-navigate-finish",
   isVideoPage: () =>
     window.location.pathname === "/watch"

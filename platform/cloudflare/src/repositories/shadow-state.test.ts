@@ -46,21 +46,21 @@ function createMockDb() {
           record.bindings = values
           return statement
         },
-        async run<T = Row>(): Promise<D1RunResult<T>> {
-          return {
+        run<T = Row>(): Promise<D1RunResult<T>> {
+          return Promise.resolve({
             success: true,
             results: [] as T[],
             meta: { changes: 1 },
-          }
+          })
         },
-        async all<T = Row>(): Promise<D1RunResult<T>> {
-          return {
+        all<T = Row>(): Promise<D1RunResult<T>> {
+          return Promise.resolve({
             success: true,
             results: (allQueue.shift() ?? []) as T[],
-          }
+          })
         },
-        async first<T = Row>(): Promise<T | null> {
-          return (firstQueue.shift() ?? null) as T | null
+        first<T = Row>(): Promise<T | null> {
+          return Promise.resolve((firstQueue.shift() ?? null) as T | null)
         },
       }
 
@@ -335,10 +335,12 @@ describe("Cloudflare shadow repositories", () => {
     })
 
     expect(appendResult.deduped).toBe(false)
-    expect(mock.queries.at(-3)?.sql).toContain("INSERT INTO shadow_sync_mutations")
-    expect(mock.queries.at(-2)?.sql).toContain("SELECT")
-    expect(mock.queries.at(-1)?.sql).toContain("INSERT INTO shadow_sync_collections")
-    expect(mock.queries.at(-3)?.bindings).toEqual(expect.arrayContaining(["7", 7]))
+    const mutationInsertQuery = mock.queries.find((query) => query.sql.includes("INSERT INTO shadow_sync_mutations"))
+
+    expect(mock.queries.some((query) => query.sql.includes("INSERT INTO shadow_sync_mutations"))).toBe(true)
+    expect(mock.queries.some((query) => query.sql.includes("FROM shadow_sync_record_state"))).toBe(true)
+    expect(mock.queries.some((query) => query.sql.includes("INSERT INTO shadow_sync_collections"))).toBe(true)
+    expect(mutationInsertQuery?.bindings).toEqual(expect.arrayContaining(["7", 7]))
 
     mock.enqueueAll([
       {

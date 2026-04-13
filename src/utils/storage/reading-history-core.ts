@@ -16,7 +16,7 @@ export type SyncedReadingHistoryEntry = z.infer<typeof SyncedReadingHistoryEntry
 export interface ReadingHistorySyncMutationLike {
   recordId: string
   operation: "upsert" | "delete"
-  payload?: unknown | null
+  payload?: unknown
 }
 
 export const MAX_READING_HISTORY_ENTRIES = 200

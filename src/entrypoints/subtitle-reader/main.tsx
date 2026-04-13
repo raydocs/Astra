@@ -1,3 +1,4 @@
+import "@/utils/zod-config"
 import { createRoot } from "react-dom/client"
 import { ErrorBoundary } from "@/components/ErrorBoundary"
 import { SubtitleReaderApp } from "./SubtitleReaderApp"

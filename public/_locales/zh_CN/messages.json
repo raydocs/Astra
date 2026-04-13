@@ -89,6 +89,12 @@
   "actionStop": {
     "message": "停止"
   },
+  "actionPrevious": {
+    "message": "上一句"
+  },
+  "actionNext": {
+    "message": "下一句"
+  },
   "actionShare": {
     "message": "分享"
   },
@@ -175,6 +181,12 @@
   },
   "popup_studySummaryEmpty": {
     "message": "先翻译页面，或在正文里保存单词，Astra 才能形成学习上下文。"
+  },
+  "popup_studyArticleExcerpt": {
+    "message": "文章摘录"
+  },
+  "popup_studySentenceDeck": {
+    "message": "逐句深读"
   },
   "popup_studyDueCount": {
     "message": "待复习 $1 个",
@@ -446,6 +458,24 @@
   "popup_studySaveWords": {
     "message": "保存生词"
   },
+  "popup_studySentenceSelected": {
+    "message": "已选中"
+  },
+  "popup_studySentenceExplaining": {
+    "message": "讲解中"
+  },
+  "popup_studySentenceExplained": {
+    "message": "已讲解"
+  },
+  "popup_studySentenceSpeaking": {
+    "message": "朗读中"
+  },
+  "popup_studySavedToVocabulary": {
+    "message": "已保存到词库"
+  },
+  "popup_studySavedContinue": {
+    "message": "接下来可前往词库或复习。"
+  },
   "popup_studyStatPages": {
     "message": "$1 页",
     "placeholders": {
@@ -631,6 +661,24 @@
   },
   "popup_digestGenerating": {
     "message": "正在生成摘要…"
+  },
+  "popup_regenerateDigest": {
+    "message": "重新生成摘要"
+  },
+  "popup_digestStale": {
+    "message": "需要刷新"
+  },
+  "popup_digestStaleHint": {
+    "message": "这份摘要已不匹配当前页面概要或学习设置。"
+  },
+  "popup_digestVocabularyFocus": {
+    "message": "重点词汇"
+  },
+  "popup_digestGrammarFocus": {
+    "message": "语法关注点"
+  },
+  "popup_digestNextStep": {
+    "message": "下一步"
   },
   "label_siteCustomCss": {
     "message": "自定义 CSS"

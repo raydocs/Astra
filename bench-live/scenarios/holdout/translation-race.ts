@@ -7,6 +7,7 @@ import {
   withLiveBrowserPage,
   LiveBrowserUnavailableError,
 } from "../../driver"
+import { sleep } from "../../sleep"
 import type { LiveScenarioDefinition, LiveScenarioExecution } from "../../evaluator"
 import { buildLiveInputTranslationEvaluation } from "../helpers/input-translation"
 
@@ -132,7 +133,7 @@ export const translationRaceHoldoutScenario: LiveScenarioDefinition<LiveTranslat
         // Step 2: Wait only for the FIRST 2 chunks, then trigger translation
         // immediately (before all content has loaded).
         // -------------------------------------------------------------------
-        await page.waitForTimeout(300) // First 2 chunks should be present
+        await sleep(300) // First 2 chunks should be present
 
         const chunksVisibleAtTranslation = await page.evaluate(() => {
           return document.querySelectorAll(".dynamic-chunk").length
@@ -273,7 +274,7 @@ export const translationRaceHoldoutScenario: LiveScenarioDefinition<LiveTranslat
         // -------------------------------------------------------------------
         // Step 5: Wait for ALL dynamic content to finish loading
         // -------------------------------------------------------------------
-        await page.waitForTimeout(dynamicContentSetup.maxDelay + 200)
+        await sleep(dynamicContentSetup.maxDelay + 200)
 
         // -------------------------------------------------------------------
         // Step 6: Translate late-arriving content and check for errors

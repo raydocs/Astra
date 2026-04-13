@@ -1,3 +1,4 @@
+import "@/utils/zod-config"
 import { defineContentScript, browser } from "#imports"
 import {
   getPageTranslationState,
@@ -42,7 +43,7 @@ import {
   type TranslationSnapshot,
 } from "@/types/translation"
 import { readConfig } from "@/utils/storage/config"
-import { buildInlineTranslationContext } from "./translation-context"
+import { buildPageStudyContext } from "./translation-context"
 import {
   hasResolvedProviderAccess,
   resolveManagedProviderConfig,
@@ -164,14 +165,23 @@ export default defineContentScript({
       readConfig(),
       readAstraSession(),
     ])
-    await reconcileSiteAutomation(config, session)
+    try {
+      await reconcileSiteAutomation(config, session)
+    } catch (error) {
+      // Auto-start / hot paths must not prevent mounting UI or message handling.
+      console.error("[Astra] reconcileSiteAutomation failed", error)
+      const siteSettings = resolveSiteTranslationSettings(config, window.location.hostname)
+      if (siteSettings.enabled) {
+        ensureSiteUiMounted(config)
+      }
+    }
 
     // PDF auto-detect: show banner for PDF pages
     if (isTopFrame()) {
       detectAndShowPdfBanner()
 
       // SPA navigation: auto-restart translation on significant URL changes
-      spaWatcher.start((_prevUrl, _newUrl) => {
+      spaWatcher.start(() => {
         const state = getPageTranslationState()
         if (state.phase !== "idle") {
           stopPageTranslation()
@@ -300,7 +310,16 @@ async function handleStorageChange() {
     return
   }
 
-  const reconcileResult = await reconcileSiteAutomation(config, session)
+  let reconcileResult: { activeSessionHandled: boolean } = { activeSessionHandled: false }
+  try {
+    reconcileResult = await reconcileSiteAutomation(config, session)
+  } catch (error) {
+    console.error("[Astra] reconcileSiteAutomation failed (storage)", error)
+    const siteSettings = resolveSiteTranslationSettings(config, window.location.hostname)
+    if (siteSettings.enabled) {
+      ensureSiteUiMounted(config)
+    }
+  }
   if (generation !== storageChangeGeneration) {
     return
   }
@@ -618,7 +637,7 @@ async function handleContentCommand(
 async function handleStudyContextCommand(): Promise<ContentStudyContextResponse> {
   return {
     ok: true,
-    context: await buildInlineTranslationContext(),
+    context: await buildPageStudyContext(),
   }
 }
 

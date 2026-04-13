@@ -46,7 +46,11 @@ const TEXT_NODE_FILTER = typeof NodeFilter !== "undefined" ? NodeFilter.SHOW_TEX
 
 function getButton() {
   const host = document.getElementById(HOST_ID)
-  return host?.shadowRoot?.querySelector("button") as HTMLButtonElement | null
+  const root = host?.shadowRoot
+  if (!root) return null
+  // Skip mode toggle (`data-testid="input-translate-mode"`); use the translate button.
+  const buttons = Array.from(root.querySelectorAll("button"))
+  return (buttons.find((b) => !b.hasAttribute("data-testid")) ?? null) as HTMLButtonElement | null
 }
 
 function isEditableElement(target: Element): target is HTMLInputElement | HTMLTextAreaElement | HTMLElement {

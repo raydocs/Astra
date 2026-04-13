@@ -1,14 +1,6 @@
 import Dexie from "dexie"
-
-export interface TranslationCacheContext {
-  providerId?: string
-  model?: string
-  connectionMode?: string
-  routingKey?: string
-  languageLevel?: string
-  sourceLang?: string
-  requestContextKey?: string
-}
+import type { TranslationCacheContext } from "./translation-cache-context"
+export type { TranslationCacheContext } from "./translation-cache-context"
 
 export interface TranslationCacheBucketStats {
   bucketKey: string

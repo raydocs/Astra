@@ -22,3 +22,8 @@ ios/build/
 *.xcworkspace/xcuserdata/
 *.xcodeproj/xcuserdata/
 *.xcuserdatad/
+
+# Test / local tooling artifacts
+coverage/
+prompt-exports/
+.codex/

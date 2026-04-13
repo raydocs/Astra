@@ -7,6 +7,7 @@ import {
   withLiveBrowserPage,
   LiveBrowserUnavailableError,
 } from "../../driver"
+import { sleep } from "../../sleep"
 import type { LiveScenarioDefinition, LiveScenarioExecution } from "../../evaluator"
 import { buildLiveInteractionPriorityEvaluation } from "../helpers/interaction-priority"
 
@@ -229,7 +230,7 @@ export const interactionStressHoldoutScenario: LiveScenarioDefinition<LiveIntera
         }, { hosts: ASTRA_HOSTS })
 
         // Wait for DOM mutation loop to finish and iframe srcdoc to render
-        await page.waitForTimeout(1500)
+        await sleep(1500)
 
         // -------------------------------------------------------------------
         // Test all 12 stress buttons

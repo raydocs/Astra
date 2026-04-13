@@ -20,37 +20,64 @@
     let payloadTask = 'translate'
     const startedAt = performance.now()
 
-    target.addEventListener('mousemove', function (event) {
-      if (!event.altKey) return
-      window.setTimeout(function () {
-        requestCount += 1
-        payloadSelectionContext = (target.textContent || '').trim()
-        triggerLabel = 'Alt + Hover'
-        overlayText = options.translatedPrefix + payloadSelectionContext
-        shadow.innerHTML = '<div style="display:flex;flex-direction:column;gap:6px;max-width:320px;padding:10px 12px;background:#111827;color:white;border-radius:12px;box-shadow:0 10px 30px rgba(15,23,42,0.28);"><div style="font-size:12px;opacity:0.8;">' + triggerLabel + '</div><div style="font-size:14px;line-height:1.5;">' + overlayText + '</div></div>'
-        const rect = target.getBoundingClientRect()
-        host.style.top = Math.max(12, rect.bottom + 8) + 'px'
-        host.style.left = Math.max(12, rect.left) + 'px'
-        overlayVisible = true
-      }, 300)
-    }, { once: true })
-
-    target.dispatchEvent(new MouseEvent('mousemove', { bubbles: true, cancelable: true, altKey: true, clientX: 120, clientY: 80 }))
-
     return new Promise(function (resolve) {
-      window.setTimeout(function () {
-        resolve({
-          requestCount,
-          overlayVisible,
-          overlayText,
-          overlayError,
-          triggerLabel,
-          translationLatencyMs: performance.now() - startedAt,
-          selectionSuppressed: false,
-          payloadSelectionContext,
-          payloadTask,
-        })
-      }, 360)
+      target.addEventListener('mousemove', function (event) {
+        if (!event.altKey) return
+        window.setTimeout(async function () {
+          try {
+            requestCount += 1
+            payloadSelectionContext = (target.textContent || '').trim()
+            triggerLabel = 'Alt + Hover'
+            const response = await fetch(options.relayUrl, {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+              },
+              body: JSON.stringify({
+                provider: 'openai',
+                model: 'gpt-5.4-nano',
+                texts: [payloadSelectionContext],
+                targetLang: 'zh-CN',
+                task: payloadTask,
+                context: {
+                  pageTitle: document.title,
+                  pageUrl: window.location.href,
+                  hostname: window.location.hostname,
+                  selectionContext: payloadSelectionContext,
+                },
+              }),
+            })
+
+            if (!response.ok) {
+              throw new Error('relay responded with ' + response.status)
+            }
+
+            const payload = await response.json()
+            overlayText = (payload && payload.translations && payload.translations[0]) || (options.translatedPrefix + payloadSelectionContext)
+            shadow.innerHTML = '<div style="display:flex;flex-direction:column;gap:6px;max-width:320px;padding:10px 12px;background:#111827;color:white;border-radius:12px;box-shadow:0 10px 30px rgba(15,23,42,0.28);"><div style="font-size:12px;opacity:0.8;">' + triggerLabel + '</div><div style="font-size:14px;line-height:1.5;">' + overlayText + '</div></div>'
+            const rect = target.getBoundingClientRect()
+            host.style.top = Math.max(12, rect.bottom + 8) + 'px'
+            host.style.left = Math.max(12, rect.left) + 'px'
+            overlayVisible = true
+          } catch (error) {
+            overlayError = error instanceof Error ? error.message : String(error)
+          }
+
+          resolve({
+            requestCount,
+            overlayVisible,
+            overlayText,
+            overlayError,
+            triggerLabel,
+            translationLatencyMs: performance.now() - startedAt,
+            selectionSuppressed: false,
+            payloadSelectionContext,
+            payloadTask,
+          })
+        }, 300)
+      }, { once: true })
+
+      target.dispatchEvent(new MouseEvent('mousemove', { bubbles: true, cancelable: true, altKey: true, clientX: 120, clientY: 80 }))
     })
   }
 

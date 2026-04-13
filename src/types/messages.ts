@@ -62,6 +62,8 @@ export const PageStudyContextSchema = TranslationRequestContextSchema.pick({
   hostname: true,
   metaDescription: true,
   contentSummary: true,
+}).extend({
+  articleExcerpt: z.string().trim().min(1).optional(),
 })
 
 const TranslationProgressSnapshotSchema = z.object({

@@ -301,7 +301,12 @@ describe("handleAuthAnonymous", () => {
   })
 
   it("runs shadow preflight without minting a second session", async () => {
-    proxyToNodeRelayMock.mockResolvedValue(new Response(JSON.stringify({ ok: true }), {
+    proxyToNodeRelayMock.mockResolvedValue(new Response(JSON.stringify({
+      sessionToken: "node-session-token",
+      relayBaseURL: "https://platform.astra.example/v1",
+      email: "anon@shadow.example",
+      identityMode: "anonymous",
+    }), {
       status: 200,
       headers: { "Content-Type": "application/json" },
     }))

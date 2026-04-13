@@ -1,4 +1,4 @@
-import type { TranslationRequestContext } from "@/types/messages"
+import type { PageStudyContext, TranslationRequestContext } from "@/types/messages"
 import {
   ASTRA_SOURCE_SELECTOR,
   ASTRA_TRANSLATION_SELECTOR,
@@ -152,4 +152,24 @@ export async function buildInlineTranslationContext(
   }
 
   return fullContext
+}
+
+export async function buildPageStudyContext(): Promise<PageStudyContext> {
+  const base = await buildInlineTranslationContext()
+  const config = await readConfig()
+
+  if (config.privacyMode) {
+    return base
+  }
+
+  const contentRoot = findContentRoot(document)
+  const articleExcerpt = buildContentSummary(collectTextBlocks(contentRoot), {
+    maxBlocks: 3,
+    maxChars: 650,
+  }) ?? undefined
+
+  return {
+    ...base,
+    ...(articleExcerpt ? { articleExcerpt } : {}),
+  }
 }

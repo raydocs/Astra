@@ -89,6 +89,7 @@ describe("extension message helpers", () => {
         pageUrl: "https://example.com/article",
         hostname: "example.com",
         contentSummary: "Summary",
+        articleExcerpt: "Excerpt",
       },
     })
 
@@ -106,6 +107,7 @@ describe("extension message helpers", () => {
         pageUrl: "https://example.com/article",
         hostname: "example.com",
         contentSummary: "Summary",
+        articleExcerpt: "Excerpt",
       },
     })
   })

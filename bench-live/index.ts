@@ -45,9 +45,18 @@ export {
   pageTranslationArticleBasicSourceTranslationOnlyScenario,
   placeholderScenario,
   interactionPriorityBasicScenario,
+  hoverTranslationBasicScenario,
+  selectionExplainBasicScenario,
   inputTranslationBasicScenario,
   subtitleBasicScenario,
   frameCoordinationBasicScenario,
+  siteAutomationAutostartScenario,
+  dynamicContentAppendScenario,
+  articleExtractionDocsScenario,
+  onboardingSmokeScenario,
+  popupDeepReadProofScenario,
+  popupDeepReadSmokeScenario,
+  vocabularySrsSmokeScenario,
 } from "./scenarios/index"
 export { holdoutScenarios } from "./scenarios/holdout/index"
 
@@ -57,6 +66,9 @@ import { liveScenarios } from "./scenarios/index"
 import { holdoutScenarios } from "./scenarios/holdout/index"
 
 type AnyLiveScenarioDefinition = LiveScenarioDefinition<any>
+const liveScenarioAliases = new Map<string, string>([
+  ["bench-live/popup-deep-read-smoke", "bench-live/popup-deep-read-proof"],
+])
 
 export interface LiveBenchArgs {
   help: boolean
@@ -153,8 +165,9 @@ export function formatLiveBenchScenarioList(scenarios: AnyLiveScenarioDefinition
 
 export function resolveLiveScenario(scenarioId: string | null): AnyLiveScenarioDefinition {
   const allScenarios = [...liveScenarios, ...holdoutScenarios]
+  const canonicalScenarioId = scenarioId ? (liveScenarioAliases.get(scenarioId) ?? scenarioId) : null
   const scenario = scenarioId
-    ? allScenarios.find((entry) => entry.id === scenarioId)
+    ? allScenarios.find((entry) => entry.id === canonicalScenarioId)
     : liveScenarios[0]
 
   if (!scenario) {
@@ -198,6 +211,8 @@ export async function runLiveBench(argv: string[]): Promise<LiveBenchOutcome> {
 
   let execution: LiveScenarioExecution
   try {
+    // The scenario registry mixes specialized execution payloads; normalize to the base contract here.
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
     execution = await scenario.run(runtime, context)
   } catch (error) {
     runtime.fail(error instanceof Error ? error : new Error(String(error)))

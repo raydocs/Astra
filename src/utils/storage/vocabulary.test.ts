@@ -103,6 +103,65 @@ describe("vocabulary storage", () => {
     expect(synced.url).toBe("https://example.com/page")
   })
 
+  it("round-trips popup source context metadata", async () => {
+    await saveVocabularyEntry({
+      text: "ephemeral",
+      explanation: "Used in the article to describe a short-lived phase.",
+      context: "The ephemeral phase passes quickly.",
+      url: "https://example.com/article",
+      hostname: "example.com",
+      sourceContext: {
+        surface: "popup_deep_read",
+        pageTitle: "Example article",
+        articleExcerpt: "The ephemeral phase passes quickly. Another sentence follows.",
+        sentenceText: "The ephemeral phase passes quickly.",
+        sentenceIndex: 0,
+      },
+    })
+
+    const entries = await getVocabularyEntries()
+    expect(entries[0].sourceContext).toEqual({
+      surface: "popup_deep_read",
+      pageTitle: "Example article",
+      articleExcerpt: "The ephemeral phase passes quickly. Another sentence follows.",
+      sentenceText: "The ephemeral phase passes quickly.",
+      sentenceIndex: 0,
+    })
+  })
+
+  it("merges source context when resaving a deduped entry", async () => {
+    await saveVocabularyEntry({
+      text: "review",
+      url: "https://example.com/article",
+      sourceContext: {
+        surface: "popup_deep_read",
+        pageTitle: "Example article",
+        sentenceText: "Review this sentence.",
+      },
+    })
+
+    await saveVocabularyEntry({
+      text: "review",
+      url: "https://example.com/article",
+      explanation: "A follow-up explanation.",
+      sourceContext: {
+        surface: "popup_deep_read",
+        articleExcerpt: "Review this sentence. Then continue reading.",
+        sentenceIndex: 1,
+      },
+    })
+
+    const entries = await getVocabularyEntries()
+    expect(entries).toHaveLength(1)
+    expect(entries[0].sourceContext).toEqual({
+      surface: "popup_deep_read",
+      pageTitle: "Example article",
+      sentenceText: "Review this sentence.",
+      articleExcerpt: "Review this sentence. Then continue reading.",
+      sentenceIndex: 1,
+    })
+  })
+
   it("applies synced vocabulary updates while preserving local review progress", async () => {
     const existing = await saveVocabularyEntry({
       text: "review",
@@ -111,6 +170,11 @@ describe("vocabulary storage", () => {
       nextReviewAt: 200,
       reviewCount: 3,
       lastReviewedAt: 150,
+      sourceContext: {
+        surface: "popup_deep_read",
+        pageTitle: "Original title",
+        sentenceText: "Original sentence",
+      },
     })
 
     const nextEntries = applyVocabularySyncMutations(await getVocabularyEntries(), [{
@@ -121,6 +185,10 @@ describe("vocabulary storage", () => {
         text: "review",
         translation: "回顾",
         savedAt: existing.savedAt,
+        sourceContext: {
+          surface: "popup_deep_read",
+          articleExcerpt: "Original sentence. Supporting excerpt.",
+        },
       },
     }])
 
@@ -130,6 +198,12 @@ describe("vocabulary storage", () => {
       srsBox: 4,
       reviewCount: 3,
       lastReviewedAt: 150,
+      sourceContext: {
+        surface: "popup_deep_read",
+        pageTitle: "Original title",
+        sentenceText: "Original sentence",
+        articleExcerpt: "Original sentence. Supporting excerpt.",
+      },
     })
   })
 })

@@ -52,10 +52,55 @@ describe("benchmark evaluators", () => {
       scope: "article",
       rootId: "blog-article",
       shouldExcludeTexts: ["@maya"],
+      minBlockCount: 4,
+      maxBlockCount: 4,
     })
 
     expect(result.pass).toBe(false)
-    expect(result.issues.some((issue) => issue.message.includes("leaked"))).toBe(true)
+    expect(result.issues.some((issue) => issue.message.includes("over-extracted"))).toBe(true)
+    expect(result.artifacts.failureClasses).toContain("over-extracted")
+  })
+
+  it("classifies article extraction under-extraction separately from empty failures", () => {
+    const result = evaluateArticleExtraction({
+      scope: "article",
+      rootId: "docs-article",
+      blockCount: 2,
+      blockTexts: ["Heading", "One paragraph"],
+      leakedTexts: [],
+    }, {
+      scope: "article",
+      rootId: "docs-article",
+      minBlockCount: 5,
+      maxBlockCount: 5,
+    })
+
+    expect(result.pass).toBe(false)
+    expect(result.artifacts.failureClasses).toContain("under-extracted")
+    expect(result.artifacts.failureClasses).not.toContain("empty")
+  })
+
+  it("classifies article extraction wrong-root failures and preserves expected root notes", () => {
+    const result = evaluateArticleExtraction({
+      scope: "article",
+      rootId: "sidebar-root",
+      blockCount: 5,
+      blockTexts: ["Overview", "Routing", "Streaming", "Errors", "Docs"],
+      leakedTexts: [],
+    }, {
+      scope: "article",
+      rootId: "docs-article",
+      minBlockCount: 5,
+      maxBlockCount: 5,
+      expectedRootNote: "Expected article#docs-article because sidebar chrome should stay out of article mode.",
+    })
+
+    expect(result.pass).toBe(false)
+    expect(result.artifacts.failureClasses).toContain("wrong-root")
+    expect(result.artifacts.expectedRoot).toMatchObject({
+      rootId: "docs-article",
+      note: "Expected article#docs-article because sidebar chrome should stay out of article mode.",
+    })
   })
 
   it("flags hover failures when an unexpected request is sent", () => {
@@ -386,6 +431,9 @@ describe("benchmark evaluators", () => {
   it("exposes code hints for remaining surfaces", () => {
     expect(articleExtractionScenarios[0].codeHint?.suspectedFiles).toContain(
       "src/utils/dom/extraction.ts",
+    )
+    expect(articleExtractionScenarios.map((scenario) => scenario.id)).toContain(
+      "article-extraction/landing-page-fallback",
     )
     expect(hoverScenarios[0].codeHint?.suspectedFiles).toContain(
       "src/entrypoints/content/components/HoverTranslate.tsx",

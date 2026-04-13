@@ -27,11 +27,15 @@ import {
 } from "@/types/config"
 import { getReadingHistory, type ReadingHistoryEntry } from "@/utils/storage/reading-history"
 import {
+  computeFingerprint,
   getPageDigest,
+  isDigestStale,
   savePageDigest,
   type PageDigestRecord,
 } from "@/utils/storage/page-digests"
 import { generatePageDigest } from "@/utils/reading/assist"
+import { isTtsSupported, speak, splitSentences, stopSpeaking } from "@/utils/tts"
+import { translateTexts } from "@/utils/translate/translate"
 import {
   clearAstraSession,
   ensureAstraDeviceIdentity,
@@ -48,15 +52,24 @@ import {
   fetchAstraContinuitySnapshot,
 } from "@/utils/astra/account"
 import { getQuotaInfo } from "@/utils/astra/quota"
-import { getDueVocabularyCount } from "@/utils/storage/vocabulary"
+import {
+  getDueVocabularyCount,
+  getVocabularyEntries,
+  sanitizeVocabularyUrl,
+  saveVocabularyEntry,
+} from "@/utils/storage/vocabulary"
 import { getTranslationUsageSummary, type TranslationUsageSummary } from "@/utils/storage/translation-usage"
 import { buildContinuityStatus, type AstraContinuityRemoteSnapshot, type AstraContinuityStatus } from "@/utils/storage/config-sync"
-import { deriveStudyLoopViewModel, getStudyProgress, type StudyLoopViewModel } from "@/utils/storage/study-progress"
+import { deriveStudyLoopViewModel, getStudyProgress, recordStudyEvent, type StudyLoopViewModel } from "@/utils/storage/study-progress"
 import TranslationStatusCard from "./components/TranslationStatusCard"
 import SimpleControls from "./components/SimpleControls"
 import QuotaBar from "./components/QuotaBar"
 import SiteSettingsSection from "./components/SiteSettingsSection"
-import StudySection from "./components/StudySection"
+import StudySection, {
+  type PopupSentenceCardViewModel,
+  type PopupSentenceExplainStatus,
+  type PopupSentenceSaveStatus,
+} from "./components/StudySection"
 import UsageInsightsCard from "./components/UsageInsightsCard"
 import { btnPrimary, btnSecondary, btnDisabled, warningStyle, inputStyle, labelStyle } from "./components/styles"
 
@@ -76,6 +89,40 @@ function formatContinuityTimestamp(value: string | null | undefined): string {
   }
 
   return parsed.toLocaleString()
+}
+
+interface PopupSentenceState {
+  explanationText: string | null
+  explainStatus: PopupSentenceExplainStatus
+  saveStatus: PopupSentenceSaveStatus
+}
+
+function buildPopupSentenceCardId(index: number, sentence: string): string {
+  return `${index}:${sentence}`
+}
+
+function buildLegacyPopupSentenceSaveKey(sentence: string): string {
+  return `text:${sentence}`
+}
+
+function createPopupSentenceState(
+  patch: Partial<PopupSentenceState> = {},
+): PopupSentenceState {
+  return {
+    explanationText: null,
+    explainStatus: "idle",
+    saveStatus: "idle",
+    ...patch,
+  }
+}
+
+function buildStudyDigestContentSummary(studyContext: PageStudyContext | null): string {
+  if (!studyContext) return ""
+
+  return [
+    studyContext.contentSummary ?? studyContext.metaDescription ?? "",
+    studyContext.articleExcerpt ? `Article excerpt:\n${studyContext.articleExcerpt}` : "",
+  ].filter(Boolean).join("\n\n")
 }
 
 interface IosBootstrapRuntimeStatus {
@@ -170,7 +217,15 @@ export default function App() {
   const [usageSummary, setUsageSummary] = useState<TranslationUsageSummary | null>(null)
   const [studyLoop, setStudyLoop] = useState<StudyLoopViewModel | null>(null)
   const [pageDigest, setPageDigest] = useState<PageDigestRecord | null>(null)
+  const [activePageUrl, setActivePageUrl] = useState<string | null>(null)
   const [digestLoading, setDigestLoading] = useState(false)
+  const [studyActionResult, setStudyActionResult] = useState<{ actionId: string; text: string } | null>(null)
+  const [studyActionRunningId, setStudyActionRunningId] = useState<string | null>(null)
+  const [sentenceStateById, setSentenceStateById] = useState<Record<string, PopupSentenceState>>({})
+  const [speakingSentenceId, setSpeakingSentenceId] = useState<string | null>(null)
+  const [selectedSentenceIndex, setSelectedSentenceIndex] = useState(0)
+  const [currentPageSavedSentenceKeys, setCurrentPageSavedSentenceKeys] = useState<string[]>([])
+  const [studySpeaking, setStudySpeaking] = useState(false)
   const [iosBootstrapStatus, setIosBootstrapStatus] = useState<{
     bridgeAvailable: boolean
     status: IosBootstrapRuntimeStatus | null
@@ -183,11 +238,112 @@ export default function App() {
   const saveRevisionRef = useRef(0)
   const siteRuleSaveTimerRef = useRef<number | null>(null)
   const pendingSiteRuleDraftRef = useRef<AstraConfig | null>(null)
+  const sentenceDeckRevisionRef = useRef(0)
 
   const persistedResolvedSite = useMemo(
     () => resolveSiteTranslationSettings(persistedConfig, activeSiteKey),
     [persistedConfig, activeSiteKey],
   )
+
+  const currentDigestFingerprint = useMemo(() => {
+    const url = activePageUrl ?? studyContext?.pageUrl
+    if (!url || !studyContext) return null
+
+    return computeFingerprint({
+      url,
+      title: studyContext.pageTitle ?? "",
+      contentSummary: buildStudyDigestContentSummary(studyContext),
+      targetLang: configDraft.targetLang,
+      languageLevel: configDraft.languageLevel,
+    })
+  }, [
+    activePageUrl,
+    configDraft.languageLevel,
+    configDraft.targetLang,
+    studyContext,
+  ])
+
+  const digestStale = pageDigest !== null
+    && currentDigestFingerprint !== null
+    && isDigestStale(pageDigest, currentDigestFingerprint)
+
+  const studyActionText = useMemo(() => {
+    if (pageDigest) {
+      const digestPoints = pageDigest.keyPoints.slice(0, 3).join(" ")
+      return [
+        pageDigest.headline,
+        pageDigest.summary,
+        digestPoints,
+      ].filter(Boolean).join("\n\n")
+    }
+
+    return studyContext?.articleExcerpt
+      ?? studyContext?.contentSummary
+      ?? studyContext?.metaDescription
+      ?? ""
+  }, [pageDigest, studyContext])
+
+  const studyQuickActions = useMemo(
+    () => (configDraft.customActions ?? []).filter((action) => action.enabled).slice(0, 3),
+    [configDraft.customActions],
+  )
+
+  const studySentences = useMemo(
+    () => splitSentences(studyContext?.articleExcerpt ?? "")
+      .map((sentence) => sentence.trim())
+      .filter((sentence) => sentence.length > 0)
+      .slice(0, 3),
+    [studyContext?.articleExcerpt],
+  )
+
+  const canSpeakStudy = studyActionText.trim().length > 0
+    && persistedConfig.tts.enabled
+    && isTtsSupported(persistedConfig.tts.engine)
+
+  const savedSentenceKeySet = useMemo(
+    () => new Set(currentPageSavedSentenceKeys),
+    [currentPageSavedSentenceKeys],
+  )
+
+  const sentenceCards = useMemo<PopupSentenceCardViewModel[]>(
+    () => studySentences.map((sentence, index) => {
+      const id = buildPopupSentenceCardId(index, sentence)
+      const state = sentenceStateById[id] ?? createPopupSentenceState()
+      const persistedSaved = savedSentenceKeySet.has(id)
+        || savedSentenceKeySet.has(buildLegacyPopupSentenceSaveKey(sentence))
+      const saveStatus: PopupSentenceSaveStatus = state.saveStatus === "saving"
+        ? "saving"
+        : (state.saveStatus === "saved" || persistedSaved ? "saved" : "idle")
+
+      return {
+        id,
+        text: sentence,
+        index,
+        selected: index === selectedSentenceIndex,
+        explainStatus: state.explainStatus,
+        explanationText: state.explanationText,
+        saveStatus,
+        speaking: speakingSentenceId === id,
+      }
+    }),
+    [savedSentenceKeySet, selectedSentenceIndex, sentenceStateById, speakingSentenceId, studySentences],
+  )
+
+  useEffect(() => {
+    sentenceDeckRevisionRef.current += 1
+    stopSpeaking()
+    setSentenceStateById({})
+    setSpeakingSentenceId(null)
+    setStudySpeaking(false)
+    setSelectedSentenceIndex(0)
+  }, [studyContext?.pageUrl, studyContext?.articleExcerpt])
+
+  useEffect(() => {
+    setSelectedSentenceIndex((current) => {
+      if (studySentences.length === 0) return 0
+      return Math.min(current, studySentences.length - 1)
+    })
+  }, [studySentences])
 
   const refreshTranslationState = async () => {
     const stateResponse = await getActiveTabTranslationState()
@@ -203,7 +359,7 @@ export default function App() {
   }
 
   const refreshAll = async () => {
-    const [config, siteKey, device, storedSession, history, currentDueCount, studyContextResponse, usage, studyStore, iosStatus] = await Promise.all([
+    const [config, siteKey, device, storedSession, history, currentDueCount, studyContextResponse, usage, studyStore, vocabularyEntries, iosStatus] = await Promise.all([
       readConfig(),
       getActiveSiteKey(),
       ensureAstraDeviceIdentity(),
@@ -213,6 +369,7 @@ export default function App() {
       getActiveTabStudyContext(),
       getTranslationUsageSummary(),
       getStudyProgress(),
+      getVocabularyEntries(),
       fetchIosBootstrapRuntimeStatus(),
     ])
     setRecentHistory(history.slice(0, 3))
@@ -224,7 +381,26 @@ export default function App() {
     // Derive study loop view model from current tab URL
     const [activeTab] = await browser.tabs.query({ active: true, currentWindow: true })
     const currentUrl = activeTab?.url && /^https?:/i.test(activeTab.url) ? activeTab.url : undefined
+    setActivePageUrl(currentUrl ?? null)
     setStudyLoop(deriveStudyLoopViewModel(studyStore, currentUrl))
+    const currentStudyUrl = sanitizeVocabularyUrl(currentUrl ?? (studyContextResponse.ok ? studyContextResponse.context.pageUrl : undefined))
+    setCurrentPageSavedSentenceKeys(
+      currentStudyUrl
+        ? Array.from(new Set(vocabularyEntries
+          .filter((entry) => sanitizeVocabularyUrl(entry.url) === currentStudyUrl)
+          .flatMap((entry) => {
+            const popupSentenceIndex = entry.sourceContext?.surface === "popup_deep_read"
+              ? entry.sourceContext.sentenceIndex
+              : undefined
+            const popupSentenceText = (entry.sourceContext?.sentenceText ?? entry.text).trim()
+            if (typeof popupSentenceIndex === "number") {
+              return [buildPopupSentenceCardId(popupSentenceIndex, popupSentenceText)]
+            }
+
+            return [buildLegacyPopupSentenceSaveKey(entry.text.trim())]
+          })))
+        : [],
+    )
 
     // Load cached page digest for the current URL
     if (currentUrl) {
@@ -326,13 +502,18 @@ export default function App() {
     }))
   }, [authSession, continuityRemote, deviceIdentity, persistedConfig])
 
+  useEffect(() => () => {
+    stopSpeaking()
+  }, [])
+
   const handleGenerateDigest = async () => {
     if (!studyContext) return
     setDigestLoading(true)
     try {
+      const contentSummary = buildStudyDigestContentSummary(studyContext)
       const digest = await generatePageDigest({
         pageTitle: studyContext.pageTitle ?? "",
-        contentSummary: studyContext.contentSummary ?? studyContext.metaDescription ?? "",
+        contentSummary,
         targetLang: configDraft.targetLang,
         languageLevel: configDraft.languageLevel,
       })
@@ -346,16 +527,321 @@ export default function App() {
           title: studyContext.pageTitle ?? "",
           targetLang: configDraft.targetLang,
           languageLevel: configDraft.languageLevel,
-          contentSummary: studyContext.contentSummary,
+          contentSummary,
         },
         digest,
       )
       setPageDigest(record)
+      setStudyActionResult(null)
     } catch {
       // Digest generation failed — silently ignore
     } finally {
       setDigestLoading(false)
     }
+  }
+
+  const refreshStudyLoopForUrl = async (url: string) => {
+    const studyStore = await getStudyProgress()
+    setStudyLoop(deriveStudyLoopViewModel(studyStore, url))
+  }
+
+  const buildStudyRecordMeta = () => {
+    const url = activePageUrl ?? studyContext?.pageUrl
+    if (!url) return null
+
+    let fallbackHostname = ""
+    try {
+      fallbackHostname = new URL(url).hostname
+    } catch {
+      fallbackHostname = ""
+    }
+
+    return {
+      url,
+      hostname: studyContext?.hostname ?? currentPageHistory?.hostname ?? currentSite.hostname ?? fallbackHostname,
+      title: studyContext?.pageTitle ?? currentPageHistory?.title ?? url,
+    }
+  }
+
+  const recordStudySteps = async (
+    steps: Array<"read" | "guided_read" | "explain" | "vocab_save">,
+    meta: ReturnType<typeof buildStudyRecordMeta> = buildStudyRecordMeta(),
+  ) => {
+    if (!meta) return
+
+    for (const step of steps) {
+      await recordStudyEvent({
+        url: meta.url,
+        hostname: meta.hostname,
+        title: meta.title,
+        step,
+      })
+    }
+
+    await refreshStudyLoopForUrl(meta.url)
+  }
+
+  const renderStudyPrompt = (template: string): string => {
+    const selectionContext = studyContext?.contentSummary ?? studyContext?.metaDescription ?? ""
+    return template
+      .replaceAll("{{text}}", studyActionText)
+      .replaceAll("{{targetLang}}", configDraft.targetLang)
+      .replaceAll("{{selectionContext}}", selectionContext)
+  }
+
+  const handleRunStudyAction = async (actionId: string) => {
+    const action = studyQuickActions.find((item) => item.id === actionId)
+    if (!action || !studyActionText || studyActionRunningId) return
+
+    setStudyActionRunningId(actionId)
+    setStudyActionResult(null)
+
+    try {
+      const result = await translateTexts({
+        texts: [studyActionText],
+        targetLang: configDraft.targetLang,
+        context: studyContext ?? undefined,
+        task: "custom",
+        customSystemPrompt: renderStudyPrompt(action.systemPrompt),
+      })
+
+      setStudyActionResult({
+        actionId,
+        text: result.ok ? (result.translations[0] ?? "") : `⚠ ${result.error.message}`,
+      })
+    } catch (error) {
+      setStudyActionResult({
+        actionId,
+        text: `⚠ ${error instanceof Error ? error.message : "Request failed."}`,
+      })
+    } finally {
+      setStudyActionRunningId(null)
+    }
+  }
+
+  const resolveSentenceTarget = (sentenceIndex?: number) => {
+    const fallbackIndex = sentenceIndex ?? selectedSentenceIndex
+    const targetIndex = fallbackIndex >= 0 && fallbackIndex < studySentences.length
+      ? fallbackIndex
+      : 0
+    const targetSentence = studySentences[targetIndex]?.trim() ?? ""
+    if (!targetSentence) return null
+
+    return {
+      targetIndex,
+      targetSentence,
+      targetSentenceId: buildPopupSentenceCardId(targetIndex, targetSentence),
+    }
+  }
+
+  const handleExplainSentence = async (sentenceIndex?: number) => {
+    const target = resolveSentenceTarget(sentenceIndex)
+    if (!target || studyActionRunningId) return
+
+    const { targetIndex, targetSentence, targetSentenceId } = target
+    const currentState = sentenceStateById[targetSentenceId] ?? createPopupSentenceState()
+    const anySentenceExplaining = Object.values(sentenceStateById).some((state) => state.explainStatus === "explaining")
+    const anySentenceSaving = Object.values(sentenceStateById).some((state) => state.saveStatus === "saving")
+    if (anySentenceExplaining || anySentenceSaving) return
+
+    setSelectedSentenceIndex(targetIndex)
+
+    if (currentState.explainStatus === "explained" && currentState.explanationText) {
+      return
+    }
+
+    const meta = buildStudyRecordMeta()
+    const deckRevision = sentenceDeckRevisionRef.current
+    setSentenceStateById((current) => ({
+      ...current,
+      [targetSentenceId]: {
+        ...(current[targetSentenceId] ?? createPopupSentenceState()),
+        explainStatus: "explaining",
+        explanationText: null,
+      },
+    }))
+
+    try {
+      const result = await translateTexts({
+        texts: [targetSentence],
+        targetLang: configDraft.targetLang,
+        context: studyContext
+          ? { ...studyContext, selectionContext: targetSentence }
+          : { selectionContext: targetSentence },
+        task: "explain",
+      })
+
+      const text = result.ok
+        ? (result.translations[0] ?? "")
+        : `Warning: ${result.error.message}`
+
+      if (sentenceDeckRevisionRef.current === deckRevision) {
+        setSentenceStateById((current) => ({
+          ...current,
+          [targetSentenceId]: {
+            ...(current[targetSentenceId] ?? createPopupSentenceState()),
+            explainStatus: result.ok ? "explained" : "idle",
+            explanationText: text,
+          },
+        }))
+      }
+
+      if (result.ok) {
+        await recordStudySteps(["explain"], meta)
+      }
+    } catch (error) {
+      if (sentenceDeckRevisionRef.current === deckRevision) {
+        setSentenceStateById((current) => ({
+          ...current,
+          [targetSentenceId]: {
+            ...(current[targetSentenceId] ?? createPopupSentenceState()),
+            explainStatus: "idle",
+            explanationText: `Warning: ${error instanceof Error ? error.message : "Request failed."}`,
+          },
+        }))
+      }
+    }
+  }
+
+  const handleSaveSentence = async (sentenceIndex: number) => {
+    const target = resolveSentenceTarget(sentenceIndex)
+    if (!target) return
+
+    const { targetIndex, targetSentence, targetSentenceId } = target
+    const currentState = sentenceStateById[targetSentenceId] ?? createPopupSentenceState()
+    const legacyTargetSentenceSaveKey = buildLegacyPopupSentenceSaveKey(targetSentence)
+    const anySentenceExplaining = Object.values(sentenceStateById).some((state) => state.explainStatus === "explaining")
+    const anySentenceSaving = Object.values(sentenceStateById).some((state) => state.saveStatus === "saving")
+    if (
+      anySentenceExplaining
+      || anySentenceSaving
+      || currentState.saveStatus === "saved"
+      || savedSentenceKeySet.has(targetSentenceId)
+      || savedSentenceKeySet.has(legacyTargetSentenceSaveKey)
+    ) return
+
+    const meta = buildStudyRecordMeta()
+    if (!meta) return
+
+    const deckRevision = sentenceDeckRevisionRef.current
+    setSentenceStateById((current) => ({
+      ...current,
+      [targetSentenceId]: {
+        ...(current[targetSentenceId] ?? createPopupSentenceState()),
+        saveStatus: "saving",
+      },
+    }))
+
+    try {
+      await saveVocabularyEntry({
+        text: targetSentence,
+        explanation: currentState.explanationText ?? undefined,
+        context: studyContext?.articleExcerpt ?? studyContext?.contentSummary ?? studyContext?.metaDescription,
+        sourceContext: {
+          surface: "popup_deep_read",
+          pageTitle: studyContext?.pageTitle,
+          contentSummary: studyContext?.contentSummary,
+          articleExcerpt: studyContext?.articleExcerpt,
+          sentenceText: targetSentence,
+          sentenceIndex: targetIndex,
+        },
+        url: meta.url,
+        hostname: meta.hostname,
+      })
+      await recordStudySteps(["vocab_save"], meta)
+      const nextDueCount = await getDueVocabularyCount()
+
+      if (sentenceDeckRevisionRef.current === deckRevision) {
+        setSentenceStateById((current) => ({
+          ...current,
+          [targetSentenceId]: {
+            ...(current[targetSentenceId] ?? createPopupSentenceState()),
+            saveStatus: "saved",
+          },
+        }))
+        setCurrentPageSavedSentenceKeys((current) => {
+          const nextKeys = new Set(current)
+          nextKeys.add(targetSentenceId)
+          return Array.from(nextKeys)
+        })
+      }
+      setDueCount(nextDueCount)
+    } catch {
+      if (sentenceDeckRevisionRef.current === deckRevision) {
+        setSentenceStateById((current) => ({
+          ...current,
+          [targetSentenceId]: {
+            ...(current[targetSentenceId] ?? createPopupSentenceState()),
+            saveStatus: "idle",
+          },
+        }))
+      }
+    }
+  }
+
+  const handleSelectSentence = (index: number) => {
+    if (index < 0 || index >= studySentences.length) return
+    setSelectedSentenceIndex(index)
+  }
+
+  const handleToggleSentenceSpeech = async (sentenceIndex?: number) => {
+    const target = resolveSentenceTarget(sentenceIndex)
+    if (!target) return
+
+    const { targetIndex, targetSentence, targetSentenceId } = target
+    setSelectedSentenceIndex(targetIndex)
+
+    if (speakingSentenceId === targetSentenceId) {
+      stopSpeaking()
+      setSpeakingSentenceId(null)
+      return
+    }
+
+    const config = await readConfig()
+    const enabled = config.tts.enabled && isTtsSupported(config.tts.engine)
+    if (!enabled) return
+
+    stopSpeaking()
+    const started = speak(targetSentence, {
+      engine: config.tts.engine,
+      voiceName: config.tts.voiceName,
+      rate: config.tts.rate,
+      pitch: config.tts.pitch,
+      lang: configDraft.targetLang,
+      onEnd: () => setSpeakingSentenceId(null),
+      onError: () => setSpeakingSentenceId(null),
+    })
+
+    setStudySpeaking(false)
+    setSpeakingSentenceId(started ? targetSentenceId : null)
+  }
+
+  const handleToggleStudySpeech = async () => {
+    if (studySpeaking) {
+      stopSpeaking()
+      setStudySpeaking(false)
+      return
+    }
+
+    if (!studyActionText.trim()) return
+
+    const config = await readConfig()
+    const enabled = config.tts.enabled && isTtsSupported(config.tts.engine)
+    if (!enabled) return
+
+    stopSpeaking()
+    const started = speak(studyActionText, {
+      engine: config.tts.engine,
+      voiceName: config.tts.voiceName,
+      rate: config.tts.rate,
+      pitch: config.tts.pitch,
+      lang: configDraft.targetLang,
+      onEnd: () => setStudySpeaking(false),
+      onError: () => setStudySpeaking(false),
+    })
+
+    setSpeakingSentenceId(null)
+    setStudySpeaking(started)
   }
 
   useEffect(() => {
@@ -598,19 +1084,32 @@ export default function App() {
         setTranslationState(response.state)
         setContentAvailable(true)
         setStatusMessage("")
+        return true
       } else {
         setTranslationState(response.state ?? null)
         setContentAvailable(response.error.code !== "CONTENT_UNAVAILABLE")
         setStatusMessage(response.error.message)
+        return false
       }
     } catch (error) {
       setStatusMessage(error instanceof Error ? error.message : "Translation request failed")
+      return false
     }
   }
 
-  const translate = async () => startTranslation("page")
+  const translate = async () => {
+    const started = await startTranslation("page")
+    if (started) {
+      await recordStudySteps(["read"])
+    }
+  }
 
-  const translateArticle = async () => startTranslation("article")
+  const translateArticle = async () => {
+    const started = await startTranslation("article")
+    if (started) {
+      await recordStudySteps(["read", "guided_read"])
+    }
+  }
 
   const removeTranslation = async () => {
     try {
@@ -1068,20 +1567,30 @@ export default function App() {
         canReadArticle={studyReady && !translateDisabled}
         studyLoop={studyLoop}
         pageDigest={pageDigest}
+        digestStale={digestStale}
         digestLoading={digestLoading}
         onGenerateDigest={() => { void handleGenerateDigest() }}
+        onRegenerateDigest={() => { void handleGenerateDigest() }}
+        canSpeakStudy={canSpeakStudy}
+        speakingStudy={studySpeaking}
+        studyQuickActions={studyQuickActions}
+        studyActionRunningId={studyActionRunningId}
+        studyActionResult={studyActionResult}
+        sentenceCards={sentenceCards}
+        selectedSentenceIndex={selectedSentenceIndex}
+        onToggleStudySpeech={() => { void handleToggleStudySpeech() }}
+        onToggleSentenceSpeech={(sentenceIndex) => { void handleToggleSentenceSpeech(sentenceIndex) }}
+        onSelectSentence={(index) => { handleSelectSentence(index) }}
+        onRunStudyAction={(actionId) => { void handleRunStudyAction(actionId) }}
+        onSaveSentence={(sentenceIndex) => { void handleSaveSentence(sentenceIndex) }}
         onOpenHistoryEntry={openUrlInTab}
         onOpenReview={openReviewPage}
         onOpenVocabulary={openVocabularyPage}
         onReadArticle={() => {
           void translateArticle()
         }}
-        onExplainSentence={() => {
-          // Focus the active tab so user can select text for explanation
-          void browser.tabs.query({ active: true, currentWindow: true }).then(([tab]) => {
-            if (tab?.id) void browser.tabs.update(tab.id, { active: true })
-          })
-          window.close()
+        onExplainSentence={(sentenceIndex) => {
+          void handleExplainSentence(sentenceIndex)
         }}
       />
 

@@ -541,28 +541,28 @@ function applyStudyProgressShadowMutation(
   return nextShadow
 }
 
-function buildConfigShadowFromRepair(records: Array<{ recordId: string; payload: unknown | null }>): Record<string, AstraConfigSyncRecord> {
+function buildConfigShadowFromRepair(records: Array<{ recordId: string; payload: unknown }>): Record<string, AstraConfigSyncRecord> {
   return Object.fromEntries(records.map((record) => [
     record.recordId,
     AstraConfigSyncRecordSchema.parse(record.payload),
   ]))
 }
 
-function buildVocabularyShadowFromRepair(records: Array<{ recordId: string; payload: unknown | null }>): Record<string, SyncedVocabularyEntry> {
+function buildVocabularyShadowFromRepair(records: Array<{ recordId: string; payload: unknown }>): Record<string, SyncedVocabularyEntry> {
   return Object.fromEntries(records.map((record) => [
     record.recordId,
     SyncedVocabularyEntrySchema.parse(record.payload),
   ]))
 }
 
-function buildReadingHistoryShadowFromRepair(records: Array<{ recordId: string; payload: unknown | null }>): Record<string, SyncedReadingHistoryEntry> {
+function buildReadingHistoryShadowFromRepair(records: Array<{ recordId: string; payload: unknown }>): Record<string, SyncedReadingHistoryEntry> {
   return Object.fromEntries(records.map((record) => [
     record.recordId,
     SyncedReadingHistoryEntrySchema.parse(record.payload),
   ]))
 }
 
-function buildStudyProgressShadowFromRepair(records: Array<{ recordId: string; payload: unknown | null }>): Record<string, SyncedStudyPageProgress> {
+function buildStudyProgressShadowFromRepair(records: Array<{ recordId: string; payload: unknown }>): Record<string, SyncedStudyPageProgress> {
   return Object.fromEntries(records.map((record) => [
     record.recordId,
     SyncedStudyPageProgressSchema.parse(record.payload),

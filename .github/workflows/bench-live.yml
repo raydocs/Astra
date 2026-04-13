@@ -1,0 +1,86 @@
+name: Live Bench
+
+on:
+  workflow_dispatch:
+    inputs:
+      scenario:
+        description: "Live scenario ID to run (leave empty to run the smoke suite)"
+        required: false
+        type: string
+      lane:
+        description: "Named lane to run when no explicit scenario is provided"
+        required: false
+        default: release-proof
+        type: choice
+        options:
+          - release-proof
+          - source-core
+          - extension-core
+          - hover-selection
+          - smoke
+          - source
+          - extension
+      browser_path:
+        description: "Path to Chrome/Chromium binary (leave empty for auto-detect)"
+        required: false
+        type: string
+
+jobs:
+  live-bench:
+    runs-on: ubuntu-latest
+    env:
+      ASTRA_BENCH_LIVE_USE_GOOGLE_CHROME: "1"
+      DBUS_SESSION_BUS_ADDRESS: /dev/null
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v5
+        with:
+          version: 10.33.0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Install Playwright browsers (with system deps for Linux)
+        run: npx playwright install --with-deps chromium chrome
+
+      - name: Build Chrome extension
+        run: pnpm build
+
+      - name: Verify extension build
+        run: test -f .output/chrome-mv3/manifest.json
+
+      - name: Run live bench
+        env:
+          ASTRA_BENCH_LIVE_BROWSER_PATH: ${{ inputs.browser_path || '' }}
+          ASTRA_LIVE_SCENARIO: ${{ inputs.scenario || '' }}
+          ASTRA_LIVE_LANE: ${{ inputs.lane || 'release-proof' }}
+        run: |
+          if [ -n "$ASTRA_LIVE_SCENARIO" ]; then
+            xvfb-run -a pnpm bench:live -- --scenario="$ASTRA_LIVE_SCENARIO"
+          elif [ "$ASTRA_LIVE_LANE" = "source-core" ] || [ "$ASTRA_LIVE_LANE" = "source" ]; then
+            xvfb-run -a pnpm bench:live:lane:source-core
+          elif [ "$ASTRA_LIVE_LANE" = "extension-core" ] || [ "$ASTRA_LIVE_LANE" = "extension" ]; then
+            xvfb-run -a pnpm bench:live:lane:extension-core
+          elif [ "$ASTRA_LIVE_LANE" = "hover-selection" ]; then
+            xvfb-run -a pnpm bench:live:lane:hover-selection
+          else
+            xvfb-run -a pnpm bench:live:lane:release-proof
+          fi
+
+      - name: Upload live bench results
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: live-bench-results
+          path: bench-live-results/
+          retention-days: 14

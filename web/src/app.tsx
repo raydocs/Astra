@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 
-import ePub from "epubjs"
 import type Book from "epubjs/types/book"
 import type { NavItem } from "epubjs/types/navigation"
 
@@ -14,7 +13,7 @@ import type {
   AstraUsageSnapshot,
 } from "@/types/auth"
 import { summarizeConfigContinuity, type AstraConfig } from "@/types/config"
-import { extractPdfPages, type PdfPage } from "@/entrypoints/pdf-reader/pdf-extractor"
+import type { PdfPage } from "@/entrypoints/pdf-reader/pdf-extractor"
 import {
   detectDocumentFormat,
   exportBilingualSrt,
@@ -200,6 +199,14 @@ function isRoute(value: string): value is AppRoute {
   return NAV_ITEMS.some((item) => item.route === value)
 }
 
+async function loadPdfExtractor() {
+  return import("@/entrypoints/pdf-reader/pdf-extractor")
+}
+
+async function loadEpubModule() {
+  return import("epubjs")
+}
+
 function readRouteFromHash(): AppRoute {
   const raw = window.location.hash.replace(/^#/, "") || "/"
   return isRoute(raw) ? raw : "/"
@@ -284,7 +291,7 @@ function flattenNavItems(items: NavItem[], depth = 0): EpubChapterItem[] {
     }
 
     if (Array.isArray(item.subitems) && item.subitems.length > 0) {
-      flattened.push(...flattenNavItems(item.subitems as NavItem[], depth + 1))
+      flattened.push(...flattenNavItems(item.subitems, depth + 1))
     }
   })
 
@@ -349,7 +356,7 @@ async function loadEpubChapterPreview(book: Book, chapter: EpubChapterItem): Pro
   const section = book.spine.get(chapter.href) ?? book.spine.get(baseHref)
   if (!section) return null
 
-  await section.load(book.load.bind(book))
+  await Promise.resolve(section.load(book.load.bind(book)))
   const doc = section.document
   if (!doc) return null
 
@@ -1920,6 +1927,7 @@ function PdfWorkspacePage(props: {
     setError("")
 
     try {
+      const { extractPdfPages } = await loadPdfExtractor()
       const pages = await extractPdfPages(new Uint8Array(await file.arrayBuffer()))
       if (pages.length === 0) {
         throw new Error("No readable pages were extracted from this PDF.")
@@ -2081,6 +2089,7 @@ function EpubWorkspacePage(props: {
     let book: Book | null = null
     try {
       bookRef.current?.destroy()
+      const { default: ePub } = await loadEpubModule()
       book = ePub(await file.arrayBuffer())
       bookRef.current = book
       await book.ready
@@ -2898,7 +2907,7 @@ function AccountPage(props: {
     } finally {
       setDownloadBusy(false)
     }
-  }, [continuityExportJob, props.session])
+  }, [continuityExportJob, props.device, props.session])
 
   const toggleDeleteCollection = useCallback((collection: AstraContinuityDeleteCollection) => {
     setDeleteCollections((current) => current.includes(collection)
@@ -2955,7 +2964,7 @@ function AccountPage(props: {
     } finally {
       setRepairBusy(false)
     }
-  }, [props.device, props.onRefreshCloudAssets, props.session])
+  }, [props])
 
   const currentDevice = props.devices.find((device) => device.isCurrentDevice) ?? null
   const activeDeviceCount = props.devices.filter((device) => device.status === "active").length
@@ -2997,7 +3006,7 @@ function AccountPage(props: {
         </label>
 
         {!props.session ? (
-          <form className="auth-form" onSubmit={submit}>
+          <form className="auth-form" onSubmit={(event) => { void submit(event) }}>
             <label className="field">
               <span>Email</span>
               <input value={email} onChange={(event) => setEmail(event.target.value)} type="email" placeholder="user@example.com" />

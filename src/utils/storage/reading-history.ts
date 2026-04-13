@@ -17,7 +17,7 @@ export type SyncedReadingHistoryEntry = z.infer<typeof SyncedReadingHistoryEntry
 export interface ReadingHistorySyncMutationLike {
   recordId: string
   operation: "upsert" | "delete"
-  payload?: unknown | null
+  payload?: unknown
 }
 
 export const READING_HISTORY_STORAGE_KEY = "astra.reading_history.v1"

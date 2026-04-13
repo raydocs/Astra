@@ -25,11 +25,30 @@ export function buildLiveHoverEvaluation(
     extraNotes?: string[]
   },
 ) {
+  if (execution.status === "skipped") {
+    return {
+      runId,
+      scenario,
+      status: "skipped",
+      pass: false,
+      score: 0,
+      summary: execution.summary ?? "The live hover scenario was skipped in this environment.",
+      issues: [],
+      nextActions: execution.notes ?? [],
+      notes: execution.notes ?? [],
+      rubrics: [],
+      artifacts: {
+        browserArtifacts: execution.artifacts ?? {},
+      },
+      runtime,
+    } as unknown as Partial<LiveEvaluationResult>
+  }
+
   if (!execution.hover) {
     return {
       runId,
       scenario,
-      status: execution.status === "skipped" ? "skipped" : "fail",
+      status: "fail",
       pass: false,
       score: 0,
       summary: execution.summary ?? "The live hover scenario did not produce a structured execution payload.",

@@ -8,6 +8,11 @@ import { z } from "zod"
 import type { LanguageLevel } from "@/types/config"
 import type { PageDigest } from "@/utils/reading/assist"
 
+const DigestVocabularyFocusSchema = z.object({
+  term: z.string(),
+  note: z.string(),
+})
+
 const PageDigestRecordSchema = z.object({
   url: z.string(),
   hostname: z.string(),
@@ -18,7 +23,10 @@ const PageDigestRecordSchema = z.object({
   sourceFingerprint: z.string(),
   headline: z.string(),
   summary: z.string(),
-  keyPoints: z.array(z.string()),
+  keyPoints: z.array(z.string()).default([]),
+  vocabularyFocus: z.array(DigestVocabularyFocusSchema).default([]),
+  grammarFocus: z.array(z.string()).default([]),
+  suggestedAction: z.string().default(""),
 })
 
 export type PageDigestRecord = z.infer<typeof PageDigestRecordSchema>
@@ -108,6 +116,9 @@ export async function savePageDigest(
     headline: digest.headline,
     summary: digest.summary,
     keyPoints: digest.keyPoints,
+    vocabularyFocus: digest.vocabularyFocus,
+    grammarFocus: digest.grammarFocus,
+    suggestedAction: digest.suggestedAction,
   }
 
   const otherDigests = store.digests.filter((d) => d.url !== cleanUrl)

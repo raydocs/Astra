@@ -1,19 +1,11 @@
 import { beforeEach, describe, expect, it, vi } from "vitest"
 
-const {
-  requestTranslationBatchMock,
-  readConfigMock,
-} = vi.hoisted(() => ({
+const { requestTranslationBatchMock } = vi.hoisted(() => ({
   requestTranslationBatchMock: vi.fn(),
-  readConfigMock: vi.fn(),
 }))
 
 vi.mock("@/utils/extension/messages", () => ({
   requestTranslationBatch: requestTranslationBatchMock,
-}))
-
-vi.mock("@/utils/storage/config", () => ({
-  readConfig: readConfigMock,
 }))
 
 import { translateTexts } from "./translate"
@@ -21,14 +13,6 @@ import { translateTexts } from "./translate"
 describe("translateTexts", () => {
   beforeEach(() => {
     vi.clearAllMocks()
-    readConfigMock.mockResolvedValue({
-      connectionMode: "astra",
-      languageLevel: "intermediate",
-      provider: {
-        id: "openai",
-        model: "gpt-5.4-nano",
-      },
-    })
   })
 
   it("splits oversized inputs and recombines the result in order", async () => {
@@ -64,18 +48,22 @@ describe("translateTexts", () => {
     await translateTexts({
       texts: ["Hello", "World"],
       targetLang: "zh-CN",
+      sourceLang: "en",
       context: {
         pageTitle: "Astra",
         contentSummary: "Browser translation",
+        terminologyGlossary: "Astra=阿斯特拉",
       },
     })
 
     expect(requestTranslationBatchMock).toHaveBeenCalledWith({
       texts: ["Hello", "World"],
       targetLang: "zh-CN",
+      sourceLang: "en",
       context: {
         pageTitle: "Astra",
         contentSummary: "Browser translation",
+        terminologyGlossary: "Astra=阿斯特拉",
       },
     })
   })
@@ -158,26 +146,7 @@ describe("translateTexts", () => {
     })
   })
 
-  it("isolates cache hits by provider/model context", async () => {
-    readConfigMock
-      .mockResolvedValueOnce({
-        connectionMode: "astra",
-        languageLevel: "intermediate",
-        provider: {
-          id: "openai",
-          model: "gpt-5.4-nano",
-        },
-      })
-      .mockResolvedValueOnce({
-        connectionMode: "custom",
-        languageLevel: "advanced",
-        provider: {
-          id: "gemini",
-          model: "gemini-3.1-flash-lite-preview",
-          relayBaseURL: "https://gemini.example/v1",
-        },
-      })
-
+  it("routes repeated requests through the background each time", async () => {
     requestTranslationBatchMock
       .mockResolvedValueOnce({ ok: true, translations: ["你好-openai"] })
       .mockResolvedValueOnce({ ok: true, translations: ["你好-gemini"] })
@@ -194,46 +163,5 @@ describe("translateTexts", () => {
     expect(first).toEqual({ ok: true, translations: ["你好-openai"] })
     expect(second).toEqual({ ok: true, translations: ["你好-gemini"] })
     expect(requestTranslationBatchMock).toHaveBeenCalledTimes(2)
-  })
-
-  it("isolates cache hits by source language and request context", async () => {
-    requestTranslationBatchMock
-      .mockResolvedValueOnce({ ok: true, translations: ["苹果（品牌）"] })
-      .mockResolvedValueOnce({ ok: true, translations: ["苹果（水果）"] })
-      .mockResolvedValueOnce({ ok: true, translations: ["poison"] })
-      .mockResolvedValueOnce({ ok: true, translations: ["married"] })
-
-    const brand = await translateTexts({
-      texts: ["Apple"],
-      targetLang: "zh-CN",
-      sourceLang: "en",
-      context: {
-        terminologyGlossary: "Apple=苹果（品牌）",
-      },
-    })
-    const fruit = await translateTexts({
-      texts: ["Apple"],
-      targetLang: "zh-CN",
-      sourceLang: "en",
-      context: {
-        terminologyGlossary: "Apple=苹果（水果）",
-      },
-    })
-    const germanGift = await translateTexts({
-      texts: ["gift"],
-      targetLang: "en",
-      sourceLang: "de",
-    })
-    const swedishGift = await translateTexts({
-      texts: ["gift"],
-      targetLang: "en",
-      sourceLang: "sv",
-    })
-
-    expect(brand).toEqual({ ok: true, translations: ["苹果（品牌）"] })
-    expect(fruit).toEqual({ ok: true, translations: ["苹果（水果）"] })
-    expect(germanGift).toEqual({ ok: true, translations: ["poison"] })
-    expect(swedishGift).toEqual({ ok: true, translations: ["married"] })
-    expect(requestTranslationBatchMock).toHaveBeenCalledTimes(4)
   })
 })
