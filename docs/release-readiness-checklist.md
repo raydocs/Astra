@@ -1,6 +1,6 @@
 # Astra Release Readiness Checklist
 
-_Last updated: 2026-04-13 (Month 1 close-out docs/policy sync)_
+_Last updated: 2026-04-14 (Month 2 learning-loop policy)_
 
 This checklist defines **release-blocking gates** and the minimum evidence required for a credible release decision.
 
@@ -46,6 +46,12 @@ CI enforces these in `.github/workflows/ci.yml` (`live-browser` job).
 | Unsupported/unproven surfaces are marked as gaps | Manual review | Same matrix + RC notes | Yes |
 
 **Block if:** docs claim coverage that is not currently implemented or gated.
+
+## Month 2 — Learning-loop policy (2026-04-14)
+
+- **Required gates unchanged**: `source-core` + `extension-core` only. `extension-core` already runs `bench-live/vocabulary-srs-smoke`.
+- **Chained `learning-loop` lane** (`pnpm bench:live:lane:learning-loop` = `popup-proof` + `vocabulary-srs-smoke`) remains **optional** for Month 2: credible for product narrative and regression discipline, but **not** promoted to Gate 2 until (a) flaky ownership matches `extension-core` rigor and (b) at least one green run summary is attached per RC / closeout (`docs/investigations/month-2-closeout-2026-04-14.md`).
+- **Evidence bundle**: `learning-loop-overview-2026-04-13.md`, `learning-metrics-2026-04-13.md`, `learning-loop-regression-checklist-2026-04-13.md`, `learning-loop-navigation-matrix-2026-04-14.md`, `learning-loop-claim-impact-2026-04-14.md`, `month-2-closeout-2026-04-14.md`.
 
 ## Current Month 1 reality notes (not a pass override)
 

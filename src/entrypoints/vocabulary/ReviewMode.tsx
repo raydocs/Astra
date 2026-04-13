@@ -63,6 +63,7 @@ export default function ReviewMode() {
   const [dailySentencesExplained, setDailySentencesExplained] = useState(0)
   const [dailyVocabSaved, setDailyVocabSaved] = useState(0)
   const [dailyVocabReviewed, setDailyVocabReviewed] = useState(0)
+  const [snippetExpanded, setSnippetExpanded] = useState(false)
 
   const loadDueCards = useCallback(async () => {
     const entries = await getVocabularyEntries()
@@ -77,6 +78,7 @@ export default function ReviewMode() {
     setDailySentencesExplained(progress.dailyStats.sentencesExplained)
     setDailyVocabSaved(progress.dailyStats.vocabSaved)
     setDailyVocabReviewed(progress.dailyStats.vocabReviewed)
+    setSnippetExpanded(false)
     setLoading(false)
   }, [])
 
@@ -124,6 +126,7 @@ export default function ReviewMode() {
     } else {
       setCurrentIndex(nextIndex)
       setPhase("showing-front")
+      setSnippetExpanded(false)
     }
   }, [currentCard, currentIndex, dueCards.length])
 
@@ -168,6 +171,7 @@ export default function ReviewMode() {
   const sourceSurfaceLabel = currentCard ? getReviewSourceSurfaceLabel(currentCard) : null
   const sourceLabel = currentCard ? getReviewSourceLabel(currentCard) : ""
   const sourceSnippet = currentCard ? getReviewSourceSnippet(currentCard) : ""
+  const snippetLong = sourceSnippet.length > 300
 
   const hasDailyProgress =
     dailyPagesStudied > 0
@@ -266,10 +270,28 @@ export default function ReviewMode() {
                 )}
                 {sourceSnippet && (
                   <div style={contextTextStyle}>
-                    {sourceSnippet.length > 300
+                    {snippetLong && !snippetExpanded
                       ? `${sourceSnippet.slice(0, 300)}...`
                       : sourceSnippet}
                   </div>
+                )}
+                {snippetLong && (
+                  <button
+                    type="button"
+                    onClick={() => setSnippetExpanded((v) => !v)}
+                    style={{
+                      marginTop: 6,
+                      border: "none",
+                      background: "none",
+                      color: "#2563eb",
+                      fontSize: 12,
+                      fontWeight: 600,
+                      cursor: "pointer",
+                      padding: 0,
+                    }}
+                  >
+                    {snippetExpanded ? t("review_hideFullContext") : t("review_showFullContext")}
+                  </button>
                 )}
                 {(currentCard.sourceContext?.articleExcerpt || currentCard.sourceContext?.contentSummary) && currentCard.sourceContext?.sentenceText !== currentCard.sourceContext?.articleExcerpt && (
                   <div style={{ ...contextTextStyle, marginTop: 8 }}>
@@ -283,7 +305,7 @@ export default function ReviewMode() {
                     rel="noopener noreferrer"
                     style={sourceLinkStyle}
                   >
-                    source
+                    {t("review_openSourcePage")}
                   </a>
                 )}
               </div>

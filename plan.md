@@ -693,11 +693,11 @@ Orchestrator 月末判分时，只有 `gate-ready` 才能计为本月主线完�
 
 - [x] 至少 1 条 `page/article -> explain -> save -> review -> revisit` 可重放证据链在真实环境中走通（live：`popup-deep-read-proof` + `vocabulary-srs-smoke`）
 - [x] popup 与至少 1 个 downstream surface（vocab / review / revisit）对 source-context 与 progress 的呈现一致（已知：review 侧重 SRS 卡片序，与 popup 全页 loop 展示为有意分层）
-- [x] learning-loop lane、metrics 定义已同步至文档（`docs/investigations/learning-metrics-2026-04-13.md`、`learning-loop-overview-2026-04-13.md`、`learning-loop-regression-checklist-2026-04-13.md`）；**Month 2 全文 closeout（`13K`）仍待月末**；carry-over 见 `docs/investigations/month-1-closeout-2026-04-13.md`
+- [x] learning-loop lane、metrics 定义已同步至文档（`docs/investigations/learning-metrics-2026-04-13.md`、`learning-loop-overview-2026-04-13.md`、`learning-loop-regression-checklist-2026-04-13.md`）；**Month 2 closeout**：`docs/investigations/month-2-closeout-2026-04-14.md`；carry-over 见该文档与 `month-1-closeout-2026-04-13.md`
 
-### Harness 打分（`pnpm bench`，2026-04-13）
+### Harness 打分（`pnpm bench`，2026-04-14）
 
-- **结果**：63 / 63 场景通过，**平均分 100**，报告 `bench-results/latest.json`
+- **结果**：63 / 63 场景通过，**平均分 100**，`bench-results/latest.json`（run `2026-04-13T20-24-43-823Z`，本地执行；该目录 gitignore，以你机器/CI 产物为准）
 
 ### Carry-over discipline（与 `13K` / `13I` 优化 4 对齐）
 
@@ -3174,6 +3174,12 @@ Month 1 交付要求：
 
 派发任务时须附带 `13L` 七要素；P0 项默认以 **§11 Month 2** 的 `gate-ready` 为完成定义（而非仅 merged）。月末用 `13H2` + `13K` + `13O` 做收口。
 
+### Month 2 执行快照（2026-04-14，仓库落地）
+
+- [x] **A–F P0 工作包**：以 `docs/investigations/month-2-closeout-2026-04-14.md` 为收口索引（含 `13O` evidence 表）；**`gate-ready` 仍受 optional live lane 约束**，verdict 记 **`pass-with-carry`**。
+- [x] **P1 最低条数**：矩阵 / known issues / UX debt / resume / search / review 链接与长上下文等已计入 closeout 说明。
+- [x] **`13K` Month 2 closeout 文档**：`month-2-closeout-2026-04-14.md`（与 §11 勾选「全文 closeout 仍待月末」对齐为 **已写 closeout 文档**；若需与 Month 1 模板逐字段一致可再迭代）。
+
 ### A. Popup deep-read completion pack
 
 1. `P0` 审计 popup 深读中所有 action 的状态互斥关系  
@@ -3234,6 +3240,35 @@ Month 2 交付要求：
 - `P0` 全部完成
 - `P1` 至少完成 10 项
 - 最终必须有 1 条从 reading 到 review 的真实链路证据
+
+### Month 2 任务打勾（Ledger 1–36，2026-04-14）
+
+| ID | P | 状态 |
+|---:|---|---|
+| 1 | P0 | [x] 现有 `StudySection` 与 `App` 行为已审计；见 closeout |
+| 2 | P0 | [x] explain/save/speak/custom disabled 逻辑已在 `StudySection` |
+| 3 | P0 | [x] result card 样式与既有 popup 行为一致 |
+| 4 | P0 | [x] `NextStepBanner` + `deriveStudyLoopViewModel` |
+| 5 | P0 | [x] `bench-live/popup-deep-read-proof` + lane 脚本 |
+| 6 | P1 | [ ] digest/deck/actions 信息顺序仍待专项优化 |
+| 7 | P1 | [x] `popup_studyResumeFromLast` |
+| 8 | P1 | [x] 搜索框 placeholder 强化 + navigation matrix 说明空上下文 |
+| 9 | P2 | [ ] sentence pin 预研未做 |
+| 10–13 | P0 | [x] source-context / review / vocab 追踪 |
+| 14 | P1 | [x] `review_openSourcePage` |
+| 15 | P1 | [x] 搜索含 `sourceContext` + URL/hostname |
+| 16 | P1 | [x] review 链接文案 i18n |
+| 17 | P2 | [x] 长上下文展开/收起（review 背面） |
+| 18–21 | P0 | [x] metrics 文档 + popup/review 进度 |
+| 22 | P1 | [x] resume 文案 |
+| 23 | P1 | [x] `orderStudySteps` + 单测 |
+| 24 | P2 | [ ] daily stats 更强 UI 未做 |
+| 25–27 | P0 | [x] matrix + `learning-loop` / `vocabulary-srs-smoke` |
+| 28 | P1 | [x] 最近阅读列表即「继续读」入口 |
+| 29 | P1 | [x] 文档层：revisit 与 progress 关系见 matrix |
+| 30 | P2 | [ ] staleness 提示未做 |
+| 31–33 | P0 | [x] e2e 命令 + checklist + metrics |
+| 34–36 | P1/P2 | [x] matrix + known issues + UX debt 文档 |
 
 ---
 
@@ -3687,29 +3722,29 @@ Orchestrator 在 Month 2 内每次汇报时，除 `13N` 表格外，对五维给
 | `stability` | due/review/revisit 状态是否可解释、smoke 是否连续绿 |
 | `maintainability` | source-context schema、progress 计数规则、lane 命名是否收敛 |
 
-### Month 2 harness + provisional score（2026-04-13）
+### Month 2 harness + provisional score（2026-04-14）
 
-- **Deterministic harness**：`pnpm bench` → **63/63，avg 100**（`bench-results/latest.json`）；与 learning-loop **正交**，仅证明核心翻译/提取/provider bench 回归。
-- **`13G` 临时月度分**（文档与实现已补 overview / metrics / regression checklist；`learning-loop` 仍为 **optional** CI；无独立 `month-2-closeout` 文件）：
+- **Deterministic harness**：`pnpm bench` → **63/63，avg 100**（`bench-results/latest.json`）；与 learning-loop **正交**。
+- **`13G` 临时月度分**（已补：closeout、`release-readiness-checklist` Month 2 政策段、navigation matrix、claim-impact、known issues、UX debt；review 与 popup 共用 **今日 dailyStats**；`orderStudySteps` 统一进度条顺序；**`learning-loop` CI 仍为 optional**）：
 
 | Dimension | Estimate | Why |
 |---|---:|---|
-| `proofCompletion` | 80 | live `learning-loop` lane 脚本存在；CI 未默认跑该 lane |
-| `productCompletion` | 76 | popup Study + vocab review + study-progress 已连通；review 与 popup progress 展示仍分层 |
-| `releaseCredibility` | 85 | matrix 有 `learning-loop` 段；metrics/overview/checklist 已落 `docs/investigations/learning-*-2026-04-13.md` |
-| `stability` | 82 | 同 Month 1 + bench 全绿 |
-| `maintainability` | 83 | 新增三份 investigation 文档，命名与 `13O` 可对齐 |
+| `proofCompletion` | 84 | closeout + 可选 live lane 命令与 artifact 约定明确；仍缺「入库绿跑摘要」以冲 `gate-ready` |
+| `productCompletion` | 82 | popup resume + 排序进度条 + review 来源/长上下文 + 词库搜索含 source |
+| `releaseCredibility` | 88 | checklist 写明 learning-loop optional 政策；多份 `13O` 指针文档 |
+| `stability` | 84 | bench 全绿 + 新增/更新单测 |
+| `maintainability` | 85 | `orderStudySteps` 导出、文档矩阵与 debt 清单可交接 |
 
 ```text
-80 * 0.30 +
-76 * 0.25 +
-85 * 0.20 +
-82 * 0.15 +
-83 * 0.10
-= 80.4
+84 * 0.30 +
+82 * 0.25 +
+88 * 0.20 +
+84 * 0.15 +
+85 * 0.10
+= 84.5
 ```
 
-**Month 2 provisional：`80.4 / 100`（约 80）**，verdict：**`pass-with-carry`**（直至 `13K` Month 2 closeout + 可选 `learning-loop` 绿跑摘要 + 若将 lane 升为 required 的 release-policy 结论）
+**Month 2 provisional：`84.5 / 100`（约 85）**，verdict：**`pass-with-carry`**（**非** `gate-ready`：直至 chained `learning-loop` 绿跑摘要入库或 CI 升格，见 `month-2-closeout-2026-04-14.md` carry-over）
 
 ### What moves Month 2 from `pass-with-carry` to `pass`（最短路径）
 

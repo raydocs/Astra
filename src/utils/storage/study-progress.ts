@@ -72,7 +72,8 @@ function emptyDailyStats(date = todayKey()) {
   return { date, pagesStudied: 0, sentencesExplained: 0, vocabSaved: 0, vocabReviewed: 0 }
 }
 
-function orderStudySteps(steps: readonly StudyStep[]): StudyStep[] {
+/** Canonical ordering of completed steps for UI (Month 2: progress bar / revisit copy). */
+export function orderStudySteps(steps: readonly StudyStep[]): StudyStep[] {
   const present = new Set(steps)
   return STUDY_STEPS_ORDER.filter((step) => present.has(step))
 }

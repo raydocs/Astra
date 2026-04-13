@@ -80,4 +80,20 @@ describe("VocabularyApp", () => {
     expect(container.textContent).toContain("Example article")
     expect(container.textContent).toContain("The ephemeral phase passes quickly.")
   })
+
+  it("filters list by source page title", async () => {
+    const input = container.querySelector("input[type=\"text\"]") as HTMLInputElement
+    expect(input).toBeTruthy()
+
+    await act(async () => {
+      const desc = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")
+      desc?.set?.call(input, "Example article")
+      input.dispatchEvent(new Event("input", { bubbles: true }))
+      input.dispatchEvent(new Event("change", { bubbles: true }))
+      await Promise.resolve()
+      await Promise.resolve()
+    })
+
+    expect(container.textContent).toContain("ephemeral")
+  })
 })

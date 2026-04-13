@@ -506,6 +506,18 @@
   "review_todayProgressAria": {
     "message": "今日学习进度摘要"
   },
+  "popup_studyResumeFromLast": {
+    "message": "继续上次学习 — 下一步已在下方高亮。"
+  },
+  "review_openSourcePage": {
+    "message": "打开来源页面"
+  },
+  "review_showFullContext": {
+    "message": "展开完整上下文"
+  },
+  "review_hideFullContext": {
+    "message": "收起"
+  },
 
   "popup_usageMetricRequests": {
     "message": "请求数"

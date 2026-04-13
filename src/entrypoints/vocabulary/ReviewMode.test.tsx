@@ -36,6 +36,9 @@ vi.mock("@/utils/i18n", () => ({
     if (key === "popup_studyStatExplained") return `${s} explained`
     if (key === "popup_studyStatSaved") return `${s} saved`
     if (key === "popup_studyStatReviewed") return `${s} reviewed`
+    if (key === "review_openSourcePage") return "Open source page"
+    if (key === "review_showFullContext") return "Show full context"
+    if (key === "review_hideFullContext") return "Show less"
     return key
   },
 }))
@@ -53,7 +56,7 @@ describe("ReviewMode", () => {
       id: "entry-1",
       text: "ephemeral",
       explanation: "Short-lived in the article context.",
-      context: "The ephemeral phase passes quickly.",
+      context: `${"A long saved context line. ".repeat(25)}end`,
       url: "https://example.com/article",
       hostname: "example.com",
       savedAt: 1000,
@@ -65,7 +68,6 @@ describe("ReviewMode", () => {
         surface: "popup_deep_read",
         pageTitle: "Example article",
         articleExcerpt: "The ephemeral phase passes quickly. Another sentence follows.",
-        sentenceText: "The ephemeral phase passes quickly.",
         sentenceIndex: 0,
       },
     }
@@ -123,7 +125,15 @@ describe("ReviewMode", () => {
     expect(container.textContent).toContain("Today's study loop")
     expect(container.textContent).toContain("Popup deep-read")
     expect(container.textContent).toContain("Example article")
-    expect(container.textContent).toContain("The ephemeral phase passes quickly.")
+    expect(container.textContent).toContain("A long saved context line.")
+
+    const expandBtn = Array.from(container.querySelectorAll("button")).find((b) => b.textContent === "Show full context")
+    expect(expandBtn).toBeTruthy()
+    await act(async () => {
+      expandBtn!.click()
+      await Promise.resolve()
+    })
+    expect(container.textContent).toContain("end")
 
     const knowItButton = Array.from(container.querySelectorAll("button")).find((button) => button.textContent === "Know it") as HTMLButtonElement
     expect(knowItButton).toBeTruthy()
