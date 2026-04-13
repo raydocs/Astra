@@ -48,6 +48,7 @@ export {
   hoverTranslationBasicScenario,
   selectionExplainBasicScenario,
   inputTranslationBasicScenario,
+  subtitleBasicScenario,
   frameCoordinationBasicScenario,
   siteAutomationAutostartScenario,
   dynamicContentAppendScenario,
