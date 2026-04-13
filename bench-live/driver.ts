@@ -124,6 +124,24 @@ function delay(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms))
 }
 
+/**
+ * Extra Chromium flags for extension-loaded persistent contexts on Linux CI
+ * (xvfb + Playwright Chromium): avoids hangs from sandbox/GPU/shm defaults.
+ */
+function extensionPersistentContextExtraArgs(): string[] {
+  if (process.env.CI !== "true") {
+    return []
+  }
+
+  return [
+    "--no-sandbox",
+    "--disable-setuid-sandbox",
+    "--disable-dev-shm-usage",
+    "--disable-gpu",
+    "--disable-software-rasterizer",
+  ]
+}
+
 function extractExtensionIdFromUrl(url: string): string | null {
   const match = url.match(/^chrome-extension:\/\/([a-z]{32})\//)
   return match?.[1] ?? null
@@ -527,6 +545,7 @@ export async function withExtensionBrowserPage(options: {
       executablePath: browserExecutablePath,
       ignoreDefaultArgs: ["--disable-extensions"],
       args: [
+        ...extensionPersistentContextExtraArgs(),
         `--load-extension=${extensionPath}`,
         "--no-first-run",
         "--no-default-browser-check",
@@ -539,6 +558,7 @@ export async function withExtensionBrowserPage(options: {
         width: 1280,
         height: 900,
       },
+      timeout: process.env.CI === "true" ? 240_000 : 180_000,
     })
   } catch (error) {
     throw normalizeLiveBrowserLaunchFailure(error, browserExecutablePath)

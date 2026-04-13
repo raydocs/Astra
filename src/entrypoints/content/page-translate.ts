@@ -800,11 +800,14 @@ export async function startPageTranslation(
 
   registerBlocks(session, blocks)
 
-  session.mutationObserver?.observe(document.body, {
-    childList: true,
-    subtree: true,
-    characterData: true,
-  })
+  const mutationRoot = document.body ?? document.documentElement
+  if (mutationRoot && session.mutationObserver) {
+    session.mutationObserver.observe(mutationRoot, {
+      childList: true,
+      subtree: true,
+      characterData: true,
+    })
+  }
 
   if (blocks.length === 0) {
     return stopSession()

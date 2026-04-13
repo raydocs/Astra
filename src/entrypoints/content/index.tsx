@@ -165,7 +165,16 @@ export default defineContentScript({
       readConfig(),
       readAstraSession(),
     ])
-    await reconcileSiteAutomation(config, session)
+    try {
+      await reconcileSiteAutomation(config, session)
+    } catch (error) {
+      // Auto-start / hot paths must not prevent mounting UI or message handling.
+      console.error("[Astra] reconcileSiteAutomation failed", error)
+      const siteSettings = resolveSiteTranslationSettings(config, window.location.hostname)
+      if (siteSettings.enabled) {
+        ensureSiteUiMounted(config)
+      }
+    }
 
     // PDF auto-detect: show banner for PDF pages
     if (isTopFrame()) {
@@ -301,7 +310,16 @@ async function handleStorageChange() {
     return
   }
 
-  const reconcileResult = await reconcileSiteAutomation(config, session)
+  let reconcileResult: { activeSessionHandled: boolean } = { activeSessionHandled: false }
+  try {
+    reconcileResult = await reconcileSiteAutomation(config, session)
+  } catch (error) {
+    console.error("[Astra] reconcileSiteAutomation failed (storage)", error)
+    const siteSettings = resolveSiteTranslationSettings(config, window.location.hostname)
+    if (siteSettings.enabled) {
+      ensureSiteUiMounted(config)
+    }
+  }
   if (generation !== storageChangeGeneration) {
     return
   }
