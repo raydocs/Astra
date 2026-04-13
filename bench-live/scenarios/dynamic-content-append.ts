@@ -1,4 +1,4 @@
-import { writeFile } from "node:fs/promises"
+import { mkdir, writeFile } from "node:fs/promises"
 import path from "node:path"
 
 import {
@@ -41,12 +41,8 @@ export const dynamicContentAppendScenario: LiveScenarioDefinition<DynamicContent
     })
 
     try {
-      const artifactDir = await import("node:path").then((p) =>
-        import("node:fs/promises").then((fs) => {
-          const dir = p.join(process.cwd(), "bench-live-results", context.runId)
-          return fs.mkdir(dir, { recursive: true }).then(() => dir)
-        }),
-      )
+      const artifactDir = path.join(process.cwd(), "bench-live-results", context.runId)
+      await mkdir(artifactDir, { recursive: true })
 
       const capture = await withLiveBrowserPage(async (page, browserExecutablePath) => {
         await page.goto(fixturePage.url, { waitUntil: "domcontentloaded", timeout: 10_000 })

@@ -141,7 +141,6 @@ export const popupDeepReadProofScenario: LiveScenarioDefinition<PopupDeepReadPro
       fixture: FIXTURE_NAME,
     })
 
-    const relayServer = await createPopupDeepReadRelayServer()
     const fixturePage = await materializeFixturePage({
       runId: context.runId,
       fixtureName: FIXTURE_NAME,
@@ -150,8 +149,11 @@ export const popupDeepReadProofScenario: LiveScenarioDefinition<PopupDeepReadPro
     const servedFixturePage = await serveMaterializedFixturePage(fixturePage)
 
     let extCtx: ExtensionBrowserContext | null = null
+    let relayServer: Awaited<ReturnType<typeof createPopupDeepReadRelayServer>> | null = null
 
     try {
+      relayServer = await createPopupDeepReadRelayServer()
+
       const artifactDir = path.join(process.cwd(), "bench-live-results", context.runId)
       await mkdir(artifactDir, { recursive: true })
 
@@ -487,7 +489,7 @@ export const popupDeepReadProofScenario: LiveScenarioDefinition<PopupDeepReadPro
     } finally {
       await extCtx?.close()
       await servedFixturePage.close()
-      await relayServer.close()
+      await relayServer?.close()
     }
   },
 
