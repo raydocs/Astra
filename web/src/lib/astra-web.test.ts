@@ -355,7 +355,9 @@ describe("astra-web continuity control-plane", () => {
       jobId: "exp_job_1",
     })
 
-    expect(blob).toBeInstanceOf(Blob)
+    // undici/fetch may return a Blob from a different realm than globalThis.Blob in jsdom.
+    expect(blob.size).toBe(2)
+    expect(blob.type).toBe("application/json")
     expect(fetchSpy).toHaveBeenCalledWith("https://platform.astra.example/v1/account/export/exp_job_1/download", expect.objectContaining({
       method: "GET",
       headers: {

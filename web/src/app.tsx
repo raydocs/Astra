@@ -2907,7 +2907,7 @@ function AccountPage(props: {
     } finally {
       setDownloadBusy(false)
     }
-  }, [continuityExportJob, props.session])
+  }, [continuityExportJob, props.device, props.session])
 
   const toggleDeleteCollection = useCallback((collection: AstraContinuityDeleteCollection) => {
     setDeleteCollections((current) => current.includes(collection)
@@ -2964,7 +2964,7 @@ function AccountPage(props: {
     } finally {
       setRepairBusy(false)
     }
-  }, [props.device, props.onRefreshCloudAssets, props.session])
+  }, [props])
 
   const currentDevice = props.devices.find((device) => device.isCurrentDevice) ?? null
   const activeDeviceCount = props.devices.filter((device) => device.status === "active").length
