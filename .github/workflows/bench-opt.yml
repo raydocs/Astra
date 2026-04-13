@@ -100,7 +100,7 @@ jobs:
 
       - name: Upload live results
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: bench-live-results-${{ github.run_id }}
           path: bench-live-results/
@@ -109,7 +109,7 @@ jobs:
 
       - name: Upload bench-opt results
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: bench-opt-results-${{ github.run_id }}
           path: |
@@ -119,7 +119,7 @@ jobs:
 
       - name: Upload promotion artifacts
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: bench-opt-promotions-${{ github.run_id }}
           path: |
@@ -131,7 +131,7 @@ jobs:
 
       - name: Upload store artifacts
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: bench-opt-store-${{ github.run_id }}
           path: |
