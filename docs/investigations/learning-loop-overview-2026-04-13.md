@@ -42,4 +42,5 @@ Artifact root when running live driver: `bench-live-results/<run-id>/` (see `wor
 - `docs/investigations/learning-loop-navigation-matrix-2026-04-14.md`
 - `docs/investigations/learning-loop-claim-impact-2026-04-14.md`
 - `docs/investigations/month-2-closeout-2026-04-14.md`
+- `docs/investigations/month-2-change-artifact-2026-04-14.md` — full Month 2 git path inventory & GitHub compare links
 - `docs/investigations/sentence-pin-presearch-2026-04-14.md`
