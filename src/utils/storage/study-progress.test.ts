@@ -8,6 +8,7 @@ import {
   deriveStudyLoopViewModel,
   getPageStudyProgress,
   getStudyProgress,
+  orderStudySteps,
   recordStudyEvent,
   replaceStudyProgressPages,
   STUDY_STEPS_ORDER,
@@ -45,6 +46,11 @@ describe("study-progress", () => {
 
     expect(page.completedSteps).toEqual(["read", "guided_read", "explain"])
     expect(page.sentencesExplained).toBe(3)
+  })
+
+  it("orders completed steps in canonical pipeline order", () => {
+    expect(orderStudySteps(["explain", "read"])).toEqual(["read", "explain"])
+    expect(orderStudySteps(["vocab_review", "read", "explain"])).toEqual(["read", "explain", "vocab_review"])
   })
 
   it("does not duplicate steps", async () => {

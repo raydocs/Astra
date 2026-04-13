@@ -39,3 +39,6 @@ Artifact root when running live driver: `bench-live-results/<run-id>/` (see `wor
 - `docs/investigations/popup-deep-read-state-mapping.md`
 - `docs/investigations/learning-loop-regression-checklist-2026-04-13.md`
 - `docs/investigations/learning-metrics-2026-04-13.md`
+- `docs/investigations/learning-loop-navigation-matrix-2026-04-14.md`
+- `docs/investigations/learning-loop-claim-impact-2026-04-14.md`
+- `docs/investigations/month-2-closeout-2026-04-14.md`

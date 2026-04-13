@@ -161,6 +161,18 @@ export default function VocabularyApp() {
     // Text search
     if (!search) return true
     const q = search.toLowerCase()
+    const sc = e.sourceContext
+    const sourceBlob = [
+      sc?.pageTitle,
+      sc?.sentenceText,
+      sc?.articleExcerpt,
+      sc?.contentSummary,
+      e.url,
+      e.hostname,
+    ]
+      .filter(Boolean)
+      .join(" ")
+      .toLowerCase()
     return (
       e.text.toLowerCase().includes(q)
       || (e.translation?.toLowerCase().includes(q) ?? false)
@@ -168,6 +180,7 @@ export default function VocabularyApp() {
       || (e.explanation?.toLowerCase().includes(q) ?? false)
       || (e.note?.toLowerCase().includes(q) ?? false)
       || (e.tags ?? []).some((tag) => tag.toLowerCase().includes(q))
+      || sourceBlob.includes(q)
     )
   })
 
@@ -377,7 +390,7 @@ export default function VocabularyApp() {
           <div style={{ marginBottom: 12 }}>
             <input
               type="text"
-              placeholder="Search words, translations, context, notes, or tags..."
+              placeholder="Search words, translations, notes, tags, or source (title, URL, excerpt)..."
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               style={searchInputStyle}

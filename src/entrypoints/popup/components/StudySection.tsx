@@ -2,7 +2,7 @@ import { t } from "@/utils/i18n"
 import type { PageStudyContext } from "@/types/messages"
 import type { ReadingHistoryEntry } from "@/utils/storage/reading-history"
 import type { PageDigestRecord } from "@/utils/storage/page-digests"
-import { STUDY_STEPS_ORDER, type StudyLoopViewModel, type StudyStep } from "@/utils/storage/study-progress"
+import { orderStudySteps, STUDY_STEPS_ORDER, type StudyLoopViewModel, type StudyStep } from "@/utils/storage/study-progress"
 
 export type PopupSentenceExplainStatus = "idle" | "explaining" | "explained"
 export type PopupSentenceSaveStatus = "idle" | "saving" | "saved"
@@ -439,9 +439,25 @@ export default function StudySection({
 
       {studyLoop && (
         <>
+          {studyLoop.currentPage && studyLoop.nextStep && studyLoop.currentPage.completedSteps.length > 0 && (
+            <div
+              style={{
+                marginTop: 10,
+                padding: "8px 10px",
+                background: "#f0fdf4",
+                border: "1px solid #86efac",
+                borderRadius: 8,
+                fontSize: 12,
+                color: "#166534",
+                lineHeight: 1.45,
+              }}
+            >
+              {t("popup_studyResumeFromLast")}
+            </div>
+          )}
           <StudyProgressBar
             completionPercent={studyLoop.completionPercent}
-            completedSteps={studyLoop.currentPage?.completedSteps ?? []}
+            completedSteps={orderStudySteps(studyLoop.currentPage?.completedSteps ?? [])}
           />
           <NextStepBanner
             nextStep={studyLoop.nextStep}
