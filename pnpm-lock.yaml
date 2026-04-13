@@ -91,7 +91,7 @@ importers:
         specifier: ^3.2.4
         version: 3.2.4(@types/node@25.5.0)(jiti@2.6.1)(jsdom@26.1.0)(lightningcss@1.32.0)(tsx@4.21.0)
       web-ext:
-        specifier: 8.10.0
+        specifier: ^8.10.0
         version: 8.10.0
       wxt:
         specifier: 0.20.20

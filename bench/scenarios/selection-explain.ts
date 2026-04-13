@@ -46,6 +46,9 @@ const SELECTION_EXPLAIN_CODE_HINT: ScenarioCodeHint = {
 
 const HOST_ID = "astra-selection-toolbar-host"
 
+/** Long multi-token selection so `isLexicalCandidate` is false — avoids auto word-lookup translate before Explain. */
+const SELECTION_PHRASE = "One two three four five six seven eight nine ten"
+
 function findToolbarButton(buttons: HTMLButtonElement[], labels: string[]): HTMLButtonElement | undefined {
   const normalized = labels.map((label) => label.trim())
   return buttons.find((button) => {
@@ -64,7 +67,7 @@ async function runSelectionScenario(options: {
       {
         kind: "inline",
         name: "selection-basic",
-        html: `<main><article><p id="target">Hello world</p><p>More context around the selected sentence.</p></article></main>`,
+        html: `<main><article><p id="target">${SELECTION_PHRASE}</p><p>More context around the selected sentence.</p></article></main>`,
       },
       { url: "/fixtures/selection-basic" },
     )
@@ -76,7 +79,7 @@ async function runSelectionScenario(options: {
       width: 144,
       height: 20,
     })
-    installSelectionMock("Hello world", target.firstChild ?? target)
+    installSelectionMock(SELECTION_PHRASE, target.firstChild ?? target)
 
     await act(async () => {
       mountSelectionToolbar()

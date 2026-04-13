@@ -302,7 +302,8 @@ const NON_ASTRA_ERROR_PROVIDER_ROUTING_SCENARIO: BenchmarkScenario<ProviderRouti
         {
           translateWithOpenAI: async () => {
             directAttemptCount += 1
-            throw new Error("socket hung up")
+            // Must not match NETWORK_ERROR_PATTERNS in router (e.g. "socket") or bench expects fail-fast, not relay.
+            throw new Error("provider returned malformed payload")
           },
           translateWithGemini: async () => {
             directAttemptCount += 1
