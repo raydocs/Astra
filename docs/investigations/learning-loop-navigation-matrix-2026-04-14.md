@@ -4,7 +4,7 @@
 |-----------|------------|-------|
 | Popup → Vocabulary | `onOpenVocabulary` / `openVocabularyPage` | Full-page vocabulary UI |
 | Popup → Review | `onOpenReview` / `openReviewPage` | `?tab=review` supported |
-| Popup → History revisit | Recent list → `openUrlInTab(url)` | Same tab opens source URL |
+| Popup → History revisit | Recent list → `openUrlInTab(url)` | Same tab opens source URL；每项展示 **相对访问时间**（`visitedAt` → just now / min / h / d ago） |
 | Vocabulary list → Source | Per-entry link **Open source page** | `target=_blank` |
 | Review card back → Source | **Open source page** | Uses `entry.url` |
 | Vocabulary ↔ Review | In-app tabs | Single `VocabularyApp` shell |

@@ -518,6 +518,48 @@
   "review_hideFullContext": {
     "message": "收起"
   },
+  "popup_studyTodayStatsTitle": {
+    "message": "今日学习计数"
+  },
+  "popup_studyTodayStatsHint": {
+    "message": "按本地日历日：$1。日期变更后计数清零。",
+    "placeholders": {
+      "1": { "content": "$1" }
+    }
+  },
+  "popup_studyStatPagesLabel": {
+    "message": "学习页数"
+  },
+  "popup_studyStatExplainedLabel": {
+    "message": "讲解句数"
+  },
+  "popup_studyStatSavedLabel": {
+    "message": "保存词条"
+  },
+  "popup_studyStatReviewedLabel": {
+    "message": "复习评分"
+  },
+  "popup_revisitJustNow": {
+    "message": "刚刚"
+  },
+  "popup_revisitMinutesAgo": {
+    "message": "$1 分钟前",
+    "placeholders": {
+      "1": { "content": "$1" }
+    }
+  },
+  "popup_revisitHoursAgo": {
+    "message": "$1 小时前",
+    "placeholders": {
+      "1": { "content": "$1" }
+    }
+  },
+  "popup_revisitDaysAgo": {
+    "message": "$1 天前",
+    "placeholders": {
+      "1": { "content": "$1" }
+    }
+  },
 
   "popup_usageMetricRequests": {
     "message": "请求数"

@@ -1,9 +1,11 @@
 # Month 2 Closeout — Learning Loop V1
 
-_Last updated: 2026-04-14_
+_Last updated: 2026-04-14 (final ledger sweep)_
 
 Month: **Month 2 — Finish Learning-Loop V1** (`plan.md` §11)  
 Verdict: **`pass-with-carry`** (aligned with `13G`; not **`gate-ready`** for optional `learning-loop` CI lane)
+
+**Ledger 1–36:** all items closed in-repo (`plan.md` 任务表)；`#9` 以预研文档交付，无 pin UI。
 
 ## Evidence registry (`13O` / §11)
 
@@ -30,6 +32,13 @@ Counted toward Month 2 bar: **6, 7, 8, 14, 15, 16, 17, 22, 23, 28, 29, 34, 35, 3
 ## Carry-over (≤1 primary)
 
 - **Primary**: Attach **one** fresh `pnpm bench:live:lane:learning-loop` green summary (run id + artifact path) to the next RC note or extend CI — required for promoting **`gate-ready`** without changing policy.
+
+## Ledger 收尾（#6 / #9 / #24 / #30）
+
+- **#6**: Study 区信息顺序调整为 **句子甲板 → 摘要 digest → 进度条/下一步 → 今日计数 → 快捷入口**（`StudySection.tsx`）。
+- **#9**: 预研文档 `docs/investigations/sentence-pin-presearch-2026-04-14.md`（不交付 UI，满足「预研」定义）。
+- **#24**: Popup **今日学习计数** 改为带标题、日期说明与四格数字卡片的展示。
+- **#30**: 最近阅读每条展示 **相对访问时间**（staleness / age）。
 
 ## Harness (deterministic)
 

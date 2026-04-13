@@ -68,6 +68,17 @@ const actionButtonStyle: React.CSSProperties = {
   cursor: "pointer",
 }
 
+function formatVisitAgeLabel(visitedAt: number): string {
+  const diff = Math.max(0, Date.now() - visitedAt)
+  const mins = Math.floor(diff / 60_000)
+  if (mins < 1) return t("popup_revisitJustNow")
+  if (mins < 60) return t("popup_revisitMinutesAgo", String(mins))
+  const hours = Math.floor(mins / 60)
+  if (hours < 48) return t("popup_revisitHoursAgo", String(hours))
+  const days = Math.floor(hours / 24)
+  return t("popup_revisitDaysAgo", String(days))
+}
+
 function getStepLabel(step: StudyStep): string {
   const labels: Record<StudyStep, string> = {
     read: t("popup_studyStepRead"),
@@ -437,40 +448,6 @@ export default function StudySection({
         </div>
       )}
 
-      {studyLoop && (
-        <>
-          {studyLoop.currentPage && studyLoop.nextStep && studyLoop.currentPage.completedSteps.length > 0 && (
-            <div
-              style={{
-                marginTop: 10,
-                padding: "8px 10px",
-                background: "#f0fdf4",
-                border: "1px solid #86efac",
-                borderRadius: 8,
-                fontSize: 12,
-                color: "#166534",
-                lineHeight: 1.45,
-              }}
-            >
-              {t("popup_studyResumeFromLast")}
-            </div>
-          )}
-          <StudyProgressBar
-            completionPercent={studyLoop.completionPercent}
-            completedSteps={orderStudySteps(studyLoop.currentPage?.completedSteps ?? [])}
-          />
-          <NextStepBanner
-            nextStep={studyLoop.nextStep}
-            onReadArticle={onReadArticle}
-            onExplainSentence={onExplainSentence}
-            onOpenVocabulary={onOpenVocabulary}
-            onOpenReview={onOpenReview}
-            canReadArticle={canReadArticle}
-            dueCount={dueCount}
-          />
-        </>
-      )}
-
       {/* Page Digest Card */}
       {digestLoading && (
         <div style={{
@@ -607,12 +584,74 @@ export default function StudySection({
         </div>
       )}
 
+      {studyLoop && (
+        <>
+          {studyLoop.currentPage && studyLoop.nextStep && studyLoop.currentPage.completedSteps.length > 0 && (
+            <div
+              style={{
+                marginTop: 10,
+                padding: "8px 10px",
+                background: "#f0fdf4",
+                border: "1px solid #86efac",
+                borderRadius: 8,
+                fontSize: 12,
+                color: "#166534",
+                lineHeight: 1.45,
+              }}
+            >
+              {t("popup_studyResumeFromLast")}
+            </div>
+          )}
+          <StudyProgressBar
+            completionPercent={studyLoop.completionPercent}
+            completedSteps={orderStudySteps(studyLoop.currentPage?.completedSteps ?? [])}
+          />
+          <NextStepBanner
+            nextStep={studyLoop.nextStep}
+            onReadArticle={onReadArticle}
+            onExplainSentence={onExplainSentence}
+            onOpenVocabulary={onOpenVocabulary}
+            onOpenReview={onOpenReview}
+            canReadArticle={canReadArticle}
+            dueCount={dueCount}
+          />
+        </>
+      )}
+
       {studyLoop?.dailyStats && (
-        <div style={{ marginTop: 10, display: "flex", gap: 12, fontSize: 11, color: "#64748b" }}>
-          <span>{t("popup_studyStatPages", String(studyLoop.dailyStats.pagesStudied))}</span>
-          <span>{t("popup_studyStatExplained", String(studyLoop.dailyStats.sentencesExplained))}</span>
-          <span>{t("popup_studyStatSaved", String(studyLoop.dailyStats.vocabSaved))}</span>
-          <span>{t("popup_studyStatReviewed", String(studyLoop.dailyStats.vocabReviewed))}</span>
+        <div
+          style={{
+            marginTop: 10,
+            padding: "10px 12px",
+            background: "#fafafa",
+            border: "1px solid #e5e5e5",
+            borderRadius: 10,
+          }}
+        >
+          <div style={{ fontSize: 11, fontWeight: 700, color: "#525252", marginBottom: 8 }}>
+            {t("popup_studyTodayStatsTitle")}
+          </div>
+          <div style={{ fontSize: 10, color: "#a3a3a3", marginBottom: 8 }}>
+            {t("popup_studyTodayStatsHint", studyLoop.dailyStats.date)}
+          </div>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 8 }}>
+            <div style={{ padding: "8px 10px", background: "#fff", borderRadius: 8, border: "1px solid #e5e5e5" }}>
+              <div style={{ fontSize: 10, color: "#737373", marginBottom: 2 }}>{t("popup_studyStatPagesLabel")}</div>
+              <div style={{ fontSize: 16, fontWeight: 700, color: "#171717" }}>{studyLoop.dailyStats.pagesStudied}</div>
+            </div>
+            <div style={{ padding: "8px 10px", background: "#fff", borderRadius: 8, border: "1px solid #e5e5e5" }}>
+              <div style={{ fontSize: 10, color: "#737373", marginBottom: 2 }}>{t("popup_studyStatExplainedLabel")}</div>
+              <div style={{ fontSize: 16, fontWeight: 700, color: "#171717" }}>{studyLoop.dailyStats.sentencesExplained}</div>
+            </div>
+            <div style={{ padding: "8px 10px", background: "#fff", borderRadius: 8, border: "1px solid #e5e5e5" }}>
+              <div style={{ fontSize: 10, color: "#737373", marginBottom: 2 }}>{t("popup_studyStatSavedLabel")}</div>
+              <div style={{ fontSize: 16, fontWeight: 700, color: "#171717" }}>{studyLoop.dailyStats.vocabSaved}</div>
+            </div>
+            <div style={{ padding: "8px 10px", background: "#fff", borderRadius: 8, border: "1px solid #e5e5e5" }}>
+              <div style={{ fontSize: 10, color: "#737373", marginBottom: 2 }}>{t("popup_studyStatReviewedLabel")}</div>
+              <div style={{ fontSize: 16, fontWeight: 700, color: "#171717" }}>{studyLoop.dailyStats.vocabReviewed}</div>
+            </div>
+          </div>
         </div>
       )}
 
@@ -713,7 +752,7 @@ export default function StudySection({
                   {entry.title}
                 </div>
                 <div style={{ fontSize: 11, color: "#64748b", marginTop: 2 }}>
-                  {entry.hostname} · {entry.wordsTranslated} {t("popup_words")}
+                  {entry.hostname} · {entry.wordsTranslated} {t("popup_words")} · {formatVisitAgeLabel(entry.visitedAt)}
                 </div>
               </button>
             ))}

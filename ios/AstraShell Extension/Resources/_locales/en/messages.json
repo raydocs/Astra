@@ -518,6 +518,48 @@
   "review_hideFullContext": {
     "message": "Show less"
   },
+  "popup_studyTodayStatsTitle": {
+    "message": "Today's learning counts"
+  },
+  "popup_studyTodayStatsHint": {
+    "message": "Local calendar day: $1. Counters reset when the date changes.",
+    "placeholders": {
+      "1": { "content": "$1" }
+    }
+  },
+  "popup_studyStatPagesLabel": {
+    "message": "Pages studied"
+  },
+  "popup_studyStatExplainedLabel": {
+    "message": "Sentences explained"
+  },
+  "popup_studyStatSavedLabel": {
+    "message": "Words saved"
+  },
+  "popup_studyStatReviewedLabel": {
+    "message": "Reviews graded"
+  },
+  "popup_revisitJustNow": {
+    "message": "just now"
+  },
+  "popup_revisitMinutesAgo": {
+    "message": "$1 min ago",
+    "placeholders": {
+      "1": { "content": "$1" }
+    }
+  },
+  "popup_revisitHoursAgo": {
+    "message": "$1 h ago",
+    "placeholders": {
+      "1": { "content": "$1" }
+    }
+  },
+  "popup_revisitDaysAgo": {
+    "message": "$1 d ago",
+    "placeholders": {
+      "1": { "content": "$1" }
+    }
+  },
 
   "popup_usageMetricRequests": {
     "message": "Requests"
