@@ -13,12 +13,6 @@ import {
   toTranslationError,
   type TranslationError,
 } from "@/types/translation"
-import {
-  getCachedTranslations,
-  setCachedTranslation,
-  type TranslationCacheContext,
-} from "@/utils/cache/translation-cache"
-import { readConfig } from "@/utils/storage/config"
 import { validateTranslationBatch } from "./quality-check"
 
 export interface TranslateRequest {
@@ -29,7 +23,6 @@ export interface TranslateRequest {
   task?: TranslationTask
   customSystemPrompt?: string
   placeholderFormat?: TranslationPlaceholderFormat
-  cacheContext?: TranslationCacheContext
 }
 
 export interface TranslateResponse {
@@ -137,65 +130,6 @@ async function withConcurrency<T>(
   return results
 }
 
-/** Cache is only used for standard translate tasks without custom prompts. */
-function isCacheable(
-  task: TranslationTask,
-  customSystemPrompt?: string,
-  placeholderFormat?: TranslationPlaceholderFormat,
-): boolean {
-  return task === "translate" && !customSystemPrompt && !placeholderFormat
-}
-
-function serializeTranslationRequestContext(
-  context?: TranslationRequestContext,
-): string {
-  return JSON.stringify({
-    pageTitle: context?.pageTitle?.trim() || "",
-    pageUrl: context?.pageUrl?.trim() || "",
-    hostname: context?.hostname?.trim() || "",
-    metaDescription: context?.metaDescription?.trim() || "",
-    contentSummary: context?.contentSummary?.trim() || "",
-    selectionContext: context?.selectionContext?.trim() || "",
-    terminologyGlossary: context?.terminologyGlossary?.trim() || "",
-  })
-}
-
-function buildTranslationCacheContext(
-  config: Awaited<ReturnType<typeof readConfig>>,
-  request: TranslateRequest,
-): TranslationCacheContext {
-  const relayBaseURL = config.provider.relayBaseURL?.trim()
-
-  return {
-    providerId: config.provider.id,
-    model: config.provider.model,
-    connectionMode: config.connectionMode,
-    routingKey: config.connectionMode === "astra"
-      ? "astra"
-      : relayBaseURL && relayBaseURL.length > 0
-        ? relayBaseURL
-        : "custom",
-    languageLevel: config.languageLevel,
-    sourceLang: request.sourceLang,
-    requestContextKey: serializeTranslationRequestContext(request.context),
-  }
-}
-
-async function resolveTranslationCacheContext(
-  request: TranslateRequest,
-): Promise<TranslationCacheContext | null> {
-  if (request.cacheContext) {
-    return request.cacheContext
-  }
-
-  try {
-    const config = await readConfig()
-    return buildTranslationCacheContext(config, request)
-  } catch {
-    return null
-  }
-}
-
 export async function translateTexts(
   request: TranslateRequest,
 ): Promise<TranslateResult> {
@@ -213,38 +147,7 @@ export async function translateTexts(
     return { ok: true, translations: [] }
   }
 
-  const cacheable = isCacheable(task, customSystemPrompt, placeholderFormat)
-  const cacheContext = cacheable ? await resolveTranslationCacheContext(request) : null
-  const shouldUseCache = cacheable && cacheContext !== null
-
-  // --- cache lookup ---
-  let cachedResults = new Map<number, string>()
-  if (shouldUseCache) {
-    try {
-      cachedResults = await getCachedTranslations(
-        texts.map((text) => ({ text, targetLang, cacheContext })),
-      )
-    } catch {
-      // Cache read failure is non-fatal — proceed without cache.
-    }
-  }
-
-  // Determine which texts still need translation
-  const uncachedEntries: Array<{ originalIndex: number; text: string }> = []
-  for (let i = 0; i < texts.length; i++) {
-    if (!cachedResults.has(i)) {
-      uncachedEntries.push({ originalIndex: i, text: texts[i] })
-    }
-  }
-
-  // If everything was cached, return immediately
-  if (uncachedEntries.length === 0) {
-    return { ok: true, translations: texts.map((_, i) => cachedResults.get(i)!) }
-  }
-
-  // --- translate uncached texts ---
-  const uncachedTexts = uncachedEntries.map((e) => e.text)
-  const segments = splitIntoSegments(uncachedTexts, {
+  const segments = splitIntoSegments(texts, {
     preservePlaceholderTokens: placeholderFormat === "astra-rich-text-v1",
   })
   const batches = createBatches(segments)
@@ -268,7 +171,7 @@ export async function translateTexts(
   })
 
   const batchResults = await withConcurrency(tasks, MAX_CONCURRENCY)
-  const uncachedTranslations = Array.from({ length: uncachedTexts.length }, () => "")
+  const translations = Array.from({ length: texts.length }, () => "")
 
   for (const [index, batchResult] of batchResults.entries()) {
     const batch = batches[index]
@@ -288,11 +191,11 @@ export async function translateTexts(
     }
 
     batch.originalIndices.forEach((originalIndex, translationIndex) => {
-      uncachedTranslations[originalIndex] += batchResult.translations[translationIndex]
+      translations[originalIndex] += batchResult.translations[translationIndex]
     })
   }
 
-  if (uncachedTranslations.some((translation) => typeof translation !== "string")) {
+  if (translations.some((translation) => typeof translation !== "string")) {
     return {
       ok: false,
       error: createTranslationError(
@@ -300,25 +203,6 @@ export async function translateTexts(
         "Translation results were incomplete.",
       ),
     }
-  }
-
-  // --- write fresh translations to cache ---
-  if (shouldUseCache && cacheContext) {
-    for (let i = 0; i < uncachedEntries.length; i++) {
-      const { text } = uncachedEntries[i]
-      const translation = uncachedTranslations[i]
-      // Fire-and-forget; cache write failure should not block the response.
-      setCachedTranslation(text, targetLang, translation, cacheContext).catch(() => {})
-    }
-  }
-
-  // --- merge cached + fresh results in original order ---
-  const translations = Array.from({ length: texts.length }, () => "")
-  for (const [index, cached] of cachedResults) {
-    translations[index] = cached
-  }
-  for (let i = 0; i < uncachedEntries.length; i++) {
-    translations[uncachedEntries[i].originalIndex] = uncachedTranslations[i]
   }
 
   // --- advisory quality check (non-blocking) ---

@@ -12,6 +12,9 @@ const translateWithProviderDetailedMock = vi.fn()
 const executeTabCommandMock = vi.fn()
 const getProviderRoutingMetadataFromErrorMock = vi.fn()
 const runPhaseOneCollectionSyncMock = vi.fn()
+const cleanExpiredCacheMock = vi.fn()
+const getCachedTranslationsMock = vi.fn()
+const setCachedTranslationMock = vi.fn()
 
 vi.mock("@/utils/storage/config", () => ({
   readConfig: readConfigMock,
@@ -33,6 +36,12 @@ vi.mock("@/utils/storage/config-sync", () => ({
   runPhaseOneCollectionSync: runPhaseOneCollectionSyncMock,
 }))
 
+vi.mock("@/utils/cache/translation-cache", () => ({
+  cleanExpiredCache: cleanExpiredCacheMock,
+  getCachedTranslations: getCachedTranslationsMock,
+  setCachedTranslation: setCachedTranslationMock,
+}))
+
 vi.mock("./frame-coordinator", () => ({
   executeTabCommand: executeTabCommandMock,
 }))
@@ -40,6 +49,12 @@ vi.mock("./frame-coordinator", () => ({
 function getMockBrowser(): ReturnType<typeof createMockBrowser> {
   return (globalThis as unknown as { __ASTRA_TEST_BROWSER__: ReturnType<typeof createMockBrowser> })
     .__ASTRA_TEST_BROWSER__
+}
+
+async function flushRuntimeResponse(): Promise<void> {
+  for (let i = 0; i < 5; i++) {
+    await Promise.resolve()
+  }
 }
 
 describe("background runtime translation routing", () => {
@@ -55,6 +70,9 @@ describe("background runtime translation routing", () => {
     executeTabCommandMock.mockReset()
     getProviderRoutingMetadataFromErrorMock.mockReset()
     runPhaseOneCollectionSyncMock.mockReset()
+    cleanExpiredCacheMock.mockReset()
+    getCachedTranslationsMock.mockReset()
+    setCachedTranslationMock.mockReset()
     runPhaseOneCollectionSyncMock.mockResolvedValue({
       skipped: true,
       reason: "no-session",
@@ -76,6 +94,9 @@ describe("background runtime translation routing", () => {
     readAstraSessionMock.mockResolvedValue(null)
     saveAstraSessionMock.mockResolvedValue(undefined)
     getProviderRoutingMetadataFromErrorMock.mockReturnValue(null)
+    cleanExpiredCacheMock.mockResolvedValue(0)
+    getCachedTranslationsMock.mockResolvedValue(new Map())
+    setCachedTranslationMock.mockResolvedValue(undefined)
   })
 
   it("schedules a phase-1 collection sync on startup", async () => {
@@ -111,8 +132,11 @@ describe("background runtime translation routing", () => {
     const sendResponse = vi.fn()
 
     readConfigMock.mockResolvedValue({
+      connectionMode: "astra",
+      languageLevel: "intermediate",
       provider: {
         id: "openai",
+        accessToken: "",
         relayBaseURL: "https://astra.example/v1",
         model: "gpt-5.4-nano",
       },
@@ -172,8 +196,7 @@ describe("background runtime translation routing", () => {
       sendResponse,
     )
 
-    await Promise.resolve()
-    await Promise.resolve()
+    await flushRuntimeResponse()
 
     expect(translateWithProviderDetailedMock).toHaveBeenCalledWith(
       {
@@ -187,12 +210,174 @@ describe("background runtime translation routing", () => {
         targetLang: "zh-CN",
         context: { pageTitle: "Fixture" },
         task: "translate",
+        sourceLang: undefined,
+        customSystemPrompt: undefined,
+        placeholderFormat: undefined,
+        languageLevel: "intermediate",
       },
+    )
+    const cacheLookupCall = getCachedTranslationsMock.mock.calls[0] as [
+      Array<{
+        text: string
+        targetLang: string
+        cacheContext?: {
+          providerId?: string
+          model?: string
+          connectionMode?: string
+          routingKey?: string
+          languageLevel?: string
+        }
+      }>,
+    ]
+    expect(cacheLookupCall[0]).toHaveLength(1)
+    expect(cacheLookupCall[0][0]).toMatchObject({
+      text: "hello",
+      targetLang: "zh-CN",
+      cacheContext: {
+        providerId: "openai",
+        model: "gpt-5.4-nano",
+        connectionMode: "astra",
+        routingKey: "astra",
+        languageLevel: "intermediate",
+      },
+    })
+    expect(setCachedTranslationMock).toHaveBeenCalledWith(
+      "hello",
+      "zh-CN",
+      "你好",
+      expect.objectContaining({
+        providerId: "openai",
+        model: "gpt-5.4-nano",
+      }),
     )
     expect(sendResponse).toHaveBeenCalledWith({
       type: "runtime/translate-batch:success",
       payload: {
         translations: ["你好"],
+        metadata: {
+          attemptedTransports: ["direct"],
+          finalTransport: "direct",
+          fallbackUsed: false,
+        },
+      },
+    })
+  })
+
+  it("returns cached translations without invoking the provider", async () => {
+    const browser = getMockBrowser()
+    const sendResponse = vi.fn()
+
+    readConfigMock.mockResolvedValue({
+      connectionMode: "astra",
+      languageLevel: "intermediate",
+      provider: {
+        id: "openai",
+        accessToken: "",
+        relayBaseURL: "https://astra.example/v1",
+        model: "gpt-5.4-nano",
+      },
+    })
+    getCachedTranslationsMock.mockResolvedValue(new Map([[0, "你好"]]))
+
+    const background = (await import("./index")).default
+    background.main()
+
+    await browser.__emitRuntimeMessage(
+      {
+        type: "runtime/translate-batch",
+        payload: {
+          texts: ["hello"],
+          targetLang: "zh-CN",
+        },
+      },
+      { id: "sender" },
+      sendResponse,
+    )
+
+    await flushRuntimeResponse()
+
+    expect(translateWithProviderDetailedMock).not.toHaveBeenCalled()
+    expect(setCachedTranslationMock).not.toHaveBeenCalled()
+    expect(sendResponse).toHaveBeenCalledWith({
+      type: "runtime/translate-batch:success",
+      payload: {
+        translations: ["你好"],
+      },
+    })
+  })
+
+  it("merges cached and fresh translations in the original order", async () => {
+    const browser = getMockBrowser()
+    const sendResponse = vi.fn()
+
+    readConfigMock.mockResolvedValue({
+      connectionMode: "astra",
+      languageLevel: "intermediate",
+      provider: {
+        id: "openai",
+        accessToken: "",
+        relayBaseURL: "https://astra.example/v1",
+        model: "gpt-5.4-nano",
+      },
+    })
+    getCachedTranslationsMock.mockResolvedValue(new Map([[0, "已缓存"]]))
+    translateWithProviderDetailedMock.mockResolvedValue({
+      translations: ["新鲜"],
+      metadata: {
+        attemptedTransports: ["direct"],
+        finalTransport: "direct",
+        fallbackUsed: false,
+      },
+    })
+
+    const background = (await import("./index")).default
+    background.main()
+
+    await browser.__emitRuntimeMessage(
+      {
+        type: "runtime/translate-batch",
+        payload: {
+          texts: ["cached", "fresh"],
+          targetLang: "zh-CN",
+        },
+      },
+      { id: "sender" },
+      sendResponse,
+    )
+
+    await flushRuntimeResponse()
+
+    expect(translateWithProviderDetailedMock).toHaveBeenCalledWith(
+      {
+        id: "openai",
+        accessToken: "",
+        relayBaseURL: "https://astra.example/v1",
+        model: "gpt-5.4-nano",
+      },
+      {
+        texts: ["fresh"],
+        targetLang: "zh-CN",
+        sourceLang: undefined,
+        context: undefined,
+        task: undefined,
+        customSystemPrompt: undefined,
+        placeholderFormat: undefined,
+        languageLevel: "intermediate",
+      },
+    )
+    expect(setCachedTranslationMock).toHaveBeenCalledTimes(1)
+    expect(setCachedTranslationMock).toHaveBeenCalledWith(
+      "fresh",
+      "zh-CN",
+      "新鲜",
+      expect.objectContaining({
+        providerId: "openai",
+      }),
+    )
+    expect(sendResponse).toHaveBeenCalledWith({
+      type: "runtime/translate-batch:success",
+      payload: {
+        translations: ["已缓存", "新鲜"],
         metadata: {
           attemptedTransports: ["direct"],
           finalTransport: "direct",
@@ -209,6 +394,7 @@ describe("background runtime translation routing", () => {
     readConfigMock.mockResolvedValue({
       provider: {
         id: "openai",
+        accessToken: "",
         relayBaseURL: "https://astra.example/v1",
         model: "gpt-5.4-nano",
       },
@@ -232,9 +418,7 @@ describe("background runtime translation routing", () => {
       sendResponse,
     )
 
-    await Promise.resolve()
-    await Promise.resolve()
-    await Promise.resolve()
+    await flushRuntimeResponse()
 
     expect(sendResponse).toHaveBeenCalledWith({
       type: "runtime/translate-batch:error",
@@ -252,6 +436,7 @@ describe("background runtime translation routing", () => {
     readConfigMock.mockResolvedValue({
       provider: {
         id: "openai",
+        accessToken: "",
         relayBaseURL: "https://astra.example/v1",
         model: "gpt-5.4-nano",
       },
@@ -273,9 +458,7 @@ describe("background runtime translation routing", () => {
       sendResponse,
     )
 
-    await Promise.resolve()
-    await Promise.resolve()
-    await Promise.resolve()
+    await flushRuntimeResponse()
 
     expect(sendResponse).toHaveBeenCalledWith({
       type: "runtime/translate-batch:error",
@@ -293,6 +476,7 @@ describe("background runtime translation routing", () => {
     readConfigMock.mockResolvedValue({
       provider: {
         id: "openai",
+        accessToken: "",
         relayBaseURL: "https://astra.example/v1",
         model: "gpt-5.4-nano",
       },
@@ -322,9 +506,7 @@ describe("background runtime translation routing", () => {
       sendResponse,
     )
 
-    await Promise.resolve()
-    await Promise.resolve()
-    await Promise.resolve()
+    await flushRuntimeResponse()
 
     expect(sendResponse).toHaveBeenCalledWith({
       type: "runtime/translate-batch:error",
@@ -446,19 +628,20 @@ describe("background runtime translation routing", () => {
         },
       },
     })
-    expect(sendResponse).toHaveBeenCalledWith(expect.objectContaining({
-      type: "runtime/save-config:success",
-      payload: expect.objectContaining({
-        config: expect.objectContaining({
-          targetLang: "ja",
-          sites: expect.objectContaining({
-            "example.com": expect.objectContaining({
-              selectors: ["article"],
-            }),
-          }),
-        }),
-      }),
-    }))
+    const saveConfigResponse = sendResponse.mock.calls.at(-1)?.[0] as {
+      type: string
+      payload: {
+        config: {
+          targetLang: string
+          sites: Record<string, {
+            selectors?: string[]
+          }>
+        }
+      }
+    }
+    expect(saveConfigResponse.type).toBe("runtime/save-config:success")
+    expect(saveConfigResponse.payload.config.targetLang).toBe("ja")
+    expect(saveConfigResponse.payload.config.sites["example.com"]?.selectors).toEqual(["article"])
     expect(runPhaseOneCollectionSyncMock).toHaveBeenCalledTimes(2)
   })
 

@@ -6,7 +6,7 @@ import { pathToFileURL } from "node:url"
 
 import { sleep } from "./sleep"
 
-import { chromium, type Browser, type BrowserContext, type Page } from "playwright"
+import { chromium, type Browser, type BrowserContext, type Page, type Route } from "playwright"
 
 export const DEFAULT_LIVE_ARTIFACT_ROOT = path.resolve(process.cwd(), "bench-live-results")
 export const DEFAULT_EXTENSION_PATH = path.resolve(process.cwd(), ".output/chrome-mv3")
@@ -159,6 +159,39 @@ function extensionPersistentContextEnv(): NodeJS.ProcessEnv | undefined {
     ...process.env,
     DBUS_SESSION_BUS_ADDRESS: process.env.DBUS_SESSION_BUS_ADDRESS ?? "/dev/null",
   }
+}
+
+function isBenchLiveCiBlockedProviderHost(hostname: string): boolean {
+  return (
+    hostname === "api.openai.com"
+    || hostname.endsWith(".openai.com")
+    || hostname === "api.anthropic.com"
+    || hostname === "generativelanguage.googleapis.com"
+  )
+}
+
+/**
+ * Avoid hanging on real LLM HTTP calls during CI (firewalled / slow TCP). Stub JSON responses.
+ */
+async function installCiExtensionOutboundGuards(context: BrowserContext) {
+  await context.route("**/*", async (route: Route) => {
+    const url = route.request().url()
+    let hostname = ""
+    try {
+      hostname = new URL(url).hostname
+    } catch {
+      await route.continue()
+      return
+    }
+
+    if (!isBenchLiveCiBlockedProviderHost(hostname)) {
+      await route.continue()
+      return
+    }
+
+    // Fail fast — a stub JSON body rarely matches ProviderResponseSchema + block counts; abort avoids multi‑minute TCP hangs.
+    await route.abort("failed")
+  })
 }
 
 function extractExtensionIdFromUrl(url: string): string | null {
@@ -420,6 +453,14 @@ export async function serveMaterializedFixturePage(
       return
     }
 
+    if (request.url === "/favicon.ico") {
+      response.writeHead(204, {
+        "cache-control": "no-store",
+      })
+      response.end()
+      return
+    }
+
     response.writeHead(404, { "content-type": "text/plain; charset=utf-8" })
     response.end("Not found")
   })
@@ -592,6 +633,11 @@ export async function withExtensionBrowserPage(options: {
     })
   } catch (error) {
     throw normalizeLiveBrowserLaunchFailure(error, browserExecutablePath)
+  }
+
+  if (process.env.CI === "true") {
+    context.setDefaultTimeout(45_000)
+    await installCiExtensionOutboundGuards(context)
   }
 
   const page = context.pages()[0] ?? await context.newPage()

@@ -6,10 +6,11 @@ import {
   isRuntimeTabCommandRequest,
   isRuntimeTranslateBatchRequest,
   type ContentCommandResponse,
+  type RuntimeTranslateBatchRequest,
   type RuntimeResponse,
 } from "@/types/messages"
 import { executeTabCommand } from "./frame-coordinator"
-import { toTranslationError } from "@/types/translation"
+import { AstraError, toTranslationError } from "@/types/translation"
 import { toggleTabTranslation } from "@/utils/extension/messages"
 import {
   getProviderRoutingMetadataFromError,
@@ -17,7 +18,15 @@ import {
 } from "@/utils/providers/router"
 import { readConfig, saveConfig } from "@/utils/storage/config"
 import { runPhaseOneCollectionSync } from "@/utils/storage/config-sync"
-import { cleanExpiredCache } from "@/utils/cache/translation-cache"
+import {
+  cleanExpiredCache,
+  getCachedTranslations,
+  setCachedTranslation,
+} from "@/utils/cache/translation-cache"
+import {
+  buildTranslationCacheContext,
+  isTranslationCacheable,
+} from "@/utils/cache/translation-cache-context"
 import { isOcrFeatureEnabled } from "@/utils/ocr/image-text"
 import { STUDY_PROGRESS_STORAGE_KEY } from "@/utils/storage/study-progress"
 import { getDueVocabularyCount } from "@/utils/storage/vocabulary"
@@ -592,31 +601,68 @@ export default defineBackground({
   },
 })
 
-async function handleTranslate(payload: {
-  texts: string[]
-  targetLang: string
-  sourceLang?: string
-  context?: {
-    pageTitle?: string
-    pageUrl?: string
-    hostname?: string
-    metaDescription?: string
-    contentSummary?: string
-    selectionContext?: string
+async function handleTranslate(
+  payload: RuntimeTranslateBatchRequest["payload"],
+): Promise<RuntimeResponse> {
+  if (payload.texts.length === 0) {
+    return {
+      type: "runtime/translate-batch:success",
+      payload: {
+        translations: [],
+      },
+    }
   }
-  task?: "translate" | "explain" | "custom"
-  customSystemPrompt?: string
-  placeholderFormat?: "astra-rich-text-v1"
-}): Promise<RuntimeResponse> {
+
   const [config, session] = await Promise.all([
     readConfig(),
     readAstraSession(),
   ])
   const resolvedProvider = resolveManagedProviderConfig(config.provider, session)
+  const task = payload.task ?? "translate"
+  const cacheContext = isTranslationCacheable(
+    task,
+    payload.customSystemPrompt,
+    payload.placeholderFormat,
+  )
+    ? buildTranslationCacheContext(config, {
+      sourceLang: payload.sourceLang,
+      context: payload.context,
+    })
+    : null
+
+  let cachedTranslations = new Map<number, string>()
+  if (cacheContext) {
+    try {
+      cachedTranslations = await getCachedTranslations(
+        payload.texts.map((text) => ({
+          text,
+          targetLang: payload.targetLang,
+          cacheContext,
+        })),
+      )
+    } catch {
+      // Cache read failure is non-fatal.
+    }
+  }
+
+  const uncachedEntries = payload.texts.flatMap((text, originalIndex) => (
+    cachedTranslations.has(originalIndex) ? [] : [{ originalIndex, text }]
+  ))
+
+  if (uncachedEntries.length === 0) {
+    return {
+      type: "runtime/translate-batch:success",
+      payload: {
+        translations: payload.texts.map((_, index) => cachedTranslations.get(index) ?? ""),
+      },
+    }
+  }
+
+  const uncachedTexts = uncachedEntries.map(({ text }) => text)
 
   try {
     const result = await translateWithProviderDetailed(resolvedProvider, {
-      texts: payload.texts,
+      texts: uncachedTexts,
       targetLang: payload.targetLang,
       sourceLang: payload.sourceLang,
       context: payload.context,
@@ -625,6 +671,32 @@ async function handleTranslate(payload: {
       placeholderFormat: payload.placeholderFormat,
       languageLevel: config.languageLevel,
     })
+
+    if (result.translations.length !== uncachedTexts.length) {
+      throw new AstraError(
+        "INVALID_RESPONSE",
+        "Translation batch response length did not match the request.",
+      )
+    }
+
+    const translations = Array.from({ length: payload.texts.length }, () => "")
+    for (const [index, translation] of cachedTranslations) {
+      translations[index] = translation
+    }
+    uncachedEntries.forEach(({ originalIndex }, translationIndex) => {
+      translations[originalIndex] = result.translations[translationIndex]
+    })
+
+    if (cacheContext) {
+      await Promise.allSettled(uncachedEntries.map(({ text }, translationIndex) => (
+        setCachedTranslation(
+          text,
+          payload.targetLang,
+          result.translations[translationIndex],
+          cacheContext,
+        )
+      )))
+    }
 
     if (result.metadata.fallbackUsed) {
       trackEvent({
@@ -642,7 +714,7 @@ async function handleTranslate(payload: {
       providerId: resolvedProvider.id,
       model: resolvedProvider.model,
       task: payload.task,
-      texts: payload.texts,
+      texts: uncachedTexts,
       attemptedTransports: result.metadata.attemptedTransports,
       finalTransport: result.metadata.finalTransport,
       fallbackUsed: result.metadata.fallbackUsed,
@@ -652,7 +724,7 @@ async function handleTranslate(payload: {
     return {
       type: "runtime/translate-batch:success",
       payload: {
-        translations: result.translations,
+        translations,
         metadata: result.metadata,
       },
     }
@@ -664,7 +736,7 @@ async function handleTranslate(payload: {
       providerId: resolvedProvider.id,
       model: resolvedProvider.model,
       task: payload.task,
-      texts: payload.texts,
+      texts: uncachedTexts,
       attemptedTransports: metadata?.attemptedTransports,
       finalTransport: metadata?.finalTransport,
       fallbackUsed: metadata?.fallbackUsed,

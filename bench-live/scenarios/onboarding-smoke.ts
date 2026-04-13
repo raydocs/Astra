@@ -3,7 +3,6 @@ import path from "node:path"
 
 import {
   withExtensionBrowserPage,
-  resolveExtensionId,
   LiveBrowserUnavailableError,
   ExtensionBuildNotFoundError,
   type ExtensionBrowserContext,
@@ -54,7 +53,7 @@ export const onboardingSmokeScenario: LiveScenarioDefinition<OnboardingSmokeExec
         }
       })
 
-      const onboardingUrl = `chrome-extension://${await resolveExtensionId(extCtx.context)}/onboarding/index.html`
+      const onboardingUrl = `chrome-extension://${extCtx.extensionId}/onboarding.html`
       await extCtx.page.goto(onboardingUrl, { waitUntil: "domcontentloaded", timeout: 10_000 })
 
       let rendersWithoutCrash = false
@@ -71,16 +70,45 @@ export const onboardingSmokeScenario: LiveScenarioDefinition<OnboardingSmokeExec
       })
 
       const stepIndicatorPresent = await extCtx.page.evaluate(() => {
-        const dots = document.querySelectorAll("[class*='dot'], [class*='step'], [class*='indicator']")
-        const progressBar = document.querySelector("[class*='progress'], [role='progressbar']")
-        return dots.length > 0 || !!progressBar
+        return Array.from(document.querySelectorAll("div")).some((node) => {
+          const children = Array.from(node.children)
+          if (children.length < 3) {
+            return false
+          }
+
+          return children.every((child) => {
+            if (!(child instanceof HTMLDivElement)) {
+              return false
+            }
+
+            const style = window.getComputedStyle(child)
+            const width = Number.parseFloat(style.width)
+            const height = Number.parseFloat(style.height)
+            const borderRadius = Number.parseFloat(style.borderRadius)
+            return width > 0 && width <= 24 && height > 0 && height <= 12 && borderRadius >= 4
+          })
+        })
       })
 
-      const languageOptionsPresent = await extCtx.page.evaluate(() => {
+      const detectLanguageOptions = () => extCtx.page.evaluate(() => {
         const selects = document.querySelectorAll("select, [role='listbox'], [class*='language']")
         const radioButtons = document.querySelectorAll("input[type='radio']")
         return selects.length > 0 || radioButtons.length > 0
       })
+      let languageOptionsPresent = await detectLanguageOptions()
+
+      if (!languageOptionsPresent) {
+        const getStartedButton = extCtx.page.getByRole("button", { name: /get started/i })
+        if (await getStartedButton.count() > 0) {
+          await getStartedButton.click()
+          try {
+            await extCtx.page.waitForSelector("select, input[type='radio']", { timeout: 5_000 })
+          } catch {
+            // Fall through to the post-click detection below.
+          }
+          languageOptionsPresent = await detectLanguageOptions()
+        }
+      }
 
       const screenshotPath = path.join(artifactDir, "onboarding-smoke.png")
       await extCtx.page.screenshot({ path: screenshotPath, fullPage: true })
@@ -184,7 +212,13 @@ export const onboardingSmokeScenario: LiveScenarioDefinition<OnboardingSmokeExec
   },
 
   evaluate(execution, context) {
-    const { onboarding } = execution
+    const onboarding = execution.onboarding ?? {
+      rendersWithoutCrash: false,
+      headingTextPresent: false,
+      stepIndicatorPresent: false,
+      languageOptionsPresent: false,
+      consoleErrors: [] as string[],
+    }
     const issues: string[] = []
     const nextActions: string[] = []
 

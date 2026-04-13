@@ -3,7 +3,6 @@ import path from "node:path"
 
 import {
   withExtensionBrowserPage,
-  resolveExtensionId,
   LiveBrowserUnavailableError,
   ExtensionBuildNotFoundError,
   type ExtensionBrowserContext,
@@ -54,7 +53,7 @@ export const vocabularySrsSmokeScenario: LiveScenarioDefinition<VocabularySrsSmo
         }
       })
 
-      const vocabularyUrl = `chrome-extension://${await resolveExtensionId(extCtx.context)}/vocabulary/index.html`
+      const vocabularyUrl = `chrome-extension://${extCtx.extensionId}/vocabulary.html`
       await extCtx.page.goto(vocabularyUrl, { waitUntil: "domcontentloaded", timeout: 10_000 })
 
       let rendersWithoutCrash = false
@@ -74,7 +73,11 @@ export const vocabularySrsSmokeScenario: LiveScenarioDefinition<VocabularySrsSmo
         const table = document.querySelector("table, [role='table']")
         const list = document.querySelector("ul, ol, [role='list'], [class*='vocab'], [class*='word']")
         const cards = document.querySelector("[class*='card'], [class*='item']")
-        return !!(table || list || cards)
+        const bodyText = document.body.textContent?.toLowerCase() ?? ""
+        const emptyStatePresent = bodyText.includes("no vocabulary saved yet")
+          || bodyText.includes("0 words")
+          || bodyText.includes("use the save button")
+        return !!(table || list || cards || emptyStatePresent)
       })
 
       const reviewButtonPresent = await extCtx.page.evaluate(() => {
@@ -188,7 +191,13 @@ export const vocabularySrsSmokeScenario: LiveScenarioDefinition<VocabularySrsSmo
   },
 
   evaluate(execution, context) {
-    const { vocabulary } = execution
+    const vocabulary = execution.vocabulary ?? {
+      rendersWithoutCrash: false,
+      headingPresent: false,
+      tableOrListPresent: false,
+      reviewButtonPresent: false,
+      consoleErrors: [] as string[],
+    }
     const issues: string[] = []
     const nextActions: string[] = []
 
