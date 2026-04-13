@@ -8,6 +8,7 @@ import {
   ExtensionBuildNotFoundError,
   type ExtensionBrowserContext,
 } from "../driver"
+import { sleep } from "../sleep"
 import type { LiveEvaluationResult, LiveScenarioDefinition, LiveScenarioExecution, LiveScenarioMetadata } from "../evaluator"
 
 interface OnboardingSmokeExecution extends LiveScenarioExecution {
@@ -88,7 +89,7 @@ export const onboardingSmokeScenario: LiveScenarioDefinition<OnboardingSmokeExec
       const snapshotHtmlPath = path.join(artifactDir, "onboarding-smoke.snapshot.html")
       await writeFile(snapshotHtmlPath, snapshotHtml, "utf8")
 
-      await extCtx.page.waitForTimeout(500)
+      await sleep(500)
 
       runtime.attachArtifact("onboardingCapture", {
         rendersWithoutCrash,

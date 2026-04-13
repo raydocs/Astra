@@ -9,6 +9,7 @@ import {
   ExtensionBuildNotFoundError,
   type ExtensionBrowserContext,
 } from "../driver"
+import { sleep } from "../sleep"
 import type { LiveScenarioDefinition, LiveScenarioExecution, LiveScenarioMetadata, LiveEvaluationResult } from "../evaluator"
 
 const FIXTURE_NAME = "article-basic"
@@ -156,7 +157,7 @@ export const siteAutomationAutostartScenario: LiveScenarioDefinition<SiteAutomat
         return hosts
       })
 
-      await extCtx.page.waitForTimeout(500)
+      await sleep(500)
 
       const postInjectScreenshotPath = path.join(fixturePage.artifactDir, `${FIXTURE_NAME}.site-automation.autostart.post-inject.png`)
       await mkdir(path.dirname(postInjectScreenshotPath), { recursive: true })
@@ -274,7 +275,13 @@ export const siteAutomationAutostartScenario: LiveScenarioDefinition<SiteAutomat
   },
 
   evaluate(execution, context) {
-    const { autoStartResult } = execution
+    const autoStartResult = execution.autoStartResult ?? {
+      floatBallMounted: false,
+      translationMarkersPresent: false,
+      translationMarkerCount: 0,
+      shadowHostsFound: [] as string[],
+      consoleErrors: [] as string[],
+    }
     const issues: string[] = []
     const nextActions: string[] = []
 

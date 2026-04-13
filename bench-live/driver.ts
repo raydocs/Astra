@@ -4,6 +4,8 @@ import { access, mkdir, readFile, rm, writeFile } from "node:fs/promises"
 import path from "node:path"
 import { pathToFileURL } from "node:url"
 
+import { sleep } from "./sleep"
+
 import { chromium, type Browser, type BrowserContext, type Page } from "playwright"
 
 export const DEFAULT_LIVE_ARTIFACT_ROOT = path.resolve(process.cwd(), "bench-live-results")
@@ -198,7 +200,7 @@ async function resolveExtensionIdFromExtensionsPage(
       waitUntil: "domcontentloaded",
       timeout: timeoutMs,
     })
-    await page.waitForTimeout(1_500)
+    await sleep(1_500)
 
     return await page.evaluate(() => {
       const extensionIdPattern = /^[a-z]{32}$/

@@ -8,6 +8,7 @@ import {
   ExtensionBuildNotFoundError,
   type ExtensionBrowserContext,
 } from "../driver"
+import { sleep } from "../sleep"
 import type { LiveEvaluationResult, LiveScenarioDefinition, LiveScenarioExecution, LiveScenarioMetadata } from "../evaluator"
 
 interface VocabularySrsSmokeExecution extends LiveScenarioExecution {
@@ -92,7 +93,7 @@ export const vocabularySrsSmokeScenario: LiveScenarioDefinition<VocabularySrsSmo
       const snapshotHtmlPath = path.join(artifactDir, "vocabulary-srs-smoke.snapshot.html")
       await writeFile(snapshotHtmlPath, snapshotHtml, "utf8")
 
-      await extCtx.page.waitForTimeout(500)
+      await sleep(500)
 
       runtime.attachArtifact("vocabularyCapture", {
         rendersWithoutCrash,

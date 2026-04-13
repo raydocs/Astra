@@ -10,6 +10,7 @@ import {
   withLiveBrowserPage,
   LiveBrowserUnavailableError,
 } from "../../driver"
+import { sleep } from "../../sleep"
 import type { LiveScenarioDefinition, LiveScenarioExecution } from "../../evaluator"
 import { buildLivePageTranslationEvaluation } from "../helpers/page-translation"
 
@@ -99,7 +100,7 @@ export const pageTranslationFeedCardChurnHoldoutScenario: LiveScenarioDefinition
           }
         })
 
-        await page.waitForTimeout(220)
+        await sleep(220)
         await page.evaluate(({ targetLang }) => {
           const cards = Array.from(document.querySelectorAll("section.story-card"))
             .filter((node): node is HTMLElement => node instanceof HTMLElement)
