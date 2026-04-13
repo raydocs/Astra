@@ -45,31 +45,32 @@ export const onboardingSmokeScenario: LiveScenarioDefinition<OnboardingSmokeExec
       runtime.checkpoint("Extension browser context launched for onboarding.", {
         extensionPath: extCtx.extensionPath,
       })
+      const page = extCtx.page
 
       const consoleErrors: string[] = []
-      extCtx.page.on("console", (msg) => {
+      page.on("console", (msg) => {
         if (msg.type() === "error") {
           consoleErrors.push(msg.text())
         }
       })
 
       const onboardingUrl = `chrome-extension://${extCtx.extensionId}/onboarding.html`
-      await extCtx.page.goto(onboardingUrl, { waitUntil: "domcontentloaded", timeout: 10_000 })
+      await page.goto(onboardingUrl, { waitUntil: "domcontentloaded", timeout: 10_000 })
 
       let rendersWithoutCrash = false
       try {
-        await extCtx.page.waitForSelector("h1, h2, [class*='step'], [class*='title']", { timeout: 5_000 })
+        await page.waitForSelector("h1, h2, [class*='step'], [class*='title']", { timeout: 5_000 })
         rendersWithoutCrash = true
       } catch {
         rendersWithoutCrash = false
       }
 
-      const headingTextPresent = await extCtx.page.evaluate(() => {
+      const headingTextPresent = await page.evaluate(() => {
         const headings = document.querySelectorAll("h1, h2, h3")
         return Array.from(headings).some((h) => h.textContent && h.textContent.trim().length > 0)
       })
 
-      const stepIndicatorPresent = await extCtx.page.evaluate(() => {
+      const stepIndicatorPresent = await page.evaluate(() => {
         return Array.from(document.querySelectorAll("div")).some((node) => {
           const children = Array.from(node.children)
           if (children.length < 3) {
@@ -90,7 +91,7 @@ export const onboardingSmokeScenario: LiveScenarioDefinition<OnboardingSmokeExec
         })
       })
 
-      const detectLanguageOptions = () => extCtx.page.evaluate(() => {
+      const detectLanguageOptions = () => page.evaluate(() => {
         const selects = document.querySelectorAll("select, [role='listbox'], [class*='language']")
         const radioButtons = document.querySelectorAll("input[type='radio']")
         return selects.length > 0 || radioButtons.length > 0
@@ -98,11 +99,11 @@ export const onboardingSmokeScenario: LiveScenarioDefinition<OnboardingSmokeExec
       let languageOptionsPresent = await detectLanguageOptions()
 
       if (!languageOptionsPresent) {
-        const getStartedButton = extCtx.page.getByRole("button", { name: /get started/i })
+        const getStartedButton = page.getByRole("button", { name: /get started/i })
         if (await getStartedButton.count() > 0) {
           await getStartedButton.click()
           try {
-            await extCtx.page.waitForSelector("select, input[type='radio']", { timeout: 5_000 })
+            await page.waitForSelector("select, input[type='radio']", { timeout: 5_000 })
           } catch {
             // Fall through to the post-click detection below.
           }
@@ -111,9 +112,9 @@ export const onboardingSmokeScenario: LiveScenarioDefinition<OnboardingSmokeExec
       }
 
       const screenshotPath = path.join(artifactDir, "onboarding-smoke.png")
-      await extCtx.page.screenshot({ path: screenshotPath, fullPage: true })
+      await page.screenshot({ path: screenshotPath, fullPage: true })
 
-      const snapshotHtml = await extCtx.page.content()
+      const snapshotHtml = await page.content()
       const snapshotHtmlPath = path.join(artifactDir, "onboarding-smoke.snapshot.html")
       await writeFile(snapshotHtmlPath, snapshotHtml, "utf8")
 
