@@ -145,7 +145,12 @@ function extensionPersistentContextExtraArgs(): string[] {
   ]
 }
 
-/** Playwright Chromium often hangs on launchPersistentContext+extensions on Linux CI; Google Chrome channel is reliable. */
+/**
+ * CI can opt into Playwright's branded Chrome channel, but newer Chrome builds
+ * sometimes ignore command-line extension side-loading. We still allow the
+ * opt-in, then verify the extension actually appeared and fall back to
+ * Chromium/Chrome-for-Testing when it did not.
+ */
 function googleChromeChannelForExtensionLive(): boolean {
   return process.env.CI === "true" && process.env.ASTRA_BENCH_LIVE_USE_GOOGLE_CHROME === "1"
 }
@@ -192,6 +197,149 @@ async function installCiExtensionOutboundGuards(context: BrowserContext) {
     // Fail fast — a stub JSON body rarely matches ProviderResponseSchema + block counts; abort avoids multi‑minute TCP hangs.
     await route.abort("failed")
   })
+}
+
+function contextHasLoadedExtensionArtifact(context: BrowserContext): boolean {
+  const backgroundPages = typeof (context as BrowserContext & {
+    backgroundPages?: () => Array<{ url: () => string }>
+  }).backgroundPages === "function"
+    ? (context as BrowserContext & {
+        backgroundPages: () => Array<{ url: () => string }>
+      }).backgroundPages()
+    : []
+
+  return backgroundPages.some((page) => extractExtensionIdFromUrl(page.url()))
+    || context.serviceWorkers().some((worker) => extractExtensionIdFromUrl(worker.url()))
+    || context.pages().some((page) => extractExtensionIdFromUrl(page.url()))
+}
+
+async function waitForLoadedExtensionArtifact(context: BrowserContext, timeoutMs: number): Promise<boolean> {
+  const deadline = Date.now() + timeoutMs
+
+  while (Date.now() < deadline) {
+    if (contextHasLoadedExtensionArtifact(context)) {
+      return true
+    }
+
+    const remainingMs = deadline - Date.now()
+    if (remainingMs <= 0) {
+      break
+    }
+
+    try {
+      await context.waitForEvent("serviceworker", {
+        timeout: Math.min(250, remainingMs),
+      })
+      if (contextHasLoadedExtensionArtifact(context)) {
+        return true
+      }
+    } catch {
+      // Poll until the deadline expires.
+    }
+
+    await delay(100)
+  }
+
+  return contextHasLoadedExtensionArtifact(context)
+}
+
+async function seedExtensionStorageFromServiceWorker(options: {
+  context: BrowserContext
+  storageState: Record<string, unknown>
+  timeoutMs?: number
+}): Promise<boolean> {
+  const timeoutMs = options.timeoutMs ?? 10_000
+  const existingServiceWorker = options.context.serviceWorkers()[0] ?? null
+  const serviceWorker = existingServiceWorker ?? await options.context.waitForEvent("serviceworker", {
+    timeout: timeoutMs,
+  }).catch(() => null)
+
+  if (!serviceWorker) {
+    return false
+  }
+
+  await serviceWorker.evaluate(async (storageState) => {
+    const extensionChrome = (globalThis as unknown as {
+      chrome?: {
+        storage?: {
+          local?: {
+            set: (value: Record<string, unknown>) => Promise<void>
+          }
+        }
+      }
+    }).chrome
+
+    if (!extensionChrome?.storage?.local) {
+      throw new Error("chrome.storage.local is unavailable in the extension service worker")
+    }
+
+    await extensionChrome.storage.local.set(storageState)
+  }, options.storageState)
+
+  return true
+}
+
+async function seedExtensionStorageFromPage(options: {
+  context: BrowserContext
+  extensionId: string
+  extensionPath?: string
+  storageState: Record<string, unknown>
+}): Promise<void> {
+  const extensionPagePath = await resolveExtensionPagePath(options.extensionPath)
+  const setupPage = await options.context.newPage()
+
+  try {
+    await setupPage.goto(`chrome-extension://${options.extensionId}/${extensionPagePath}`, {
+      waitUntil: "domcontentloaded",
+      timeout: 15_000,
+    })
+    await setupPage.waitForFunction(
+      `typeof chrome !== "undefined" && !!chrome.storage?.local`,
+      { timeout: 10_000 },
+    )
+    await setupPage.evaluate(async (storageState) => {
+      const extensionChrome = (globalThis as unknown as {
+        chrome?: {
+          storage?: {
+            local?: {
+              set: (value: Record<string, unknown>) => Promise<void>
+            }
+          }
+        }
+      }).chrome
+
+      if (!extensionChrome?.storage?.local) {
+        throw new Error("chrome.storage.local is unavailable in the extension setup page")
+      }
+
+      await extensionChrome.storage.local.set(storageState)
+    }, options.storageState)
+  } finally {
+    try {
+      await setupPage.close()
+    } catch {
+      // ignore cleanup failures
+    }
+  }
+}
+
+async function seedExtensionStorageState(options: {
+  context: BrowserContext
+  extensionId: string
+  extensionPath?: string
+  storageState: Record<string, unknown>
+}): Promise<void> {
+  try {
+    const seededViaWorker = await seedExtensionStorageFromServiceWorker(options)
+    if (seededViaWorker) {
+      return
+    }
+  } catch {
+    // Fall back to a visible extension page when the worker is unavailable
+    // or chrome.storage.local cannot be reached from the worker context.
+  }
+
+  await seedExtensionStorageFromPage(options)
 }
 
 function extractExtensionIdFromUrl(url: string): string | null {
@@ -581,20 +729,20 @@ export async function withExtensionBrowserPage(options: {
   const waitForInject = options.waitForExtensionInject ?? 5000
 
   const useChromeChannel = googleChromeChannelForExtensionLive()
+  const resolvedExecutablePath = await resolveLiveBrowserExecutablePath({
+    candidates: [chromium.executablePath(), ...DEFAULT_BROWSER_CANDIDATES],
+  })
 
   let browserExecutablePath: string
   if (useChromeChannel) {
     browserExecutablePath = "google-chrome (Playwright channel: chrome)"
   } else {
-    const resolved = await resolveLiveBrowserExecutablePath({
-      candidates: [chromium.executablePath(), ...DEFAULT_BROWSER_CANDIDATES],
-    })
-    if (!resolved) {
+    if (!resolvedExecutablePath) {
       throw new LiveBrowserUnavailableError(
         "No supported Chrome/Chromium browser executable was found for the extension-loaded live scenario.",
       )
     }
-    browserExecutablePath = resolved
+    browserExecutablePath = resolvedExecutablePath
   }
 
   const extensionPathExists = await pathExists(extensionPath)
@@ -606,33 +754,61 @@ export async function withExtensionBrowserPage(options: {
 
   const userDataDir = path.join(DEFAULT_LIVE_ARTIFACT_ROOT, `_extension-profile-${Date.now()}`)
 
-  let context: BrowserContext
-  try {
-    context = await chromium.launchPersistentContext(userDataDir, {
-      ...(useChromeChannel
-        ? { channel: "chrome" as const }
-        : { executablePath: browserExecutablePath }),
-      headless: false,
-      ignoreDefaultArgs: ["--disable-extensions"],
-      args: [
-        ...extensionPersistentContextExtraArgs(),
-        `--load-extension=${extensionPath}`,
-        "--no-first-run",
-        "--no-default-browser-check",
-        "--disable-default-apps",
-        "--disable-popup-blocking",
-        "--disable-sync",
-        "--disable-extensions-except=" + extensionPath,
-      ],
-      viewport: {
-        width: 1280,
-        height: 900,
-      },
-      timeout: process.env.CI === "true" ? 240_000 : 180_000,
-      env: extensionPersistentContextEnv(),
+  const launchContext = async (launchOptions: {
+    useChromeChannel: boolean
+    executablePath?: string
+    browserLabel: string
+  }): Promise<BrowserContext> => {
+    try {
+      return await chromium.launchPersistentContext(userDataDir, {
+        ...(launchOptions.useChromeChannel
+          ? { channel: "chrome" as const }
+          : { executablePath: launchOptions.executablePath }),
+        headless: false,
+        ignoreDefaultArgs: ["--disable-extensions"],
+        args: [
+          ...extensionPersistentContextExtraArgs(),
+          `--load-extension=${extensionPath}`,
+          "--no-first-run",
+          "--no-default-browser-check",
+          "--disable-default-apps",
+          "--disable-popup-blocking",
+          "--disable-sync",
+          "--disable-extensions-except=" + extensionPath,
+        ],
+        viewport: {
+          width: 1280,
+          height: 900,
+        },
+        timeout: process.env.CI === "true" ? 240_000 : 180_000,
+        env: extensionPersistentContextEnv(),
+      })
+    } catch (error) {
+      throw normalizeLiveBrowserLaunchFailure(error, launchOptions.browserLabel)
+    }
+  }
+
+  let context = await launchContext({
+    useChromeChannel,
+    executablePath: useChromeChannel ? undefined : browserExecutablePath,
+    browserLabel: browserExecutablePath,
+  })
+
+  if (useChromeChannel && !(await waitForLoadedExtensionArtifact(context, 5_000))) {
+    await context.close().catch(() => {})
+
+    if (!resolvedExecutablePath) {
+      throw new LiveBrowserUnavailableError(
+        "Google Chrome launched, but the extension never appeared and no Chromium fallback executable was found.",
+      )
+    }
+
+    browserExecutablePath = resolvedExecutablePath
+    context = await launchContext({
+      useChromeChannel: false,
+      executablePath: browserExecutablePath,
+      browserLabel: browserExecutablePath,
     })
-  } catch (error) {
-    throw normalizeLiveBrowserLaunchFailure(error, browserExecutablePath)
   }
 
   if (process.env.CI === "true") {
@@ -659,36 +835,14 @@ export async function withExtensionBrowserPage(options: {
   }
 
   const extensionId = await resolveExtensionId(context, 10_000, extensionPath)
-  const extensionPagePath = await resolveExtensionPagePath(extensionPath)
 
   if (options.storageState && Object.keys(options.storageState).length > 0) {
-    const setupPage = await context.newPage()
-    await setupPage.goto(`chrome-extension://${extensionId}/${extensionPagePath}`, {
-      waitUntil: "domcontentloaded",
-      timeout: 15_000,
+    await seedExtensionStorageState({
+      context,
+      extensionId,
+      extensionPath,
+      storageState: options.storageState,
     })
-    await setupPage.waitForFunction(
-      `typeof chrome !== "undefined" && !!chrome.storage?.local`,
-      { timeout: 10_000 },
-    )
-    await setupPage.evaluate(async (storageState) => {
-      const extensionChrome = (globalThis as unknown as {
-        chrome?: {
-          storage?: {
-            local?: {
-              set: (value: Record<string, unknown>) => Promise<void>
-            }
-          }
-        }
-      }).chrome
-
-      if (!extensionChrome?.storage?.local) {
-        throw new Error("chrome.storage.local is unavailable in the extension setup page")
-      }
-
-      await extensionChrome.storage.local.set(storageState)
-    }, options.storageState)
-    await setupPage.close()
     if (initialUrl !== "about:blank") {
       await page.bringToFront()
     }
@@ -824,9 +978,12 @@ export async function resolveExtensionPagePath(extensionPath?: string): Promise<
     options_page?: string
   }
 
-  const candidate = manifest.options_ui?.page
+  // Prefer a regular extension tab page over options_ui here. Google Chrome
+  // can block direct navigation to options_ui pages in automated contexts,
+  // while popup.html remains scriptable and has the same chrome.storage access.
+  const candidate = manifest.action?.default_popup
+    ?? manifest.options_ui?.page
     ?? manifest.options_page
-    ?? manifest.action?.default_popup
 
   if (!candidate) {
     throw new ExtensionBuildNotFoundError(
