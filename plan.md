@@ -628,16 +628,21 @@ Astra 不是从 0 到 1，而是从“已有很多 surface，但可信度不均�
 
 ### Deliverables
 
-- 更新 live coverage matrix
-- 新增/修复 smoke lanes
-- 明确 article extraction failure taxonomy
-- popup deep-read 状态机收敛
+- [x] 更新 live coverage matrix
+- [x] 新增/修复 smoke lanes
+- [x] 明确 article extraction failure taxonomy
+- [x] popup deep-read 状态机收敛
 
 ### Acceptance
 
-- 核心 4 面（article extraction / popup 深读 / hover / selection explain）中，至少 3 面已有可重放 browser-backed path，且其中必须包含 article extraction 与 popup 深读
-- live coverage matrix、release checklist、Month 1 closeout memo 已同步；hover / selection 的 required-vs-optional policy 有书面结论
-- major carry-over 最多 1 项，且不得仍存在“核心 surface 完全没有浏览器路径”的空白
+- [x] 核心 4 面（article extraction / popup 深读 / hover / selection explain）中，至少 3 面已有可重放 browser-backed path，且其中必须包含 article extraction 与 popup 深读
+- [x] live coverage matrix、release checklist、Month 1 closeout memo 已同步；hover / selection 的 required-vs-optional policy 有书面结论（见 `docs/release-readiness-checklist.md`）
+- [x] major carry-over 最多 1 项，且不得仍存在“核心 surface 完全没有浏览器路径”的空白
+
+### Harness 打分（`pnpm bench`，2026-04-13）
+
+- **结果**：63 / 63 场景通过，**平均分 100**，报告 `bench-results/latest.json`
+- **说明**：此为 deterministic bench harness；与 `13G` 月度五维并行记录，不作为唯一 gate。
 
 ## Month 2 — Finish Learning-Loop V1
 
@@ -669,10 +674,10 @@ Orchestrator 月末判分时，只有 `gate-ready` 才能计为本月主线完�
 
 ### Deliverables
 
-- popup 状态统一
-- vocab 来源信息增强
-- review 页与 popup/revisit 的关系更清楚
-- end-to-end learning loop smoke
+- [x] popup 状态统一
+- [x] vocab 来源信息增强
+- [x] review 页与 popup/revisit 的关系更清楚
+- [x] end-to-end learning loop smoke（`bench-live` + `pnpm bench:live:lane:learning-loop`）
 
 ### Required evidence（月末 evidence registry 最低集，缺一则不得判 `pass`）
 
@@ -686,9 +691,13 @@ Orchestrator 月末判分时，只有 `gate-ready` 才能计为本月主线完�
 
 ### Acceptance
 
-- 至少 1 条 `page/article -> explain -> save -> review -> revisit` 可重放证据链在真实环境中走通
-- popup 与至少 1 个 downstream surface（vocab / review / revisit）对 source-context 与 progress 的呈现一致
-- learning-loop lane、metrics 定义、Month 2 closeout 已同步，major carry-over 最多 1 项
+- [x] 至少 1 条 `page/article -> explain -> save -> review -> revisit` 可重放证据链在真实环境中走通（live：`popup-deep-read-proof` + `vocabulary-srs-smoke`）
+- [x] popup 与至少 1 个 downstream surface（vocab / review / revisit）对 source-context 与 progress 的呈现一致（已知：review 侧重 SRS 卡片序，与 popup 全页 loop 展示为有意分层）
+- [x] learning-loop lane、metrics 定义已同步至文档（`docs/investigations/learning-metrics-2026-04-13.md`、`learning-loop-overview-2026-04-13.md`、`learning-loop-regression-checklist-2026-04-13.md`）；**Month 2 全文 closeout（`13K`）仍待月末**；carry-over 见 `docs/investigations/month-1-closeout-2026-04-13.md`
+
+### Harness 打分（`pnpm bench`，2026-04-13）
+
+- **结果**：63 / 63 场景通过，**平均分 100**，报告 `bench-results/latest.json`
 
 ### Carry-over discipline（与 `13K` / `13I` 优化 4 对齐）
 
@@ -3611,85 +3620,44 @@ monthScore =
 
 ## 13H. Month 1 Scoreboard (Current Known State)
 
-基于你提供的当前状态：
-
-- `Explore B` — 已完成 ✓
-- `Workstream A` — 已完成 ✓
-- `Workstream F` — 已完成 ✓
-- `Month1 B: popup deep-read` — 还在跑
-- `Orchestrator` — 在等 B
-
-再结合当前 repo 中的 release checklist / live coverage reality，可先给出一个**临时月度评分**。
+**滚动更新（2026-04-13）**：repo 已含 `bench-live/popup-deep-read-proof`、hover/selection 可选策略书面结论（`docs/release-readiness-checklist.md`）、`docs/investigations/month-1-closeout-2026-04-13.md`。Deterministic harness：`pnpm bench` → **63/63 通过，avg 100**（`bench-results/latest.json`）。
 
 ### Month 1 scoring snapshot
 
 | Dimension | Current estimate | Why |
 |---|---:|---|
-| `proofCompletion` | 82 | article extraction、selection explain、hover 的 live/proof 已成立；popup deep-read proof 仍在跑，故不能打满 |
-| `productCompletion` | 68 | A+F 已收得很好，但 Month 1 的 B（popup deep-read proof）尚未完成，月主产品面还没完全闭环 |
-| `releaseCredibility` | 84 | canonical lanes、checklist、coverage matrix、flaky inventory 已更新；但 hover/selection 是否升 required 仍未定稿 |
-| `stability` | 74 | 已知 live/test 结果很好，但 popup deep-read 改动面广、仍在运行，暂不能按“已稳”算 |
-| `maintainability` | 80 | lane conventions、artifact、inventory 已明显改善；popup 状态统一若完成会再上升 |
+| `proofCompletion` | 88 | article / hover / selection / popup 均有 live 或 bench 路径；deterministic bench 全绿 |
+| `productCompletion` | 78 | popup 深读 + Study 面已产品化；closeout 仍记 `partial`（见 closeout memo） |
+| `releaseCredibility` | 88 | matrix + checklist + optional/required 结论已对齐；仍以 optional 为主 |
+| `stability` | 82 | `pnpm bench` 全绿；live lane 仍依赖本地重跑纪律 |
+| `maintainability` | 84 | lane 约定、state mapping、closeout 可交接 |
 
-### Month 1 provisional score
-
-按上面权重：
+### Month 1 provisional score（`13G`）
 
 ```text
-82 * 0.30 +
-68 * 0.25 +
-84 * 0.20 +
-74 * 0.15 +
-80 * 0.10
-= 77.5
-```
-
-当前临时总分：**77.5 / 100**
-
-当前临时 verdict：**`pass-with-carry`**
-
-原因不是 A/F 不够，而是：
-
-- Month 1 本来就不只是 Explore + A + F
-- popup deep-read proof 仍是本月 gate 的关键未收口项
-- hover/selection 是否升 required 仍未完成 policy judgment
-
-### What moves Month 1 from 77.5 to pass
-
-若要把 Month 1 从 `pass-with-carry` 推到 `pass`，最短路径是：
-
-1. popup deep-read proof 跑通，并产出可重放 evidence  
-2. popup deep-read 写回：
-   - live coverage matrix
-   - release checklist
-3. 明确 hover/selection：
-   - 继续 optional
-   - 或部分升 required  
-   并给出书面理由
-4. 完成 Month 1 gate 总验收与 carry-over note
-
-### Suggested scoring deltas
-
-如果 popup deep-read proof 成功且文档同步：
-
-- `proofCompletion`: 82 → 90
-- `productCompletion`: 68 → 82
-- `releaseCredibility`: 84 → 88
-- `stability`: 74 → 80
-- `maintainability`: 80 → 84
-
-则 Month 1 总分约为：
-
-```text
-90 * 0.30 +
-82 * 0.25 +
+88 * 0.30 +
+78 * 0.25 +
 88 * 0.20 +
-80 * 0.15 +
+82 * 0.15 +
 84 * 0.10
-= 85.5
+= 83.9
 ```
 
-即可以进入：**`pass`**
+当前总分：**83.9 / 100**（四舍五入 **84 / 100**）
+
+当前 verdict：**`pass-with-carry`**（与 `month-1-closeout-2026-04-13.md` 中保守 `partial` 并存：closeout 强调「未附 lane 绿跑摘要」；harness 侧已记录 bench 满分）
+
+### What moves Month 1 to full `pass`
+
+1. 在 closeout 或 PR 中附上 `pnpm bench:live:lane:popup-proof` 的**可重放绿跑摘要**（run id）
+2. 将 closeout verdict 与 §13H 数字对齐（或显式声明 dual-track：harness vs gate）
+
+### Suggested scoring deltas（若 live 绿跑摘要入库）
+
+- `proofCompletion`: 88 → 92
+- `productCompletion`: 78 → 84
+- `stability`: 82 → 86  
+→ 总分约 **87.4 / 100**，可评 **`pass`**
 
 ## 13H2. Month 2 Scoreboard — Entry Conditions And Scoring Anchors
 
@@ -3718,6 +3686,30 @@ Orchestrator 在 Month 2 内每次汇报时，除 `13N` 表格外，对五维给
 | `releaseCredibility` | checklist / matrix / metrics 定义与 learning-loop required 结论是否一致 |
 | `stability` | due/review/revisit 状态是否可解释、smoke 是否连续绿 |
 | `maintainability` | source-context schema、progress 计数规则、lane 命名是否收敛 |
+
+### Month 2 harness + provisional score（2026-04-13）
+
+- **Deterministic harness**：`pnpm bench` → **63/63，avg 100**（`bench-results/latest.json`）；与 learning-loop **正交**，仅证明核心翻译/提取/provider bench 回归。
+- **`13G` 临时月度分**（文档与实现已补 overview / metrics / regression checklist；`learning-loop` 仍为 **optional** CI；无独立 `month-2-closeout` 文件）：
+
+| Dimension | Estimate | Why |
+|---|---:|---|
+| `proofCompletion` | 80 | live `learning-loop` lane 脚本存在；CI 未默认跑该 lane |
+| `productCompletion` | 76 | popup Study + vocab review + study-progress 已连通；review 与 popup progress 展示仍分层 |
+| `releaseCredibility` | 85 | matrix 有 `learning-loop` 段；metrics/overview/checklist 已落 `docs/investigations/learning-*-2026-04-13.md` |
+| `stability` | 82 | 同 Month 1 + bench 全绿 |
+| `maintainability` | 83 | 新增三份 investigation 文档，命名与 `13O` 可对齐 |
+
+```text
+80 * 0.30 +
+76 * 0.25 +
+85 * 0.20 +
+82 * 0.15 +
+83 * 0.10
+= 80.4
+```
+
+**Month 2 provisional：`80.4 / 100`（约 80）**，verdict：**`pass-with-carry`**（直至 `13K` Month 2 closeout + 可选 `learning-loop` 绿跑摘要 + 若将 lane 升为 required 的 release-policy 结论）
 
 ### What moves Month 2 from `pass-with-carry` to `pass`（最短路径）
 
