@@ -45,6 +45,13 @@ export const dynamicContentAppendScenario: LiveScenarioDefinition<DynamicContent
       await mkdir(artifactDir, { recursive: true })
 
       const capture = await withLiveBrowserPage(async (page, browserExecutablePath) => {
+        const consoleErrors: string[] = []
+        page.on("console", (msg) => {
+          if (msg.type() === "error") {
+            consoleErrors.push(msg.text())
+          }
+        })
+
         await page.goto(fixturePage.url, { waitUntil: "domcontentloaded", timeout: 10_000 })
         await page.waitForSelector("article p", { timeout: 10_000 })
 
@@ -99,8 +106,6 @@ export const dynamicContentAppendScenario: LiveScenarioDefinition<DynamicContent
         const snapshotHtml = await page.content()
         const snapshotHtmlPath = path.join(artifactDir, `${FIXTURE_NAME}.dynamic-content.snapshot.html`)
         await writeFile(snapshotHtmlPath, snapshotHtml, "utf8")
-
-        const consoleErrors: string[] = []
 
         return {
           browserExecutablePath,
