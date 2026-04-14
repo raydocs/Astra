@@ -8,6 +8,7 @@ const {
   getDueVocabularyCountMock,
   updateVocabularyEntryMock,
   getPageStudyProgressMock,
+  getStudyProgressMock,
   syncRecentReadingHistoryToOwnedQueueMock,
   listOwnedReadingItemsMock,
   markOwnedReadingOpenedMock,
@@ -19,6 +20,7 @@ const {
   getDueVocabularyCountMock: vi.fn(),
   updateVocabularyEntryMock: vi.fn(),
   getPageStudyProgressMock: vi.fn(),
+  getStudyProgressMock: vi.fn(),
   syncRecentReadingHistoryToOwnedQueueMock: vi.fn(),
   listOwnedReadingItemsMock: vi.fn(),
   markOwnedReadingOpenedMock: vi.fn(),
@@ -43,6 +45,7 @@ vi.mock("@/utils/storage/owned-reading", () => ({
 
 vi.mock("@/utils/storage/study-progress", () => ({
   getPageStudyProgress: getPageStudyProgressMock,
+  getStudyProgress: getStudyProgressMock,
 }))
 
 vi.mock("#imports", () => ({
@@ -96,6 +99,16 @@ describe("VocabularyApp", () => {
     setOwnedReadingStatusMock.mockResolvedValue(undefined)
     removeOwnedReadingItemMock.mockResolvedValue(undefined)
     getPageStudyProgressMock.mockResolvedValue(null)
+    getStudyProgressMock.mockResolvedValue({
+      pages: [],
+      dailyStats: {
+        date: "2026-04-14",
+        pagesStudied: 0,
+        sentencesExplained: 0,
+        vocabSaved: 0,
+        vocabReviewed: 0,
+      },
+    })
 
     container = document.createElement("div")
     document.body.appendChild(container)
@@ -217,5 +230,51 @@ describe("VocabularyApp", () => {
     expect(browser.tabs.create).toHaveBeenCalledWith({
       url: "chrome-extension://test-id/pdf-reader.html?url=https%3A%2F%2Fcdn.example%2Fpaper.pdf",
     })
+  })
+
+  it("sorts reading list by title when Title A–Z is selected", async () => {
+    listOwnedReadingItemsMock.mockResolvedValueOnce([
+      {
+        id: "or_z",
+        sourceType: "article",
+        title: "Zebra notes",
+        sourceUrl: "https://example.com/z",
+        openedAt: 99_000,
+        status: "saved",
+        readingHistoryRecordId: "https://example.com/z",
+        studyProgressRecordId: null,
+      },
+      {
+        id: "or_a",
+        sourceType: "article",
+        title: "Alpha notes",
+        sourceUrl: "https://example.com/a",
+        openedAt: 1_000,
+        status: "saved",
+        readingHistoryRecordId: "https://example.com/a",
+        studyProgressRecordId: null,
+      },
+    ])
+
+    const readingBtn = [...container.querySelectorAll("button")].find((b) => b.textContent?.trim() === "Reading")
+    await act(async () => {
+      readingBtn!.click()
+      await Promise.resolve()
+      await Promise.resolve()
+    })
+
+    const titleSort = container.querySelector("[data-testid=\"reading-sort-title\"]") as HTMLButtonElement
+    expect(titleSort).toBeTruthy()
+
+    await act(async () => {
+      titleSort.click()
+      await Promise.resolve()
+    })
+
+    const idxAlpha = container.textContent!.indexOf("Alpha notes")
+    const idxZebra = container.textContent!.indexOf("Zebra notes")
+    expect(idxAlpha).toBeGreaterThan(-1)
+    expect(idxZebra).toBeGreaterThan(-1)
+    expect(idxAlpha).toBeLessThan(idxZebra)
   })
 })

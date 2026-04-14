@@ -103,6 +103,26 @@ describe("vocabulary storage", () => {
     expect(synced.url).toBe("https://example.com/page")
   })
 
+  it("round-trips subtitle_reader source context metadata", async () => {
+    await saveVocabularyEntry({
+      text: "Hello from subtitles",
+      context: "sample.srt · row 1",
+      url: "chrome-extension://abc/subtitle-reader.html",
+      hostname: "extension",
+      sourceContext: {
+        surface: "subtitle_reader",
+        pageTitle: "sample.srt",
+        contentSummary: "SRT",
+        sentenceText: "Hello from subtitles",
+        sentenceIndex: 0,
+      },
+    })
+
+    const entries = await getVocabularyEntries()
+    expect(entries[0].sourceContext?.surface).toBe("subtitle_reader")
+    expect(entries[0].sourceContext?.pageTitle).toBe("sample.srt")
+  })
+
   it("round-trips popup source context metadata", async () => {
     await saveVocabularyEntry({
       text: "ephemeral",

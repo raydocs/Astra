@@ -462,6 +462,12 @@ function HoverTranslateApp() {
         translation: overlay.translation ?? undefined,
         explanation: overlay.explanation ?? undefined,
         context: getSelectionContext(currentSourceText.current),
+        sourceContext: {
+          surface: "hover_translate",
+          pageTitle: document.title?.trim() || undefined,
+          contentSummary: getSelectionContext(currentSourceText.current),
+          sentenceText: currentSourceText.current,
+        },
         url: window.location.href,
         hostname: window.location.hostname,
       })

@@ -6,6 +6,7 @@ export const VocabularySourceContextSurfaceSchema = z.enum([
   "popup_deep_read",
   "selection_toolbar",
   "hover_translate",
+  "subtitle_reader",
 ])
 
 export const VocabularySourceContextSchema = z.object({

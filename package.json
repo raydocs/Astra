@@ -66,7 +66,7 @@
     "bench:live:lane:release-proof": "pnpm bench:live:lane:source-core && pnpm bench:live:lane:extension-core",
     "bench:live:lane:hover-selection": "pnpm bench:live -- --scenario bench-live/hover-translation-basic && pnpm bench:live -- --scenario bench-live/selection-explain-basic",
     "bench:live:lane:popup-proof": "pnpm bench:live -- --scenario bench-live/popup-deep-read-proof",
-    "bench:live:lane:learning-loop": "pnpm bench:live:lane:popup-proof && pnpm bench:live -- --scenario bench-live/vocabulary-srs-smoke",
+    "bench:live:lane:learning-loop": "pnpm bench:live:lane:popup-proof && pnpm bench:live -- --scenario bench-live/vocabulary-srs-smoke && pnpm bench:live -- --scenario bench-live/learning-loop-revisit-smoke",
     "bench:live:source": "pnpm bench:live:lane:source-core",
     "bench:live:extension": "pnpm bench:live:lane:extension-core",
     "bench:live:smoke": "pnpm bench:live:lane:release-proof",

@@ -20,6 +20,7 @@ import { siteAutomationAutostartScenario } from "./site-automation-autostart"
 import { onboardingSmokeScenario } from "./onboarding-smoke"
 import { popupDeepReadProofScenario } from "./popup-deep-read-proof"
 import { vocabularySrsSmokeScenario } from "./vocabulary-srs-smoke"
+import { learningLoopRevisitSmokeScenario } from "./learning-loop-revisit-smoke"
 import { bilibiliSubtitleBasicScenario } from "./bilibili-subtitle-basic"
 import { youtubeSubtitleBasicScenario } from "./youtube-subtitle-basic"
 import { subtitleBasicScenario } from "./subtitle-basic"
@@ -53,6 +54,7 @@ export { onboardingSmokeScenario } from "./onboarding-smoke"
 export { popupDeepReadProofScenario } from "./popup-deep-read-proof"
 export { popupDeepReadSmokeScenario } from "./popup-deep-read-smoke"
 export { vocabularySrsSmokeScenario } from "./vocabulary-srs-smoke"
+export { learningLoopRevisitSmokeScenario } from "./learning-loop-revisit-smoke"
 export const liveScenarios = [
   pageTranslationArticleBasicSourceScenario,
   pageTranslationArticleBasicSourceTranslationOnlyScenario,
@@ -79,5 +81,6 @@ export const liveScenarios = [
   onboardingSmokeScenario,
   popupDeepReadProofScenario,
   vocabularySrsSmokeScenario,
+  learningLoopRevisitSmokeScenario,
   placeholderScenario,
 ]

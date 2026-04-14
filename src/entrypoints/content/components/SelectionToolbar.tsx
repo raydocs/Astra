@@ -458,6 +458,12 @@ function SelectionToolbarApp() {
       translation: actionResult?.actionId === "translate" ? actionResult.text : undefined,
       explanation: actionResult?.actionId === "explain" ? actionResult.text : undefined,
       context: selectionContext,
+      sourceContext: {
+        surface: "selection_toolbar",
+        pageTitle: document.title?.trim() || undefined,
+        contentSummary: selectionContext,
+        sentenceText: selectedText,
+      },
       url: window.location.href,
       hostname: window.location.hostname,
       note: actionResult?.actionId === "explain" ? actionResult.text : undefined,

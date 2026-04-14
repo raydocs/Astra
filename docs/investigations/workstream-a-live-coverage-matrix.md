@@ -1,6 +1,6 @@
 # Astra Live Coverage Matrix (Current Reality)
 
-_Last updated: 2026-04-14 (M1-BF-01 popup/learning-loop replay note)_
+_Last updated: 2026-04-14 (optional learning-loop green replay + harness notes)_
 
 This matrix is the release-facing truth source for live coverage.
 
@@ -26,7 +26,7 @@ It separates:
 | site-automation | Yes | Yes (`bench-live/site-automation-autostart`) | **Yes** (`extension-core`) | Extension-loaded bootstrap proof is in required lane |
 | onboarding | No deterministic bench lane in `bench/` (live-only smoke today) | Yes (`bench-live/onboarding-smoke`) | **Yes** (`extension-core`) | Treated as extension-loaded smoke credibility check |
 | vocabulary | Deterministic bench exists (learning-loop surfaces) | Yes (`bench-live/vocabulary-srs-smoke`) | **Yes** (`extension-core`) | Extension-loaded smoke in required lane |
-| popup-deep-read | No deterministic bench lane yet | Yes (`bench-live/popup-deep-read-proof`) | No | Credible optional browser-backed popup proof exists via `popup-proof`; `learning-loop` remains optional in Month 1. **Fresh replay (2026-04-14):** `popup-proof` **failed** — see `docs/investigations/m1-bf-01-popup-learning-loop-replay-2026-04-14.md`. |
+| popup-deep-read | No deterministic bench lane yet | Yes (`bench-live/popup-deep-read-proof`) | No | Credible optional browser-backed popup proof exists via `popup-proof`; `learning-loop` remains optional in Month 1. **Replay doc:** `docs/investigations/m1-bf-01-popup-learning-loop-replay-2026-04-14.md` (post-harness **green** optional lane run ids + pre-harness failure baseline for archaeology). |
 | interaction-priority | Yes | Yes (`bench-live/interaction-priority-basic` + holdout stress) | No | Live scenario exists but is not release-blocking today |
 | frame-coordination | Yes | Yes (`bench-live/frame-coordination-basic`) | No | Live scenario exists but is not release-blocking today |
 | hover | Yes | Yes (`bench-live/hover-translation-basic` + holdout moving-targets) | No | Standard browser-backed relay-stub proof exists; currently optional |
@@ -66,11 +66,12 @@ It separates:
 
 1. `bench-live/popup-deep-read-proof`
 2. `bench-live/vocabulary-srs-smoke`
+3. `bench-live/learning-loop-revisit-smoke`
 
 ## Open credibility gaps (must stay explicit)
 
 1. **Hover/selection now have credible browser-backed proof, but remain optional by Month 1 policy**: the current lane is a combined UX lane, separate required-lane semantics/CI ownership are not yet defined, and Month 1 should avoid over-promoting non-core UX proof.
-2. **Popup deep-read now has credible browser-backed proof, but is still optional** (`bench-live/popup-deep-read-proof`, `popup-proof`, `learning-loop`) and is not a required release gate in Month 1. The latest in-repo replay summary documents a **failed** `popup-proof` run; treat optional learning-loop credibility as **environment- and timing-dependent** until a green replay is attached.
+2. **Popup deep-read now has credible browser-backed proof, but is still optional** (`bench-live/popup-deep-read-proof`, `popup-proof`, `learning-loop`) and is not a required release gate in Month 1. Treat older `ERR_BLOCKED_BY_CLIENT` / wrong-relay failures as **harness regressions** superseded by the 2026-04-14 driver + scenario fixes unless reproduced on current `main`; optional **green** replay run ids are recorded in `m1-bf-01-popup-learning-loop-replay-2026-04-14.md` (Playwright Chromium + harness fixes).
 3. Several other live-covered surfaces remain **optional** rather than release-blocking.
 4. **Subtitle timing instability risk** remains open (`docs/investigations/workstream-f-live-flaky-inventory.md`).
 

@@ -20,6 +20,8 @@ import {
   type DocumentFormat,
   type FileFormat,
 } from "./subtitle-parser"
+import { translateTexts } from "@/utils/translate/translate"
+import { saveVocabularyEntry } from "@/utils/storage/vocabulary"
 
 type Phase = "idle" | "parsed" | "translating" | "done" | "error"
 
@@ -45,6 +47,10 @@ export function SubtitleReaderApp() {
   const [docEntries, setDocEntries] = useState<DocumentEntry[]>([])
   const [translations, setTranslations] = useState<Map<number, string>>(new Map())
   const [progress, setProgress] = useState({ current: 0, total: 0 })
+  const [explainingIndex, setExplainingIndex] = useState<number | null>(null)
+  const [explanations, setExplanations] = useState<Record<number, string>>({})
+  const [savingIndex, setSavingIndex] = useState<number | null>(null)
+  const [savedRowKeys, setSavedRowKeys] = useState<Set<string>>(() => new Set())
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
@@ -144,6 +150,70 @@ export function SubtitleReaderApp() {
 
     setTranslations(new Map(newTranslations))
     setPhase("done")
+  }
+
+  const rowSaveKey = (index: number, text: string) => `${index}:${text.slice(0, 120)}`
+
+  const handleExplainRow = async (rowIndex: number, text: string) => {
+    if (!text.trim() || explainingIndex !== null) return
+    setExplainingIndex(rowIndex)
+    try {
+      const targetLang = await getTargetLang()
+      const result = await translateTexts({
+        texts: [text],
+        targetLang,
+        task: "explain",
+      })
+      const explanation = result.ok
+        ? (result.translations[0] ?? "")
+        : `Warning: ${result.error.message}`
+      setExplanations((prev) => ({ ...prev, [rowIndex]: explanation }))
+    } catch (err) {
+      setExplanations((prev) => ({
+        ...prev,
+        [rowIndex]: `Warning: ${err instanceof Error ? err.message : "Request failed."}`,
+      }))
+    } finally {
+      setExplainingIndex(null)
+    }
+  }
+
+  const handleSaveRow = async (rowIndex: number, text: string) => {
+    if (!text.trim() || savingIndex !== null) return
+    const key = rowSaveKey(rowIndex, text)
+    if (savedRowKeys.has(key)) return
+
+    setSavingIndex(rowIndex)
+    try {
+      await saveVocabularyEntry({
+        text: text.trim(),
+        translation: translations.get(rowIndex) || undefined,
+        explanation: explanations[rowIndex],
+        context: `${fileName} · row ${rowIndex + 1}`,
+        sourceContext: {
+          surface: "subtitle_reader",
+          pageTitle: fileName || "File translator",
+          contentSummary: formatLabel(fileFormat),
+          sentenceText: text.trim(),
+          sentenceIndex: rowIndex,
+        },
+        url: typeof window !== "undefined" ? window.location.href : undefined,
+        hostname: typeof window !== "undefined" && window.location.hostname
+          ? window.location.hostname
+          : "extension",
+      })
+      setSavedRowKeys((prev) => new Set(prev).add(key))
+      void upsertOwnedSubtitleFileFromImport({
+        fileName: fileName || "subtitles.srt",
+        formatLabel: formatLabel(fileFormat),
+        cueOrEntryCount: itemCount,
+        status: "saved",
+      })
+    } catch {
+      // Non-fatal — user can retry
+    } finally {
+      setSavingIndex(null)
+    }
   }
 
   const handleExport = (exportFormat: "srt" | "vtt" | "md") => {
@@ -268,6 +338,7 @@ export function SubtitleReaderApp() {
                   <th style={thStyle}>#</th>
                   <th style={thStyle}>Original</th>
                   <th style={thStyle}>Translation</th>
+                  <th style={thStyle}>Learn</th>
                 </tr>
               </thead>
               <tbody>
@@ -277,6 +348,33 @@ export function SubtitleReaderApp() {
                     <td style={tdStyle}>{entry.text}</td>
                     <td style={{ ...tdStyle, color: "#6366f1" }}>
                       {translations.get(i) ?? (phase === "translating" ? "..." : "")}
+                    </td>
+                    <td style={tdStyle}>
+                      {phase === "done" && (
+                        <div style={{ display: "flex", flexDirection: "column", gap: 6, alignItems: "flex-start" }}>
+                          <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                            <button
+                              type="button"
+                              onClick={() => void handleExplainRow(i, entry.text)}
+                              disabled={explainingIndex !== null}
+                              style={smallBtnStyle}
+                            >
+                              {explainingIndex === i ? "…" : "Explain"}
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => void handleSaveRow(i, entry.text)}
+                              disabled={savingIndex !== null || savedRowKeys.has(rowSaveKey(i, entry.text))}
+                              style={smallBtnStyle}
+                            >
+                              {savedRowKeys.has(rowSaveKey(i, entry.text)) ? "Saved" : savingIndex === i ? "…" : "Save"}
+                            </button>
+                          </div>
+                          {explanations[i] && (
+                            <div style={explainBoxStyle}>{explanations[i]}</div>
+                          )}
+                        </div>
+                      )}
                     </td>
                   </tr>
                 ))}
@@ -290,6 +388,7 @@ export function SubtitleReaderApp() {
                   <th style={thStyle}>Time</th>
                   <th style={thStyle}>Original</th>
                   <th style={thStyle}>Translation</th>
+                  <th style={thStyle}>Learn</th>
                 </tr>
               </thead>
               <tbody>
@@ -302,6 +401,33 @@ export function SubtitleReaderApp() {
                     <td style={tdStyle}>{cue.text}</td>
                     <td style={{ ...tdStyle, color: "#6366f1" }}>
                       {translations.get(i) ?? (phase === "translating" ? "..." : "")}
+                    </td>
+                    <td style={tdStyle}>
+                      {phase === "done" && (
+                        <div style={{ display: "flex", flexDirection: "column", gap: 6, alignItems: "flex-start" }}>
+                          <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                            <button
+                              type="button"
+                              onClick={() => void handleExplainRow(i, cue.text)}
+                              disabled={explainingIndex !== null}
+                              style={smallBtnStyle}
+                            >
+                              {explainingIndex === i ? "…" : "Explain"}
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => void handleSaveRow(i, cue.text)}
+                              disabled={savingIndex !== null || savedRowKeys.has(rowSaveKey(i, cue.text))}
+                              style={smallBtnStyle}
+                            >
+                              {savedRowKeys.has(rowSaveKey(i, cue.text)) ? "Saved" : savingIndex === i ? "…" : "Save"}
+                            </button>
+                          </div>
+                          {explanations[i] && (
+                            <div style={explainBoxStyle}>{explanations[i]}</div>
+                          )}
+                        </div>
+                      )}
                     </td>
                   </tr>
                 ))}
@@ -347,6 +473,23 @@ const btnStyle: React.CSSProperties = {
   fontSize: 14,
   fontWeight: 600,
   cursor: "pointer",
+}
+
+const smallBtnStyle: React.CSSProperties = {
+  ...btnStyle,
+  padding: "4px 10px",
+  fontSize: 12,
+}
+
+const explainBoxStyle: React.CSSProperties = {
+  maxWidth: 280,
+  fontSize: 12,
+  lineHeight: 1.45,
+  color: "#1e3a8a",
+  background: "#eff6ff",
+  border: "1px solid #bfdbfe",
+  borderRadius: 6,
+  padding: "6px 8px",
 }
 
 const tableStyle: React.CSSProperties = {

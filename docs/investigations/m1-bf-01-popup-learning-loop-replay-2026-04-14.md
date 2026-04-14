@@ -2,50 +2,55 @@
 
 _Task: `M1-BF-01` from `docs/investigations/claude-sequential-task-pack-2026-04-14.md`_
 
-## Preconditions (this run)
+## Prerequisites
+
+- **Playwright Chromium** (required for extension-loaded scenarios; avoids `net::ERR_BLOCKED_BY_CLIENT` on `chrome-extension://…` when the driver would otherwise fall back to system Chrome):
+
+  ```bash
+  npx playwright install chromium
+  ```
 
 - Extension build: `pnpm build` (output `.output/chrome-mv3`)
-- Browser: `npx playwright install chromium` (Playwright Chromium used by bench-live driver)
-- Environment: `CI=true` (matches CI live-browser semantics)
+- Environment: `CI=true` (matches CI live-browser semantics for bench driver)
 - Display: `xvfb-run -a` (headless Linux VM)
 
-## Commands executed
+## Code fixes applied after the initial failed replay
 
-1. `pnpm bench:live:lane:popup-proof`  
-   → `pnpm bench:live -- --scenario bench-live/popup-deep-read-proof`
+1. **`bench-live/popup-deep-read-proof` provider seeding** — Removed a dummy `apiKey` from the seeded config so translations route to the in-scenario mock relay (real router prefers **direct** when an API key is present).
+2. **`bench-live/driver.ts` — `openExtensionActionPopup`** — Avoid `waitForLoadState("domcontentloaded")` on `chrome-extension://` popup pages; it could surface as `page.goto: net::ERR_BLOCKED_BY_CLIENT` in some Chromium builds. Popups opened via `window.open` / CDP now wait on `body` / `document.readyState` instead.
+3. **Storage seeding** — Extension HTML seed pages use `waitUntil: "commit"` where applicable to avoid blocked navigations during `chrome.storage.local` injection.
 
-2. `pnpm bench:live:lane:learning-loop`  
-   → same as (1), then `pnpm bench:live -- --scenario bench-live/vocabulary-srs-smoke`  
-   **Note:** step (1) failed, so the chained lane **did not** reach `bench-live/vocabulary-srs-smoke` in this replay.
+## Green replay summary (2026-04-14)
 
-## Canonical scenario IDs (unchanged)
+**Lane:** `pnpm bench:live:lane:learning-loop` (`CI=true`, `xvfb-run -a`, Playwright Chromium installed) — **pass** (representative headless run).
 
-| Lane | `package.json` script | Scenarios |
-|------|----------------------|-----------|
+`package.json` runs the lane as **three separate** `pnpm bench:live` invocations, so each scenario gets its own **Run ID** and artifact directory:
+
+| Scenario | Run ID | Artifacts |
+|----------|--------|-----------|
+| `bench-live/popup-deep-read-proof` | `live-20260414T082101-tv27s0` | `bench-live-results/live-20260414T082101-tv27s0/` |
+| `bench-live/vocabulary-srs-smoke` | `live-20260414T082106-6s38in` | `bench-live-results/live-20260414T082106-6s38in/` |
+| `bench-live/learning-loop-revisit-smoke` | `live-20260414T082109-c792v2` | `bench-live-results/live-20260414T082109-c792v2/` |
+
+Structured pointers: each folder’s `result.json` / `result.md`; `bench-live-results/latest.result.json` reflects the **last** scenario in the chain (revisit smoke) only.
+
+Re-run locally after `pnpm build` and `npx playwright install chromium`:
+
+```bash
+CI=true xvfb-run -a pnpm bench:live:lane:learning-loop
+```
+
+## Historical baseline (early 2026-04-14 replay, pre-harness)
+
+Before relay-only seeding + popup/storage harness fixes, an in-repo replay documented a **failed** `bench-live/popup-deep-read-proof` run (`run-id` `live-20260414T061146-0odzcd`, `page.waitForFunction` timeout). Treat that row as **superseded** for triaging current code; reproduce on current `main` if investigating regressions.
+
+## Canonical scenario IDs
+
+| Lane | Command | Scenarios |
+|------|---------|-----------|
 | `popup-proof` | `pnpm bench:live:lane:popup-proof` | `bench-live/popup-deep-read-proof` |
-| `learning-loop` | `pnpm bench:live:lane:learning-loop` | `bench-live/popup-deep-read-proof`, then `bench-live/vocabulary-srs-smoke` |
+| `learning-loop` | `pnpm bench:live:lane:learning-loop` | `bench-live/popup-deep-read-proof` → `bench-live/vocabulary-srs-smoke` → `bench-live/learning-loop-revisit-smoke` (matches `package.json`) |
 
-## Run result (not green)
+## Artifacts
 
-| Item | Value |
-|------|--------|
-| Run ID | `live-20260414T061146-0odzcd` |
-| Scenario | `bench-live/popup-deep-read-proof` |
-| Status | **fail** |
-| Primary error | `page.waitForFunction: Timeout 25000ms exceeded.` (see `popup-deep-read-proof.ts` stack in `result.json`) |
-| Wall clock (runtime) | started `2026-04-14T06:11:46.645Z`, finished `2026-04-14T06:12:14.545Z` |
-
-### Artifact paths (local, after run)
-
-Artifacts live under `bench-live-results/` (gitignored). For this run:
-
-- Directory: `bench-live-results/live-20260414T061146-0odzcd/`
-- Structured outputs: `result.json`, `result.md`
-- Symlinks updated: `bench-live-results/latest.result.json`, `bench-live-results/latest.result.md`
-
-Re-run the lane locally to regenerate files; this note is the in-repo anchor for **what** was run and **which** `run-id` produced the attached structured result on the machine that executed M1-BF-01.
-
-## Interpretation
-
-- This is a **fresh** replay summary with a **precise failure report**, not a skipped run and not a green pass.
-- Month 1 optional popup / learning-loop narrative must treat this as **current negative evidence** until a subsequent green replay is recorded (see next task pack item: `M2-B-01`).
+Structured results are written to `bench-live-results/<run-id>/` (gitignored). After a local run, link new `run-id`s in Month 1 / Month 2 closeout notes if policy requires a fresh attach.

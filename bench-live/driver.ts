@@ -314,9 +314,10 @@ async function resolveExtensionSeedStoragePageCandidates(extensionPath?: string)
     }
   }
 
-  const fromManifest = manifest.action?.default_popup
-    ?? manifest.options_ui?.page
-    ?? manifest.options_page
+  // Do not use `action.default_popup` here: navigating to `popup.html` via `page.goto` often fails with
+  // `net::ERR_BLOCKED_BY_CLIENT` in Chromium builds used for bench-live, which breaks storage seeding for
+  // scenarios that need preloaded chrome.storage.local state.
+  const fromManifest = manifest.options_ui?.page ?? manifest.options_page
   if (fromManifest) {
     const normalized = fromManifest.replace(/^\//, "")
     if (!candidates.includes(normalized)) {
@@ -343,8 +344,10 @@ async function seedExtensionStorageFromPage(options: {
     const setupPage = await options.context.newPage()
     try {
       await setupPage.goto(`chrome-extension://${options.extensionId}/${extensionPagePath}`, {
-        waitUntil: "domcontentloaded",
-        timeout: 15_000,
+        // `domcontentloaded` can surface as `net::ERR_BLOCKED_BY_CLIENT` for some extension HTML
+        // entrypoints in Chromium-for-Testing; `commit` is enough to attach scripts + chrome.storage.
+        waitUntil: "commit",
+        timeout: 20_000,
       })
       await setupPage.waitForFunction(
         `typeof chrome !== "undefined" && !!chrome.storage?.local`,
@@ -1024,13 +1027,30 @@ export async function openExtensionActionPopup(options: {
     await openPopupViaWindowOrCdp()
   }
 
+  const waitForPopupDomReady = async (page: Page, remainingMs: number) => {
+    // `waitForLoadState("domcontentloaded")` can surface as `page.goto` failures with
+    // `net::ERR_BLOCKED_BY_CLIENT` for chrome-extension:// URLs in some Chromium builds.
+    // Waiting for DOM presence is enough for extension popups opened via window.open/CDP.
+    const deadline = Date.now() + remainingMs
+    const timeLeft = () => deadline - Date.now()
+    try {
+      await page.waitForSelector("body", { timeout: Math.max(500, timeLeft()) })
+    } catch (err) {
+      const left = timeLeft()
+      if (left <= 0) throw err
+      await page.waitForFunction(
+        () => document.readyState === "complete" || document.readyState === "interactive",
+        undefined,
+        { timeout: Math.max(500, left) },
+      )
+    }
+  }
+
   const deadline = Date.now() + timeoutMs
   while (Date.now() < deadline) {
     for (const page of options.context.pages()) {
       if (!knownPages.has(page) && page.url().startsWith(popupUrlPrefix)) {
-        await page.waitForLoadState("domcontentloaded", {
-          timeout: Math.max(250, deadline - Date.now()),
-        })
+        await waitForPopupDomReady(page, Math.max(250, deadline - Date.now()))
         return page
       }
     }
@@ -1039,7 +1059,7 @@ export async function openExtensionActionPopup(options: {
 
   const existingPopupPage = options.context.pages().find((page) => page.url().startsWith(popupUrlPrefix))
   if (existingPopupPage) {
-    await existingPopupPage.waitForLoadState("domcontentloaded", { timeout: timeoutMs })
+    await waitForPopupDomReady(existingPopupPage, Math.max(250, deadline - Date.now()))
     return existingPopupPage
   }
 
