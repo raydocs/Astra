@@ -859,7 +859,9 @@ Orchestrator 月末判分时，只有 `gate-ready` 才能计为本月主线完�
 
 - [x] **Node-owned 控制面路由清单**：`docs/investigations/control-plane-surface-inventory-2026-04-15.md`
 - [x] **Lifecycle 操作 runbook 附录**（export/delete/repair/revoke 期望与 copy 规则）：`docs/investigations/lifecycle-operations-runbook-month5-2026-04-15.md`
-- [ ] **三端文案完全对齐**：需在 extension popup/options、`web`、文档中逐屏 diff（inventory 已列 wording 规则；逐屏 diff 仍 backlog）；执行清单见 `docs/investigations/month-5-copy-alignment-checklist-2026-04-16.md`（**backlog execution**，需 owner 逐屏 diff 后才可视为完成）
+- [ ] **三端文案完全对齐**：需在 extension popup/options、`web`、文档中逐屏 diff（inventory 已列 wording 规则；逐屏 diff 仍 backlog）；执行清单见 `docs/investigations/month-5-copy-alignment-checklist-2026-04-16.md`（**backlog execution**，需 owner 逐屏 diff 后才可视为完成）[^month5-copy-grep-audit]
+
+[^month5-copy-grep-audit]: Phase 0 自动化扫描（控制面关键词 grep 汇总，非逐屏对齐证据）：`docs/investigations/month-5-copy-grep-audit-2026-04-17.md`
 - [ ] **mobile web / iOS bridge smoke**：沿用 `ios/README.md` + web narrow viewport checklist；证据入库后勾验收；步骤与证据占位见 `docs/investigations/month-5-mobile-ios-smoke-notes-2026-04-16.md`
 
 ### Harness（Month 5）

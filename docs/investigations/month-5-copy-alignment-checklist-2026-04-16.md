@@ -4,6 +4,8 @@
 
 **North star:** `docs/investigations/control-plane-surface-inventory-2026-04-15.md` — **Extension / web visible strings** and **Wording rule** (relay fields → `fetchAstraAccount` / summary; no “unlimited” unless API sentinel; `past_due` / `canceled` same copy tree).
 
+**Phase 0 automated scan complete:** control-plane term grep audit (relay / API / session / workspace / account) — `docs/investigations/month-5-copy-grep-audit-2026-04-17.md`. This does **not** replace the checklist or full alignment sign-off.
+
 ---
 
 ## 0. Preconditions
