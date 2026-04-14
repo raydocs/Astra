@@ -814,10 +814,12 @@ Orchestrator 月末判分时，只有 `gate-ready` 才能计为本月主线完�
 |------|---|------|
 | 1–5（inventory） | P0 | [x] 见 `video-subtitle-adapter-inventory-2026-04-15.md` |
 | 6–10（YouTube） | P0/P1 | [x] inventory 与 bench-live 路径对齐；[x] 生产站 failure class 单独成表（非 fixture）：`video-subtitle-adapter-inventory-2026-04-15.md` §YouTube — failure classes (production vs fixture) |
-| 11–15（次级 adapter） | P0/P2 | [x] Bilibili fixture smoke + inventory **Bilibili — failure classes**；[ ] 真实站回归仍靠人工/扩展日志 |
+| 11–15（次级 adapter） | P0/P2 | [x] Bilibili fixture smoke + inventory **Bilibili — failure classes**；[ ] 真实站回归仍靠人工/扩展日志（fixture 与 www 生产 traffic 的区分、重放命令与证据目录约定见 `docs/investigations/month-4-video-smoke-replay-2026-04-16.md`） |
 | 16–20（subtitle-reader） | P0/P2 | [x] Reading 队列 Open 至 subtitle reader；[ ] web 端 subtitle 与扩展完全 parity 仍 backlog |
-| 21–25（revisit） | P0/P2 | [ ] |
+| 21–25（revisit） | P0/P2 | [x] 见 [^m4-revisit] |
 | 26–30（claim） | P0/P2 | [x] matrix 附录 + `release-readiness-checklist.md` Gate 4 已加 video/subtitle 审查行（默认 No，视频 RC 升为 Yes） |
+
+[^m4-revisit]: **Revisit 证据边界（诚实口径）：** `bench-live/learning-loop-revisit-smoke`、入口矩阵 `docs/investigations/learning-loop-navigation-matrix-2026-04-14.md`、subtitle file 链 `docs/investigations/subtitle-reader-learning-chain-2026-04-14.md`（含 `bench-live/subtitle-file-basic` 等）。覆盖的是 **Vocabulary「Reading」Open** 与 **subtitle reader / fixture 文章** 路径，**不是**任意网页视频的通用「看完再打开」。
 
 ## Month 5 — Reduce Control-Plane Drag
 
@@ -866,11 +868,11 @@ Orchestrator 月末判分时，只有 `gate-ready` 才能计为本月主线完�
 
 | 区间 | P | 状态 |
 |------|---|------|
-| 1–5（inventory + 文案规则） | P0/P1 | [x] inventory 文档；**UI copy 对齐** [ ] |
-| 6–12（lifecycle） | P0/P1 | [x] runbook 附录；**各流程 smoke** [ ] |
-| 13–17（mobile/iOS） | P0/P1 | [ ] |
+| 1–5（inventory + 文案规则） | P0/P1 | [x] inventory 文档；**UI copy 对齐** checklist 已落地（逐屏 diff / 证据仍 backlog）：`docs/investigations/month-5-copy-alignment-checklist-2026-04-16.md` |
+| 6–12（lifecycle） | P0/P1 | [x] runbook 附录；**各流程 smoke** 未进 CI，runbook 对齐的 defer 说明见 `docs/investigations/month-5-lifecycle-smoke-deferred-2026-04-16.md` |
+| 13–17（mobile/iOS） | P0/P1 | [x] 手工 smoke 步骤与证据占位：`docs/investigations/month-5-mobile-ios-smoke-notes-2026-04-16.md`（执行与截图仍 backlog） |
 | 18–22（background） | P0/P2 | [x] `control-plane-surface-inventory` 增 **Incident triage** 表 |
-| 23–26（release） | P0/P2 | [x] `release-readiness-checklist.md` Gate 4 增 control-plane evidence 行；[ ] matrix 移动口径二次核对 |
+| 23–26（release） | P0/P2 | [x] `release-readiness-checklist.md` Gate 4 增 control-plane evidence 行；matrix 移动口径二次核对见 `support-matrix-2026-q2.md` § Mobile claim cross-check |
 
 ## Month 6 — Harden, Freeze, Publish Honestly
 

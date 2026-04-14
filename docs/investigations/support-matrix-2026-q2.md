@@ -56,6 +56,10 @@ Platforms covered in this matrix:
 - “Cross-device continuity/sync is already done.”
 - “Build success means production-level support parity.”
 
+### Mobile claim cross-check (Month 5 plan ledger)
+
+Plan Month 5 row **23–26** defers **「matrix 移动口径二次核对」** to this file: mobile / iOS rows above stay **Experimental** until device-backed evidence closes the gaps list. Execution checklist and evidence placeholders live in `docs/investigations/month-5-mobile-ios-smoke-notes-2026-04-16.md` (manual); no change to support level implied until that doc is completed with attachments.
+
 ## Open Validation Gaps to Close
 
 1. iOS Safari real-device validation pass (popup/content/background/storage/messaging stability).
