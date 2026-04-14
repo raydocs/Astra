@@ -206,6 +206,7 @@ export const popupDeepReadProofScenario: LiveScenarioDefinition<PopupDeepReadPro
 
       await extCtx.page.waitForFunction(
         () => !!document.querySelector("article"),
+        undefined,
         { timeout: 10_000 },
       )
 
@@ -213,6 +214,7 @@ export const popupDeepReadProofScenario: LiveScenarioDefinition<PopupDeepReadPro
       await extCtx.page.reload({ waitUntil: "domcontentloaded", timeout: 15_000 })
       await extCtx.page.waitForFunction(
         () => !!document.querySelector("article"),
+        undefined,
         { timeout: 10_000 },
       )
 
@@ -259,7 +261,8 @@ export const popupDeepReadProofScenario: LiveScenarioDefinition<PopupDeepReadPro
 
         await popupPage.locator('[data-testid="study-sentence-card-0"] button').nth(0).click()
         await popupPage.waitForFunction(
-          () => /EXPLAIN:|ZH:|Warning:/.test(document.body.innerText),
+          () => document.body.innerText.includes("EXPLAIN:"),
+          undefined,
           { timeout: 25_000 },
         )
         explainWorked = true
@@ -293,6 +296,7 @@ export const popupDeepReadProofScenario: LiveScenarioDefinition<PopupDeepReadPro
         await destinationPage.waitForLoadState("domcontentloaded", { timeout: 10_000 })
         await destinationPage.waitForFunction(
           () => document.body.innerText.includes("Popup deep-read"),
+          undefined,
           { timeout: 10_000 },
         )
         destinationOpened = destinationPage.url().includes("/vocabulary")
