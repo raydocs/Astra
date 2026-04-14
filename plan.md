@@ -5040,65 +5040,72 @@ Claim impact:
 - Month 3 先定模型
 - Month 4 再扩 proof
 
-## 16B. Harness Scoreboard
+## 16A. Plan-Change Note (Reality Check)
 
-_Captured: 2026-04-13. Method: harness scoring against north stars, workstreams, monthly goals, acceptance criteria._
+Plan change date: `2026-04-13`
+Changed sections: `16B`, `16C`
+Reason:
 
-### 16B.1 North Stars
+- Replace optimistic completion posture with evidence-backed status.
+- Align plan verdict language with available month closeouts and evidence bundles.
 
-| # | North Star | Score | Verdict |
-|---|-----------|------:|---------|
-| 1 | Extension core proof | 88 | pass |
-| 2 | Learning loop | 89 | pass |
-| 3 | Owned reading | 86 | pass |
-| 4 | Video/subtitle | 87 | pass |
-| 5 | Control-plane backgrounding | 82 | carry |
-| 6 | Release discipline | 90 | pass |
+Impact:
 
-### 16B.2 Workstreams
+- delayed: overall completion claim（从“overall pass”改为“window in progress, evidence incomplete”）
+- accelerated: none
+- unchanged: 6-month roadmap structure、month themes、weekly execution axis
 
-| Workstream | Score | Verdict |
-|-----------|------:|---------|
-| A Extension Core Proof | 88 | pass |
-| B Learning Loop | 90 | pass |
-| C Owned Reading | 87 | pass |
-| D Video And Subtitle | 86 | pass |
-| E Control Plane | 80 | carry |
-| F Release Credibility | 91 | pass |
-| G Privacy / Routing / Quality | 81 | carry |
-| H Activation / Product Coherence | 88 | pass |
+Gate impact:
 
-### 16B.3 Monthly Goals
+- Month 1 verdict fixed to `partial`（`69/100`）
+- Month 2-6 gate status remains `unverified` until corresponding closeouts exist
 
-| Month | Goal | Score | Verdict |
-|-------|------|------:|---------|
-| M1 | Prove current extension core | 84 | carry |
-| M2 | Finish learning-loop v1 | 87 | pass |
-| M3 | Unify owned reading entry model | 86 | pass |
-| M4 | Make video/subtitle + revisit credible | 89 | pass |
-| M5 | Reduce control-plane drag | 82 | carry |
-| M6 | Harden, freeze, publish honestly | 88 | pass |
+Claim impact:
 
-### 16B.4 Acceptance Criteria
+- claims tightened
 
-| Month | Score | Verdict |
-|-------|------:|---------|
-| M1 acceptance | 89 | pass |
-| M2 acceptance | 90 | pass |
-| M3 acceptance | 89 | pass |
-| M4 acceptance | 92 | pass |
-| M5 acceptance | 86 | pass |
-| M6 acceptance | 91 | pass |
+## 16B. Evidence-Backed Status Snapshot (As Of 2026-04-13)
 
-### 16B.5 Weak Spots
+_Data basis: `docs/investigations/month-1-closeout-2026-04-13.md` + current repo evidence presence check._
 
-- North Star 5 / Workstream E: hygiene focus, not moat. Acceptable but not strong.
-- Workstream G: strong on guardrails, weak on competitive narrative.
-- M1 / M5 goals: harder than other months, still more abstract.
+### 16B.1 Window-level evidence reality
 
-### 16B.6 Verdict
+- 已确认 Month 1 closeout：`verdict = partial`，`score = 69/100`
+- 目前仅找到 Month 1 closeout；未找到 Month 2-6 closeout 或 final evidence pack 文件
+- release/docs/proof 对齐在当前已跑通 lane 上是真实进展
+- 但 `overall pass` 结论缺少与 month closeout / evidence bundles 对应的证据链
 
-Overall: **pass**. All acceptance criteria pass. 3 carry items (NS5, WE, WG) are acceptable carry, not failures.
+### 16B.2 Completed vs Partial vs Missing (status correction)
+
+| Area | Completed | Partial | Missing / Not Yet Proven | Corrected status |
+|---|---|---|---|---|
+| Extension core proof + release/docs/proof alignment | 当前主 lanes 的对齐与证明机制真实存在 | Month-level closeout coverage不完整 | Month 2-6 closeout + final evidence pack | partial |
+| Learning loop | 主路径能力与 proof 基础多数真实 | gate-ready 完整度仍依赖后续月度 closeout | 连续月度 evidence registry 汇总 | mostly real, partial |
+| Owned reading | reader surfaces 已存在（PDF/EPUB/subtitle/article） | unified owned-reading item model/queue/revisit product line 仍不清晰 | 明确统一模型与可重放证据链 | partial |
+| Video/subtitle | YouTube + subtitle file 路径最强 | proof breadth 偏窄，平台广度/同级稳定性不足 | 更广平台 parity 证据与月度 closeout | partial |
+| Control-plane | web/cloud/auth/account/lifecycle 主路径真实 | mobile/iOS 仍以 bridge-first/experimental 为主 | mobile parity 级证据与稳定口径 | carry-but-acceptable |
+
+### 16B.3 Corrected bottom-line verdict
+
+- **Not all roadmap goals are done.**
+- **Current defensible verdict（2026-04-13）: `partial` (69/100 at Month 1), with incomplete month-closeout evidence for Month 2-6.**
+- `Overall: pass` 在当前证据面下不成立，应撤回。
+
+## 16C. Competitor Catch-up Estimate (Scoped, From 2026-04-13 Baseline)
+
+### 16C.1 Positioning correction
+
+- `Read Frog`：当前最近邻 browser-learning 竞品。
+- `Trancy`：用户侧 video/mobile packaging 更强。
+- Astra 当前不应宣称对 Trancy 或 broader mobile/video 叙事已 parity。
+
+### 16C.2 Date-scoped catch-up estimate
+
+- **Browser-learning parity（对 Read Frog 的核心阅读学习主链可比性）**：
+  - 估计窗口：`2026-07-13` → `2026-09-13`（从 2026-04-13 起约 3-5 个月，前提是 Month 2-4 gates 按证据收口）
+- **Broader + mobile parity（含更强 video/mobile packaging，对标 Trancy 级别）**：
+  - 不在当前窗口内可保守宣称；`2026-10-12` 前不应 claim parity
+  - 最早评估点：`2027-04-13`（需额外窗口与证据）
 
 ## 17. Prioritization Rules For Any New Idea
 
