@@ -73,9 +73,9 @@ export default defineConfig({
         browser_specific_settings: {
           gecko: {
             id: "astra@nicepkg.cn",
-            // Firefox requires data_collection_permissions for new submissions.
-            // addons-linter requires a min version that actually supports this key
-            // (desktop 140+, Android 142+); use 142 to satisfy both.
+            // Firefox requires data_collection_permissions for new submissions; addons-linter
+            // requires a min version that actually supports this manifest key (FF 140+ desktop,
+            // FF 142+ Android per mozilla/addons-linter).
             strict_min_version: "142.0",
             data_collection_permissions: {
               required: ["none"],
