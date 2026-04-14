@@ -21,6 +21,7 @@ async function createEnv() {
       sessionSecret: "test-secret",
       platformMirrorSecret: "mirror-secret",
       userDbPath,
+      videoNoteStorePath: join(dir, "video-notes.json"),
       loginEmail: "demo@astra.local",
       loginPassword: "astra-demo-pass",
       plan: "pro",
@@ -41,6 +42,7 @@ async function createEnv() {
       proRpm: 120,
       sessionTtlMs: 30 * 24 * 60 * 60 * 1000,
       syncMaxMutationsPerRequest: 200,
+      videoNoteMaxConcurrentJobs: 1,
     } satisfies RelayEnv,
     userDbPath,
   }

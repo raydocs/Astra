@@ -1,12 +1,19 @@
 import Dexie from "dexie"
 import { z } from "zod"
 
+import {
+  VideoNoteJobStatusSchema,
+  VideoNotePlatformSchema,
+  VideoTranscriptSegmentSchema,
+} from "@/types/video-notes"
+
 const RECENT_IMPORTS_STORAGE_KEY = "astra.web.recent-imports.v1"
 const TEXT_WORKSPACE_STORAGE_KEY = "astra.web.text-workspace.v1"
 const ARTICLE_WORKSPACE_STORAGE_KEY = "astra.web.article-workspace.v1"
 const PDF_WORKSPACE_STORAGE_KEY = "astra.web.pdf-workspace.v1"
 const EPUB_WORKSPACE_STORAGE_KEY = "astra.web.epub-workspace.v1"
 const SUBTITLE_WORKSPACE_STORAGE_KEY = "astra.web.subtitle-workspace.v1"
+const VIDEO_NOTE_WORKSPACE_STORAGE_KEY = "astra.web.video-note-workspace.v1"
 const ACCOUNT_PREFS_STORAGE_KEY = "astra.web.account-prefs.v1"
 const WORKSPACE_DB_NAME = "astra-web-workspaces"
 
@@ -124,6 +131,29 @@ const SubtitleWorkspaceSnapshotSchema = z.object({
   lastExportedAt: z.string().trim().min(1).nullable().default(null),
 })
 
+const VideoNoteWorkspaceSnapshotSchema = z.object({
+  jobId: z.string().trim().min(1),
+  artifactId: z.string().trim().min(1).nullable().default(null),
+  sourceUrl: z.string().trim().min(1).refine(isSafeHttpUrl, "Video URL must use http(s)."),
+  platform: VideoNotePlatformSchema,
+  title: z.string().trim().min(1).nullable().default(null),
+  status: VideoNoteJobStatusSchema,
+  markdown: z.string(),
+  transcriptSegments: z.array(VideoTranscriptSegmentSchema).default([]),
+  keyMoments: z.array(z.object({
+    label: z.string().trim().min(1),
+    startMs: z.number().int().nonnegative(),
+  })).default([]),
+  screenshots: z.array(z.object({
+    id: z.string().trim().min(1),
+    startMs: z.number().int().nonnegative().nullable().default(null),
+    url: z.string().trim().min(1),
+  })).default([]),
+  generatedAt: z.string().trim().min(1),
+  updatedAt: z.string().trim().min(1),
+  lastViewedAt: z.string().trim().min(1).nullable().default(null),
+})
+
 const AccountPreferencesSchema = z.object({
   lastEmail: z.string().trim().email().nullable().default(null),
 })
@@ -145,6 +175,7 @@ export type EpubChapterItem = z.infer<typeof EpubChapterItemSchema>
 export type EpubChapterPreviewSnapshot = z.infer<typeof EpubChapterPreviewSchema>
 export type EpubWorkspaceSnapshot = z.infer<typeof EpubWorkspaceSnapshotSchema>
 export type SubtitleWorkspaceSnapshot = z.infer<typeof SubtitleWorkspaceSnapshotSchema>
+export type VideoNoteWorkspaceSnapshot = z.infer<typeof VideoNoteWorkspaceSnapshotSchema>
 export type ImportLibraryEntry = z.infer<typeof ImportLibraryEntrySchema>
 
 interface WorkspaceRecord {
@@ -170,6 +201,7 @@ const LARGE_WORKSPACE_KEYS = {
   pdf: "pdf",
   epub: "epub",
   subtitle: "subtitle",
+  videoNote: "video-note",
 } as const
 const LARGE_WORKSPACE_DEFINITIONS = [
   {
@@ -195,6 +227,12 @@ const LARGE_WORKSPACE_DEFINITIONS = [
     schema: SubtitleWorkspaceSnapshotSchema,
     legacyStorageKey: SUBTITLE_WORKSPACE_STORAGE_KEY,
     label: "Subtitle workspace",
+  },
+  {
+    key: LARGE_WORKSPACE_KEYS.videoNote,
+    schema: VideoNoteWorkspaceSnapshotSchema,
+    legacyStorageKey: VIDEO_NOTE_WORKSPACE_STORAGE_KEY,
+    label: "Video-note workspace",
   },
 ] as const
 
@@ -451,12 +489,25 @@ export async function clearSubtitleWorkspace(): Promise<void> {
   await clearLargeWorkspace(LARGE_WORKSPACE_KEYS.subtitle, SUBTITLE_WORKSPACE_STORAGE_KEY)
 }
 
+export async function readVideoNoteWorkspace(): Promise<VideoNoteWorkspaceSnapshot | null> {
+  return readLargeWorkspace(LARGE_WORKSPACE_KEYS.videoNote, VideoNoteWorkspaceSnapshotSchema, VIDEO_NOTE_WORKSPACE_STORAGE_KEY)
+}
+
+export async function saveVideoNoteWorkspace(workspace: VideoNoteWorkspaceSnapshot): Promise<VideoNoteWorkspaceSnapshot> {
+  return saveLargeWorkspace(LARGE_WORKSPACE_KEYS.videoNote, VideoNoteWorkspaceSnapshotSchema, VIDEO_NOTE_WORKSPACE_STORAGE_KEY, workspace)
+}
+
+export async function clearVideoNoteWorkspace(): Promise<void> {
+  await clearLargeWorkspace(LARGE_WORKSPACE_KEYS.videoNote, VIDEO_NOTE_WORKSPACE_STORAGE_KEY)
+}
+
 export async function clearAllPersistedWorkspaces(): Promise<void> {
   await Promise.all([
     clearArticleWorkspace(),
     clearPdfWorkspace(),
     clearEpubWorkspace(),
     clearSubtitleWorkspace(),
+    clearVideoNoteWorkspace(),
   ])
 }
 
@@ -577,6 +628,7 @@ export async function resetWorkspaceStorageLifecycle(): Promise<void> {
     PDF_WORKSPACE_STORAGE_KEY,
     EPUB_WORKSPACE_STORAGE_KEY,
     SUBTITLE_WORKSPACE_STORAGE_KEY,
+    VIDEO_NOTE_WORKSPACE_STORAGE_KEY,
   ]
 
   localKeys.forEach((key) => removeStorage(key))

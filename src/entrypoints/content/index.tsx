@@ -14,6 +14,7 @@ import { mountInputTranslate } from "./components/InputTranslate"
 import { isHoverCapable } from "@/utils/ui/useViewportProfile"
 import { translatePageSubtitles, removeTranslatedSubtitles } from "./subtitle-translate"
 import {
+  captureCurrentVideoNoteSource,
   isVideoPage,
   startVideoSubtitleTranslation,
   stopVideoSubtitleTranslation,
@@ -29,11 +30,13 @@ import { extractTextFromImage, isOcrFeatureEnabled } from "@/utils/ocr/image-tex
 import { isTopFrame } from "./frame-context"
 import {
   isContentCommand,
+  isContentVideoNoteSourceCommand,
   isContentStudyContextCommand,
   isContentDetectArticleCommand,
   type ContentCommand,
   type ContentCommandResponse,
   type ContentStudyContextResponse,
+  type ContentVideoNoteSourceResponse,
   type ContentDetectArticleResponse,
 } from "@/types/messages"
 import { findContentRoot } from "@/utils/dom/traversal"
@@ -145,6 +148,21 @@ export default defineContentScript({
         const root = findContentRoot(document)
         const selector = buildSelectorForElement(root)
         sendResponse({ ok: true, selector } satisfies ContentDetectArticleResponse)
+        return true
+      }
+
+      if (isContentVideoNoteSourceCommand(message)) {
+        void handleVideoNoteSourceCommand()
+          .then(sendResponse)
+          .catch((error) => {
+            sendResponse({
+              ok: false,
+              error: {
+                code: "UNKNOWN",
+                message: error instanceof Error ? error.message : "Unexpected content error.",
+              },
+            } satisfies ContentVideoNoteSourceResponse)
+          })
         return true
       }
 
@@ -638,6 +656,21 @@ async function handleStudyContextCommand(): Promise<ContentStudyContextResponse>
   return {
     ok: true,
     context: await buildPageStudyContext(),
+  }
+}
+
+async function handleVideoNoteSourceCommand(): Promise<ContentVideoNoteSourceResponse> {
+  const source = await captureCurrentVideoNoteSource()
+  if (!source) {
+    return {
+      ok: false,
+      error: createTranslationError("CONTENT_UNAVAILABLE", "No supported current video source was detected on this page."),
+    }
+  }
+
+  return {
+    ok: true,
+    source,
   }
 }
 

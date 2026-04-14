@@ -12,12 +12,19 @@ import {
   AstraSubscriptionStatusSchema,
   AstraUsageEventSchema,
 } from "../src/types/auth"
+import {
+  VideoNoteArtifactResponseSchema,
+  VideoNoteCreateRequestSchema,
+  VideoNoteCreateResponseSchema,
+  VideoNoteStatusResponseSchema,
+} from "../src/types/video-notes"
 import { extractReadableDocumentMetadata, resolveExtractionPlan } from "../src/utils/dom/extraction"
 
 import { buildRelaySession, parseBearerToken, verifySessionToken } from "./auth"
 import { createCheckoutLink, createPortalLink } from "./billing"
 import { loadRelayEnv } from "./config"
 import { translateViaManagedProvider } from "./providers"
+import { VideoNoteService } from "./video-note-service"
 import type {
   DeviceMetadataInput,
   MirroredAnonymousIssueInput,
@@ -487,6 +494,25 @@ function assertProviderEntitlement(provider: RelayTranslateRequest["provider"], 
   }
 }
 
+function assertVideoNoteAccess(authenticated: ValidatedSessionContext) {
+  if (authenticated.session.identityMode === "anonymous" || authenticated.user.identityMode === "anonymous") {
+    throw new HttpRouteError(403, "AUTH_REQUIRED", "Video-note jobs require an authenticated Astra account.")
+  }
+}
+
+function assertVideoNoteSourceUrl(sourceUrl: string): void {
+  let parsed: URL
+  try {
+    parsed = new URL(sourceUrl)
+  } catch {
+    throw new HttpRouteError(400, "INVALID_REQUEST", "Enter a valid absolute video URL, including https://.")
+  }
+
+  if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
+    throw new HttpRouteError(400, "INVALID_REQUEST", "Only http(s) video URLs are supported.")
+  }
+}
+
 async function handleAnonymousAuth(
   request: IncomingMessage,
   response: ServerResponse,
@@ -806,6 +832,64 @@ async function handleArticleImport(
   }
 }
 
+async function handleVideoNoteCreate(
+  request: IncomingMessage,
+  response: ServerResponse,
+  env: RelayEnv,
+  users: FileUserStore,
+  videoNotes: VideoNoteService,
+) {
+  const authenticated = await requireAuthenticatedSession(request, env, users)
+  assertVideoNoteAccess(authenticated)
+  const payload = VideoNoteCreateRequestSchema.parse(await readJsonBody(request))
+  assertVideoNoteSourceUrl(payload.sourceUrl)
+  const result = await videoNotes.createJob(authenticated.user.email, payload)
+  await users.touchSession(authenticated.sessionRecord.sessionId, { seenAt: new Date() })
+  sendJson(response, 202, VideoNoteCreateResponseSchema.parse(result))
+}
+
+async function handleVideoNoteStatus(
+  request: IncomingMessage,
+  response: ServerResponse,
+  env: RelayEnv,
+  users: FileUserStore,
+  videoNotes: VideoNoteService,
+  jobId: string,
+) {
+  const authenticated = await requireAuthenticatedSession(request, env, users)
+  assertVideoNoteAccess(authenticated)
+  const job = await videoNotes.getJob(authenticated.user.email, jobId)
+  if (!job) {
+    throw new HttpRouteError(404, "CONTENT_UNAVAILABLE", "Video-note job could not be found.")
+  }
+  await users.touchSession(authenticated.sessionRecord.sessionId, { seenAt: new Date() })
+  sendJson(response, 200, VideoNoteStatusResponseSchema.parse({ job }))
+}
+
+async function handleVideoNoteArtifact(
+  request: IncomingMessage,
+  response: ServerResponse,
+  env: RelayEnv,
+  users: FileUserStore,
+  videoNotes: VideoNoteService,
+  jobId: string,
+) {
+  const authenticated = await requireAuthenticatedSession(request, env, users)
+  assertVideoNoteAccess(authenticated)
+  const job = await videoNotes.getJob(authenticated.user.email, jobId)
+  if (!job) {
+    throw new HttpRouteError(404, "CONTENT_UNAVAILABLE", "Video-note job could not be found.")
+  }
+
+  const artifact = await videoNotes.getArtifact(authenticated.user.email, jobId)
+  if (!artifact) {
+    throw new HttpRouteError(404, "CONTENT_UNAVAILABLE", "Video-note artifact is not ready.")
+  }
+
+  await users.touchSession(authenticated.sessionRecord.sessionId, { seenAt: new Date() })
+  sendJson(response, 200, VideoNoteArtifactResponseSchema.parse({ job, artifact }))
+}
+
 async function handleDevices(
   request: IncomingMessage,
   response: ServerResponse,
@@ -925,6 +1009,7 @@ async function routeRequest(
   response: ServerResponse,
   env: RelayEnv,
   users: FileUserStore,
+  videoNotes: VideoNoteService,
 ) {
   try {
     const url = new URL(request.url ?? "/", `http://${request.headers.host ?? "localhost"}`)
@@ -984,6 +1069,23 @@ async function routeRequest(
       return
     }
 
+    if (url.pathname === "/v1/video-notes/jobs" && request.method === "POST") {
+      await handleVideoNoteCreate(request, response, env, users, videoNotes)
+      return
+    }
+
+    const videoNoteJobMatch = /^\/v1\/video-notes\/jobs\/([^/]+)$/.exec(url.pathname)
+    if (videoNoteJobMatch && request.method === "GET") {
+      await handleVideoNoteStatus(request, response, env, users, videoNotes, decodeURIComponent(videoNoteJobMatch[1]!))
+      return
+    }
+
+    const videoNoteArtifactMatch = /^\/v1\/video-notes\/jobs\/([^/]+)\/artifact$/.exec(url.pathname)
+    if (videoNoteArtifactMatch && request.method === "GET") {
+      await handleVideoNoteArtifact(request, response, env, users, videoNotes, decodeURIComponent(videoNoteArtifactMatch[1]!))
+      return
+    }
+
     if (url.pathname === "/v1/devices" && request.method === "GET") {
       await handleDevices(request, response, env, users)
       return
@@ -1036,8 +1138,9 @@ async function routeRequest(
 
 export function createAstraRelayServer(env: RelayEnv = loadRelayEnv()) {
   const users = new FileUserStore(env)
+  const videoNotes = new VideoNoteService(env)
   return createServer((request, response) => {
-    void routeRequest(request, response, env, users)
+    void routeRequest(request, response, env, users, videoNotes)
   })
 }
 

@@ -80,6 +80,7 @@ export function loadRelayEnv(env: NodeJS.ProcessEnv = process.env): RelayEnv {
     sessionSecret: env.ASTRA_SESSION_SECRET ?? "astra-dev-secret",
     platformMirrorSecret: parseOptionalText(env.ASTRA_PLATFORM_MIRROR_SECRET),
     userDbPath: env.ASTRA_USER_DB_PATH ?? "server/data/users.json",
+    videoNoteStorePath: env.ASTRA_VIDEO_NOTE_STORE_PATH ?? "server/data/video-notes.json",
     loginEmail: env.ASTRA_RELAY_EMAIL ?? "demo@astra.local",
     loginPassword: env.ASTRA_RELAY_PASSWORD ?? "astra-demo-pass",
     plan: parsePlan(env.ASTRA_RELAY_PLAN),
@@ -101,6 +102,7 @@ export function loadRelayEnv(env: NodeJS.ProcessEnv = process.env): RelayEnv {
     proRpm: Number(env.ASTRA_PRO_RPM ?? "120"),
     sessionTtlMs: Number(env.ASTRA_SESSION_TTL_MS ?? String(30 * 24 * 60 * 60 * 1000)),
     syncMaxMutationsPerRequest: parsePositiveInteger(env.ASTRA_SYNC_MAX_MUTATIONS_PER_REQUEST, 200),
+    videoNoteMaxConcurrentJobs: parsePositiveInteger(env.ASTRA_VIDEO_NOTE_MAX_CONCURRENT_JOBS, 1),
     cloudflareShadow: {
       writeEnabled: parseBooleanFlag(env.ASTRA_CF_SHADOW_WRITE_ENABLED),
       readParityEnabled: parseBooleanFlag(env.ASTRA_CF_READ_PARITY_ENABLED),

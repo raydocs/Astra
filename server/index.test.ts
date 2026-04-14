@@ -1,9 +1,47 @@
 import { createHash } from "node:crypto"
 import { mkdtemp, readFile, writeFile } from "node:fs/promises"
 import { tmpdir } from "node:os"
-import { join } from "node:path"
+import { dirname, join } from "node:path"
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
+
+function toFetchUrl(input: RequestInfo | URL): string {
+  if (typeof input === "string") return input
+  if (input instanceof URL) return input.toString()
+  return input.url
+}
+
+function timedTextJson(events: Array<{ startMs: number; durationMs: number; text: string }>) {
+  return JSON.stringify({
+    events: events.map((event) => ({
+      tStartMs: event.startMs,
+      dDurationMs: event.durationMs,
+      segs: [{ utf8: event.text }],
+    })),
+  })
+}
+
+function buildYouTubeWatchHtml(options: {
+  title?: string
+  lengthSeconds?: number
+  captionTracks?: Array<Record<string, unknown>>
+  streamingFormats?: Array<Record<string, unknown>>
+}) {
+  return `<!doctype html><html><head><title>${options.title ?? "Demo video"} - YouTube</title></head><body><script>var ytInitialPlayerResponse = ${JSON.stringify({
+    videoDetails: {
+      title: options.title ?? "Demo video",
+      lengthSeconds: String(options.lengthSeconds ?? 120),
+    },
+    captions: {
+      playerCaptionsTracklistRenderer: {
+        captionTracks: options.captionTracks ?? [],
+      },
+    },
+    streamingData: {
+      adaptiveFormats: options.streamingFormats ?? [],
+    },
+  })};</script></body></html>`
+}
 
 import { checkAnonymousRateLimit, createAstraRelayServer, resetAnonymousRateLimits } from "./index"
 import type { RelayEnv } from "./types"
@@ -91,6 +129,7 @@ describe("Astra relay server", () => {
       sessionSecret: "test-secret",
       platformMirrorSecret: "mirror-secret",
       userDbPath,
+      videoNoteStorePath: join(dirname(userDbPath), "video-notes.json"),
       loginEmail: "demo@astra.local",
       loginPassword: "astra-demo-pass",
       plan: "pro",
@@ -111,6 +150,7 @@ describe("Astra relay server", () => {
       proRpm: 120,
       sessionTtlMs: 30 * 24 * 60 * 60 * 1000,
       syncMaxMutationsPerRequest: 200,
+      videoNoteMaxConcurrentJobs: 1,
     }
 
     server = createAstraRelayServer(env)
@@ -165,6 +205,48 @@ describe("Astra relay server", () => {
       Authorization: `Bearer ${token}`,
       "X-Astra-Device-Id": deviceId,
     }
+  }
+
+  async function waitForVideoNoteJob(
+    jobId: string,
+    token: string,
+    deviceId: string,
+    predicate: (job: {
+      status: string
+      transcriptSource?: string | null
+      error: { code: string; message: string } | null
+    }) => boolean,
+    timeoutMessage: string,
+  ) {
+    for (let attempt = 0; attempt < 100; attempt += 1) {
+      const response = await fetch(`${baseURL}/v1/video-notes/jobs/${jobId}`, {
+        headers: authHeaders(token, deviceId),
+      })
+      expect(response.status).toBe(200)
+      const payload = await response.json() as {
+        job: {
+          status: string
+          transcriptSource?: string | null
+          error: { code: string; message: string } | null
+        }
+      }
+      if (predicate(payload.job)) {
+        return payload.job
+      }
+      await new Promise((resolve) => setTimeout(resolve, 20))
+    }
+
+    throw new Error(timeoutMessage)
+  }
+
+  async function waitForVideoNoteTerminalStatus(jobId: string, token: string, deviceId: string) {
+    return waitForVideoNoteJob(
+      jobId,
+      token,
+      deviceId,
+      (job) => job.status === "completed" || job.status === "failed",
+      `Video-note job ${jobId} did not reach a terminal status in time.`,
+    )
   }
 
   beforeEach(() => {
@@ -526,6 +608,672 @@ describe("Astra relay server", () => {
     expect(response.status).toBe(400)
     expect(payload.error.message).toContain("Rate limit exceeded")
     expect(translateViaManagedProviderMock).not.toHaveBeenCalled()
+  })
+
+  it("creates, dedupes, and serves a structured video-note artifact when capture is provided", async () => {
+    await startServer(await createUserDb())
+    const { session, deviceId } = await createSession("device-video-note")
+
+    const requestBody = {
+      sourceUrl: "https://www.youtube.com/watch?v=demo123",
+      platformHint: "youtube",
+      sourceTitle: "Demo video",
+      capture: {
+        language: "en",
+        deepLinkTemplate: "https://www.youtube.com/watch?v=demo123&t={startSeconds}s",
+        durationSec: 120,
+        transcriptSegments: [
+          { startMs: 0, endMs: 2500, text: "Hello and welcome to the demo video." },
+          { startMs: 3000, endMs: 6200, text: "We are testing the relay video note scaffold." },
+          { startMs: 7000, endMs: 11200, text: "The backend already has create, status, and artifact routes wired up." },
+          { startMs: 14000, endMs: 18200, text: "Now we want transcript-backed notes to feel structured and useful instead of skeletal." },
+          { startMs: 21000, endMs: 25200, text: "The next step after this will be URL-only subtitle acquisition for supported platforms." },
+        ],
+      },
+    }
+
+    const create = await fetch(`${baseURL}/v1/video-notes/jobs`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        ...authHeaders(session.sessionToken, deviceId),
+      },
+      body: JSON.stringify(requestBody),
+    })
+    expect(create.status).toBe(202)
+    const createdPayload = await create.json() as {
+      deduped: boolean
+      job: { jobId: string; status: string }
+    }
+    expect(createdPayload.deduped).toBe(false)
+    expect(createdPayload.job.status).toBe("queued")
+
+    const duplicate = await fetch(`${baseURL}/v1/video-notes/jobs`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        ...authHeaders(session.sessionToken, deviceId),
+      },
+      body: JSON.stringify(requestBody),
+    })
+    expect(duplicate.status).toBe(202)
+    const duplicatePayload = await duplicate.json() as {
+      deduped: boolean
+      job: { jobId: string }
+    }
+    expect(duplicatePayload.deduped).toBe(true)
+    expect(duplicatePayload.job.jobId).toBe(createdPayload.job.jobId)
+
+    const job = await waitForVideoNoteTerminalStatus(createdPayload.job.jobId, session.sessionToken, deviceId)
+    expect(job.status).toBe("completed")
+
+    const artifactResponse = await fetch(`${baseURL}/v1/video-notes/jobs/${createdPayload.job.jobId}/artifact`, {
+      headers: authHeaders(session.sessionToken, deviceId),
+    })
+    expect(artifactResponse.status).toBe(200)
+    const artifactPayload = await artifactResponse.json() as {
+      job: { status: string }
+      artifact: { title: string | null; transcriptSegments: Array<{ text: string }>; markdown: string }
+    }
+    expect(artifactPayload.job.status).toBe("completed")
+    expect(artifactPayload.artifact.title).toBe("Demo video")
+    expect(artifactPayload.artifact.transcriptSegments).toHaveLength(5)
+    expect(artifactPayload.artifact.markdown).toContain("## Summary")
+    expect(artifactPayload.artifact.markdown).toContain("## Key takeaways")
+    expect(artifactPayload.artifact.markdown).toContain("## Section notes")
+    expect(artifactPayload.artifact.markdown).toContain("## Key moments")
+    expect(artifactPayload.artifact.markdown).toContain("[00:00](https://www.youtube.com/watch?v=demo123&t=0s)")
+    expect(artifactPayload.artifact.markdown).not.toContain("Skeleton video-note artifact")
+    expect(artifactPayload.artifact.markdown).toContain("Demo video")
+  })
+
+  it("creates, dedupes, and completes a YouTube URL-only video-note job via server-side subtitles", async () => {
+    await startServer(await createUserDb())
+    const { session, deviceId } = await createSession("device-video-note-youtube-url")
+    const nativeFetch = globalThis.fetch.bind(globalThis)
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockImplementation(async (input, init) => {
+      const url = toFetchUrl(input)
+      if (url === "https://www.youtube.com/watch?v=demo123") {
+        expect(init?.signal).toBeInstanceOf(AbortSignal)
+        return new Response(buildYouTubeWatchHtml({
+          title: "Server-side YouTube note",
+          lengthSeconds: 93,
+          captionTracks: [
+            {
+              baseUrl: "https://www.youtube.com/api/timedtext?v=demo123&lang=en&fmt=srv3",
+              languageCode: "en",
+              kind: "standard",
+              isTranslatable: true,
+            },
+          ],
+        }), { status: 200, headers: { "Content-Type": "text/html" } })
+      }
+      if (url.startsWith("https://www.youtube.com/api/timedtext?v=demo123")) {
+        expect(init?.signal).toBeInstanceOf(AbortSignal)
+        return new Response(timedTextJson([
+          { startMs: 0, durationMs: 2500, text: "Hello and welcome to the server-side note demo." },
+          { startMs: 4000, durationMs: 3200, text: "The relay can fetch YouTube subtitles even without extension capture." },
+          { startMs: 9000, durationMs: 3600, text: "Next we can build more URL-only subtitle acquisition on top of this path." },
+        ]), { status: 200, headers: { "Content-Type": "application/json" } })
+      }
+      return nativeFetch(input, init)
+    })
+
+    try {
+      const firstRequest = {
+        sourceUrl: "https://youtu.be/demo123?si=share-token",
+        platformHint: "bilibili",
+      }
+
+      const create = await fetch(`${baseURL}/v1/video-notes/jobs`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          ...authHeaders(session.sessionToken, deviceId),
+        },
+        body: JSON.stringify(firstRequest),
+      })
+      expect(create.status).toBe(202)
+      const createdPayload = await create.json() as {
+        deduped: boolean
+        job: { jobId: string; status: string; platform: string; sourceUrl: string }
+      }
+      expect(createdPayload.deduped).toBe(false)
+      expect(createdPayload.job.status).toBe("queued")
+      expect(createdPayload.job.platform).toBe("youtube")
+      expect(createdPayload.job.sourceUrl).toBe("https://www.youtube.com/watch?v=demo123")
+
+      const duplicate = await fetch(`${baseURL}/v1/video-notes/jobs`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          ...authHeaders(session.sessionToken, deviceId),
+        },
+        body: JSON.stringify({
+          sourceUrl: "https://www.youtube.com/watch?v=demo123&list=PL123&t=30s",
+        }),
+      })
+      expect(duplicate.status).toBe(202)
+      const duplicatePayload = await duplicate.json() as {
+        deduped: boolean
+        job: { jobId: string }
+      }
+      expect(duplicatePayload.deduped).toBe(true)
+      expect(duplicatePayload.job.jobId).toBe(createdPayload.job.jobId)
+
+      const job = await waitForVideoNoteTerminalStatus(createdPayload.job.jobId, session.sessionToken, deviceId)
+      expect(job.status).toBe("completed")
+
+      const artifactResponse = await fetch(`${baseURL}/v1/video-notes/jobs/${createdPayload.job.jobId}/artifact`, {
+        headers: authHeaders(session.sessionToken, deviceId),
+      })
+      expect(artifactResponse.status).toBe(200)
+      const artifactPayload = await artifactResponse.json() as {
+        job: { status: string; platform: string; title: string | null; transcriptSource: string | null }
+        artifact: {
+          title: string | null
+          transcriptSource: string | null
+          transcriptLanguage: string | null
+          transcriptSegments: Array<{ text: string }>
+          markdown: string
+          deepLinkTemplate: string | null
+          durationSec: number | null
+        }
+      }
+      expect(artifactPayload.job.status).toBe("completed")
+      expect(artifactPayload.job.platform).toBe("youtube")
+      expect(artifactPayload.job.title).toBe("Server-side YouTube note")
+      expect(artifactPayload.job.transcriptSource).toBe("platform_subtitles")
+      expect(artifactPayload.artifact.title).toBe("Server-side YouTube note")
+      expect(artifactPayload.artifact.transcriptSource).toBe("platform_subtitles")
+      expect(artifactPayload.artifact.transcriptLanguage).toBe("en")
+      expect(artifactPayload.artifact.transcriptSegments).toHaveLength(3)
+      expect(artifactPayload.artifact.deepLinkTemplate).toBe("https://www.youtube.com/watch?v=demo123&t={startSeconds}s")
+      expect(artifactPayload.artifact.durationSec).toBe(93)
+      expect(artifactPayload.artifact.markdown).toContain("## Summary")
+      expect(artifactPayload.artifact.markdown).toContain("[00:00](https://www.youtube.com/watch?v=demo123&t=0s)")
+      expect(artifactPayload.artifact.markdown).toContain("server-side note")
+    } finally {
+      fetchMock.mockRestore()
+    }
+  })
+
+  it("completes a YouTube URL-only video-note job via backend transcription fallback when subtitles are unavailable", async () => {
+    await startServer(await createUserDb())
+    const { session, deviceId } = await createSession("device-video-note-youtube-transcription")
+    const nativeFetch = globalThis.fetch.bind(globalThis)
+    let resolveTranscriptionResponse: ((value: Response) => void) | null = null
+    const transcriptionResponse = new Promise<Response>((resolve) => {
+      resolveTranscriptionResponse = resolve
+    })
+
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockImplementation(async (input, init) => {
+      const url = toFetchUrl(input)
+      if (url === "https://www.youtube.com/watch?v=transcribe123") {
+        expect(init?.signal).toBeInstanceOf(AbortSignal)
+        return new Response(buildYouTubeWatchHtml({
+          title: "Backend transcription note",
+          lengthSeconds: 64,
+          captionTracks: [],
+          streamingFormats: [{
+            url: "https://rr1---sn-demo.googlevideo.com/videoplayback?id=transcribe123",
+            mimeType: 'audio/mp4; codecs="mp4a.40.2"',
+            bitrate: 128000,
+          }],
+        }), { status: 200, headers: { "Content-Type": "text/html" } })
+      }
+      if (url === "https://rr1---sn-demo.googlevideo.com/videoplayback?id=transcribe123") {
+        expect(init?.signal).toBeInstanceOf(AbortSignal)
+        return new Response(new Uint8Array([0, 1, 2, 3]), {
+          status: 200,
+          headers: { "Content-Type": "audio/mp4" },
+        })
+      }
+      if (url === "https://api.openai.com/v1/audio/transcriptions") {
+        expect(init?.method).toBe("POST")
+        expect(init?.signal).toBeInstanceOf(AbortSignal)
+        expect(init?.body instanceof FormData).toBe(true)
+        const formData = init?.body as FormData
+        expect(formData.get("model")).toBe("whisper-1")
+        expect(formData.get("response_format")).toBe("verbose_json")
+        expect(formData.get("timestamp_granularities[]")).toBe("segment")
+        return transcriptionResponse
+      }
+      return nativeFetch(input, init)
+    })
+
+    try {
+      const create = await fetch(`${baseURL}/v1/video-notes/jobs`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          ...authHeaders(session.sessionToken, deviceId),
+        },
+        body: JSON.stringify({
+          sourceUrl: "https://www.youtube.com/watch?v=transcribe123",
+        }),
+      })
+      expect(create.status).toBe(202)
+      const createdPayload = await create.json() as {
+        job: { jobId: string }
+      }
+
+      const transcribingJob = await waitForVideoNoteJob(
+        createdPayload.job.jobId,
+        session.sessionToken,
+        deviceId,
+        (job) => job.status === "transcribing",
+        `Video-note job ${createdPayload.job.jobId} did not reach transcribing status in time.`,
+      )
+      expect(transcribingJob.status).toBe("transcribing")
+      expect(transcribingJob.transcriptSource).toBe("transcription")
+
+      expect(resolveTranscriptionResponse).not.toBeNull()
+      resolveTranscriptionResponse!(new Response(JSON.stringify({
+        language: "en",
+        segments: [
+          { start: 0, end: 2.6, text: "Backend transcription fallback can still produce useful notes." },
+          { start: 3.2, end: 6.5, text: "The relay keeps the existing subtitle-first behavior for YouTube." },
+          { start: 7.1, end: 10.4, text: "When subtitles are missing, the job can continue through transcribing and finish with an artifact." },
+        ],
+      }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      }))
+
+      const job = await waitForVideoNoteTerminalStatus(createdPayload.job.jobId, session.sessionToken, deviceId)
+      expect(job.status).toBe("completed")
+      expect(job.transcriptSource).toBe("transcription")
+
+      const artifactResponse = await fetch(`${baseURL}/v1/video-notes/jobs/${createdPayload.job.jobId}/artifact`, {
+        headers: authHeaders(session.sessionToken, deviceId),
+      })
+      expect(artifactResponse.status).toBe(200)
+      const artifactPayload = await artifactResponse.json() as {
+        job: { status: string; title: string | null; transcriptSource: string | null }
+        artifact: {
+          title: string | null
+          transcriptSource: string | null
+          transcriptLanguage: string | null
+          transcriptSegments: Array<{ text: string }>
+          deepLinkTemplate: string | null
+          durationSec: number | null
+          markdown: string
+        }
+      }
+      expect(artifactPayload.job.status).toBe("completed")
+      expect(artifactPayload.job.title).toBe("Backend transcription note")
+      expect(artifactPayload.job.transcriptSource).toBe("transcription")
+      expect(artifactPayload.artifact.title).toBe("Backend transcription note")
+      expect(artifactPayload.artifact.transcriptSource).toBe("transcription")
+      expect(artifactPayload.artifact.transcriptLanguage).toBe("en")
+      expect(artifactPayload.artifact.transcriptSegments).toHaveLength(3)
+      expect(artifactPayload.artifact.deepLinkTemplate).toBe("https://www.youtube.com/watch?v=transcribe123&t={startSeconds}s")
+      expect(artifactPayload.artifact.durationSec).toBe(64)
+      expect(artifactPayload.artifact.markdown).toContain("## Summary")
+      expect(artifactPayload.artifact.markdown).toContain("[00:00](https://www.youtube.com/watch?v=transcribe123&t=0s)")
+    } finally {
+      fetchMock.mockRestore()
+    }
+  })
+
+  it("fails clearly when backend transcription fallback returns no transcript segments", async () => {
+    await startServer(await createUserDb())
+    const { session, deviceId } = await createSession("device-video-note-youtube-transcription-empty")
+    const nativeFetch = globalThis.fetch.bind(globalThis)
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockImplementation(async (input, init) => {
+      const url = toFetchUrl(input)
+      if (url === "https://www.youtube.com/watch?v=emptytranscript123") {
+        expect(init?.signal).toBeInstanceOf(AbortSignal)
+        return new Response(buildYouTubeWatchHtml({
+          title: "Empty transcription demo",
+          lengthSeconds: 52,
+          captionTracks: [],
+          streamingFormats: [{
+            url: "https://rr2---sn-demo.googlevideo.com/videoplayback?id=emptytranscript123",
+            mimeType: 'audio/mp4; codecs="mp4a.40.2"',
+            bitrate: 96000,
+          }],
+        }), { status: 200, headers: { "Content-Type": "text/html" } })
+      }
+      if (url === "https://rr2---sn-demo.googlevideo.com/videoplayback?id=emptytranscript123") {
+        return new Response(new Uint8Array([9, 8, 7, 6]), {
+          status: 200,
+          headers: { "Content-Type": "audio/mp4" },
+        })
+      }
+      if (url === "https://api.openai.com/v1/audio/transcriptions") {
+        return new Response(JSON.stringify({ language: "en", segments: [] }), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        })
+      }
+      return nativeFetch(input, init)
+    })
+
+    try {
+      const create = await fetch(`${baseURL}/v1/video-notes/jobs`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          ...authHeaders(session.sessionToken, deviceId),
+        },
+        body: JSON.stringify({
+          sourceUrl: "https://www.youtube.com/watch?v=emptytranscript123",
+        }),
+      })
+      expect(create.status).toBe(202)
+      const createdPayload = await create.json() as {
+        job: { jobId: string }
+      }
+
+      const job = await waitForVideoNoteTerminalStatus(createdPayload.job.jobId, session.sessionToken, deviceId)
+      expect(job.status).toBe("failed")
+      expect(job.transcriptSource).toBe("transcription")
+      expect(job.error?.code).toBe("SUBTITLE_UNAVAILABLE")
+      expect(job.error?.message).toContain("backend transcription fallback could not produce transcript segments")
+      expect(job.error?.message).toContain("did not return any usable transcript segments")
+    } finally {
+      fetchMock.mockRestore()
+    }
+  })
+
+  it("fails clearly when backend transcription fallback resolves a blocked audio host", async () => {
+    await startServer(await createUserDb())
+    const { session, deviceId } = await createSession("device-video-note-youtube-blocked-host")
+    const nativeFetch = globalThis.fetch.bind(globalThis)
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockImplementation(async (input, init) => {
+      const url = toFetchUrl(input)
+      if (url === "https://www.youtube.com/watch?v=blockedhost123") {
+        return new Response(buildYouTubeWatchHtml({
+          title: "Blocked host demo",
+          lengthSeconds: 38,
+          captionTracks: [],
+          streamingFormats: [{
+            url: "https://rr-blocked---sn-demo.googlevideo.com/videoplayback?id=blockedhost123",
+            mimeType: 'audio/mp4; codecs="mp4a.40.2"',
+            bitrate: 128000,
+          }],
+        }), { status: 200, headers: { "Content-Type": "text/html" } })
+      }
+      if (url === "https://rr-blocked---sn-demo.googlevideo.com/videoplayback?id=blockedhost123") {
+        return new Response(null, {
+          status: 302,
+          headers: {
+            Location: "https://media.example/audio/blockedhost123.m4a",
+          },
+        })
+      }
+      return nativeFetch(input, init)
+    })
+
+    try {
+      const create = await fetch(`${baseURL}/v1/video-notes/jobs`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          ...authHeaders(session.sessionToken, deviceId),
+        },
+        body: JSON.stringify({
+          sourceUrl: "https://www.youtube.com/watch?v=blockedhost123",
+        }),
+      })
+      expect(create.status).toBe(202)
+      const createdPayload = await create.json() as {
+        job: { jobId: string }
+      }
+
+      const job = await waitForVideoNoteTerminalStatus(createdPayload.job.jobId, session.sessionToken, deviceId)
+      expect(job.status).toBe("failed")
+      expect(job.transcriptSource).toBe("transcription")
+      expect(job.error?.code).toBe("SUBTITLE_UNAVAILABLE")
+      expect(job.error?.message).toContain("backend safety checks")
+      expect(job.error?.message).not.toContain("media.example")
+    } finally {
+      fetchMock.mockRestore()
+    }
+  })
+
+  it("fails clearly when backend transcription fallback audio exceeds backend size limits", async () => {
+    await startServer(await createUserDb())
+    const { session, deviceId } = await createSession("device-video-note-youtube-audio-too-large")
+    const nativeFetch = globalThis.fetch.bind(globalThis)
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockImplementation(async (input, init) => {
+      const url = toFetchUrl(input)
+      if (url === "https://www.youtube.com/watch?v=toolargeaudio123") {
+        return new Response(buildYouTubeWatchHtml({
+          title: "Large audio demo",
+          lengthSeconds: 73,
+          captionTracks: [],
+          streamingFormats: [{
+            url: "https://rr3---sn-demo.googlevideo.com/videoplayback?id=toolargeaudio123",
+            mimeType: 'audio/mp4; codecs="mp4a.40.2"',
+            bitrate: 128000,
+          }],
+        }), { status: 200, headers: { "Content-Type": "text/html" } })
+      }
+      if (url === "https://rr3---sn-demo.googlevideo.com/videoplayback?id=toolargeaudio123") {
+        return new Response(new Uint8Array([1, 2, 3, 4]), {
+          status: 200,
+          headers: {
+            "Content-Type": "audio/mp4",
+            "Content-Length": String(500_000_000),
+          },
+        })
+      }
+      return nativeFetch(input, init)
+    })
+
+    try {
+      const create = await fetch(`${baseURL}/v1/video-notes/jobs`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          ...authHeaders(session.sessionToken, deviceId),
+        },
+        body: JSON.stringify({
+          sourceUrl: "https://www.youtube.com/watch?v=toolargeaudio123",
+        }),
+      })
+      expect(create.status).toBe(202)
+      const createdPayload = await create.json() as {
+        job: { jobId: string }
+      }
+
+      const job = await waitForVideoNoteTerminalStatus(createdPayload.job.jobId, session.sessionToken, deviceId)
+      expect(job.status).toBe("failed")
+      expect(job.transcriptSource).toBe("transcription")
+      expect(job.error?.code).toBe("SUBTITLE_UNAVAILABLE")
+      expect(job.error?.message).toContain("size limits")
+    } finally {
+      fetchMock.mockRestore()
+    }
+  })
+
+  it("sanitizes noisy upstream OpenAI transcription errors for backend transcription fallback", async () => {
+    await startServer(await createUserDb())
+    const { session, deviceId } = await createSession("device-video-note-youtube-upstream-error")
+    const nativeFetch = globalThis.fetch.bind(globalThis)
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockImplementation(async (input, init) => {
+      const url = toFetchUrl(input)
+      if (url === "https://www.youtube.com/watch?v=upstreamerror123") {
+        return new Response(buildYouTubeWatchHtml({
+          title: "Upstream error demo",
+          lengthSeconds: 58,
+          captionTracks: [],
+          streamingFormats: [{
+            url: "https://rr4---sn-demo.googlevideo.com/videoplayback?id=upstreamerror123",
+            mimeType: 'audio/mp4; codecs="mp4a.40.2"',
+            bitrate: 128000,
+          }],
+        }), { status: 200, headers: { "Content-Type": "text/html" } })
+      }
+      if (url === "https://rr4---sn-demo.googlevideo.com/videoplayback?id=upstreamerror123") {
+        return new Response(new Uint8Array([4, 3, 2, 1]), {
+          status: 200,
+          headers: { "Content-Type": "audio/mp4" },
+        })
+      }
+      if (url === "https://api.openai.com/v1/audio/transcriptions") {
+        return new Response(JSON.stringify({
+          error: {
+            message: "Rate limit exceeded for org secret-org-123. Contact support@example.com.",
+          },
+        }), {
+          status: 429,
+          headers: { "Content-Type": "application/json" },
+        })
+      }
+      return nativeFetch(input, init)
+    })
+
+    try {
+      const create = await fetch(`${baseURL}/v1/video-notes/jobs`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          ...authHeaders(session.sessionToken, deviceId),
+        },
+        body: JSON.stringify({
+          sourceUrl: "https://www.youtube.com/watch?v=upstreamerror123",
+        }),
+      })
+      expect(create.status).toBe(202)
+      const createdPayload = await create.json() as {
+        job: { jobId: string }
+      }
+
+      const job = await waitForVideoNoteTerminalStatus(createdPayload.job.jobId, session.sessionToken, deviceId)
+      expect(job.status).toBe("failed")
+      expect(job.transcriptSource).toBe("transcription")
+      expect(job.error?.code).toBe("SUBTITLE_UNAVAILABLE")
+      expect(job.error?.message).toContain("temporarily rate limited")
+      expect(job.error?.message).not.toContain("secret-org-123")
+      expect(job.error?.message).not.toContain("support@example.com")
+    } finally {
+      fetchMock.mockRestore()
+    }
+  })
+
+  it("fails a YouTube URL-only video-note job clearly when subtitles are unavailable", async () => {
+    await startServer(await createUserDb())
+    const { session, deviceId } = await createSession("device-video-note-youtube-nosubs")
+    const nativeFetch = globalThis.fetch.bind(globalThis)
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockImplementation(async (input, init) => {
+      const url = toFetchUrl(input)
+      if (url === "https://www.youtube.com/watch?v=nosubs123") {
+        return new Response(buildYouTubeWatchHtml({
+          title: "No subtitles demo",
+          lengthSeconds: 41,
+          captionTracks: [],
+        }), { status: 200, headers: { "Content-Type": "text/html" } })
+      }
+      return nativeFetch(input, init)
+    })
+
+    try {
+      const create = await fetch(`${baseURL}/v1/video-notes/jobs`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          ...authHeaders(session.sessionToken, deviceId),
+        },
+        body: JSON.stringify({
+          sourceUrl: "https://www.youtube.com/watch?v=nosubs123",
+        }),
+      })
+      expect(create.status).toBe(202)
+      const createdPayload = await create.json() as {
+        job: { jobId: string }
+      }
+
+      const job = await waitForVideoNoteTerminalStatus(createdPayload.job.jobId, session.sessionToken, deviceId)
+      expect(job.status).toBe("failed")
+      expect(job.transcriptSource).toBe("transcription")
+      expect(job.error?.code).toBe("SUBTITLE_UNAVAILABLE")
+      expect(job.error?.message).toContain("No usable YouTube subtitles were available")
+      expect(job.error?.message).toContain("usable YouTube audio stream")
+    } finally {
+      fetchMock.mockRestore()
+    }
+  })
+
+  it("rejects video-note job creation for anonymous sessions", async () => {
+    await startServer(await createUserDb())
+
+    const anonymousAuth = await fetch(`${baseURL}/v1/auth/anonymous`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ deviceId: "anon-video-note" }),
+    })
+    expect(anonymousAuth.status).toBe(200)
+    const anonymousSession = await anonymousAuth.json() as {
+      sessionToken: string
+      deviceId: string
+    }
+
+    const create = await fetch(`${baseURL}/v1/video-notes/jobs`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        ...authHeaders(anonymousSession.sessionToken, anonymousSession.deviceId),
+      },
+      body: JSON.stringify({
+        sourceUrl: "https://www.youtube.com/watch?v=anon123",
+      }),
+    })
+    expect(create.status).toBe(403)
+    const payload = await create.json() as { error: { code: string } }
+    expect(payload.error.code).toBe("AUTH_REQUIRED")
+  })
+
+  it("marks stale non-terminal video-note jobs as failed on relay startup", async () => {
+    const userDbPath = await createUserDb()
+    const videoNoteStorePath = join(dirname(userDbPath), "video-notes.json")
+    await writeFile(videoNoteStorePath, JSON.stringify({
+      version: 1,
+      jobs: [{
+        id: "job-stale-1",
+        ownerEmail: "demo@astra.local",
+        sourceUrl: "https://www.youtube.com/watch?v=stale123",
+        sourceKey: "https://www.youtube.com/watch?v=stale123",
+        platform: "youtube",
+        title: "Stale job",
+        status: "generating_markdown",
+        transcriptSource: null,
+        errorCode: null,
+        errorMessage: null,
+        createdAt: "2026-04-12T00:00:00.000Z",
+        updatedAt: "2026-04-12T00:00:00.000Z",
+        startedAt: "2026-04-12T00:01:00.000Z",
+        completedAt: null,
+        artifactId: null,
+        request: {
+          sourceUrl: "https://www.youtube.com/watch?v=stale123",
+          platformHint: "youtube",
+          sourceTitle: "Stale job",
+          forceRegenerate: false,
+          capture: null,
+        },
+      }],
+      artifacts: [],
+    }, null, 2))
+
+    await startServer(userDbPath)
+    const { session, deviceId } = await createSession("device-stale-video-note")
+
+    const response = await fetch(`${baseURL}/v1/video-notes/jobs/job-stale-1`, {
+      headers: authHeaders(session.sessionToken, deviceId),
+    })
+    expect(response.status).toBe(200)
+    const payload = await response.json() as {
+      job: {
+        status: string
+        error: { code: string; message: string } | null
+      }
+    }
+    expect(payload.job.status).toBe("failed")
+    expect(payload.job.error?.code).toBe("RELAY_RESTARTED")
   })
 
   it("returns a valid anonymous device-bound session", async () => {

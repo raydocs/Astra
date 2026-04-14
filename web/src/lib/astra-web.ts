@@ -42,6 +42,15 @@ import type {
   TranslationTask,
 } from "@/types/messages"
 import {
+  VideoNoteArtifactResponseSchema,
+  VideoNoteCreateResponseSchema,
+  VideoNoteStatusResponseSchema,
+  type VideoNoteArtifact,
+  type VideoNoteCreateRequest,
+  type VideoNoteCreateResponse,
+  type VideoNoteStatusResponse,
+} from "@/types/video-notes"
+import {
   buildAstraAccountExportDownloadUrl,
   createAstraAccountExportJob,
   createAstraCheckoutLink,
@@ -176,6 +185,9 @@ export interface WebImportReplayResult {
 export type WebContinuityExportJob = AstraAccountExportJob
 export type WebCloudDataDeleteJob = AstraCloudDataDeleteJob
 export type WebSyncRepairResult = AstraSyncRepairResponse
+export type WebVideoNoteCreateResponse = VideoNoteCreateResponse
+export type WebVideoNoteStatusResponse = VideoNoteStatusResponse
+export type WebVideoNoteArtifact = VideoNoteArtifact
 
 export interface WebCloudAssetsWorkspace {
   serverTime: string | null
@@ -1136,6 +1148,63 @@ export async function openBillingPortal(params: {
   })
 
   return link.url
+}
+
+export async function createWebVideoNoteJob(params: {
+  session: AstraSession
+  request: VideoNoteCreateRequest
+}): Promise<WebVideoNoteCreateResponse> {
+  const response = await fetch(`${params.session.relayBaseURL}/video-notes/jobs`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${params.session.sessionToken}`,
+    },
+    body: JSON.stringify(params.request),
+  })
+
+  if (!response.ok) {
+    throw new Error(await readErrorMessage(response, "Video-note job creation failed"))
+  }
+
+  return VideoNoteCreateResponseSchema.parse(await response.json())
+}
+
+export async function fetchWebVideoNoteJob(params: {
+  session: AstraSession
+  jobId: string
+}): Promise<WebVideoNoteStatusResponse> {
+  const response = await fetch(`${params.session.relayBaseURL}/video-notes/jobs/${encodeURIComponent(params.jobId)}`, {
+    method: "GET",
+    headers: {
+      Authorization: `Bearer ${params.session.sessionToken}`,
+    },
+  })
+
+  if (!response.ok) {
+    throw new Error(await readErrorMessage(response, "Video-note job fetch failed"))
+  }
+
+  return VideoNoteStatusResponseSchema.parse(await response.json())
+}
+
+export async function fetchWebVideoNoteArtifact(params: {
+  session: AstraSession
+  jobId: string
+}): Promise<WebVideoNoteArtifact> {
+  const response = await fetch(`${params.session.relayBaseURL}/video-notes/jobs/${encodeURIComponent(params.jobId)}/artifact`, {
+    method: "GET",
+    headers: {
+      Authorization: `Bearer ${params.session.sessionToken}`,
+    },
+  })
+
+  if (!response.ok) {
+    throw new Error(await readErrorMessage(response, "Video-note artifact fetch failed"))
+  }
+
+  const payload = VideoNoteArtifactResponseSchema.parse(await response.json())
+  return payload.artifact
 }
 
 function serializeTranslationRequestContext(context?: TranslationRequestContext): string {

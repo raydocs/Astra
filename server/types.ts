@@ -6,6 +6,13 @@ import type {
   AstraSubscriptionStatus,
   AstraUsageSnapshot,
 } from "../src/types/auth"
+import type {
+  VideoNoteArtifact,
+  VideoNoteCreateRequest,
+  VideoNoteJobStatus,
+  VideoNotePlatform,
+  VideoNoteTranscriptSource,
+} from "../src/types/video-notes"
 import type { AstraSessionClaims } from "../src/utils/astra/session-token"
 import type { ProviderTranslationRequest } from "../src/utils/providers/types"
 import type { D1Database } from "../platform/cloudflare/src/bindings"
@@ -26,6 +33,7 @@ export interface RelayEnv {
   sessionSecret: string
   platformMirrorSecret?: string
   userDbPath: string
+  videoNoteStorePath: string
   loginEmail: string
   loginPassword: string
   plan: AstraPlan
@@ -48,6 +56,7 @@ export interface RelayEnv {
   proRpm: number
   sessionTtlMs: number
   syncMaxMutationsPerRequest: number
+  videoNoteMaxConcurrentJobs: number
   cloudflareShadow?: RelayCloudflareShadowConfig
 }
 
@@ -285,4 +294,27 @@ export interface SyncPullResponse {
   serverTime: string
   deltas: Record<SyncCollection, ServerSyncMutationRecord[]>
   nextCursors: Record<SyncCollection, string | null>
+}
+
+export interface VideoNoteJobRecord {
+  id: string
+  ownerEmail: string
+  sourceUrl: string
+  sourceKey: string
+  platform: VideoNotePlatform
+  title: string | null
+  status: VideoNoteJobStatus
+  transcriptSource: VideoNoteTranscriptSource | null
+  errorCode: string | null
+  errorMessage: string | null
+  createdAt: string
+  updatedAt: string
+  startedAt: string | null
+  completedAt: string | null
+  artifactId: string | null
+  request: VideoNoteCreateRequest
+}
+
+export interface VideoNoteArtifactRecord extends VideoNoteArtifact {
+  ownerEmail: string
 }
