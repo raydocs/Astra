@@ -1,6 +1,6 @@
 # Astra Release Readiness Checklist
 
-_Last updated: 2026-04-15 (Month 2 evidence bundle: popup state mapping + study-progress counting rules; evidence registry + optional popup replay note; control-plane evidence row; Month 4 Bilibili notes; Month 6 investigation table row in Gate 4)_
+_Last updated: 2026-04-15 (Month 2 evidence bundle + optional learning-loop green replay doc; control-plane + Month 4 Bilibili + Month 6 Gate 4 row)_
 
 This checklist defines **release-blocking gates** and the minimum evidence required for a credible release decision.
 
@@ -60,7 +60,7 @@ CI enforces these in `.github/workflows/ci.yml` (`live-browser` job).
 
 - Required release-proof lanes now cover: page-translation (source-backed), article-extraction (`bench-live/article-extraction-proof`), dynamic-content (source-contract), site-automation (extension-loaded), onboarding (extension-loaded), vocabulary (extension-loaded).
 - Month 1 policy decision: hover and selection-explain remain **optional** (`pnpm bench:live:lane:hover-selection`) rather than required release gates. Rationale: current evidence is credible, but the lane is still modeled as a combined UX proof lane, does not yet have separate required-lane semantics in CI, and Month 1 release discipline should not over-promote non-core UX proof before that structure exists.
-- Popup deep-read now has credible optional live proof via `bench-live/popup-deep-read-proof`, `pnpm bench:live:lane:popup-proof`, and `pnpm bench:live:lane:learning-loop`, but it remains outside required release-proof lanes for Month 1 and must stay explicit in matrix/close-out notes. Optional replay / harness notes: `docs/investigations/m1-bf-01-popup-learning-loop-replay-2026-04-14.md`.
+- Popup deep-read now has credible optional live proof via `bench-live/popup-deep-read-proof`, `pnpm bench:live:lane:popup-proof`, and `pnpm bench:live:lane:learning-loop`, but it remains outside required release-proof lanes for Month 1 and must stay explicit in matrix/close-out notes. **Replay + harness + green optional lane run ids:** `docs/investigations/m1-bf-01-popup-learning-loop-replay-2026-04-14.md` (also records an early **failed** baseline `live-20260414T061146-0odzcd` for archaeology).
 - Month 1 gate close-out is recorded in `docs/investigations/month-1-closeout-2026-04-13.md`; the close-out verdict does not by itself override required lane failures.
 
 ## Pre-release execution order
