@@ -2,6 +2,14 @@
 
 _Task: `M1-BF-01` from `docs/investigations/claude-sequential-task-pack-2026-04-14.md`_
 
+## Prerequisites
+
+- **Playwright Chromium** (required for extension-loaded scenarios; avoids `net::ERR_BLOCKED_BY_CLIENT` on `chrome-extension://…` when the driver would otherwise fall back to system Chrome):
+
+  ```bash
+  npx playwright install chromium
+  ```
+
 ## Code fixes applied after the initial failed replay
 
 1. **`bench-live/popup-deep-read-proof` provider seeding** — Removed a dummy `apiKey` from the seeded config so translations route to the in-scenario mock relay (real router prefers **direct** when an API key is present).
@@ -13,12 +21,16 @@ Re-run locally after `pnpm build` and `npx playwright install chromium`:
 CI=true xvfb-run -a pnpm bench:live:lane:learning-loop
 ```
 
+## Green `run-id` (optional attach)
+
+Run locally after Playwright install (see prerequisites). On success, note the printed **Run ID** and link `bench-live-results/<run-id>/` (for example `bench-live-results/live-20260414T123456-abcdef/`) from Month 1 / Month 2 closeout or RC notes. This agent run did not produce a green lane in the headless VM; treat any local green `run-id` as the authoritative replay attach.
+
 ## Canonical scenario IDs
 
 | Lane | Command | Scenarios |
 |------|---------|-----------|
 | `popup-proof` | `pnpm bench:live:lane:popup-proof` | `bench-live/popup-deep-read-proof` |
-| `learning-loop` | `pnpm bench:live:lane:learning-loop` | `bench-live/popup-deep-read-proof` then `bench-live/vocabulary-srs-smoke` |
+| `learning-loop` | `pnpm bench:live:lane:learning-loop` | `bench-live/popup-deep-read-proof` → `bench-live/vocabulary-srs-smoke` → `bench-live/learning-loop-revisit-smoke` (matches `package.json` `bench:live:lane:learning-loop`) |
 
 ## Artifacts
 

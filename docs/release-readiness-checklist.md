@@ -1,6 +1,6 @@
 # Astra Release Readiness Checklist
 
-_Last updated: 2026-04-15 (Month 2 evidence registry link + optional popup replay note + control-plane evidence row + Month 4 Bilibili notes)_
+_Last updated: 2026-04-15 (Month 2 evidence bundle: popup state mapping + study-progress counting rules; evidence registry + optional popup replay note; control-plane evidence row; Month 4 Bilibili notes; Month 6 pack index pointer)_
 
 This checklist defines **release-blocking gates** and the minimum evidence required for a credible release decision.
 
@@ -49,11 +49,13 @@ CI enforces these in `.github/workflows/ci.yml` (`live-browser` job).
 
 **Block if:** docs claim coverage that is not currently implemented or gated.
 
+- **Month 6 pack (claims + handoff)** — For RC narrative vs proof alignment, read `docs/investigations/month-6-release-claim-audit-2026-04-14.md`, `docs/investigations/month-6-final-evidence-pack-2026-04-14.md`, and `docs/investigations/month-6-privacy-routing-failure-inventory-2026-04-14.md` (index table + routing failure buckets).
+
 ## Month 2 — Learning-loop policy (2026-04-14)
 
 - **Required gates unchanged**: `source-core` + `extension-core` only. `extension-core` already runs `bench-live/vocabulary-srs-smoke`.
 - **Chained `learning-loop` lane** (`pnpm bench:live:lane:learning-loop` = `popup-proof` + `vocabulary-srs-smoke` + `learning-loop-revisit-smoke`) remains **optional** for Month 2: credible for product narrative and regression discipline, but **not** promoted to Gate 2 until (a) flaky ownership matches `extension-core` rigor and (b) at least one green run summary is attached per RC / closeout (`docs/investigations/month-2-closeout-2026-04-14.md`).
-- **Evidence bundle**: `learning-loop-overview-2026-04-13.md`, `learning-metrics-2026-04-13.md`, `learning-loop-regression-checklist-2026-04-13.md`, `learning-loop-navigation-matrix-2026-04-14.md`, `learning-loop-claim-impact-2026-04-14.md`, `month-2-closeout-2026-04-14.md`, `month-2-evidence-registry-2026-04-14.md`.
+- **Evidence bundle**: `learning-loop-overview-2026-04-13.md`, `learning-metrics-2026-04-13.md`, `learning-loop-regression-checklist-2026-04-13.md`, `learning-loop-navigation-matrix-2026-04-14.md`, `learning-loop-claim-impact-2026-04-14.md`, `popup-deep-read-state-mapping.md`, `study-progress-counting-rules-2026-04-14.md`, `month-2-closeout-2026-04-14.md`, `month-2-evidence-registry-2026-04-14.md`.
 
 ## Current Month 1 reality notes (not a pass override)
 

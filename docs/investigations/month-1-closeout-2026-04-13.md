@@ -18,7 +18,7 @@ Score: `69 / 100`
 - smoke/live/proof artifacts:
   - canonical popup proof scenario: `bench-live/popup-deep-read-proof`
   - optional popup proof lane: `pnpm bench:live:lane:popup-proof`
-  - optional learning-loop lane: `pnpm bench:live:lane:learning-loop`
+  - optional learning-loop lane: `pnpm bench:live:lane:learning-loop` (chains `popup-proof` → `bench-live/vocabulary-srs-smoke` → `bench-live/learning-loop-revisit-smoke` per `package.json`)
   - artifact output path when run: `bench-live-results/<run-id>/`
   - fresh replay summary attached in-repo: **yes** — `docs/investigations/m1-bf-01-popup-learning-loop-replay-2026-04-14.md` (includes harness fixes: relay-only seeding + safer extension popup wait; **re-run** locally for a green `run-id` when needed)
 - updated docs:
@@ -62,7 +62,7 @@ Score: `69 / 100`
 
 ## Carry-over
 
-- item: optional `learning-loop` green replay + gate-ready promotion criteria
+- item: optional `learning-loop` green replay + gate-ready promotion criteria (full lane = `popup-deep-read-proof` + `vocabulary-srs-smoke` + `learning-loop-revisit-smoke`)
   - owner: Workstream B / Workstream F close-out
   - why it carried: replay documentation and bench harness fixes landed, but **`gate-ready`** still needs a fresh green `run-id` plus flaky ownership parity with `extension-core`
   - whether it blocks next month: it does **not** block Month 2 work entirely, but it **does** block any claim that learning-loop is `gate-ready` or ready to become a required release gate

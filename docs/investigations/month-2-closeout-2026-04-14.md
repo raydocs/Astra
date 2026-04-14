@@ -11,8 +11,8 @@ Verdict: **`pass-with-carry`** (aligned with `13G`; not **`gate-ready`** for opt
 
 | Row | Status | Pointer |
 |-----|--------|---------|
-| `live` | **Partial** | Commands: `pnpm bench:live:lane:learning-loop`, artifacts under `bench-live-results/<run-id>/`. CI runs `extension-core` (includes `vocabulary-srs-smoke`); full chained lane remains optional. |
-| `docs` | **Yes** | `learning-loop-overview-2026-04-13.md`, `learning-metrics-2026-04-13.md`, `learning-loop-regression-checklist-2026-04-13.md`, `learning-loop-navigation-matrix-2026-04-14.md`, `learning-loop-claim-impact-2026-04-14.md` |
+| `live` | **Partial** | Commands: `pnpm bench:live:lane:learning-loop` (`popup-proof` → `vocabulary-srs-smoke` → `learning-loop-revisit-smoke`), artifacts under `bench-live-results/<run-id>/`. CI runs `extension-core` (includes `vocabulary-srs-smoke` only); full chained lane remains optional. |
+| `docs` | **Yes** | `learning-loop-overview-2026-04-13.md`, `learning-metrics-2026-04-13.md`, `learning-loop-regression-checklist-2026-04-13.md`, `learning-loop-navigation-matrix-2026-04-14.md`, `learning-loop-claim-impact-2026-04-14.md`, `popup-deep-read-state-mapping.md`, `study-progress-counting-rules-2026-04-14.md` |
 | `release-policy` | **Yes** | `docs/release-readiness-checklist.md` — Month 2 subsection: learning-loop stays **optional** until green-run discipline + flaky ownership match `extension-core`. |
 | `claim-impact` | **Yes** | `learning-loop-claim-impact-2026-04-14.md` |
 | `tests` | **Yes** | `ReviewMode.test.tsx`, `VocabularyApp.test.tsx`, `study-progress.test.ts` (`orderStudySteps`); `pnpm test` green in CI scope. |
@@ -31,7 +31,20 @@ Counted toward Month 2 bar: **6, 7, 8, 14, 15, 16, 17, 22, 23, 28, 29, 34, 35, 3
 
 ## Carry-over (≤1 primary)
 
-- **Primary**: Attach **one** fresh `pnpm bench:live:lane:learning-loop` green summary (run id + artifact path) to the next RC note or extend CI — required for promoting **`gate-ready`** without changing policy. (Bench harness fixes 2026-04-14: `popup-deep-read-proof` relay-only provider seeding + `openExtensionActionPopup` DOM wait — see `m1-bf-01-popup-learning-loop-replay-2026-04-14.md` before interpreting older failures.)
+- **Primary**: Attach **one** fresh `pnpm bench:live:lane:learning-loop` green summary (run id + `bench-live-results/<run-id>/`) to the next RC note or extend CI — required for promoting **`gate-ready`** without changing policy. Lane composition: `bench-live/popup-deep-read-proof` → `bench-live/vocabulary-srs-smoke` → `bench-live/learning-loop-revisit-smoke`. (Bench harness fixes 2026-04-14: `popup-deep-read-proof` relay-only provider seeding + `openExtensionActionPopup` DOM wait — see `m1-bf-01-popup-learning-loop-replay-2026-04-14.md` before interpreting older failures.)
+
+## Task pack traceability (Phase 1–2, sequential pack)
+
+Maps task IDs from `claude-sequential-task-pack-2026-04-14.md` to primary in-repo evidence (docs-first slice through **`M2-F-05`**).
+
+| Task ID | Primary pointers |
+|---------|------------------|
+| `M1-BF-01` | `m1-bf-01-popup-learning-loop-replay-2026-04-14.md`, this closeout’s `live` row, `month-1-closeout-2026-04-13.md` |
+| `M2-B-01` | `popup-deep-read-state-mapping.md`, popup proof scenario `bench-live/popup-deep-read-proof` |
+| `M2-B-02` | Vocab/review + `sourceContext` (see registry table + `VocabularyApp` / `ReviewMode` tests); navigation matrix |
+| `M2-BH-03` | `study-progress-counting-rules-2026-04-14.md`, `study-progress.test.ts` (`orderStudySteps`) |
+| `M2-B-04` | `learning-loop-navigation-matrix-2026-04-14.md`, `bench-live/learning-loop-revisit-smoke` (in `learning-loop` lane) |
+| `M2-F-05` | `month-2-evidence-registry-2026-04-14.md`, `docs/release-readiness-checklist.md` Month 2 subsection |
 
 ## Git change artifact (full path inventory)
 
