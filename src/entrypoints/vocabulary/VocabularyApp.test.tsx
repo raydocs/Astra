@@ -7,11 +7,21 @@ const {
   removeVocabularyEntryMock,
   getDueVocabularyCountMock,
   updateVocabularyEntryMock,
+  syncRecentReadingHistoryToOwnedQueueMock,
+  listOwnedReadingItemsMock,
+  markOwnedReadingOpenedMock,
+  setOwnedReadingStatusMock,
+  removeOwnedReadingItemMock,
 } = vi.hoisted(() => ({
   getVocabularyEntriesMock: vi.fn(),
   removeVocabularyEntryMock: vi.fn(),
   getDueVocabularyCountMock: vi.fn(),
   updateVocabularyEntryMock: vi.fn(),
+  syncRecentReadingHistoryToOwnedQueueMock: vi.fn(),
+  listOwnedReadingItemsMock: vi.fn(),
+  markOwnedReadingOpenedMock: vi.fn(),
+  setOwnedReadingStatusMock: vi.fn(),
+  removeOwnedReadingItemMock: vi.fn(),
 }))
 
 vi.mock("@/utils/storage/vocabulary", () => ({
@@ -21,6 +31,23 @@ vi.mock("@/utils/storage/vocabulary", () => ({
   updateVocabularyEntry: updateVocabularyEntryMock,
 }))
 
+vi.mock("@/utils/storage/owned-reading", () => ({
+  syncRecentReadingHistoryToOwnedQueue: syncRecentReadingHistoryToOwnedQueueMock,
+  listOwnedReadingItems: listOwnedReadingItemsMock,
+  markOwnedReadingOpened: markOwnedReadingOpenedMock,
+  setOwnedReadingStatus: setOwnedReadingStatusMock,
+  removeOwnedReadingItem: removeOwnedReadingItemMock,
+}))
+
+vi.mock("#imports", () => ({
+  browser: {
+    tabs: {
+      create: vi.fn(),
+    },
+  },
+}))
+
+import { browser } from "#imports"
 import VocabularyApp from "./VocabularyApp"
 
 describe("VocabularyApp", () => {
@@ -54,6 +81,11 @@ describe("VocabularyApp", () => {
     getDueVocabularyCountMock.mockResolvedValue(1)
     removeVocabularyEntryMock.mockResolvedValue(undefined)
     updateVocabularyEntryMock.mockResolvedValue(null)
+    syncRecentReadingHistoryToOwnedQueueMock.mockResolvedValue(undefined)
+    listOwnedReadingItemsMock.mockResolvedValue([])
+    markOwnedReadingOpenedMock.mockResolvedValue(undefined)
+    setOwnedReadingStatusMock.mockResolvedValue(undefined)
+    removeOwnedReadingItemMock.mockResolvedValue(undefined)
 
     container = document.createElement("div")
     document.body.appendChild(container)
@@ -95,5 +127,52 @@ describe("VocabularyApp", () => {
     })
 
     expect(container.textContent).toContain("ephemeral")
+  })
+
+  it("loads reading queue when Reading tab is selected", async () => {
+    const readingBtn = [...container.querySelectorAll("button")].find((b) => b.textContent?.trim() === "Reading")
+    expect(readingBtn).toBeTruthy()
+
+    await act(async () => {
+      readingBtn!.click()
+      await Promise.resolve()
+      await Promise.resolve()
+    })
+
+    expect(syncRecentReadingHistoryToOwnedQueueMock).toHaveBeenCalled()
+    expect(listOwnedReadingItemsMock).toHaveBeenCalled()
+  })
+
+  it("opens tab when Open is clicked on a reading row", async () => {
+    listOwnedReadingItemsMock.mockResolvedValueOnce([
+      {
+        id: "or_test1",
+        sourceType: "article",
+        title: "Hello page",
+        sourceUrl: "https://example.com/hello",
+        openedAt: 10_000,
+        status: "saved",
+        readingHistoryRecordId: "https://example.com/hello",
+        studyProgressRecordId: "https://example.com/hello",
+      },
+    ])
+
+    const readingBtn = [...container.querySelectorAll("button")].find((b) => b.textContent?.trim() === "Reading")
+    await act(async () => {
+      readingBtn!.click()
+      await Promise.resolve()
+      await Promise.resolve()
+    })
+
+    const openBtn = [...container.querySelectorAll("button")].find((b) => b.textContent?.trim() === "Open")
+    expect(openBtn).toBeTruthy()
+
+    await act(async () => {
+      openBtn!.click()
+      await Promise.resolve()
+    })
+
+    expect(markOwnedReadingOpenedMock).toHaveBeenCalledWith("or_test1")
+    expect(browser.tabs.create).toHaveBeenCalledWith({ url: "https://example.com/hello" })
   })
 })

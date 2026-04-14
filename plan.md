@@ -741,7 +741,7 @@ Orchestrator 月末判分时，只有 `gate-ready` 才能计为本月主线完�
 
 - [x] **Owned reading 数据模型**：`docs/investigations/owned-reading-item-spec-2026-04-15.md`（`OwnedReadingItem` 字段、与 reading history / study progress / vocab 关系、sync 边界）
 - [x] **Saved reading queue v0 说明**：`docs/investigations/saved-reading-queue-spec-2026-04-15.md`（Recent / Saved / In-progress 规则与 v0 与现有入口的映射）
-- [ ] **队列与 OwnedReadingItem 持久化 UI**：仍属实现 backlog；本窗口先锁 schema，避免 reader 面继续分叉
+- [x] **队列与 OwnedReadingItem 持久化（article v0）**：`src/utils/storage/owned-reading.ts`（`astra.owned_reading.v1`）+ 扩展页 **Reading** 标签（Recent / Saved / In progress、Open、状态）；页译结束时写入队列；PDF / EPUB / subtitle-file 仍走各自 reader，未并入同一队列 UI
 - [x] **Reader 可重放基线（现有）**：`bench-live` 已含 `pdf-reader-basic`、`epub-reader-basic` 等（见 `bench-live/scenarios/index.ts`）；Month 3 验收的「3 条 artifact」在代码合并后应绑定具体 run id 写入 closeout
 
 ### Harness（Month 3）
@@ -753,7 +753,7 @@ Orchestrator 月末判分时，只有 `gate-ready` 才能计为本月主线完�
 | 区间 | P | 状态 |
 |------|---|------|
 | 1–7（model pack） | P0/P2 | [x] 规范见 `owned-reading-item-spec-2026-04-15.md`（含 P2 sync 边界节） |
-| 8–10（queue 最小 + 分类 + 恢复） | P0 | [x] 规范见 `saved-reading-queue-spec-2026-04-15.md`；**存储与 UI 未实现** |
+| 8–10（queue 最小 + 分类 + 恢复） | P0 | [x] article：`owned-reading.ts` + Vocabulary「Reading」；与 reading history 合并去重 |
 | 11–13 | P1/P2 | [ ] 队列增强（学习状态 badge / 排序筛选） |
 | 14–20（PDF pack） | P0/P2 | [ ] 以 `bench-live`/扩展内 smoke 为准，逐项补 closeout |
 | 21–27（EPUB pack） | P0/P2 | [ ] 同上 |
@@ -795,7 +795,7 @@ Orchestrator 月末判分时，只有 `gate-ready` 才能计为本月主线完�
 
 - [x] **Adapter 全量清单 + proof level + failure modes**：`docs/investigations/video-subtitle-adapter-inventory-2026-04-15.md`（代码路径：`src/entrypoints/content/video-platforms/`）
 - [x] **Support matrix 视频附录**（claim 分级）：`docs/investigations/support-matrix-video-addendum-2026-04-15.md`（与 `support-matrix-2026-q2.md` 联读）
-- [ ] **YouTube + Bilibili 双 smoke 绿跑摘要**：需绑定 `bench-live` artifact 后勾 `gate-ready`
+- [ ] **YouTube + Bilibili 双 smoke 绿跑摘要**：YouTube 沿用 `bench-live/youtube-subtitle-basic`；Bilibili 已加骨架场景 `bench-live/bilibili-subtitle-basic`（fixture HTML + Playwright）；两条均需在目标环境跑出 artifact run id 后勾 `gate-ready`
 - [ ] **Subtitle file 全链路 revisit**：依赖 Month 3 `OwnedReadingItem` 存储落地
 
 ### Harness（Month 4）
@@ -809,7 +809,7 @@ Orchestrator 月末判分时，只有 `gate-ready` 才能计为本月主线完�
 |------|---|------|
 | 1–5（inventory） | P0 | [x] 见 `video-subtitle-adapter-inventory-2026-04-15.md` |
 | 6–10（YouTube） | P0/P1 | [ ] smoke 稳定化与 failure class 文档化（与现有 bench-live 对齐） |
-| 11–15（次级 adapter） | P0/P2 | [ ] 选定 Bilibili 后补 smoke（inventory 已预选） |
+| 11–15（次级 adapter） | P0/P2 | [x] Bilibili：`bench-live/bilibili-subtitle-basic`（面板 fixture smoke）；[ ] 真实站 DOM drift 与 failure class 文档化 |
 | 16–20（subtitle-reader） | P0/P2 | [ ] 与 vocab/revisit 联动待实现 |
 | 21–25（revisit） | P0/P2 | [ ] |
 | 26–30（claim） | P0/P2 | [x] matrix 附录 + `release-readiness-checklist.md` Gate 4 已加 video/subtitle 审查行（默认 No，视频 RC 升为 Yes） |
