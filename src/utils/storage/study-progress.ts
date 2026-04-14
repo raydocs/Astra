@@ -63,6 +63,9 @@ export interface StudyProgressSyncMutationLike {
 export const STUDY_PROGRESS_STORAGE_KEY = "astra.study_progress.v1"
 const MAX_PAGES = 50
 
+/** First-step events that mean the user studied this page in the reading loop (SRS-only review is excluded). */
+const FIRST_STEP_COUNTS_PAGE_STUDIED = new Set<StudyStep>(["read", "guided_read", "explain", "vocab_save"])
+
 function todayKey(): string {
   const d = new Date()
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`
@@ -246,8 +249,8 @@ export async function recordStudyEvent(input: RecordStudyEventInput): Promise<St
       break
   }
 
-  // Count new page studied
-  if (page.completedSteps.length === 1 && page.completedSteps[0] === input.step) {
+  // Count new page studied (vocab_review alone should not inflate "pages studied" in daily stats)
+  if (page.completedSteps.length === 1 && FIRST_STEP_COUNTS_PAGE_STUDIED.has(input.step)) {
     store.dailyStats.pagesStudied += 1
   }
 
