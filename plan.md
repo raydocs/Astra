@@ -800,7 +800,7 @@ Orchestrator 月末判分时，只有 `gate-ready` 才能计为本月主线完�
 
 - [x] **Adapter 全量清单 + proof level + failure modes**：`docs/investigations/video-subtitle-adapter-inventory-2026-04-15.md`（代码路径：`src/entrypoints/content/video-platforms/`）
 - [x] **Support matrix 视频附录**（claim 分级）：`docs/investigations/support-matrix-video-addendum-2026-04-15.md`（与 `support-matrix-2026-q2.md` 联读）
-- [ ] **YouTube + Bilibili 双 smoke 绿跑摘要**：YouTube `bench-live/youtube-subtitle-basic`；Bilibili `bench-live/bilibili-subtitle-basic` + inventory **failure class** 小节；需在 CI/本机 `bench-live-results/<run-id>/` 绑定 run id 后勾 `gate-ready`
+- [x] **YouTube + Bilibili bench-live smoke（fixture skeleton）+ 记录**：`bench-live/youtube-subtitle-basic` 与 `bench-live/bilibili-subtitle-basic` 已在 CI 类环境跑绿；**failure class** 见 `docs/investigations/video-subtitle-adapter-inventory-2026-04-15.md`（YouTube / Bilibili 均区分 **production vs fixture**）；`bench-live-results/<run-id>/` 与命令见 `docs/investigations/month-4-video-smoke-replay-2026-04-16.md`（目录 gitignore，非提交物）。**非** www 生产站自动 proof；`gate-ready` 若指生产 traffic 仍属 backlog。
 - [x] **Subtitle file revisit（扩展 v0）**：`OwnedReadingItem` `subtitle-file` + Subtitle reader 入队 + Reading **Open** → `subtitle-reader.html`
 
 ### Harness（Month 4）
@@ -813,7 +813,7 @@ Orchestrator 月末判分时，只有 `gate-ready` 才能计为本月主线完�
 | 区间 | P | 状态 |
 |------|---|------|
 | 1–5（inventory） | P0 | [x] 见 `video-subtitle-adapter-inventory-2026-04-15.md` |
-| 6–10（YouTube） | P0/P1 | [x] inventory 与 bench-live 路径对齐；[ ] 生产站 failure class 单独成表（非 fixture） |
+| 6–10（YouTube） | P0/P1 | [x] inventory 与 bench-live 路径对齐；[x] 生产站 failure class 单独成表（非 fixture）：`video-subtitle-adapter-inventory-2026-04-15.md` §YouTube — failure classes (production vs fixture) |
 | 11–15（次级 adapter） | P0/P2 | [x] Bilibili fixture smoke + inventory **Bilibili — failure classes**；[ ] 真实站回归仍靠人工/扩展日志 |
 | 16–20（subtitle-reader） | P0/P2 | [x] Reading 队列 Open 至 subtitle reader；[ ] web 端 subtitle 与扩展完全 parity 仍 backlog |
 | 21–25（revisit） | P0/P2 | [ ] |
