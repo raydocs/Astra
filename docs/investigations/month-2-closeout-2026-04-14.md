@@ -33,6 +33,10 @@ Counted toward Month 2 bar: **6, 7, 8, 14, 15, 16, 17, 22, 23, 28, 29, 34, 35, 3
 
 - **Primary**: Attach **one** fresh `pnpm bench:live:lane:learning-loop` green summary (run id + artifact path) to the next RC note or extend CI — required for promoting **`gate-ready`** without changing policy.
 
+## Git change artifact (full path inventory)
+
+- **Frozen inventory + compare links + commit lists:** `docs/investigations/month-2-change-artifact-2026-04-14.md`
+
 ## Ledger 收尾（#6 / #9 / #24 / #30）
 
 - **#6**: Study 区信息顺序调整为 **句子甲板 → 摘要 digest → 进度条/下一步 → 今日计数 → 快捷入口**（`StudySection.tsx`）。

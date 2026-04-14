@@ -143,7 +143,15 @@ jobs:
 
       - name: Verify Safari bundle sync
         if: matrix.browser == 'safari'
-        run: bash ios/scripts/verify-safari-build-sync.sh
+        run: |
+          # Re-sync from CI's fresh build, then fail if anything differs from git.
+          # This catches macOS-vs-Linux chunk hash drift that a plain diff of trees would miss.
+          pnpm ios:sync-extension
+          if ! git diff --quiet -- "ios/AstraShell Extension/Resources"; then
+            echo "::error::Committed iOS Safari resources do not match CI build output. Run pnpm build:safari && pnpm ios:sync-extension on Linux (or in CI) and commit." >&2
+            git diff --stat -- "ios/AstraShell Extension/Resources" >&2
+            exit 1
+          fi
 
       - name: Lint Firefox extension
         if: matrix.browser == 'firefox'

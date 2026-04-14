@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react"
+import { browser } from "#imports"
 import type { VocabularyEntry } from "@/utils/storage/vocabulary"
 import {
   getVocabularyEntries,
@@ -6,9 +7,19 @@ import {
   getDueVocabularyCount,
   updateVocabularyEntry,
 } from "@/utils/storage/vocabulary"
+import { getPageStudyProgress } from "@/utils/storage/study-progress"
+import type { OwnedReadingItem, OwnedReadingStatus } from "@/utils/storage/owned-reading"
+import {
+  listOwnedReadingItems,
+  markOwnedReadingOpened,
+  removeOwnedReadingItem,
+  setOwnedReadingStatus,
+  syncRecentReadingHistoryToOwnedQueue,
+} from "@/utils/storage/owned-reading"
 import ReviewMode from "./ReviewMode"
 
-type ActiveTab = "list" | "review"
+type ActiveTab = "list" | "review" | "reading"
+type ReadingSubTab = "recent" | "saved" | "in_progress"
 type SortMode = "time" | "alpha"
 
 function formatDate(ts: number): string {
@@ -74,7 +85,10 @@ function downloadFile(content: string, filename: string, mimeType: string): void
 
 function getInitialTab(): ActiveTab {
   const params = new URLSearchParams(window.location.search)
-  return params.get("tab") === "review" ? "review" : "list"
+  const tab = params.get("tab")
+  if (tab === "review") return "review"
+  if (tab === "reading") return "reading"
+  return "list"
 }
 
 function getEntrySourceSurfaceLabel(entry: VocabularyEntry): string | null {
@@ -105,8 +119,18 @@ function getEntrySourceSnippet(entry: VocabularyEntry): string {
     ?? ""
 }
 
+function readerHtmlPath(item: OwnedReadingItem): "/pdf-reader.html" | "/epub-reader.html" | "/subtitle-reader.html" | null {
+  if (item.sourceType === "pdf") return "/pdf-reader.html"
+  if (item.sourceType === "epub") return "/epub-reader.html"
+  if (item.sourceType === "subtitle-file") return "/subtitle-reader.html"
+  return null
+}
+
 export default function VocabularyApp() {
   const [activeTab, setActiveTab] = useState<ActiveTab>(getInitialTab)
+  const [readingSubTab, setReadingSubTab] = useState<ReadingSubTab>("recent")
+  const [readingItems, setReadingItems] = useState<OwnedReadingItem[]>([])
+  const [readingLoading, setReadingLoading] = useState(() => getInitialTab() === "reading")
   const [entries, setEntries] = useState<VocabularyEntry[]>([])
   const [search, setSearch] = useState("")
   const [sortMode, setSortMode] = useState<SortMode>("time")
@@ -115,6 +139,7 @@ export default function VocabularyApp() {
   const [dueCount, setDueCount] = useState(0)
   const [expandedId, setExpandedId] = useState<string | null>(null)
   const [activeTagFilter, setActiveTagFilter] = useState<string | null>(null)
+  const [readingStudyHints, setReadingStudyHints] = useState<Record<string, string>>({})
 
   const loadEntries = async () => {
     const [data, due] = await Promise.all([
@@ -126,7 +151,29 @@ export default function VocabularyApp() {
     setLoading(false)
   }
 
+  const loadReadingQueue = async () => {
+    setReadingLoading(true)
+    await syncRecentReadingHistoryToOwnedQueue()
+    const items = await listOwnedReadingItems()
+    setReadingItems(items)
+    const hints: Record<string, string> = {}
+    for (const row of items) {
+      const key = row.studyProgressRecordId ?? row.sourceUrl ?? null
+      if (!key || row.sourceType !== "article") continue
+      const page = await getPageStudyProgress(key)
+      if (!page?.completedSteps?.length) continue
+      hints[row.id] = page.completedSteps.join(" → ")
+    }
+    setReadingStudyHints(hints)
+    setReadingLoading(false)
+    setLoading(false)
+  }
+
   useEffect(() => {
+    if (activeTab === "reading") {
+      void loadReadingQueue()
+      return
+    }
     void loadEntries()
   }, [activeTab])
 
@@ -190,6 +237,51 @@ export default function VocabularyApp() {
     }
     return b.savedAt - a.savedAt
   })
+
+  const readingFiltered = [...readingItems]
+    .filter((row) => {
+      if (readingSubTab === "recent") return true
+      if (readingSubTab === "saved") return row.status === "saved"
+      return row.status === "in_progress"
+    })
+    .sort((a, b) => b.openedAt - a.openedAt)
+
+  const openReadingItem = async (item: OwnedReadingItem) => {
+    await markOwnedReadingOpened(item.id)
+
+    if (item.sourceType === "article") {
+      const raw = item.sourceUrl?.trim()
+      if (!raw) return
+      void browser.tabs.create({ url: raw })
+      void loadReadingQueue()
+      return
+    }
+
+    const readerPath = readerHtmlPath(item)
+    if (!readerPath) return
+
+    const base = browser.runtime.getURL(readerPath)
+    const params = new URLSearchParams()
+    if (item.sourceType === "pdf" && item.sourceUrl?.startsWith("http")) {
+      params.set("url", item.sourceUrl)
+    }
+    if (item.reopenHint) {
+      params.set("reopenHint", item.reopenHint)
+    }
+    const qs = params.toString()
+    void browser.tabs.create({ url: qs ? `${base}?${qs}` : base })
+    void loadReadingQueue()
+  }
+
+  const handleReadingStatus = async (id: string, status: OwnedReadingStatus) => {
+    await setOwnedReadingStatus(id, status)
+    void loadReadingQueue()
+  }
+
+  const handleRemoveReading = async (id: string) => {
+    await removeOwnedReadingItem(id)
+    void loadReadingQueue()
+  }
 
   const containerStyle: React.CSSProperties = {
     maxWidth: 720,
@@ -357,7 +449,9 @@ export default function VocabularyApp() {
     marginBottom: 20,
   }
 
-  if (loading) {
+  const showListLoading = activeTab !== "reading" && loading
+  const showReadingLoading = activeTab === "reading" && readingLoading
+  if (showListLoading || showReadingLoading) {
     return (
       <div style={containerStyle}>
         <p style={{ color: "#94a3b8", textAlign: "center" }}>Loading...</p>
@@ -380,6 +474,9 @@ export default function VocabularyApp() {
         </button>
         <button type="button" style={tabStyle(activeTab === "review")} onClick={() => setActiveTab("review")}>
           Review {dueCount > 0 ? `(${dueCount})` : ""}
+        </button>
+        <button type="button" style={tabStyle(activeTab === "reading")} onClick={() => setActiveTab("reading")}>
+          Reading
         </button>
       </div>
 
@@ -661,6 +758,106 @@ export default function VocabularyApp() {
               })()}
             </div>
           ))}
+        </>
+      )}
+
+      {activeTab === "reading" && (
+        <>
+          <p style={{ fontSize: 13, color: "#64748b", marginTop: 0, marginBottom: 16 }}>
+            Revisit pages you translated. Recent merges from reading history; use Saved / In progress to organize.
+          </p>
+          <div style={{ ...toolbarStyle, marginBottom: 12 }}>
+            <span style={{ fontSize: 12, color: "#64748b", marginRight: 4 }}>View:</span>
+            <button
+              type="button"
+              style={sortButtonStyle(readingSubTab === "recent")}
+              onClick={() => setReadingSubTab("recent")}
+            >
+              Recent
+            </button>
+            <button
+              type="button"
+              style={sortButtonStyle(readingSubTab === "saved")}
+              onClick={() => setReadingSubTab("saved")}
+            >
+              Saved
+            </button>
+            <button
+              type="button"
+              style={sortButtonStyle(readingSubTab === "in_progress")}
+              onClick={() => setReadingSubTab("in_progress")}
+            >
+              In progress
+            </button>
+          </div>
+
+          {readingFiltered.length === 0 ? (
+            <div style={emptyStyle}>
+              {readingSubTab === "recent"
+                ? "No reading items yet. Translate a page in the browser to populate history."
+                : readingSubTab === "saved"
+                  ? "Nothing marked as saved. Open Recent and mark an item as saved."
+                  : "Nothing in progress. Mark a page as in progress from Recent or Saved."}
+            </div>
+          ) : (
+            readingFiltered.map((item) => (
+              <div key={item.id} style={cardStyle}>
+                <div style={wordStyle}>{item.title}</div>
+                <div style={{ ...metaStyle, marginBottom: 8 }}>
+                  <span style={{ textTransform: "capitalize" }}>{item.status.replace("_", " ")}</span>
+                  {" · "}
+                  <span>{formatDate(item.openedAt)}</span>
+                  {item.sourceType !== "article" && (
+                    <>
+                      {" · "}
+                      <span>{item.sourceType}</span>
+                    </>
+                  )}
+                </div>
+                {readingStudyHints[item.id] && (
+                  <div style={{ fontSize: 11, color: "#64748b", marginBottom: 6 }}>
+                    Study: {readingStudyHints[item.id]}
+                  </div>
+                )}
+                <div style={{ ...metaRowStyle, marginTop: 8 }}>
+                  <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+                    <button
+                      type="button"
+                      style={sortButtonStyle(false)}
+                      onClick={() => void openReadingItem(item)}
+                      disabled={item.sourceType === "article" && !item.sourceUrl?.trim()}
+                    >
+                      Open
+                    </button>
+                    <button
+                      type="button"
+                      style={sortButtonStyle(false)}
+                      onClick={() => void handleReadingStatus(item.id, "in_progress")}
+                    >
+                      In progress
+                    </button>
+                    <button
+                      type="button"
+                      style={sortButtonStyle(false)}
+                      onClick={() => void handleReadingStatus(item.id, "saved")}
+                    >
+                      Saved
+                    </button>
+                    <button
+                      type="button"
+                      style={sortButtonStyle(false)}
+                      onClick={() => void handleReadingStatus(item.id, "archived")}
+                    >
+                      Archive
+                    </button>
+                  </div>
+                  <button type="button" style={deleteBtnStyle} onClick={() => void handleRemoveReading(item.id)}>
+                    Remove
+                  </button>
+                </div>
+              </div>
+            ))
+          )}
         </>
       )}
     </div>

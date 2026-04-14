@@ -9,6 +9,7 @@
  */
 
 import { useState, useCallback, useEffect, useRef } from "react"
+import { upsertOwnedPdfFromFileName, upsertOwnedPdfFromRemoteUrl } from "@/utils/storage/owned-reading"
 import { extractPdfPages, type PdfPage } from "./pdf-extractor"
 import { translatePdfPage, type TranslatedBlock } from "./pdf-translator"
 
@@ -26,12 +27,16 @@ export function PdfReaderApp() {
   const [pages, setPages] = useState<PageState[]>([])
   const [fileName, setFileName] = useState<string>("")
   const [progress, setProgress] = useState({ current: 0, total: 0 })
+  const [reopenBanner, setReopenBanner] = useState<string | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const loadGenRef = useRef(0)
-
   // Check for URL parameter on mount
   useEffect(() => {
     const params = new URLSearchParams(window.location.search)
+    const hint = params.get("reopenHint")
+    if (hint) {
+      setReopenBanner(decodeURIComponent(hint))
+    }
     const pdfUrl = params.get("url")
     if (pdfUrl) {
       void loadPdfFromUrl(pdfUrl)
@@ -47,10 +52,11 @@ export function PdfReaderApp() {
         return
       }
       setPhase("loading")
-      setFileName(url.split("/").pop() ?? "document.pdf")
+      const displayName = url.split("/").pop() ?? "document.pdf"
+      setFileName(displayName)
       const response = await fetch(url)
       const arrayBuffer = await response.arrayBuffer()
-      await processPdf(new Uint8Array(arrayBuffer))
+      await processPdf(new Uint8Array(arrayBuffer), { remoteUrl: url, displayName })
     } catch (err) {
       setPhase("error")
       setError(err instanceof Error ? err.message : "Failed to load PDF")
@@ -74,10 +80,13 @@ export function PdfReaderApp() {
     setPhase("loading")
     setFileName(file.name)
     const arrayBuffer = await file.arrayBuffer()
-    await processPdf(new Uint8Array(arrayBuffer))
+    await processPdf(new Uint8Array(arrayBuffer), { localFileName: file.name })
   }
 
-  const processPdf = async (data: Uint8Array) => {
+  const processPdf = async (
+    data: Uint8Array,
+    source: { remoteUrl: string; displayName: string } | { localFileName: string },
+  ) => {
     try {
       loadGenRef.current += 1
       const gen = loadGenRef.current
@@ -91,6 +100,21 @@ export function PdfReaderApp() {
       setPages(pageStates)
       setProgress({ current: 0, total: pdfPages.length })
       setPhase("translating")
+
+      if ("remoteUrl" in source) {
+        void upsertOwnedPdfFromRemoteUrl({
+          url: source.remoteUrl,
+          title: source.displayName,
+          pageCount: pdfPages.length,
+          status: "in_progress",
+        })
+      } else {
+        void upsertOwnedPdfFromFileName({
+          fileName: source.localFileName,
+          pageCount: pdfPages.length,
+          status: "in_progress",
+        })
+      }
 
       // Translate pages sequentially (abort if a new PDF is loaded)
       for (let i = 0; i < pdfPages.length; i++) {
@@ -131,6 +155,23 @@ export function PdfReaderApp() {
           </span>
         )}
       </header>
+
+      {reopenBanner && (
+        <div
+          role="status"
+          style={{
+            marginBottom: 12,
+            padding: "10px 12px",
+            fontSize: 13,
+            color: "#1e40af",
+            background: "rgba(99, 102, 241, 0.12)",
+            borderRadius: 8,
+            border: "1px solid rgba(99, 102, 241, 0.35)",
+          }}
+        >
+          {reopenBanner}
+        </div>
+      )}
 
       {phase === "idle" && (
         <div

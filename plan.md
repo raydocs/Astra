@@ -644,6 +644,11 @@ Astra 不是从 0 到 1，而是从“已有很多 surface，但可信度不均�
 - **结果**：63 / 63 场景通过，**平均分 100**，报告 `bench-results/latest.json`
 - **说明**：此为 deterministic bench harness；与 `13G` 月度五维并行记录，不作为唯一 gate。
 
+### Month 1 与下方 AI Task Ledger（任务 1–62）口径说明（2026-04-15）
+
+- **§11 本节**（Mandatory outcomes / Deliverables / Acceptance / Harness）为 **月度收口主口径**：已勾选完成，并有 `docs/investigations/month-1-closeout-2026-04-13.md`。
+- **文末「Month 1 AI Task Ledger」任务 1–62** 为 **派单扩容池**：不要求在本仓库对每一条单独打 `[x]`；未完成项进入 Backlog 或后续月份，**不因**未逐条勾选而推翻 §11 closeout 结论。
+
 ## Month 2 — Finish Learning-Loop V1
 
 ### Month goal
@@ -733,9 +738,31 @@ Orchestrator 月末判分时，只有 `gate-ready` 才能计为本月主线完�
 
 ### Acceptance
 
-- owned reading item schema / entry-state doc 已落地，并映射进 article + 至少 2 类 reader surface
-- queue / revisit 至少能重开 2 种 source type，并保留 title/source metadata + recent/progress state
+- owned reading item schema / entry-state doc 已落地，并映射进 **article + PDF + EPUB + subtitle-file**（扩展阅读队列 + 各 reader 在解析/加载时 upsert；article 仍由页译与 reading history 驱动）
+- queue / revisit：article 用 **Open** 打开 URL；PDF（远程 `?url=`）、EPUB / 字幕文件用 **Open** 打开对应 reader，并带 `reopenHint` 提示重新选择本地文件；article 行可显示 **study progress** 已完成步骤摘要（有 `studyProgressRecordId` 时）
 - 至少 3 条 reader/revisit 可重放 artifact 已存在，且不靠新增 surface 掩盖模型未收口
+
+### Month 3 执行快照与规范落地（2026-04-15）
+
+- [x] **Owned reading 数据模型**：`docs/investigations/owned-reading-item-spec-2026-04-15.md`（`OwnedReadingItem` 字段、与 reading history / study progress / vocab 关系、sync 边界）
+- [x] **Saved reading queue v0 说明**：`docs/investigations/saved-reading-queue-spec-2026-04-15.md`（Recent / Saved / In-progress 规则与 v0 与现有入口的映射）
+- [x] **队列与 OwnedReadingItem 持久化（多类型 v0）**：`src/utils/storage/owned-reading.ts` + Vocabulary **Reading** 标签；article 由页译与 reading history 合并；**PDF**（`PdfReaderApp` 解析后）、**EPUB**（`EpubReaderApp` 导入/切章）、**subtitle-file**（`SubtitleReaderApp` 解析后）写入队列；`reopenHint` 用于本地文件重开提示；各 reader 支持 `?reopenHint=` 横幅
+- [x] **Reader 可重放基线（现有）**：`bench-live` 已含 `pdf-reader-basic`、`epub-reader-basic` 等（见 `bench-live/scenarios/index.ts`）；Month 3 验收的「3 条 artifact」在代码合并后应绑定具体 run id 写入 closeout
+
+### Harness（Month 3）
+
+- 与 Month 2 相同：**`pnpm bench`** 为全仓 deterministic 回归（63 场景）；**reader 专项**以 `bench-live` 场景为准，不要求与 Month 3 schema 同一 PR 内完成。
+
+### Month 3 AI Task Ledger 打勾（2026-04-15）
+
+| 区间 | P | 状态 |
+|------|---|------|
+| 1–7（model pack） | P0/P2 | [x] 规范见 `owned-reading-item-spec-2026-04-15.md`（含 P2 sync 边界节） |
+| 8–10（queue 最小 + 分类 + 恢复） | P0 | [x] article：`owned-reading.ts` + Vocabulary「Reading」；与 reading history 合并去重 |
+| 11–13 | P1/P2 | [x] article 学习步骤摘要（`getPageStudyProgress`）+ 类型标签；[ ] 全局排序/筛选控件 |
+| 14–20（PDF pack） | P0/P2 | [x] 队列写入 + `bench-live/pdf-reader-basic` 仍为主证明；[ ] 逐项 closeout memo |
+| 21–27（EPUB pack） | P0/P2 | [x] 队列写入 + `bench-live/epub-reader-basic`；[ ] 逐项 closeout memo |
+| 28–33（revisit + evidence） | P0/P2 | [x] Reading 标签 Open 覆盖 article + reader 四类；[ ] CI artifact 命名规范绑定 |
 
 ## Month 4 — Make Video / Subtitle And Revisit Credible
 
@@ -769,6 +796,29 @@ Orchestrator 月末判分时，只有 `gate-ready` 才能计为本月主线完�
 - subtitle file 与至少 1 条网页视频字幕路径都能进入 explain/save/revisit 资产链中的至少 1 条可重放路径
 - support matrix / release checklist 已把视频相关 claim 标成 supported / best-effort / experimental（或等价等级），不再笼统写“支持视频”
 
+### Month 4 执行快照与清单（2026-04-15）
+
+- [x] **Adapter 全量清单 + proof level + failure modes**：`docs/investigations/video-subtitle-adapter-inventory-2026-04-15.md`（代码路径：`src/entrypoints/content/video-platforms/`）
+- [x] **Support matrix 视频附录**（claim 分级）：`docs/investigations/support-matrix-video-addendum-2026-04-15.md`（与 `support-matrix-2026-q2.md` 联读）
+- [ ] **YouTube + Bilibili 双 smoke 绿跑摘要**：YouTube `bench-live/youtube-subtitle-basic`；Bilibili `bench-live/bilibili-subtitle-basic` + inventory **failure class** 小节；需在 CI/本机 `bench-live-results/<run-id>/` 绑定 run id 后勾 `gate-ready`
+- [x] **Subtitle file revisit（扩展 v0）**：`OwnedReadingItem` `subtitle-file` + Subtitle reader 入队 + Reading **Open** → `subtitle-reader.html`
+
+### Harness（Month 4）
+
+- Deterministic：**`pnpm bench`**（含 subtitle / provider 等面）
+- Live：在 inventory 中锁 **YouTube + Bilibili** 为 Month 4 主防线后再扩展 lane
+
+### Month 4 AI Task Ledger 打勾（2026-04-15）
+
+| 区间 | P | 状态 |
+|------|---|------|
+| 1–5（inventory） | P0 | [x] 见 `video-subtitle-adapter-inventory-2026-04-15.md` |
+| 6–10（YouTube） | P0/P1 | [x] inventory 与 bench-live 路径对齐；[ ] 生产站 failure class 单独成表（非 fixture） |
+| 11–15（次级 adapter） | P0/P2 | [x] Bilibili fixture smoke + inventory **Bilibili — failure classes**；[ ] 真实站回归仍靠人工/扩展日志 |
+| 16–20（subtitle-reader） | P0/P2 | [x] Reading 队列 Open 至 subtitle reader；[ ] web 端 subtitle 与扩展完全 parity 仍 backlog |
+| 21–25（revisit） | P0/P2 | [ ] |
+| 26–30（claim） | P0/P2 | [x] matrix 附录 + `release-readiness-checklist.md` Gate 4 已加 video/subtitle 审查行（默认 No，视频 RC 升为 Yes） |
+
 ## Month 5 — Reduce Control-Plane Drag
 
 ### Month goal
@@ -800,6 +850,27 @@ Orchestrator 月末判分时，只有 `gate-ready` 才能计为本月主线完�
 - extension / web cloud / mobile/iOS bridge 至少 3 个对用户可见面，对 account / usage / plan 的 wording 与状态来源一致
 - lifecycle runbook 覆盖 export / delete / repair / revoke 当前状态；其中至少 2 条高风险流程有可重放 proof
 - Month 5 closeout 能明确说明 remaining control-plane noise、owner、carry-over；major carry-over 最多 1 项
+
+### Month 5 执行快照与后台清单（2026-04-15）
+
+- [x] **Node-owned 控制面路由清单**：`docs/investigations/control-plane-surface-inventory-2026-04-15.md`
+- [x] **Lifecycle 操作 runbook 附录**（export/delete/repair/revoke 期望与 copy 规则）：`docs/investigations/lifecycle-operations-runbook-month5-2026-04-15.md`
+- [ ] **三端文案完全对齐**：需在 extension popup/options、`web`、文档中逐屏 diff（inventory 已列 wording 规则；逐屏 diff 仍 backlog）
+- [ ] **mobile web / iOS bridge smoke**：沿用 `ios/README.md` + web narrow viewport checklist；证据入库后勾验收
+
+### Harness（Month 5）
+
+- 与翻译核心相同：**`pnpm bench`**；控制面以 **`pnpm test`** 中含 `astra-web` / account client 用例 + 手工或 live 账号路径为主。
+
+### Month 5 AI Task Ledger 打勾（2026-04-15）
+
+| 区间 | P | 状态 |
+|------|---|------|
+| 1–5（inventory + 文案规则） | P0/P1 | [x] inventory 文档；**UI copy 对齐** [ ] |
+| 6–12（lifecycle） | P0/P1 | [x] runbook 附录；**各流程 smoke** [ ] |
+| 13–17（mobile/iOS） | P0/P1 | [ ] |
+| 18–22（background） | P0/P2 | [x] `control-plane-surface-inventory` 增 **Incident triage** 表 |
+| 23–26（release） | P0/P2 | [x] `release-readiness-checklist.md` Gate 4 增 control-plane evidence 行；[ ] matrix 移动口径二次核对 |
 
 ## Month 6 — Harden, Freeze, Publish Honestly
 

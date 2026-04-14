@@ -11,6 +11,7 @@ import type Book from "epubjs/types/book"
 import type { NavItem } from "epubjs/types/navigation"
 import { browser } from "#imports"
 import type { RuntimeResponse } from "@/types/messages"
+import { upsertOwnedEpubFromImport } from "@/utils/storage/owned-reading"
 
 type Phase = "idle" | "loading" | "reading" | "error"
 
@@ -37,14 +38,23 @@ async function getTargetLang(): Promise<string> {
 export function EpubReaderApp() {
   const [phase, setPhase] = useState<Phase>("idle")
   const [error, setError] = useState<string | null>(null)
+  const [reopenBanner, setReopenBanner] = useState<string | null>(null)
   const [bookTitle, setBookTitle] = useState("")
   const [toc, setToc] = useState<NavItem[]>([])
   const [chapter, setChapter] = useState<ChapterContent | null>(null)
   const bookRef = useRef<Book | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const chapterGenRef = useRef(0)
+  const epubImportFileNameRef = useRef<string>("book.epub")
 
-  const loadBook = async (data: ArrayBuffer) => {
+  useEffect(() => {
+    const hint = new URLSearchParams(window.location.search).get("reopenHint")
+    if (hint) {
+      setReopenBanner(decodeURIComponent(hint))
+    }
+  }, [])
+
+  const loadBook = async (data: ArrayBuffer, fileName?: string) => {
     try {
       setPhase("loading")
       bookRef.current?.destroy()
@@ -52,11 +62,21 @@ export function EpubReaderApp() {
       bookRef.current = book
 
       await book.ready
-      setBookTitle(book.packaging?.metadata?.title ?? "Untitled")
+      const resolvedTitle = book.packaging?.metadata?.title ?? "Untitled"
+      setBookTitle(resolvedTitle)
 
       const nav = await book.loaded.navigation
       setToc(nav.toc)
       setPhase("reading")
+
+      const safeFile = fileName?.trim() || "book.epub"
+      epubImportFileNameRef.current = safeFile
+      void upsertOwnedEpubFromImport({
+        fileName: safeFile,
+        bookTitle: resolvedTitle,
+        chapterHref: nav.toc[0]?.href ?? null,
+        status: "in_progress",
+      })
 
       // Auto-open first chapter
       if (nav.toc.length > 0) {
@@ -98,6 +118,14 @@ export function EpubReaderApp() {
       }
       setChapter(chapterContent)
 
+      const metaTitle = bookRef.current?.packaging?.metadata?.title ?? (bookTitle || "Untitled")
+      void upsertOwnedEpubFromImport({
+        fileName: epubImportFileNameRef.current,
+        bookTitle: metaTitle,
+        chapterHref: item.href,
+        status: "in_progress",
+      })
+
       // Translate in batches (abort if chapter changed)
       for (let i = 0; i < paragraphs.length; i += BATCH_SIZE) {
         if (chapterGenRef.current !== gen) return
@@ -133,13 +161,13 @@ export function EpubReaderApp() {
     event.preventDefault()
     const file = event.dataTransfer.files[0]
     if (file?.name.endsWith(".epub")) {
-      void file.arrayBuffer().then(loadBook)
+      void file.arrayBuffer().then((buf) => loadBook(buf, file.name))
     }
   }, [])
 
   const handleFileSelect = useCallback((event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0]
-    if (file) void file.arrayBuffer().then(loadBook)
+    if (file) void file.arrayBuffer().then((buf) => loadBook(buf, file.name))
   }, [])
 
   // Cleanup
@@ -153,6 +181,23 @@ export function EpubReaderApp() {
         <h1 style={{ margin: 0, fontSize: 18, color: "#6366f1" }}>Astra ePub Reader</h1>
         {bookTitle && <span style={{ fontSize: 13, color: "#64748b" }}>{bookTitle}</span>}
       </header>
+
+      {reopenBanner && (
+        <div
+          role="status"
+          style={{
+            marginBottom: 12,
+            padding: "10px 12px",
+            fontSize: 13,
+            color: "#1e40af",
+            background: "rgba(99, 102, 241, 0.12)",
+            borderRadius: 8,
+            border: "1px solid rgba(99, 102, 241, 0.35)",
+          }}
+        >
+          {reopenBanner}
+        </div>
+      )}
 
       {phase === "idle" && (
         <div
