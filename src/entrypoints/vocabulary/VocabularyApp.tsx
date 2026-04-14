@@ -22,6 +22,7 @@ import { t } from "@/utils/i18n"
 type ActiveTab = "list" | "review" | "reading"
 type ReadingSubTab = "recent" | "saved" | "in_progress"
 type SortMode = "time" | "alpha"
+type ReadingSortMode = "opened" | "title"
 
 function formatDate(ts: number): string {
   const d = new Date(ts)
@@ -132,6 +133,7 @@ function readerHtmlPath(item: OwnedReadingItem): "/pdf-reader.html" | "/epub-rea
 export default function VocabularyApp() {
   const [activeTab, setActiveTab] = useState<ActiveTab>(getInitialTab)
   const [readingSubTab, setReadingSubTab] = useState<ReadingSubTab>("recent")
+  const [readingSortMode, setReadingSortMode] = useState<ReadingSortMode>("opened")
   const [readingItems, setReadingItems] = useState<OwnedReadingItem[]>([])
   const [readingLoading, setReadingLoading] = useState(() => getInitialTab() === "reading")
   const [entries, setEntries] = useState<VocabularyEntry[]>([])
@@ -258,7 +260,12 @@ export default function VocabularyApp() {
       if (readingSubTab === "saved") return row.status === "saved"
       return row.status === "in_progress"
     })
-    .sort((a, b) => b.openedAt - a.openedAt)
+    .sort((a, b) => {
+      if (readingSortMode === "title") {
+        return a.title.localeCompare(b.title)
+      }
+      return b.openedAt - a.openedAt
+    })
 
   const hasDailyProgress =
     dailyPagesStudied > 0
@@ -858,6 +865,24 @@ export default function VocabularyApp() {
               onClick={() => setReadingSubTab("in_progress")}
             >
               In progress
+            </button>
+            <div style={{ flex: 1 }} />
+            <span style={{ fontSize: 12, color: "#64748b", marginRight: 4 }}>Sort:</span>
+            <button
+              type="button"
+              data-testid="reading-sort-opened"
+              style={sortButtonStyle(readingSortMode === "opened")}
+              onClick={() => setReadingSortMode("opened")}
+            >
+              Opened
+            </button>
+            <button
+              type="button"
+              data-testid="reading-sort-title"
+              style={sortButtonStyle(readingSortMode === "title")}
+              onClick={() => setReadingSortMode("title")}
+            >
+              Title A–Z
             </button>
           </div>
 

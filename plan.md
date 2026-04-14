@@ -759,10 +759,10 @@ Orchestrator 月末判分时，只有 `gate-ready` 才能计为本月主线完�
 |------|---|------|
 | 1–7（model pack） | P0/P2 | [x] 规范见 `owned-reading-item-spec-2026-04-15.md`（含 P2 sync 边界节） |
 | 8–10（queue 最小 + 分类 + 恢复） | P0 | [x] article：`owned-reading.ts` + Vocabulary「Reading」；与 reading history 合并去重 |
-| 11–13 | P1/P2 | [x] article 学习步骤摘要（`getPageStudyProgress`）+ 类型标签；[ ] 全局排序/筛选控件 |
-| 14–20（PDF pack） | P0/P2 | [x] 队列写入 + `bench-live/pdf-reader-basic` 仍为主证明；[ ] 逐项 closeout memo |
-| 21–27（EPUB pack） | P0/P2 | [x] 队列写入 + `bench-live/epub-reader-basic`；[ ] 逐项 closeout memo |
-| 28–33（revisit + evidence） | P0/P2 | [x] Reading 标签 Open 覆盖 article + reader 四类；[ ] CI artifact 命名规范绑定 |
+| 11–13 | P1/P2 | [x] article 学习步骤摘要（`getPageStudyProgress`）+ 类型标签；[x] Vocabulary「Reading」列表排序（opened / title）；[ ] 跨 surface 全局筛选与其它 tab 排序仍待扩展 |
+| 14–20（PDF pack） | P0/P2 | [x] 队列写入 + `bench-live/pdf-reader-basic` 仍为主证明；[x] closeout `docs/investigations/month-3-pdf-reader-closeout-memo-2026-04-16.md` |
+| 21–27（EPUB pack） | P0/P2 | [x] 队列写入 + `bench-live/epub-reader-basic`；[x] closeout `docs/investigations/month-3-epub-reader-closeout-memo-2026-04-16.md` |
+| 28–33（revisit + evidence） | P0/P2 | [x] Reading 标签 Open 覆盖 article + reader 四类；[x] CI / 本机 artifact 与 scenario id 绑定说明 `docs/investigations/month-3-bench-artifact-conventions-2026-04-16.md` |
 
 ## Month 4 — Make Video / Subtitle And Revisit Credible
 
