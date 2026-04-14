@@ -1,6 +1,6 @@
 # Astra Live Coverage Matrix (Current Reality)
 
-_Last updated: 2026-04-14 (optional learning-loop green replay + harness notes)_
+_Last updated: 2026-04-14 (subtitle-file learning-chain smoke added; Month 3 reader / revisit evidence sync retained)_
 
 This matrix is the release-facing truth source for live coverage.
 
@@ -26,16 +26,16 @@ It separates:
 | site-automation | Yes | Yes (`bench-live/site-automation-autostart`) | **Yes** (`extension-core`) | Extension-loaded bootstrap proof is in required lane |
 | onboarding | No deterministic bench lane in `bench/` (live-only smoke today) | Yes (`bench-live/onboarding-smoke`) | **Yes** (`extension-core`) | Treated as extension-loaded smoke credibility check |
 | vocabulary | Deterministic bench exists (learning-loop surfaces) | Yes (`bench-live/vocabulary-srs-smoke`) | **Yes** (`extension-core`) | Extension-loaded smoke in required lane |
-| popup-deep-read | No deterministic bench lane yet | Yes (`bench-live/popup-deep-read-proof`) | No | Credible optional browser-backed popup proof exists via `popup-proof`; `learning-loop` remains optional in Month 1. **Replay doc:** `docs/investigations/m1-bf-01-popup-learning-loop-replay-2026-04-14.md` (post-harness **green** optional lane run ids + pre-harness failure baseline for archaeology). |
+| popup-deep-read | No deterministic bench lane yet | Yes (`bench-live/popup-deep-read-proof`) | No | Credible optional browser-backed popup proof exists via `popup-proof`; `learning-loop` remains optional in Month 1. **Replay doc:** `docs/investigations/m1-bf-01-popup-learning-loop-replay-2026-04-14.md` (fresh green standalone `popup-proof`, fresh green optional `learning-loop` chain, and pre-harness failure baseline for archaeology). |
 | interaction-priority | Yes | Yes (`bench-live/interaction-priority-basic` + holdout stress) | No | Live scenario exists but is not release-blocking today |
 | frame-coordination | Yes | Yes (`bench-live/frame-coordination-basic`) | No | Live scenario exists but is not release-blocking today |
 | hover | Yes | Yes (`bench-live/hover-translation-basic` + holdout moving-targets) | No | Standard browser-backed relay-stub proof exists; currently optional |
 | selection-explain | Yes | Yes (`bench-live/selection-explain-basic`) | No | Dedicated standard browser-backed live scenario exists; currently optional |
 | input-translation | Yes | Yes (`bench-live/input-translation-basic` + field-matrix) | No | Live scenario exists but is not release-blocking today |
-| subtitle (web/video) | Yes | Yes (`subtitle-basic`, `youtube-subtitle-basic`) | No | **Risk:** known timing instability tracked in flaky inventory |
-| subtitle-file | Yes | Yes (`subtitle-file-basic` + holdout malformed) | No | Optional lane only |
-| PDF reader | Yes | Yes (`pdf-reader-basic` + holdout layout-noise) | No | Optional lane only |
-| EPUB reader | Yes | Yes (`epub-reader-basic` + holdout long-chapter) | No | Optional lane only |
+| subtitle (web/video) | Yes | Yes (`subtitle-basic`, `youtube-subtitle-basic`, `bilibili-subtitle-basic`) | No | Live proof today is strongest for the generic HTML5 track contract plus YouTube/Bilibili fixture adapters; fresh `M4-D-02` replays cover YouTube stale-track clearing and Bilibili fallback/upgrade/drift cleanup, while broader repo adapters remain code-only / non-release-blocking per the Month 4 inventory |
+| subtitle-file | Yes | Yes (`subtitle-file-basic`, `subtitle-learning-chain-smoke` + holdout malformed) | No | Optional scenario proof only; fresh 2026-04-14 artifacts now prove both ingest / preview / export and subtitle-reader → vocabulary / review / reopen continuity, but the lane remains non-required and local-file reopen is still a reader handoff rather than fully automatic resume |
+| PDF reader | Yes | Yes (`pdf-reader-basic` + holdout layout-noise) | No | Optional scenario proof only; fresh Month 3 artifact proves the fixture-backed reader path, not universal PDF reopen parity |
+| EPUB reader | Yes | Yes (`epub-reader-basic` + holdout long-chapter) | No | Optional scenario proof only; fresh Month 3 artifact proves the fixture-backed EPUB path, not universal queue reopen parity |
 
 ## Required Month 1 release-proof lanes (authoritative)
 
@@ -68,12 +68,21 @@ It separates:
 2. `bench-live/vocabulary-srs-smoke`
 3. `bench-live/learning-loop-revisit-smoke`
 
+### `reader-revisit-baseline` (Month 3, optional/manual)
+
+1. `bench-live/pdf-reader-basic`
+2. `bench-live/epub-reader-basic`
+3. `bench-live/subtitle-file-basic`
+4. `bench-live/learning-loop-revisit-smoke`
+
 ## Open credibility gaps (must stay explicit)
 
 1. **Hover/selection now have credible browser-backed proof, but remain optional by Month 1 policy**: the current lane is a combined UX lane, separate required-lane semantics/CI ownership are not yet defined, and Month 1 should avoid over-promoting non-core UX proof.
-2. **Popup deep-read now has credible browser-backed proof, but is still optional** (`bench-live/popup-deep-read-proof`, `popup-proof`, `learning-loop`) and is not a required release gate in Month 1. Treat older `ERR_BLOCKED_BY_CLIENT` / wrong-relay failures as **harness regressions** superseded by the 2026-04-14 driver + scenario fixes unless reproduced on current `main`; optional **green** replay run ids are recorded in `m1-bf-01-popup-learning-loop-replay-2026-04-14.md` (Playwright Chromium + harness fixes).
+2. **Popup deep-read now has credible browser-backed proof, but is still optional** (`bench-live/popup-deep-read-proof`, `popup-proof`, `learning-loop`) and is not a required release gate in Month 1. Treat older `ERR_BLOCKED_BY_CLIENT` / wrong-relay failures as **harness regressions** superseded by the 2026-04-14 driver + scenario fixes unless reproduced on current `main`; the replay note now records fresh green standalone `popup-proof` and fresh green `learning-loop` reruns on current code.
 3. Several other live-covered surfaces remain **optional** rather than release-blocking.
 4. **Subtitle timing instability risk** remains open (`docs/investigations/workstream-f-live-flaky-inventory.md`).
+5. **Month 3/4 reader-revisit proofs remain optional scenario evidence, not required CI lanes**: the repo now has fresh replayable PDF / EPUB / subtitle-file / article-revisit artifacts, and subtitle-file now also has a dedicated browser-backed learning-chain smoke, but non-article local-file reopen flows still depend on reader handoff rather than fully automatic resume.
+6. **Month 4 video breadth must stay explicit**: only YouTube and Bilibili currently have fixture-backed adapter smokes; Netflix / Prime Video / Disney+ / Udemy / Coursera remain code-only in support docs until stronger proof exists.
 
 ## Update policy
 

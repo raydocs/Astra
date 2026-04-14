@@ -1,6 +1,6 @@
 # Astra 6-Month Product Roadmap And Execution Plan
 
-_Last updated: 2026-04-13_  
+_Last updated: 2026-04-14_  
 _Planning window: 2026-04-12 → 2026-10-12_  
 _Document status: canonical execution plan for the next 6 months_
 
@@ -747,7 +747,7 @@ Orchestrator 月末判分时，只有 `gate-ready` 才能计为本月主线完�
 - [x] **Owned reading 数据模型**：`docs/investigations/owned-reading-item-spec-2026-04-15.md`（`OwnedReadingItem` 字段、与 reading history / study progress / vocab 关系、sync 边界）
 - [x] **Saved reading queue v0 说明**：`docs/investigations/saved-reading-queue-spec-2026-04-15.md`（Recent / Saved / In-progress 规则与 v0 与现有入口的映射）
 - [x] **队列与 OwnedReadingItem 持久化（多类型 v0）**：`src/utils/storage/owned-reading.ts` + Vocabulary **Reading** 标签；article 由页译与 reading history 合并；**PDF**（`PdfReaderApp` 解析后）、**EPUB**（`EpubReaderApp` 导入/切章）、**subtitle-file**（`SubtitleReaderApp` 解析后）写入队列；`reopenHint` 用于本地文件重开提示；各 reader 支持 `?reopenHint=` 横幅
-- [x] **Reader 可重放基线（现有）**：`bench-live` 已含 `pdf-reader-basic`、`epub-reader-basic` 等（见 `bench-live/scenarios/index.ts`）；Month 3 验收的「3 条 artifact」在代码合并后应绑定具体 run id 写入 closeout
+- [x] **Reader 可重放基线（已绑定 fresh run id）**：`bench-live/pdf-reader-basic` → `live-20260414T113547-e7a9ks`，`bench-live/epub-reader-basic` → `live-20260414T113605-p0m6bj`，`bench-live/subtitle-file-basic` → `live-20260414T113623-809nid`，`bench-live/learning-loop-revisit-smoke` → `live-20260414T113647-9f8kwi`；见 `docs/investigations/month-3-evidence-registry-2026-04-14.md`
 
 ### Harness（Month 3）
 
@@ -802,6 +802,7 @@ Orchestrator 月末判分时，只有 `gate-ready` 才能计为本月主线完�
 - [x] **Support matrix 视频附录**（claim 分级）：`docs/investigations/support-matrix-video-addendum-2026-04-15.md`（与 `support-matrix-2026-q2.md` 联读）
 - [x] **YouTube + Bilibili bench-live smoke（fixture skeleton）+ 记录**：`bench-live/youtube-subtitle-basic` 与 `bench-live/bilibili-subtitle-basic` 已在 CI 类环境跑绿；**failure class** 见 `docs/investigations/video-subtitle-adapter-inventory-2026-04-15.md`（YouTube / Bilibili 均区分 **production vs fixture**）；`bench-live-results/<run-id>/` 与命令见 `docs/investigations/month-4-video-smoke-replay-2026-04-16.md`（目录 gitignore，非提交物）。**非** www 生产站自动 proof；`gate-ready` 若指生产 traffic 仍属 backlog。
 - [x] **Subtitle file revisit（扩展 v0）**：`OwnedReadingItem` `subtitle-file` + Subtitle reader 入队 + Reading **Open** → `subtitle-reader.html`
+- [x] **Month 4 evidence registry + closeout inputs**：`docs/investigations/month-4-evidence-registry-2026-04-14.md`、`docs/investigations/month-4-closeout-inputs-2026-04-14.md`（与 `month-4-video-subtitle-evidence-sync-2026-04-14.md`、`support-matrix-2026-q2.md`、`release-readiness-checklist.md` 联读）
 
 ### Harness（Month 4）
 
@@ -817,7 +818,7 @@ Orchestrator 月末判分时，只有 `gate-ready` 才能计为本月主线完�
 | 11–15（次级 adapter） | P0/P2 | [x] Bilibili fixture smoke + inventory **Bilibili — failure classes**；[ ] 真实站回归仍靠人工/扩展日志（生产站 canonical how-to：[^m4-prod-playbook]；bench fixture 重放命令与证据目录约定见 `docs/investigations/month-4-video-smoke-replay-2026-04-16.md`） |
 | 16–20（subtitle-reader） | P0/P2 | [x] Reading 队列 Open 至 subtitle reader；[ ] web 端 subtitle 与扩展完全 parity 仍 backlog |
 | 21–25（revisit） | P0/P2 | [x] 见 [^m4-revisit] |
-| 26–30（claim） | P0/P2 | [x] matrix 附录 + `release-readiness-checklist.md` Gate 4 已加 video/subtitle 审查行（默认 No，视频 RC 升为 Yes） |
+| 26–30（claim） | P0/P2 | [x] matrix 附录 + `release-readiness-checklist.md` Gate 4 已加 video/subtitle 审查行（默认 No，视频 RC 升为 Yes）；[x] Month 4 evidence registry / closeout inputs 已补齐并绑定 exact run id |
 
 [^m4-revisit]: **Revisit 证据边界（诚实口径）：** `bench-live/learning-loop-revisit-smoke`、入口矩阵 `docs/investigations/learning-loop-navigation-matrix-2026-04-14.md`、subtitle file 链 `docs/investigations/subtitle-reader-learning-chain-2026-04-14.md`（含 `bench-live/subtitle-file-basic` 等）。覆盖的是 **Vocabulary「Reading」Open** 与 **subtitle reader / fixture 文章** 路径，**不是**任意网页视频的通用「看完再打开」。
 
@@ -3806,7 +3807,7 @@ Orchestrator 在 Month 2 内每次汇报时，除 `13N` 表格外，对五维给
 
 | Dimension | Estimate | Why |
 |---|---:|---|
-| `proofCompletion` | 84 | 文档与 lane 命令齐全；仍缺「入库绿跑摘要」以冲 `gate-ready` |
+| `proofCompletion` | 84 | 文档与 lane 命令齐全，且 fresh green 摘要已入库；但 chained `learning-loop` 仍是 optional lane，尚未达到 required gate 级别 |
 | `productCompletion` | 84 | 上述 UI + revisit age + digest/deck 顺序收敛 |
 | `releaseCredibility` | 88 | checklist + `13O` 证据链文档完整 |
 | `stability` | 84 | bench 全绿 + `pnpm test` 全绿 |
@@ -3821,7 +3822,7 @@ Orchestrator 在 Month 2 内每次汇报时，除 `13N` 表格外，对五维给
 = 85.0
 ```
 
-**Month 2 provisional：`85.0 / 100`**，verdict：**`pass-with-carry`**（**非** `gate-ready`：直至 chained `learning-loop` 绿跑摘要入库或 CI 升格，见 `month-2-closeout-2026-04-14.md` carry-over）
+**Month 2 provisional：`85.0 / 100`**，verdict：**`pass-with-carry`**（**非** `gate-ready`：fresh green 摘要现已入库，但 chained `learning-loop` 仍未纳入与 required live lane 同级的 CI ownership / flaky discipline；见 `month-2-closeout-2026-04-14.md` carry-over）
 
 ### What moves Month 2 from `pass-with-carry` to `pass`（最短路径）
 
@@ -5063,39 +5064,43 @@ Impact:
 
 Gate impact:
 
-- Month 1 verdict fixed to `partial`（`69/100`）
-- Month 2-6 gate status remains `unverified` until corresponding closeouts exist
+- Month 1 verdict remains `partial`（`69/100`）
+- Month 2-5 evidence registries / closeout inputs now exist and no longer belong in the `unverified` bucket
+- Month 6 now has an explicit inventory, claim audit, final evidence pack, and closeout handoff; the overall window still does **not** collapse into `overall pass`
 
 Claim impact:
 
 - claims tightened
 
-## 16B. Evidence-Backed Status Snapshot (As Of 2026-04-13)
+## 16B. Evidence-Backed Status Snapshot (As Of 2026-04-14)
 
-_Data basis: `docs/investigations/month-1-closeout-2026-04-13.md` + current repo evidence presence check._
+_Data basis: month closeouts / evidence registries / release-policy docs present in `docs/investigations/` as of 2026-04-14._
 
 ### 16B.1 Window-level evidence reality
 
-- 已确认 Month 1 closeout：`verdict = partial`，`score = 69/100`
-- 目前仅找到 Month 1 closeout；未找到 Month 2-6 closeout 或 final evidence pack 文件
-- release/docs/proof 对齐在当前已跑通 lane 上是真实进展
-- 但 `overall pass` 结论缺少与 month closeout / evidence bundles 对应的证据链
+- Month 1 closeout exists and remains `partial` (`69/100`)
+- Month 2-4 now have explicit evidence registries / closeout inputs and scoped replay references
+- Month 5 has account/lifecycle/mobile claim-boundary documents and proof notes, but mobile/iOS parity remains intentionally unproven
+- Month 6 now has a privacy/routing inventory, release claim audit, final evidence pack, and final closeout/handoff note
+- release/docs/proof alignment is materially stronger than the 2026-04-13 baseline, but several subsystems remain **partial at the release-gate layer** even when they are implemented and locally proved in scoped slices
 
 ### 16B.2 Completed vs Partial vs Missing (status correction)
 
 | Area | Completed | Partial | Missing / Not Yet Proven | Corrected status |
 |---|---|---|---|---|
-| Extension core proof + release/docs/proof alignment | 当前主 lanes 的对齐与证明机制真实存在 | Month-level closeout coverage不完整 | Month 2-6 closeout + final evidence pack | partial |
-| Learning loop | 主路径能力与 proof 基础多数真实 | gate-ready 完整度仍依赖后续月度 closeout | 连续月度 evidence registry 汇总 | mostly real, partial |
-| Owned reading | reader surfaces 已存在（PDF/EPUB/subtitle/article） | unified owned-reading item model/queue/revisit product line 仍不清晰 | 明确统一模型与可重放证据链 | partial |
-| Video/subtitle | YouTube + subtitle file 路径最强 | proof breadth 偏窄，平台广度/同级稳定性不足 | 更广平台 parity 证据与月度 closeout | partial |
-| Control-plane | web/cloud/auth/account/lifecycle 主路径真实 | mobile/iOS 仍以 bridge-first/experimental 为主 | mobile parity 级证据与稳定口径 | carry-but-acceptable |
+| Extension core proof + release/docs/proof alignment | Month 1 closeout, matrix, checklist, and replay notes all exist | popup / hover / selection remain outside required-lane promotion | stronger required-lane breadth beyond current Gate 2 | partial |
+| Learning loop | popup → explain/save/review/revisit path is implemented and documented; Month 2 evidence registry exists | chained `learning-loop` lane is still optional and not CI-owned as a required gate | required-lane promotion + stronger flaky discipline | pass-with-carry at subsystem level; release-facing partial |
+| Owned reading | schema, queue, reader reopen guidance, and reader/revisit artifacts exist | universal reopen parity and required-lane promotion are still missing | broader browser-backed reopen proof across all source types | pass-with-carry at subsystem level; release-facing partial |
+| Video/subtitle | YouTube + Bilibili + subtitle-file evidence and claim tiers exist | production-watch-page breadth and required-lane promotion remain limited | broader adapter parity + stronger production proof | pass-with-carry at subsystem level; release-facing partial |
+| Control-plane | account wording, lifecycle runbook/proof, and release-policy boundaries exist | mobile/iOS shell parity remains experimental and carry-only | device-backed iOS shell/runtime proof | carry-but-acceptable / partial |
+| Privacy / routing / quality | Month 6 inventory, claim audit, and release-gate tightening are complete | no authoritative background privacy guardrail; glossary contract and fallback disclosure remain partial | fresh privacy artifacts only if claims are strengthened; stronger system invariants still absent | partial |
 
 ### 16B.3 Corrected bottom-line verdict
 
 - **Not all roadmap goals are done.**
-- **Current defensible verdict（2026-04-13）: `partial` (69/100 at Month 1), with incomplete month-closeout evidence for Month 2-6.**
-- `Overall: pass` 在当前证据面下不成立，应撤回。
+- **M6-FH-03 handoff/docs scope is complete**, because the final evidence pack, closeout/handoff note, and roadmap status correction now exist.
+- **Current defensible window-level verdict（2026-04-14）: evidence-backed progress with multiple scoped `pass-with-carry` subsystems, but still overall `partial` at the release-claim / required-gate layer.**
+- `Overall: pass` 仍不成立；下一窗口应从已记录的 evidence / carry / blocked-claim 边界继续，而不是回到印象驱动。
 
 ## 16C. Competitor Catch-up Estimate (Scoped, From 2026-04-13 Baseline)
 

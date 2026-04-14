@@ -1,37 +1,37 @@
-# Owned reading item — canonical schema (Month 3)
+# Owned reading item spec companion (Month 3)
 
-_Version: 2026-04-15 · Status: specification (implementation tracks extension + web)_
+_Version: 2026-04-15 · Status: synced to implemented schema v1_
 
-## 1. Purpose
+This file is the short companion to the canonical schema doc:
 
-Unify **article / PDF / EPUB / subtitle-file** under one `OwnedReadingItem` so queue, revisit, and progress do not fork per surface.
+- `docs/investigations/owned-reading-schema-v1-2026-04-14.md`
 
-## 2. `OwnedReadingItem` (logical schema)
+## What is implemented now
 
-| Field | Type | Required | Notes |
-|-------|------|----------|-------|
-| `id` | `string` (uuid or `or_${sha256(url|path)}`) | yes | Stable across sessions |
-| `sourceType` | `"article" \| "pdf" \| "epub" \| "subtitle-file"` | yes | Extends with `web-video` in Month 4 only after matrix sign-off |
-| `title` | `string` | yes | User-visible |
-| `sourceUrl` | `string \| null` | no | HTTP(S) for article; `file://` or blob URL for local files |
-| `localUri` | `string \| null` | no | Extension-internal path for imported files |
-| `openedAt` | `number` (epoch ms) | yes | Last open |
-| `progress` | `{ fraction?: number; chapterId?: string; sentenceIndex?: number }` | no | Surface-specific; must round-trip in UI |
-| `status` | `"in_progress" \| "saved" \| "archived"` | yes | Queue tabs |
-| `readingHistoryRecordId` | `string \| null` | no | Link to `astra.reading_history` record when same URL |
-| `studyProgressRecordId` | `string \| null` | no | Sanitized URL key used by `study-progress.ts` |
-| `vocabularySourceIds` | `string[]` | no | Optional back-links to vocab entry ids |
+`OwnedReadingItem` already exists in `src/utils/storage/owned-reading.ts` and is the shared persistence model for:
 
-## 3. Relations
+- article
+- pdf
+- epub
+- subtitle-file
 
-- **Reading history** (`reading-history.ts`): same canonical URL as `sourceUrl` (sanitized) → optional `readingHistoryRecordId`.
-- **Study progress** (`study-progress.ts`): `studyProgressRecordId` = `buildStudyProgressRecordId(sourceUrl)`.
-- **Vocabulary** (`vocabulary-core`): `sourceContext.surface` + URL/title already exist; future: `ownedReadingItemId` optional field (Month 3 P1).
+It already carries:
 
-## 4. Sync-safe boundary (Month 3 P2 preview)
+- stable row identity
+- source metadata (`sourceUrl` / `localUri` / `reopenHint`)
+- queue status (`in_progress` / `saved` / `archived`)
+- optional per-item progress payload
+- joins into reading history and study progress when available
 
-- Do not sync raw `file://` paths across devices; sync **hash + title + sourceType** only until cloud file ingest exists.
+## Important Month 3 boundaries
 
-## 5. Implementation pointer
+- Local-file items use synthetic `astra-local://...` identities derived from file name.
+- Cross-device file sync is still out of scope; do not treat local-file identity as a cloud ingest contract.
+- Queue/revisit work should consume the existing owned-reading store rather than inventing a parallel schema.
+- Vocabulary/review back-links are intentionally narrow in v1: popup deep-read article saves and subtitle-reader saves now carry owned-reading source references; universal all-surface back-linking remains later work.
+- New generalized resume payloads are not part of schema v1 unless a follow-up task lands them explicitly.
 
-- **v0 queue**: document-only mapping to **popup recent history** + vocabulary/review URLs until dedicated `OwnedReadingItem` store lands in `browser.storage.local`.
+## Sync-safe note
+
+For remote sources, the canonical sanitized URL is the portable identity.
+For local files, the current v1 model is device-local metadata plus reopen guidance, not a full syncable file reference.

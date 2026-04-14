@@ -38,7 +38,7 @@
 
 ## D9:术语表管理 UI
 **Files**: Options page Actions section or new Terminology section
-**Feature**: Users can create term pairs (English → Chinese) that override translation for specific terms. Stored in config, injected as terminologyGlossary context.
+**Feature**: Users can create term pairs (English → Chinese) that override translation for specific terms. Persist via vocabulary glossary entries and inject through the canonical request-time `terminologyGlossary` contract.
 
 ## D10: Chrome Web Store Preparation
 **Files**:

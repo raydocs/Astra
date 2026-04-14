@@ -55,7 +55,7 @@ Then in Xcode:
 3. Replace the placeholder bundle identifiers if needed
 4. Run the app on simulator or device
 5. Enable the extension in **Settings > Apps > Safari > Extensions > AstraShell**
-6. Open Safari and verify popup / page translation flow
+6. Open Safari and verify the popup plus the bridge/open-in-app path; treat page-translation runtime as a separate device-validation checkpoint rather than assumed parity
 
 ## Daily Update Flow
 
@@ -85,16 +85,27 @@ The directory is committed as a generated bootstrap snapshot, but the authoritat
 
 ## Smoke Test Checklist
 
+### A. iOS shell / bridge / Safari-runtime
+
 - [ ] Host app launches successfully
 - [ ] Safari extension can be enabled from iOS Settings
 - [ ] Popup opens inside Safari
-- [ ] Astra Web / PWA sign-in succeeds through the shared front-door `POST /v1/auth/session` contract on mobile Safari
-- [ ] `GET /v1/auth/session` and `DELETE /v1/auth/session` behave correctly after that sign-in on mobile Safari/PWA
 - [ ] API key can be saved
 - [ ] `browser.storage.local` persists config after reload
 - [ ] Page translation can start and stop
 - [ ] Content scripts inject correctly on normal pages
 - [ ] Background translation requests complete successfully
+- [ ] `sessionBootstrap` returns `sessionBootstrapAck` with a usable `launchURL`
+- [ ] `Open in Astra App` or equivalent handoff path reaches the host app
+- [ ] Bridge status/history stays visible for replay/debugging
+
+### B. Mobile web portable control-plane (separate evidence bucket)
+
+- [ ] Astra Web / PWA sign-in succeeds through the shared front-door `POST /v1/auth/session` contract on mobile Safari
+- [ ] `GET /v1/auth/session` and `DELETE /v1/auth/session` behave correctly after that sign-in on mobile Safari/PWA
+- [ ] Account summary/export/delete/repair UI remains usable at narrow viewport widths
+
+Count this second bucket as portable web evidence only. It does **not** prove native-shell parity.
 
 ## Known Caveats
 
@@ -203,10 +214,11 @@ This remains launcher/handoff scope only. It does **not** implement shared keych
 
 This phase stays **bridge-first / Web-PWA-first**:
 
-- use the iOS shell to validate launch/open/handoff behavior
+- use the iOS shell to validate launch/open/handoff behavior plus targeted Safari-runtime checks
 - use Astra Web on mobile Safari/PWA for portable sign-in/session + cloud control-plane tasks
 - do **not** reinterpret that portable web coverage as Android work, native parity, or full mobile account/session ownership
+- portable web evidence can support Month 5 carry language, but it does **not** change the iOS shell support tier without device-backed shell/runtime attachments
 
 ## Suggested Next Step
 
-Run the iOS smoke test checklist with bridge history/replay checks plus the mobile web control-plane checkpoint, then fix only reproduced Safari-runtime gaps.
+Run the iOS smoke test checklist with bridge history/replay checks plus the mobile web control-plane checkpoint, keep the evidence buckets separate, then fix only reproduced Safari-runtime gaps.

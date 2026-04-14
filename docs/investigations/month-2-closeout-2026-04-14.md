@@ -1,62 +1,76 @@
 # Month 2 Closeout — Learning Loop V1
 
-_Last updated: 2026-04-14 (final ledger sweep)_
+_Last updated: 2026-04-14 (`M2-F-05` evidence registry + closeout sync)_
 
 Month: **Month 2 — Finish Learning-Loop V1** (`plan.md` §11)  
-Verdict: **`pass-with-carry`** (aligned with `13G`; not **`gate-ready`** until optional `learning-loop` CI lane matches `extension-core` flaky discipline — unchanged by the 2026-04-14 green doc replay)
+Verdict: **`pass-with-carry`**
 
-**Ledger 1–36:** all items closed in-repo (`plan.md` 任务表)；`#9` 以预研文档交付，无 pin UI。
+## Status layers (read this first)
+
+| Layer | Status | Why |
+|-----|--------|-----|
+| `implemented` | **Yes** | Popup deep-read, source-context persistence, study-progress surfacing, and revisit v1 all landed in repo. |
+| `proved` | **Yes** | Fresh green browser-backed artifacts exist for popup proof, vocabulary smoke, and revisit smoke. |
+| `gate-ready` | **No** | The chained `learning-loop` lane is still **optional** in CI / release policy. |
+| `carry` | **1 primary** | CI / release-gate promotion for `learning-loop` remains the only Month 2 carry item. |
+
+This is why the verdict remains **`pass-with-carry`**, not full `pass` and not `partial`.
 
 ## Evidence registry (`13O` / §11)
 
 | Row | Status | Pointer |
 |-----|--------|---------|
-| `live` | **Green (doc replay 2026-04-14)** | `CI=true xvfb-run -a pnpm bench:live:lane:learning-loop` — three sequential runs (see `m1-bf-01-popup-learning-loop-replay-2026-04-14.md`): `live-20260414T082101-tv27s0` (popup-deep-read-proof), `live-20260414T082106-6s38in` (vocabulary-srs-smoke), `live-20260414T082109-c792v2` (learning-loop-revisit-smoke). CI still runs `extension-core` (vocabulary-srs-smoke only); full lane remains optional in CI. |
-| `docs` | **Yes** | `learning-loop-overview-2026-04-13.md`, `learning-metrics-2026-04-13.md`, `learning-loop-regression-checklist-2026-04-13.md`, `learning-loop-navigation-matrix-2026-04-14.md`, `learning-loop-claim-impact-2026-04-14.md`, `popup-deep-read-state-mapping.md`, `study-progress-counting-rules-2026-04-14.md` |
-| `release-policy` | **Yes** | `docs/release-readiness-checklist.md` — Month 2 subsection: learning-loop stays **optional** until green-run discipline + flaky ownership match `extension-core`. |
-| `claim-impact` | **Yes** | `learning-loop-claim-impact-2026-04-14.md` |
-| `tests` | **Yes** | `ReviewMode.test.tsx`, `VocabularyApp.test.tsx`, `study-progress.test.ts` (`orderStudySteps`); `pnpm test` green in CI scope. |
+| `live` | **Green (fresh 2026-04-14 M2 artifact set)** | `CI=true pnpm bench:live:lane:learning-loop` → popup proof `live-20260414T105144-ub96nh`, vocabulary smoke `live-20260414T105149-vaksxe`, revisit smoke `live-20260414T105152-9boxuy` under `bench-live-results/<run-id>/`. First same-session flake for archaeology: `live-20260414T105047-360uqz`. |
+| `docs` | **Yes** | `learning-loop-overview-2026-04-13.md`, `learning-metrics-2026-04-13.md`, `learning-loop-regression-checklist-2026-04-13.md`, `learning-loop-navigation-matrix-2026-04-14.md`, `learning-loop-claim-impact-2026-04-14.md`, `popup-deep-read-state-mapping.md`, `study-progress-counting-rules-2026-04-14.md`, `study-progress-ui-consistency-2026-04-14.md`, `month-2-evidence-registry-2026-04-14.md` |
+| `release-policy` | **Yes** | `docs/release-readiness-checklist.md` — Month 2 section explicitly keeps `learning-loop` **optional** even after fresh green replays. |
+| `claim-impact` | **Yes** | `learning-loop-claim-impact-2026-04-14.md` — says what can be claimed, and what must remain optional / non-gated. |
+| `tests` | **Yes** | `src/entrypoints/popup/App.test.tsx`, `src/entrypoints/vocabulary/VocabularyApp.test.tsx`, `src/entrypoints/vocabulary/ReviewMode.test.tsx`, `src/utils/storage/vocabulary.test.ts`, `src/utils/storage/study-progress.test.ts`, `src/utils/storage/owned-reading.test.ts` |
+
+For the detailed matrix of implemented / proved / gate-ready / carry, use: `docs/investigations/month-2-evidence-registry-2026-04-14.md`.
 
 ## P0 ledger — completion notes
 
-- **A (popup)**: State互斥已在 `StudySection`（explain/save/speak/custom）与既有 `App` 逻辑中落地；本轮补充 **resume** 文案与 **进度条步骤 canonical 排序**（`orderStudySteps` + `StudyProgressBar`）。
-- **B (vocab/review)**: 复习页 **今日 dailyStats**、**来源链接文案**、**长上下文展开**；词库搜索纳入 **sourceContext + URL/hostname**。
-- **C (progress)**: `orderStudySteps` 导出单测；popup / review 双端展示今日进度。
-- **D (revisit)**: 入口矩阵见 `learning-loop-navigation-matrix-2026-04-14.md`；**revisit path**：popup 最近阅读 → `openUrlInTab`；词库/复习 **Open source page**。
-- **E (QA)**: regression checklist、e2e 命令（live lane）、metrics 文档已存在；新增 **known issues** 与 **UX debt** 清单。
+- **A (popup)**: popup deep-read state model is explicit and replayed via `bench-live/popup-deep-read-proof`.
+- **B (vocab/review)**: vocab/review now render stable source metadata and shared progress semantics clearly enough to trace saved content without guessing.
+- **C (progress)**: counting rules, ordering, and next-step semantics are documented; popup and downstream surfaces no longer contradict the core progress model.
+- **D (revisit)**: the canonical Month 2 revisit path is now **Vocabulary → Reading tab → article row → Open** with visible page identity, translated count, ordered study steps, counts, and a next-step hint; popup recent-history reopen remains a convenience path, not the canonical replayed contract.
+- **E (QA / evidence)**: Month 2 now has a real evidence registry, explicit claim boundaries, a regression checklist, and exact live artifact pointers.
 
 ## P1 ledger — minimum bar (≥10)
 
-Counted toward Month 2 bar: **6, 7, 8, 14, 15, 16, 17, 22, 23, 28, 29, 34, 35, 36** (resume hint, empty-context copy via search placeholder + matrix, open source, search fields, review link label, expand/collapse, step ordering, matrix, known issues, UX debt). *If strict literal counting differs, treat matrix + three investigation docs as the P1 evidence bundle.*
+Counted toward the Month 2 bar: matrix / known issues / UX debt / resume hints / long-context handling / review source links / search by source context / step ordering / revisit contract docs / replay artifact linking. The closeout and registry now make those support items visible as evidence rather than implied background work.
 
-## Carry-over (≤1 primary)
+## Carry-over (1 primary, explicit)
 
-- **Primary**: Promote **`gate-ready`** only after optional CI adopts the full chained lane with the same flaky ownership bar as `extension-core` (policy unchanged). Doc replay for the manual lane is attached in `m1-bf-01-popup-learning-loop-replay-2026-04-14.md` (2026-04-14 run ids). Harness context for older failures: `popup-deep-read-proof` relay-only provider seeding + `openExtensionActionPopup` DOM wait — same note.
+- **Primary carry**: promote `learning-loop` from **optional** proof lane to a required release gate only after it has the same CI ownership / flaky-tracking discipline as current required live lanes.
+- This is a **release-policy / operational carry**, not a new Month 2 feature gap.
 
 ## Task pack traceability (Phase 1–2, sequential pack)
 
-Maps task IDs from `claude-sequential-task-pack-2026-04-14.md` to primary in-repo evidence (docs-first slice through **`M2-F-05`**).
+Maps task IDs from `claude-sequential-task-pack-2026-04-14.md` to primary in-repo evidence.
 
 | Task ID | Primary pointers |
 |---------|------------------|
-| `M1-BF-01` | `m1-bf-01-popup-learning-loop-replay-2026-04-14.md`, this closeout’s `live` row, `month-1-closeout-2026-04-13.md` |
-| `M2-B-01` | `popup-deep-read-state-mapping.md`, popup proof scenario `bench-live/popup-deep-read-proof` |
-| `M2-B-02` | Vocab/review + `sourceContext` (see registry table + `VocabularyApp` / `ReviewMode` tests); navigation matrix |
-| `M2-BH-03` | `study-progress-counting-rules-2026-04-14.md`, `study-progress.test.ts` (`orderStudySteps`) |
-| `M2-B-04` | `learning-loop-navigation-matrix-2026-04-14.md`, `bench-live/learning-loop-revisit-smoke` (in `learning-loop` lane) |
-| `M2-F-05` | `month-2-evidence-registry-2026-04-14.md`, `docs/release-readiness-checklist.md` Month 2 subsection |
+| `M1-BF-01` | `m1-bf-01-popup-learning-loop-replay-2026-04-14.md`, `month-1-closeout-2026-04-13.md` |
+| `M2-B-01` | `popup-deep-read-state-mapping.md`, popup proof artifact family (`bench-live/popup-deep-read-proof`) |
+| `M2-B-02` | vocab / review `sourceContext` tests and renderers; `learning-loop-navigation-matrix-2026-04-14.md` |
+| `M2-BH-03` | `study-progress-counting-rules-2026-04-14.md`, `study-progress-ui-consistency-2026-04-14.md`, `study-progress.test.ts` |
+| `M2-B-04` | `learning-loop-navigation-matrix-2026-04-14.md`, `bench-live/learning-loop-revisit-smoke`, artifact `live-20260414T105152-9boxuy` |
+| `M2-F-05` | `month-2-evidence-registry-2026-04-14.md`, this closeout, `docs/release-readiness-checklist.md`, and the Month 2 `plan.md` scoreboard note |
 
 ## Git change artifact (full path inventory)
 
-- **Frozen inventory + compare links + commit lists:** `docs/investigations/month-2-change-artifact-2026-04-14.md`
+- `docs/investigations/month-2-change-artifact-2026-04-14.md`
 
-## Ledger 收尾（#6 / #9 / #24 / #30）
+## Harness
 
-- **#6**: Study 区信息顺序调整为 **句子甲板 → 摘要 digest → 进度条/下一步 → 今日计数 → 快捷入口**（`StudySection.tsx`）。
-- **#9**: 预研文档 `docs/investigations/sentence-pin-presearch-2026-04-14.md`（不交付 UI，满足「预研」定义）。
-- **#24**: Popup **今日学习计数** 改为带标题、日期说明与四格数字卡片的展示。
-- **#30**: 最近阅读每条展示 **相对访问时间**（staleness / age）。
+- Deterministic harness: `pnpm bench` → **63/63**, avg **100** (`bench-results/latest.json`)
+- Live learning-loop chain (fresh docs-attached run):
+  - popup proof: `bench-live-results/live-20260414T105144-ub96nh/`
+  - vocabulary smoke: `bench-live-results/live-20260414T105149-vaksxe/`
+  - revisit smoke: `bench-live-results/live-20260414T105152-9boxuy/`
 
-## Harness (deterministic)
+## Bottom line
 
-- `pnpm bench`: **63/63**, avg **100** — see `bench-results/latest.json` after run.
+Month 2 is now **implemented and proved with fresh evidence**, and the docs make that visible without over-claiming.
+Month 2 is **not yet gate-ready as a required release lane**, so the official verdict remains **`pass-with-carry`**.

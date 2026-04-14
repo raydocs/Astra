@@ -2,24 +2,79 @@
 
 _Task **`M6-FH-03`**_
 
+**Task status:** complete for the Month 6 handoff/docs scope. This does **not** upgrade the Month 6 or roadmap verdict beyond `partial`.
+
 ## Purpose
 
-Give the next planning cycle a **single index** of what was proved in-repo vs deferred, aligned with `M6-F-02` claim audit rows.
+This is the final Month 6 index for release-facing evidence. It is not a new product narrative. It tells a new reader what is **required**, what is **optional confidence only**, what was **proved**, and what remains **partial**.
 
-## Month-by-month index (filled table)
+## Release-facing bottom line
 
-| Month | Key doc(s) | Optional live command | Status |
-|-------|------------|------------------------|--------|
-| 1 | `month-1-closeout-2026-04-13.md`; live coverage matrix | `pnpm bench:live:lane:release-proof` | **Partial** |
-| 2 | `month-2-closeout-2026-04-14.md`; `month-2-evidence-registry-2026-04-14.md` | `pnpm bench:live:lane:learning-loop` (optional confidence) | **Partial** |
-| 3 | `month-3-closeout-inputs-2026-04-14.md` | Reader scenarios per matrix | **Unverified** |
-| 4 | `month-4-video-subtitle-evidence-sync-2026-04-14.md` | YouTube + Bilibili smokes per matrix | **Partial** |
-| 5 | `control-plane-surface-inventory-2026-04-15.md`; `lifecycle-operations-runbook-month5-2026-04-15.md` | Account / web continuity notes + manual smoke | **Partial** |
-| 6 | `month-6-release-claim-audit-2026-04-14.md`; `month-6-privacy-routing-failure-inventory-2026-04-14.md`; this pack | Checklist Gate 1–4 + matrix + flaky inventory | **Unverified** until RC replay |
+- **Required live lanes remain unchanged**: `source-core` + `extension-core`.
+- **Optional confidence lanes remain optional**: `hover-selection`, `popup-proof`, `learning-loop`, reader/revisit slices, video/subtitle slices.
+- **Month 6 did not close privacy/routing/glossary into a release-grade guarantee**.
+- **Any RC that strengthens privacy/routing/glossary wording must attach fresh privacy artifacts or downgrade the wording back to the Month 6 inventory boundary.**
+
+## Required-lane summary
+
+| Gate | Canonical source | Current Month 6 reading |
+|---|---|---|
+| Gate 1 — deterministic quality | `docs/release-readiness-checklist.md` | Required. No Month 6 exception. |
+| Gate 2 — required live lanes | `docs/release-readiness-checklist.md`, `docs/investigations/workstream-f-live-lane-conventions.md` | Required lanes are still only `source-core` and `extension-core`. |
+| Gate 3 — artifact clarity | `docs/release-readiness-checklist.md`, `docs/investigations/workstream-f-live-flaky-inventory.md` | Required. Evidence docs must stay current for the RC. |
+| Gate 4A — core claim alignment | `docs/release-readiness-checklist.md`, `docs/investigations/support-matrix-2026-q2.md`, `docs/capability-matrix-v2.md`, `README.md` | Required for every RC. |
+| Gate 4B — conditional evidence reviews | `docs/release-readiness-checklist.md` | Becomes blocking only when the RC touches that surface/claim family. |
+
+## Open blockers / unresolved claim constraints
+
+1. **Background/router is still not the authoritative privacy guardrail.**
+2. **Month 6 closed with glossary/terminology still at plumbing-only status; next-window work has since established one canonical request-time contract, but not blanket guaranteed enforcement.**
+3. **Month 6 closed with fallback disclosure weaker than the routing behavior itself; next-window work has since added one canonical popup-backed local last-event support/operator path for the most recent uncached request on the current device, but broader observability still remains partial.**
+4. **Optional live slices remain optional** until they have required-lane ownership and flaky discipline.
+5. **Mobile/iOS shell parity is still unproven** and must stay outside parity language.
+
+## Claim diff carried into the final state
+
+### Claims downgraded or explicitly bounded
+
+- “relay-only provider path” → runtime supports **direct**, **relay**, and **direct → relay fallback**
+- “privacy mode means local-only translation” → privacy mode currently means **background transport-boundary request-context sanitization**, not local-only translation
+- “glossary is fully wired” → Astra now has a **canonical vocabulary-backed request-time glossary contract**, but that still falls short of blanket guaranteed terminology enforcement
+- generic “supports video” → **YouTube supported**, **Bilibili best-effort**, **subtitle-file experimental controlled surface**, others **code-only**
+- “mobile/iOS supported with parity” → **mobile web portable control-plane only**, **iOS shell experimental**
+
+### Claims left intentionally partial
+
+- learning-loop as a required release lane
+- reader/revisit as a required release lane
+- production-watch-page video breadth
+- strong privacy / routing / glossary guarantees
+
+## Month-by-month evidence index
+
+| Month | Best current evidence anchor | Scoped closeout reading | Release-facing status |
+|---|---|---|---|
+| 1 | `docs/investigations/month-1-closeout-2026-04-13.md`; `docs/investigations/m1-bf-01-popup-learning-loop-replay-2026-04-14.md` | Core proof baseline exists; popup proof is credible but still outside required lanes | **Partial** |
+| 2 | `docs/investigations/month-2-closeout-2026-04-14.md`; `docs/investigations/month-2-evidence-registry-2026-04-14.md` | Learning-loop is implemented and proved in scoped slices | **Pass-with-carry at subsystem level; partial at release-gate level** |
+| 3 | `docs/investigations/month-3-closeout-inputs-2026-04-14.md`; `docs/investigations/month-3-evidence-registry-2026-04-14.md` | Owned-reading schema/queue/reopen baseline exists with replayable reader artifacts | **Pass-with-carry at subsystem level; partial at release-gate level** |
+| 4 | `docs/investigations/month-4-evidence-registry-2026-04-14.md`; `docs/investigations/month-4-video-subtitle-evidence-sync-2026-04-14.md` | YouTube/Bilibili/subtitle-file paths are documented honestly with bounded tiers | **Pass-with-carry at subsystem level; partial at release-gate level** |
+| 5 | `docs/investigations/control-plane-surface-inventory-2026-04-15.md`; `docs/investigations/lifecycle-operations-runbook-month5-2026-04-15.md`; `docs/investigations/month-5-lifecycle-proof-2026-04-14.md` | Account/lifecycle wording and operator guidance are materially better; mobile/iOS remains carry | **Carry-but-acceptable / partial** |
+| 6 | `docs/investigations/month-6-privacy-routing-failure-inventory-2026-04-14.md`; `docs/investigations/month-6-release-claim-audit-2026-04-14.md`; `docs/investigations/month-6-closeout-handoff-2026-04-14.md` | Inventory, claim audit, checklist tightening, and final handoff are complete | **Partial by design** |
+
+## Canonical handoff docs
+
+- `docs/investigations/month-6-privacy-routing-failure-inventory-2026-04-14.md`
+- `docs/investigations/month-6-release-claim-audit-2026-04-14.md`
+- `docs/investigations/month-6-closeout-handoff-2026-04-14.md`
+- `docs/release-readiness-checklist.md`
+- `docs/capability-matrix-v2.md`
+- `docs/investigations/support-matrix-2026-q2.md`
+- `plan.md`
 
 ## Next-window candidates (non-binding)
 
-- Promote `learning-loop` only after green replay + flaky ownership.
-- Expand reader reopen proofs for additional local hash strategies.
-- Subtitle-reader UI automation in bench-live (currently manual/unit-heavy).
-- Close Month 6 **Unverified** rows with artifact paths under `bench-live-results/<run-id>/` and a dated RC note — not by rewording matrix alone.
+1. Make privacy authority explicit at the background/router boundary, or permanently lock the caller-owned policy and keep claims downgraded.
+2. Collapse glossary plumbing into one canonical request-time contract and serialization format.
+3. Maintain the new canonical popup-backed support/operator path for transport/fallback handling unless a broader routing claim later requires more than that narrow observability surface.
+4. Promote optional live slices only after they have required-lane ownership, CI discipline, and flake tracking.
+5. Keep mobile/iOS shell claims bounded until device-backed runtime evidence exists.

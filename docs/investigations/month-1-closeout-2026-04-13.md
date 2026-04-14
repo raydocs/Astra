@@ -1,6 +1,6 @@
 # Month 1 Closeout — Prove The Current Extension Core
 
-_Last updated: 2026-04-14 (M1-BF-01 replay + harness fixes + green lane run ids)_
+_Last updated: 2026-04-14 (M1-BF-01 fresh green popup-proof + learning-loop replay attached)_
 
 Month: Month 1 — Prove The Current Extension Core  
 Verdict: `partial`  
@@ -20,7 +20,7 @@ Score: `69 / 100`
   - optional popup proof lane: `pnpm bench:live:lane:popup-proof`
   - optional learning-loop lane: `pnpm bench:live:lane:learning-loop` (chains `popup-proof` → `bench-live/vocabulary-srs-smoke` → `bench-live/learning-loop-revisit-smoke` per `package.json`)
   - artifact output path when run: `bench-live-results/<run-id>/`
-  - fresh replay summary attached in-repo: **yes** — `docs/investigations/m1-bf-01-popup-learning-loop-replay-2026-04-14.md` (documents harness fixes + **green** optional `learning-loop` lane run ids `live-20260414T082101-tv27s0` / `live-20260414T082106-6s38in` / `live-20260414T082109-c792v2`; retains pre-fix **fail** baseline `live-20260414T061146-0odzcd` for archaeology)
+  - fresh replay summary attached in-repo: **yes** — `docs/investigations/m1-bf-01-popup-learning-loop-replay-2026-04-14.md` (documents fresh **green** reruns for standalone `popup-proof` `live-20260414T095344-ol5adc` and optional `learning-loop` chain `live-20260414T095422-yqripy` / `live-20260414T095427-992iaf` / `live-20260414T095429-kahn2o`; retains the pre-fix **fail** baseline `live-20260414T061146-0odzcd` and notes the superseded sandbox-local stall `live-20260414T093931-hlpkms`)
 - updated docs:
   - `docs/release-readiness-checklist.md`
   - `docs/investigations/workstream-a-live-coverage-matrix.md`
@@ -57,14 +57,14 @@ Score: `69 / 100`
 
 - Month 1 does **not** promote hover/selection to required gates.
 - Month 1 does **not** promote popup proof / learning-loop to required release-proof gates.
-- A dated replay note for `popup-proof` / `learning-loop` is attached (`docs/investigations/m1-bf-01-popup-learning-loop-replay-2026-04-14.md`) with **green** optional lane run ids after harness fixes; the conservative **`partial` Month 1 verdict** is unchanged because optional lanes are still **not** required release gates.
-- The prior “evidence freshness unknown” gap is **closed**: both a pre-fix failure baseline and a post-fix green chain are documented.
+- A dated replay note for `popup-proof` / `learning-loop` is attached (`docs/investigations/m1-bf-01-popup-learning-loop-replay-2026-04-14.md`) and now records fresh **green** standalone popup-proof + learning-loop reruns on current code. The conservative **`partial` Month 1 verdict** is still unchanged because these lanes remain **optional**, not required release gates.
+- The prior “evidence freshness unknown” gap remains **closed**: the replay note now captures the pre-fix failure baseline, earlier representative green evidence, the superseded sandbox-local stall, and the latest fresh green reruns.
 
 ## Carry-over
 
-- item: optional `learning-loop` **CI / gate policy** (lane is green in-doc replay but remains optional; not Gate 2 until flaky ownership matches `extension-core`)
+- item: optional `learning-loop` **CI / gate policy** (lane now has a fresh green replay, but is still not Gate 2 until flaky ownership matches `extension-core`)
   - owner: Workstream B / Workstream F close-out
-  - why it carries: in-repo green replay exists; **`gate-ready`** as a *product* claim still needs policy + optional CI lane ownership parity with required lanes (optional step now exists in `.github/workflows/ci.yml`)
+  - why it carries: in-repo fresh green replay evidence exists, but **`gate-ready`** as a *product* claim still needs policy + optional CI lane ownership parity with required lanes (optional step now exists in `.github/workflows/ci.yml`)
   - whether it blocks next month: it does **not** block Month 2 work entirely, but it **does** block any claim that learning-loop is `gate-ready` or ready to become a required release gate
   - latest allowed close date: Month 2 Week 1
 

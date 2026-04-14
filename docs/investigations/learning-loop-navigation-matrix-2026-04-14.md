@@ -1,21 +1,72 @@
-# Popup ↔ Vocabulary ↔ Review ↔ History (minimal matrix)
+# Revisit v1 contract — Popup ↔ Vocabulary ↔ Review ↔ History
 
-| From → To | Mechanism | Notes |
-|-----------|------------|-------|
-| Popup → Vocabulary | `onOpenVocabulary` / `openVocabularyPage` | Full-page vocabulary UI |
-| Popup → Review | `onOpenReview` / `openReviewPage` | `?tab=review` supported |
-| Popup → History revisit | Recent list → `openUrlInTab(url)` | Same tab opens source URL；每项展示 **相对访问时间**（`visitedAt` → just now / min / h / d ago） |
-| Vocabulary list → Source | **Open source page** button (http/https) or `source` anchor `target=_blank` | Extension tab uses `browser.tabs.create` for the button path |
-| Review card back → Source | **Open source page** | Uses `entry.url` |
-| Vocabulary ↔ Review | In-app tabs | Single `VocabularyApp` shell |
+## First supported revisit path (Month 2)
 
-## Replayable revisit smoke (Month 2)
+**Supported entry path:**
+
+1. Translate/read an HTTP(S) article page.
+2. Explain at least one sentence and/or save vocabulary from that page.
+3. Open `vocabulary.html?tab=reading`.
+4. Use the **Reading** tab row for that article.
+5. Click **Open** to reopen the article in a normal browser tab.
+
+This is the first supported revisit path for Month 2. It is intentionally narrow and replayable.
+
+## What the Reading row must preserve
+
+For article rows, the Reading queue now surfaces enough context to make revisit useful without guessing:
+
+- **page identity**: title + host + canonical page URL
+- **reading-history context**: translated word count from `reading-history`
+- **study-progress context**: ordered completed steps + page counts from `study-progress`
+- **next-step hint**: the next forward step from the furthest durable completed step
+
+Example row contract:
+
+- `Host: example.com`
+- `Page: https://example.com/article`
+- `Translated: 12 words translated`
+- `Study loop: Read → Explain → Save words`
+- `Counts: 1 explained · 1 saved · 0 reviewed`
+- `Next: Review the saved card from this page to close the loop.`
+
+## Mechanism matrix
+
+| From → To | Mechanism | Supported in Month 2? | Notes |
+|-----------|-----------|------------------------|-------|
+| Popup → Vocabulary | `onOpenVocabulary` / `openVocabularyPage` | Yes | Full-page vocabulary UI |
+| Popup → Review | `onOpenReview` / `openReviewPage` | Yes | `?tab=review` supported |
+| Popup → History revisit | Recent list → `openUrlInTab(url)` | Yes, popup-only | Same-tab reopen from recent reading history |
+| Vocabulary list → Source | **Open source page** / source anchor | Yes | Opens saved `entry.url` in a browser tab |
+| Review card back → Source | **Open source page** | Yes | Uses saved `entry.url` |
+| Vocabulary Reading → Article revisit | **Open** on article row | **Yes — canonical revisit v1** | Reopens stable article URL and shows reading-history + study-progress summary |
+| Vocabulary ↔ Review | In-app tabs | Yes | Single `VocabularyApp` shell |
+
+## Explicit boundaries
+
+- No popup sentence-deck deep link from vocabulary/review yet.
+- No scroll restoration, sentence index restoration, or resume cursor.
+- No generalized resume center across popup / vocabulary / review.
+- Query/hash stripping is still part of the stable article identity contract for this v1 path.
+- Popup history list remains useful, but the **Vocabulary Reading tab** is the canonical replayed revisit surface for Month 2.
+
+## Replayable smoke
 
 - Scenario: `bench-live/learning-loop-revisit-smoke`
-- Command: `pnpm bench:live -- --scenario bench-live/learning-loop-revisit-smoke`
-- Chained optional lane: `pnpm bench:live:lane:learning-loop` (runs popup proof + vocabulary smoke + revisit smoke)
+- Direct command: `CI=true pnpm bench:live -- --scenario bench-live/learning-loop-revisit-smoke`
+- Chained lane: `CI=true pnpm bench:live:lane:learning-loop`
 
-## Gaps (honest)
+The smoke now requires both:
 
-- No deep link from vocabulary list item → popup sentence deck (would need URL + sentence index protocol).
-- Reading history surface is **popup-only** in this matrix; dedicated history page is out of scope for Month 2.
+1. the revisit row summary to render the expected source/progress fields, and
+2. **Open** to launch the saved article URL in a new tab.
+
+## Fresh replay artifact (2026-04-14)
+
+Green rerun after the revisit v1 hardening work:
+
+- popup proof: `bench-live-results/live-20260414T105144-ub96nh/`
+- vocabulary smoke: `bench-live-results/live-20260414T105149-vaksxe/`
+- revisit smoke: `bench-live-results/live-20260414T105152-9boxuy/`
+
+The revisit smoke artifact includes the Reading-tab screenshot and snapshot proving that the row showed page identity, translated-count context, ordered study steps, the next-step hint, and that **Open** launched the fixture article URL.

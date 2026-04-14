@@ -21,7 +21,7 @@ Astra 想做的不是另一个“把网页翻成中文”的工具，而是一�
 - **文章模式**：优先提取正文内容，减少噪音区域干扰
 - **站点级规则**：支持站点启用/禁用、自动翻译、目标语言、悬停方式、范围与展示样式
 - **字幕翻译**：处理页面可访问的字幕或 caption track
-- **内置 Astra provider 路径**：当前支持 OpenAI 与 Gemini，经 Astra relay 调用
+- **Provider 路径**：当前支持 OpenAI 与 Gemini；运行时既支持 direct provider，也支持 Astra relay，并存在 direct → relay fallback
 - **Chromium / Firefox / desktop Safari 构建链路**：仓库内还带有 **iOS Safari 壳工程骨架（实验性路径）**
 
 当前平台支持等级与对外 claim 边界以 **Q2 canonical support matrix** 为准：
@@ -139,10 +139,12 @@ iOS 目录只是打包和宿主壳，不是 Astra 的核心产品面。详细接
 ## Privacy 与 AI Provider
 
 - Astra 通过 `browser.storage.local` 保存 provider 配置
-- 当前 provider 路径是 **Astra-managed relay**
-- 插件端不再要求用户直接填写 OpenAI / Gemini 的 provider key；正确路径是插件持有 Astra access token，然后调用你的内部 API
+- 当前运行时同时支持两种出站路径：**direct provider** 与 **Astra-managed relay**
+- 若同时配置 direct provider 凭证与 Astra session/relay，运行时可能在 direct 请求失败后走 **direct → relay fallback**
 - `relayBaseURL` 属于你的服务信任边界，应指向你自己的 Astra backend / relay
 - 当前 popup 已内置 Astra 账号登录流，session 与产品配置分开存储
+- `privacyMode` 当前保护的是**请求上下文裁剪**，不是“翻译永不离开本地设备”的承诺
+- glossary / terminology 相关字段已经存在，但还不是一条完全收口的 release-grade contract
 - 扩展需要较宽的 host 权限，因为整页翻译必须访问页面内容
 
 当前配置以版本化对象存储：

@@ -5,6 +5,8 @@ _Last updated: 2026-04-14_
 
 This matrix turns the v2 conquest plan into a decision-complete tracking sheet. It stays **protocol-first**: a capability is not considered conquered until it is measurable in deterministic bench, live, holdout, and proof lanes.
 
+**Month 6 release note:** this file is a capability-progress view, not a release-claim override. If a row is stronger than the current evidence bundle or support matrix, the release-facing wording must be downgraded to match the proof.
+
 **Owned reading + subtitle chain (not a separate row here):** As of 2026-04-14 the repo lands a unified **owned-reading** storage model and vocabulary Reading queue across article / PDF / EPUB / subtitle-file shapes, with honest limits on universal reopen (`month-3-closeout-inputs-2026-04-14.md`, `owned-reading-schema-v1-2026-04-14.md`). Bench-live hooks for that line include `bench-live/pdf-reader-basic`, `bench-live/epub-reader-basic`, `bench-live/subtitle-file-basic`, and revisit smoke `bench-live/learning-loop-revisit-smoke` (registry: `bench-live/scenarios/index.ts`). The subtitle-reader → explain/save → vocab/review path for **files** is written in `subtitle-reader-learning-chain-2026-04-14.md`; **in-page** caption adapters are scoped separately (`video-subtitle-adapter-inventory-2026-04-15.md`, `support-matrix-video-addendum-2026-04-15.md`).
 
 > 平台支持等级与对外 claim 边界不由本文件定义，统一以 `docs/investigations/support-matrix-2026-q2.md` 为 canonical 来源。
@@ -40,7 +42,7 @@ This file tracks the user-facing capability rows defined in `bench-opt/capabilit
 | Epub 电子书双语翻译 | **Strong** — EPUB reader first cut now has deterministic bench, live reader navigation, long-chapter holdout coverage, and capability-proof contribution | `bench=green`, `live=green`, `holdout=green`, `proof=green` | Reading-oriented, bilingual study workflows are directly relevant | Public document/reader translation surface | `new-subsystem`, `runtime`, `protocol` | **C** | Chapter extraction/order deterministic lanes green; live chapter navigation and reading-mode switching green; malformed/long-chapter holdouts green; proof-suite confirms reader-state contribution |
 | 图片翻译 (Beta) | **Gap** | `bench=missing`, `live=missing`, `holdout=missing`, `proof=missing` | No primary image-translation reference surfaced in inspected Read Frog materials | Official beta image translation surface | `new-subsystem`, `runtime` | **D** | OCR/overlay beta benchmark lane exists; live static-image fixtures green; noisy-background and mixed-script holdouts meet beta threshold; failure categories are explicit |
 | 漫画翻译 (Beta) | **Gap** | `bench=missing`, `live=missing`, `holdout=missing`, `proof=missing` | No primary comic translation reference surfaced in inspected Read Frog materials | Official beta comic translation surface | `new-subsystem`, `runtime`, `ux` | **D** | Panel/balloon fixture lanes exist; live comic page baseline green; overlapping-balloon and stylized-font holdouts reach beta-grade pass; protocol documents beta-only thresholds |
-| 隐私模式 (Beta → core policy) | **Partial** — privacy-mode context sanitization already exists, deterministic privacy assertions cover page translation, subtitle flows, local subtitle-file workflows, and document-reader surfaces, live + holdout privacy gates are green, and benchmark-pack governance now treats privacy as a required gate; however deterministic bench and proof coverage are not yet system-wide enough to call it conquered | `bench=partial`, `live=green`, `holdout=green`, `proof=partial` | Context-aware AI reading UX implies strong privacy expectations | Product positioning strongly implies privacy guarantees | `protocol`, `coverage`, `runtime` | **D** (standalone conquest) | Deterministic privacy assertions green across page, subtitle, local-file, and document-reader request surfaces; live privacy-mode toggles green; should-not-leak holdouts green; benchmark pack can fail on privacy regressions |
+| 隐私模式 (Beta → core policy) | **Partial** — privacy-mode request-context sanitization exists for page translation and subtitle translation, popup study context suppresses richer fields in privacy mode, and sensitive-input suppression exists for input translation. Targeted live/holdout scenario paths exist for page-translation privacy, but Month 6 inventory still classifies privacy authority as **caller-owned** rather than background-authoritative, and current release evidence is not yet system-wide enough to market this as a strong privacy guarantee | `bench=partial`, `live=partial`, `holdout=partial`, `proof=partial` | Context-aware AI reading UX implies strong privacy expectations | Product positioning strongly implies privacy guarantees | `protocol`, `coverage`, `runtime` | **D** (standalone conquest) | Deterministic privacy assertions cover all major request surfaces; fresh live privacy replay artifacts are attached when a release wants to strengthen privacy wording; release docs can state the exact privacy boundary without over-claiming local-only or end-to-end secrecy |
 | 鼠标悬停翻译 | **Strong** — deterministic hover support, live hover translation, moving-target holdouts, and proof contribution are green | `bench=green`, `live=green`, `holdout=green`, `proof=green` | Inline / selection-adjacent UX is a strong inspiration source | Explicit hover-translation surface | `coverage`, `ux` | **C** | Live hover lane green; moving-target and overlay-interference holdouts green; no conflicts with selection/input/float-ball flows |
 | 字幕文件翻译 | **Strong** — subtitle-file ingest/preview/export now has deterministic, live, holdout, and proof coverage across `.srt/.vtt` flows | `bench=green`, `live=green`, `holdout=green`, `proof=green` | Adjacent to subtitle concepts, but file ingest/export is a separate workflow | Public document/subtitle-file translation surface | `new-subsystem`, `runtime`, `protocol` | **C** | `.srt/.vtt` parser/serializer deterministic lanes green; upload/preview live flow green; malformed timing and overlapping-cue holdouts green; parse/translate/export failures are operator-visible |
 | 输入框翻译 | **Strong** — deterministic bench + live input translation are stable, and the field-matrix holdout verifies contenteditable, delayed hydration, repeated edits, password suppression, and cursor preservation | `bench=green`, `live=green`, `holdout=green`, `proof=green` | Inline authoring assist and selection-adjacent UX offer strong interaction inspiration | Explicit input-box translation surface | `coverage`, `ux` | **B** | Textarea/contenteditable/cursor-preservation deterministic lanes green; multi-field live flow green; delayed hydration and repeated-edit holdouts green; reporting distinguishes trigger/translate/writeback failures |
@@ -56,17 +58,17 @@ Status on **2026-03-28**: first hardening slice validated.
 What is already true:
 
 - direct → relay fallback is implemented
-- routing metadata exposes final transport and fallback usage
+- routing metadata exposes attempted/final/fallback facts, and the popup-backed local usage path now classifies them into one canonical `direct` / `relay` / `fallback` answer for the most recent uncached request on the current device
 - provider failure-class policy is explicit
-- deterministic + live evidence now covers active-session provider/site restart behavior
-- fallback / restart / transport behavior are now benchmark-visible rather than anecdotal
+- deterministic + targeted live evidence cover active-session provider/site restart behavior
+- fallback / restart / transport behavior are benchmark-visible in scoped slices rather than purely anecdotal
 
 What is still missing:
 
 - broader provider roster beyond current pair
 - per-surface preferred provider policy
 - explicit user-visible capability matrix for providers
-- operator-visible fallback history / failure history
+- broader multi-event operator history / failure history beyond the current popup-local support path
 
 ### AI translation quality-control stack
 
@@ -74,10 +76,11 @@ Still open.
 
 Main remaining gaps:
 
-- glossary / terminology contract
+- glossary / terminology contract is now canonical at request-time, but still lacks stronger proof/guarantee language beyond the current runtime/tests
 - stronger context shaping controls
 - bad-output detection beyond current placeholder protections
 - benchmark-visible rejection of obviously bad model output
+- broader user-facing disclosure beyond the current popup-local support path when transport falls back from direct to relay
 
 ### Rules-system UX / discoverability
 

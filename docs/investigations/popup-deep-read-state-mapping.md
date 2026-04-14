@@ -1,6 +1,6 @@
 # Popup Deep-Read State Mapping
 
-_Last updated: 2026-04-14 (thin study-context sentence deck fallback)_
+_Last updated: 2026-04-14 (state-lock cleanup + explicit thin/empty fallback behavior)_
 
 This note is the explainer for the Month 1 popup deep-read close-out slice in plan.md section 8.3.
 
@@ -24,6 +24,12 @@ It does **not** add:
 
 When the active tab has **no** `articleExcerpt` but still has `contentSummary` or `metaDescription`, the popup builds the sentence drill deck from that fallback text (same `splitSentences` pipeline, still capped at three cards). This keeps explain/save/review flows usable on pages where the reader has not produced an excerpt yet.
 
+The popup now also shows an explicit fallback note in the sentence-drill area so users know the deck is running from summary/description text rather than a full article excerpt.
+
+## Empty study context
+
+When the active tab has **no** usable `articleExcerpt`, `contentSummary`, or `metaDescription`, the popup does **not** build a sentence drill deck. Instead it shows the existing empty-state summary guidance and leaves explain/save/speak sentence actions unavailable until a real study context exists.
+
 ## Sentence-card state semantics
 
 Each popup sentence card now renders from one explicit view model with these semantics:
@@ -44,6 +50,7 @@ Each popup sentence card now renders from one explicit view model with these sem
 - The selected sentence is highlighted.
 - Prev/next navigation only changes selection.
 - Explain/save/speak actions all target the selected card or an explicitly clicked card.
+- While an explain/save request is in flight, sentence navigation and sentence-level speech are locked so selection cannot drift away from the in-flight card.
 
 ### Explaining / explained
 
@@ -56,6 +63,7 @@ Each popup sentence card now renders from one explicit view model with these sem
 
 - Only one sentence save runs at a time.
 - Save reads explanation text from the sentence card state, not from a separate “last explanation” buffer.
+- Save now selects the target sentence card before persisting it, so the same card owns the resulting `saving` / `saved` / continuation CTA state.
 - Saved state is backed by both:
   - current popup session state
   - existing vocabulary entries for the current page URL
@@ -76,6 +84,8 @@ Popup sentence saves now write additive `sourceContext` metadata into vocabulary
 sourceContext?: {
   surface: "popup_deep_read"
   pageTitle?: string
+  pageUrl?: string
+  hostname?: string
   contentSummary?: string
   articleExcerpt?: string
   sentenceText?: string
@@ -87,8 +97,10 @@ sourceContext?: {
 
 - `context` stays as the human-readable fallback snippet for older UI/export flows.
 - `sourceContext` is additive and optional.
+- `sourceContext.pageUrl` / `hostname` preserve stable page identity even when list/review UI is rendering from synced or deduped entries.
 - Deduped resaves merge `sourceContext` instead of blindly replacing it.
 - Sync upserts preserve existing `sourceContext` when an incoming payload omits it.
+- Vocabulary list and Review now derive source labels/snippets from the same formatter so popup saves render consistently across both surfaces.
 
 ## Popup → assets join-up
 
