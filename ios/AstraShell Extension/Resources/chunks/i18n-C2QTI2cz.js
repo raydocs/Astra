@@ -1,0 +1,1 @@
+import{w as e}from"./schemas-DBajdWRr.js";function t(t,n){try{return e.i18n.getMessage(t,n)||t}catch{return t}}export{t};

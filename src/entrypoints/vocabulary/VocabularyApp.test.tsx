@@ -7,11 +7,23 @@ const {
   removeVocabularyEntryMock,
   getDueVocabularyCountMock,
   updateVocabularyEntryMock,
+  getPageStudyProgressMock,
+  syncRecentReadingHistoryToOwnedQueueMock,
+  listOwnedReadingItemsMock,
+  markOwnedReadingOpenedMock,
+  setOwnedReadingStatusMock,
+  removeOwnedReadingItemMock,
 } = vi.hoisted(() => ({
   getVocabularyEntriesMock: vi.fn(),
   removeVocabularyEntryMock: vi.fn(),
   getDueVocabularyCountMock: vi.fn(),
   updateVocabularyEntryMock: vi.fn(),
+  getPageStudyProgressMock: vi.fn(),
+  syncRecentReadingHistoryToOwnedQueueMock: vi.fn(),
+  listOwnedReadingItemsMock: vi.fn(),
+  markOwnedReadingOpenedMock: vi.fn(),
+  setOwnedReadingStatusMock: vi.fn(),
+  removeOwnedReadingItemMock: vi.fn(),
 }))
 
 vi.mock("@/utils/storage/vocabulary", () => ({
@@ -21,6 +33,30 @@ vi.mock("@/utils/storage/vocabulary", () => ({
   updateVocabularyEntry: updateVocabularyEntryMock,
 }))
 
+vi.mock("@/utils/storage/owned-reading", () => ({
+  syncRecentReadingHistoryToOwnedQueue: syncRecentReadingHistoryToOwnedQueueMock,
+  listOwnedReadingItems: listOwnedReadingItemsMock,
+  markOwnedReadingOpened: markOwnedReadingOpenedMock,
+  setOwnedReadingStatus: setOwnedReadingStatusMock,
+  removeOwnedReadingItem: removeOwnedReadingItemMock,
+}))
+
+vi.mock("@/utils/storage/study-progress", () => ({
+  getPageStudyProgress: getPageStudyProgressMock,
+}))
+
+vi.mock("#imports", () => ({
+  browser: {
+    runtime: {
+      getURL: vi.fn((path: string) => `chrome-extension://test-id${path}`),
+    },
+    tabs: {
+      create: vi.fn(),
+    },
+  },
+}))
+
+import { browser } from "#imports"
 import VocabularyApp from "./VocabularyApp"
 
 describe("VocabularyApp", () => {
@@ -54,6 +90,12 @@ describe("VocabularyApp", () => {
     getDueVocabularyCountMock.mockResolvedValue(1)
     removeVocabularyEntryMock.mockResolvedValue(undefined)
     updateVocabularyEntryMock.mockResolvedValue(null)
+    syncRecentReadingHistoryToOwnedQueueMock.mockResolvedValue(undefined)
+    listOwnedReadingItemsMock.mockResolvedValue([])
+    markOwnedReadingOpenedMock.mockResolvedValue(undefined)
+    setOwnedReadingStatusMock.mockResolvedValue(undefined)
+    removeOwnedReadingItemMock.mockResolvedValue(undefined)
+    getPageStudyProgressMock.mockResolvedValue(null)
 
     container = document.createElement("div")
     document.body.appendChild(container)
@@ -95,5 +137,85 @@ describe("VocabularyApp", () => {
     })
 
     expect(container.textContent).toContain("ephemeral")
+  })
+
+  it("loads reading queue when Reading tab is selected", async () => {
+    const readingBtn = [...container.querySelectorAll("button")].find((b) => b.textContent?.trim() === "Reading")
+    expect(readingBtn).toBeTruthy()
+
+    await act(async () => {
+      readingBtn!.click()
+      await Promise.resolve()
+      await Promise.resolve()
+    })
+
+    expect(syncRecentReadingHistoryToOwnedQueueMock).toHaveBeenCalled()
+    expect(listOwnedReadingItemsMock).toHaveBeenCalled()
+  })
+
+  it("opens tab when Open is clicked on a reading row", async () => {
+    listOwnedReadingItemsMock.mockResolvedValueOnce([
+      {
+        id: "or_test1",
+        sourceType: "article",
+        title: "Hello page",
+        sourceUrl: "https://example.com/hello",
+        openedAt: 10_000,
+        status: "saved",
+        readingHistoryRecordId: "https://example.com/hello",
+        studyProgressRecordId: "https://example.com/hello",
+      },
+    ])
+
+    const readingBtn = [...container.querySelectorAll("button")].find((b) => b.textContent?.trim() === "Reading")
+    await act(async () => {
+      readingBtn!.click()
+      await Promise.resolve()
+      await Promise.resolve()
+    })
+
+    const openBtn = [...container.querySelectorAll("button")].find((b) => b.textContent?.trim() === "Open")
+    expect(openBtn).toBeTruthy()
+
+    await act(async () => {
+      openBtn!.click()
+      await Promise.resolve()
+    })
+
+    expect(markOwnedReadingOpenedMock).toHaveBeenCalledWith("or_test1")
+    expect(browser.tabs.create).toHaveBeenCalledWith({ url: "https://example.com/hello" })
+  })
+
+  it("opens PDF reader for pdf queue rows with remote url", async () => {
+    listOwnedReadingItemsMock.mockResolvedValueOnce([
+      {
+        id: "or_pdf1",
+        sourceType: "pdf",
+        title: "Paper.pdf",
+        sourceUrl: "https://cdn.example/paper.pdf",
+        openedAt: 10_000,
+        status: "saved",
+        readingHistoryRecordId: null,
+        studyProgressRecordId: "https://cdn.example/paper.pdf",
+      },
+    ])
+
+    const readingBtn = [...container.querySelectorAll("button")].find((b) => b.textContent?.trim() === "Reading")
+    await act(async () => {
+      readingBtn!.click()
+      await Promise.resolve()
+      await Promise.resolve()
+    })
+
+    const openBtn = [...container.querySelectorAll("button")].find((b) => b.textContent?.trim() === "Open")
+    await act(async () => {
+      openBtn!.click()
+      await Promise.resolve()
+    })
+
+    expect(markOwnedReadingOpenedMock).toHaveBeenCalledWith("or_pdf1")
+    expect(browser.tabs.create).toHaveBeenCalledWith({
+      url: "chrome-extension://test-id/pdf-reader.html?url=https%3A%2F%2Fcdn.example%2Fpaper.pdf",
+    })
   })
 })

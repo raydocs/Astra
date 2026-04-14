@@ -78,9 +78,9 @@
     "test:web": "vitest run web/src"
   },
   "dependencies": {
-    "@ai-sdk/google": "^3.0.62",
+    "@ai-sdk/google": "^3.0.63",
     "@ai-sdk/openai": "^3.0.52",
-    "ai": "^6.0.158",
+    "ai": "^6.0.159",
     "dexie": "^4.4.2",
     "epubjs": "^0.3.93",
     "jsdom": "^29.0.2",
@@ -90,24 +90,37 @@
     "zod": "^4.3.6"
   },
   "devDependencies": {
-    "@eslint/js": "^9.24.0",
+    "@eslint/js": "^10.0.1",
     "@types/jsdom": "^28.0.1",
     "@types/react": "^19.2.14",
     "@types/react-dom": "^19.2.3",
-    "@vitejs/plugin-react": "6.0.1",
-    "@vitest/coverage-v8": "^3.2.4",
+    "@vitejs/plugin-react": "^6.0.1",
+    "@vitest/coverage-v8": "^4.1.4",
     "@wxt-dev/module-react": "^1.2.2",
-    "eslint": "^9.24.0",
-    "eslint-plugin-react-hooks": "^5.2.0",
+    "eslint": "^10.2.0",
+    "eslint-plugin-react-hooks": "^7.0.1",
     "fake-indexeddb": "^6.2.5",
-    "globals": "^16.0.0",
+    "globals": "^17.5.0",
     "playwright": "^1.59.1",
     "tsx": "^4.21.0",
     "typescript": "^6.0.2",
-    "typescript-eslint": "^8.58.1",
-    "vite": "8.0.8",
-    "vitest": "^3.2.4",
-    "web-ext": "^8.10.0",
-    "wxt": "0.20.20"
+    "typescript-eslint": "^8.58.2",
+    "vite": "^8.0.8",
+    "vitest": "^4.1.4",
+    "web-ext": "^10.1.0",
+    "wxt": "^0.20.21"
+  },
+  "pnpm": {
+    "overrides": {
+      "defu": ">=6.1.5",
+      "lodash": ">=4.18.0",
+      "@xmldom/xmldom": ">=0.8.12",
+      "minimatch@3.1.5>brace-expansion": ">=1.1.13 <2.0.0"
+    },
+    "peerDependencyRules": {
+      "allowedVersions": {
+        "eslint-plugin-react-hooks>eslint": "10"
+      }
+    }
   }
 }

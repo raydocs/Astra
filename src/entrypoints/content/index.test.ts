@@ -92,6 +92,16 @@ describe("content entrypoint mounting", () => {
     vi.resetModules()
     setMockBrowser(createMockBrowser())
     vi.clearAllMocks()
+    // `vi.clearAllMocks()` does not clear `mockResolvedValueOnce` queues; reset implementations
+    // so prior tests cannot leak queued config/session reads into the next case.
+    readConfigMock.mockReset()
+    readAstraSessionMock.mockReset()
+    resolveSiteTranslationSettingsMock.mockReset()
+    getPageTranslationStateMock.mockReset()
+    startPageTranslationMock.mockReset()
+    stopPageTranslationMock.mockReset()
+    removeTranslatedSubtitlesMock.mockReset()
+    translatePageSubtitlesMock.mockReset()
     document.head.innerHTML = ""
     document.body.innerHTML = ""
     history.pushState = originalHistoryPushState

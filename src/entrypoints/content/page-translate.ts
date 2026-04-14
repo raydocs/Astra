@@ -7,6 +7,7 @@ import {
 } from "@/utils/storage/config"
 import { sanitizeTranslationContext } from "@/utils/privacy"
 import { recordPageTranslation } from "@/utils/storage/reading-history"
+import { upsertOwnedArticleFromUrl } from "@/utils/storage/owned-reading"
 import {
   clearLoading,
   removeAllTranslations,
@@ -200,12 +201,18 @@ function stopSession(
   // Record reading history if at least 1 block was translated
   const progress = getSessionProgress(session)
   if (progress.translatedBlocks > 0) {
+    const title = document.title || window.location.hostname
     void recordPageTranslation({
       url: window.location.href,
       hostname: window.location.hostname,
-      title: document.title || window.location.hostname,
+      title,
       wordsTranslated: progress.translatedBlocks,
       visitedAt: Date.now(),
+    })
+    void upsertOwnedArticleFromUrl({
+      url: window.location.href,
+      title,
+      status: "saved",
     })
   }
 

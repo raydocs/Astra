@@ -20,6 +20,7 @@ import { siteAutomationAutostartScenario } from "./site-automation-autostart"
 import { onboardingSmokeScenario } from "./onboarding-smoke"
 import { popupDeepReadProofScenario } from "./popup-deep-read-proof"
 import { vocabularySrsSmokeScenario } from "./vocabulary-srs-smoke"
+import { bilibiliSubtitleBasicScenario } from "./bilibili-subtitle-basic"
 import { youtubeSubtitleBasicScenario } from "./youtube-subtitle-basic"
 import { subtitleBasicScenario } from "./subtitle-basic"
 import { subtitleFileBasicScenario } from "./subtitle-file-basic"
@@ -44,6 +45,7 @@ export { privacyModePageTranslationSourceScenario } from "./privacy-mode-page-tr
 export { pdfReaderBasicScenario } from "./pdf-reader-basic"
 export { placeholderScenario } from "./placeholder"
 export { siteAutomationAutostartScenario } from "./site-automation-autostart"
+export { bilibiliSubtitleBasicScenario } from "./bilibili-subtitle-basic"
 export { youtubeSubtitleBasicScenario } from "./youtube-subtitle-basic"
 export { subtitleBasicScenario } from "./subtitle-basic"
 export { subtitleFileBasicScenario } from "./subtitle-file-basic"
@@ -67,6 +69,7 @@ export const liveScenarios = [
   inputTranslationBasicScenario,
   inputTranslationFieldMatrixScenario,
   youtubeSubtitleBasicScenario,
+  bilibiliSubtitleBasicScenario,
   subtitleBasicScenario,
   subtitleFileBasicScenario,
   epubReaderBasicScenario,

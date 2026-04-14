@@ -27,3 +27,13 @@ _Node relay + web portable surfaces_
 
 - **401 / CONFIG_MISSING**: usually session or relay env; see `AGENTS.md` for relay key restart.
 - **429**: quota; link to usage panel.
+
+## Incident triage (Month 5 — quick buckets)
+
+| Symptom bucket | First check | User-facing line |
+|----------------|-------------|------------------|
+| Auth / session | `POST /v1/auth/session`, device header on `/v1/account/summary` | “Sign in again” / refresh session |
+| Quota | `GET /v1/account/usage`, 429 on translate | “Daily limit reached” + link to plan |
+| Sync repair | `POST /v1/sync/repair` vs local IndexedDB (web) | “Repair sync” in web account workspace |
+| Billing handoff | `POST /v1/billing/checkout` returns URL vs empty | “Billing unavailable” if mock URLs misconfigured |
+| CORS (web dev) | Browser console: relay origin vs web origin | Document-only: use same-site or proxy in dev |

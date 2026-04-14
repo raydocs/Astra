@@ -2,9 +2,10 @@
  * Astra Subtitle Translator — translate SRT/VTT/ASS files with bilingual export.
  */
 
-import { useState, useCallback, useRef } from "react"
+import { useState, useCallback, useRef, useEffect } from "react"
 import { browser } from "#imports"
 import type { RuntimeResponse } from "@/types/messages"
+import { upsertOwnedSubtitleFileFromImport } from "@/utils/storage/owned-reading"
 import {
   parseSubtitles,
   exportBilingualSrt,
@@ -37,6 +38,7 @@ async function getTargetLang(): Promise<string> {
 export function SubtitleReaderApp() {
   const [phase, setPhase] = useState<Phase>("idle")
   const [error, setError] = useState<string | null>(null)
+  const [reopenBanner, setReopenBanner] = useState<string | null>(null)
   const [fileName, setFileName] = useState("")
   const [fileFormat, setFileFormat] = useState<FileFormat>("unknown")
   const [cues, setCues] = useState<SubtitleCue[]>([])
@@ -44,6 +46,13 @@ export function SubtitleReaderApp() {
   const [translations, setTranslations] = useState<Map<number, string>>(new Map())
   const [progress, setProgress] = useState({ current: 0, total: 0 })
   const fileInputRef = useRef<HTMLInputElement>(null)
+
+  useEffect(() => {
+    const hint = new URLSearchParams(window.location.search).get("reopenHint")
+    if (hint) {
+      setReopenBanner(decodeURIComponent(hint))
+    }
+  }, [])
 
   /** Whether the current file is a document (not subtitle) */
   const isDocument = fileFormat === "markdown" || fileFormat === "txt" || fileFormat === "html"
@@ -69,6 +78,12 @@ export function SubtitleReaderApp() {
         setCues([])
         setTranslations(new Map())
         setPhase("parsed")
+        void upsertOwnedSubtitleFileFromImport({
+          fileName: file.name,
+          formatLabel: formatLabel(docFormat),
+          cueOrEntryCount: entries.length,
+          status: "in_progress",
+        })
         return
       }
 
@@ -87,6 +102,12 @@ export function SubtitleReaderApp() {
       setDocEntries([])
       setTranslations(new Map())
       setPhase("parsed")
+      void upsertOwnedSubtitleFileFromImport({
+        fileName: file.name,
+        formatLabel: result.format.toUpperCase(),
+        cueOrEntryCount: result.cues.length,
+        status: "in_progress",
+      })
     } catch (err) {
       setPhase("error")
       setError(err instanceof Error ? err.message : "Failed to parse file")
@@ -166,6 +187,23 @@ export function SubtitleReaderApp() {
           </span>
         )}
       </header>
+
+      {reopenBanner && (
+        <div
+          role="status"
+          style={{
+            marginBottom: 12,
+            padding: "10px 12px",
+            fontSize: 13,
+            color: "#1e40af",
+            background: "rgba(99, 102, 241, 0.12)",
+            borderRadius: 8,
+            border: "1px solid rgba(99, 102, 241, 0.35)",
+          }}
+        >
+          {reopenBanner}
+        </div>
+      )}
 
       {phase === "idle" && (
         <div

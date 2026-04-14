@@ -22,10 +22,12 @@ Astra is an AI-powered language learning browser extension with three main devel
 | Lint | `pnpm lint` |
 | Unit tests | `pnpm test` |
 | Build extension | `pnpm build` |
+| Live bench (Playwright, extension-loaded) | `pnpm build` then `npx playwright install chromium` (or `npx playwright install --with-deps chromium` like CI). Run `pnpm bench:live:lane:release-proof` or a single scenario: `pnpm bench:live -- --scenario bench-live/site-automation-autostart`. On Linux without a real display, prefix with `xvfb-run -a` (matches `.github/workflows/ci.yml` `live-browser` job). |
 
 ### Non-obvious Caveats
 
 - **Node 22 + pnpm 10** are required (matches CI in `.github/workflows/ci.yml`).
+- **Extension-loaded live scenarios** (`bench-live/site-automation-autostart`, onboarding, vocabulary smoke, etc.) launch Chromium with `--load-extension`. They resolve the browser via `bench-live/driver.ts`, preferring **Playwright’s Chromium** (`chromium.executablePath()`) when installed. If that binary is missing, the driver falls back to system **Google Chrome**, which often returns **`net::ERR_BLOCKED_BY_CLIENT`** on `chrome-extension://…` URLs used to seed `chrome.storage` — not an extension logic bug. Fix: run `npx playwright install chromium` once per machine/CI image. In **`CI=true`**, the driver also avoids Playwright’s `channel: "chrome"` for the same reason.
 - `pnpm install` may warn about ignored build scripts (esbuild, core-js, etc.). These do not block development — esbuild ships a pre-built WASM fallback.
 - The relay server does **not** auto-load `server/.env`. It reads **`process.env` only** (see `server/config.ts`). Copy `server/.env.example` → `server/.env` for documentation, but to actually use keys you must either **export** them in the shell before `pnpm relay:start` or inject them via your host/CI secret store.
 - **Managed translation keys**: When `OPENAI_API_KEY` and/or `OPENROUTER_API_KEY` are provided (e.g. Cursor Cloud user secrets), **restart the relay** after adding them so the Node process inherits the variables. A long-running relay started without keys will keep returning `OPENAI_API_KEY is not configured on the Astra relay` until restarted.
