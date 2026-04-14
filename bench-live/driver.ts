@@ -148,7 +148,17 @@ function extensionPersistentContextExtraArgs(): string[] {
  * Chromium/Chrome-for-Testing when it did not.
  */
 function googleChromeChannelForExtensionLive(): boolean {
-  return process.env.CI === "true" && process.env.ASTRA_BENCH_LIVE_USE_GOOGLE_CHROME === "1"
+  if (process.env.ASTRA_BENCH_LIVE_USE_GOOGLE_CHROME !== "1") {
+    return false
+  }
+  // In GitHub Actions we still install Google Chrome for a stable binary path, but
+  // Playwright's `channel: "chrome"` build often rejects `page.goto(chrome-extension://…)`
+  // during storage seeding (net::ERR_BLOCKED_BY_CLIENT). Prefer the system Chrome/Chromium
+  // executable from `resolveLiveBrowserExecutablePath` instead.
+  if (process.env.CI === "true") {
+    return false
+  }
+  return true
 }
 
 function extensionPersistentContextEnv(): NodeJS.ProcessEnv | undefined {
@@ -177,6 +187,17 @@ function isBenchLiveCiBlockedProviderHost(hostname: string): boolean {
 async function installCiExtensionOutboundGuards(context: BrowserContext) {
   await context.route("**/*", async (route: Route) => {
     const url = route.request().url()
+    // Never intercept extension or browser-internal navigations — doing so can
+    // surface as net::ERR_BLOCKED_BY_CLIENT when seeding storage (e.g. popup.html).
+    if (
+      url.startsWith("chrome-extension://")
+      || url.startsWith("chrome://")
+      || url.startsWith("devtools://")
+    ) {
+      await route.continue()
+      return
+    }
+
     let hostname = ""
     try {
       hostname = new URL(url).hostname
@@ -275,48 +296,92 @@ async function seedExtensionStorageFromServiceWorker(options: {
   return true
 }
 
+/** Pages that expose `chrome.storage.local` without Chrome blocking `page.goto` like it often does for `popup.html`. */
+async function resolveExtensionSeedStoragePageCandidates(extensionPath?: string): Promise<string[]> {
+  const manifestPath = await resolveExtensionManifestPath(extensionPath)
+  const extensionRoot = path.dirname(manifestPath)
+  const manifest = JSON.parse(await readFile(manifestPath, "utf8")) as {
+    action?: { default_popup?: string }
+    options_ui?: { page?: string }
+    options_page?: string
+  }
+
+  const prefer = ["vocabulary.html", "onboarding.html", "options.html", "pdf-reader.html", "epub-reader.html", "subtitle-reader.html"]
+  const candidates: string[] = []
+  for (const name of prefer) {
+    if (await pathExists(path.join(extensionRoot, name))) {
+      candidates.push(name)
+    }
+  }
+
+  const fromManifest = manifest.action?.default_popup
+    ?? manifest.options_ui?.page
+    ?? manifest.options_page
+  if (fromManifest) {
+    const normalized = fromManifest.replace(/^\//, "")
+    if (!candidates.includes(normalized)) {
+      candidates.push(normalized)
+    }
+  }
+
+  return candidates
+}
+
 async function seedExtensionStorageFromPage(options: {
   context: BrowserContext
   extensionId: string
   extensionPath?: string
   storageState: Record<string, unknown>
 }): Promise<void> {
-  const extensionPagePath = await resolveExtensionPagePath(options.extensionPath)
-  const setupPage = await options.context.newPage()
+  const pageCandidates = await resolveExtensionSeedStoragePageCandidates(options.extensionPath)
+  if (pageCandidates.length === 0) {
+    throw new ExtensionBuildNotFoundError("No extension HTML page available to seed chrome.storage.local.")
+  }
 
-  try {
-    await setupPage.goto(`chrome-extension://${options.extensionId}/${extensionPagePath}`, {
-      waitUntil: "domcontentloaded",
-      timeout: 15_000,
-    })
-    await setupPage.waitForFunction(
-      `typeof chrome !== "undefined" && !!chrome.storage?.local`,
-      { timeout: 10_000 },
-    )
-    await setupPage.evaluate(async (storageState) => {
-      const extensionChrome = (globalThis as unknown as {
-        chrome?: {
-          storage?: {
-            local?: {
-              set: (value: Record<string, unknown>) => Promise<void>
+  let lastError: unknown
+  for (const extensionPagePath of pageCandidates) {
+    const setupPage = await options.context.newPage()
+    try {
+      await setupPage.goto(`chrome-extension://${options.extensionId}/${extensionPagePath}`, {
+        waitUntil: "domcontentloaded",
+        timeout: 15_000,
+      })
+      await setupPage.waitForFunction(
+        `typeof chrome !== "undefined" && !!chrome.storage?.local`,
+        { timeout: 10_000 },
+      )
+      await setupPage.evaluate(async (storageState) => {
+        const extensionChrome = (globalThis as unknown as {
+          chrome?: {
+            storage?: {
+              local?: {
+                set: (value: Record<string, unknown>) => Promise<void>
+              }
             }
           }
+        }).chrome
+
+        if (!extensionChrome?.storage?.local) {
+          throw new Error("chrome.storage.local is unavailable in the extension setup page")
         }
-      }).chrome
 
-      if (!extensionChrome?.storage?.local) {
-        throw new Error("chrome.storage.local is unavailable in the extension setup page")
+        await extensionChrome.storage.local.set(storageState)
+      }, options.storageState)
+      return
+    } catch (error) {
+      lastError = error
+    } finally {
+      try {
+        await setupPage.close()
+      } catch {
+        // ignore cleanup failures
       }
-
-      await extensionChrome.storage.local.set(storageState)
-    }, options.storageState)
-  } finally {
-    try {
-      await setupPage.close()
-    } catch {
-      // ignore cleanup failures
     }
   }
+
+  throw lastError instanceof Error
+    ? lastError
+    : new Error("Failed to seed extension storage from any extension page candidate.")
 }
 
 async function seedExtensionStorageState(options: {
@@ -809,7 +874,6 @@ export async function withExtensionBrowserPage(options: {
 
   if (process.env.CI === "true") {
     context.setDefaultTimeout(45_000)
-    await installCiExtensionOutboundGuards(context)
   }
 
   const page = context.pages()[0] ?? await context.newPage()
@@ -842,6 +906,10 @@ export async function withExtensionBrowserPage(options: {
     if (initialUrl !== "about:blank") {
       await page.bringToFront()
     }
+  }
+
+  if (process.env.CI === "true") {
+    await installCiExtensionOutboundGuards(context)
   }
 
   if (initialUrl === "about:blank") {
@@ -964,28 +1032,4 @@ export async function openExtensionActionPopup(options: {
   }
 
   throw new Error(`Timed out waiting for extension popup page ${popupUrlPrefix}.`)
-}
-
-export async function resolveExtensionPagePath(extensionPath?: string): Promise<string> {
-  const manifestPath = await resolveExtensionManifestPath(extensionPath)
-  const manifest = JSON.parse(await readFile(manifestPath, "utf8")) as {
-    action?: { default_popup?: string }
-    options_ui?: { page?: string }
-    options_page?: string
-  }
-
-  // Prefer a regular extension tab page over options_ui here. Google Chrome
-  // can block direct navigation to options_ui pages in automated contexts,
-  // while popup.html remains scriptable and has the same chrome.storage access.
-  const candidate = manifest.action?.default_popup
-    ?? manifest.options_ui?.page
-    ?? manifest.options_page
-
-  if (!candidate) {
-    throw new ExtensionBuildNotFoundError(
-      `No extension HTML page was found in manifest ${manifestPath} to seed chrome.storage.local.`,
-    )
-  }
-
-  return candidate.replace(/^\//, "")
 }
