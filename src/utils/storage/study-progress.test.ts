@@ -87,6 +87,18 @@ describe("study-progress", () => {
     expect(store.dailyStats.pagesStudied).toBe(2)
   })
 
+  it("does not count pagesStudied when vocab_review is the first event for a URL", async () => {
+    await recordStudyEvent({
+      url: "https://example.com/page",
+      hostname: "example.com",
+      title: "Example",
+      step: "vocab_review",
+    })
+    const store = await getStudyProgress()
+    expect(store.dailyStats.vocabReviewed).toBe(1)
+    expect(store.dailyStats.pagesStudied).toBe(0)
+  })
+
   it("retrieves page-specific progress", async () => {
     await recordStudyEvent({
       url: "https://example.com/article?q=1",
