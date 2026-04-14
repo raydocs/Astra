@@ -1,9 +1,11 @@
 # Astra Capability Matrix v2
 
 _Proposed protocol foundation for Astra v2 capability conquest._
-_Last updated: 2026-04-09_
+_Last updated: 2026-04-14_
 
 This matrix turns the v2 conquest plan into a decision-complete tracking sheet. It stays **protocol-first**: a capability is not considered conquered until it is measurable in deterministic bench, live, holdout, and proof lanes.
+
+**Owned reading + subtitle chain (not a separate row here):** As of 2026-04-14 the repo lands a unified **owned-reading** storage model and vocabulary Reading queue across article / PDF / EPUB / subtitle-file shapes, with honest limits on universal reopen (`month-3-closeout-inputs-2026-04-14.md`, `owned-reading-schema-v1-2026-04-14.md`). Bench-live hooks for that line include `bench-live/pdf-reader-basic`, `bench-live/epub-reader-basic`, `bench-live/subtitle-file-basic`, and revisit smoke `bench-live/learning-loop-revisit-smoke` (registry: `bench-live/scenarios/index.ts`). The subtitle-reader → explain/save → vocab/review path for **files** is written in `subtitle-reader-learning-chain-2026-04-14.md`; **in-page** caption adapters are scoped separately (`video-subtitle-adapter-inventory-2026-04-15.md`, `support-matrix-video-addendum-2026-04-15.md`).
 
 > 平台支持等级与对外 claim 边界不由本文件定义，统一以 `docs/investigations/support-matrix-2026-q2.md` 为 canonical 来源。
 

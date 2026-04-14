@@ -30,3 +30,18 @@ Upsert helpers match on `readingHistoryRecordId`, `studyProgressRecordId`, `sour
 ## Downstream
 
 Queue UI: `src/entrypoints/vocabulary/VocabularyApp.tsx` (Reading tab). Do not invent parallel identity rules outside `owned-reading.ts`.
+
+## Bench-live scenario IDs (repo registry)
+
+Canonical list: `bench-live/scenarios/index.ts` (`liveScenarios`). Run any scenario with:
+
+`pnpm bench:live -- --scenario <id>`
+
+Reader- and subtitle-file–adjacent IDs currently exported in that registry:
+
+- `bench-live/pdf-reader-basic`
+- `bench-live/epub-reader-basic`
+- `bench-live/subtitle-file-basic` (`sourceType: "subtitle-file"` queue continuity)
+- `bench-live/learning-loop-revisit-smoke` (vocabulary Reading queue → reopen; includes `pnpm bench:live:lane:learning-loop` per `package.json`)
+
+Video adapter fixture smokes (separate from owned-reading file import): `bench-live/youtube-subtitle-basic`, `bench-live/bilibili-subtitle-basic`, `bench-live/subtitle-basic`.

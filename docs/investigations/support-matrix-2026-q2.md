@@ -1,6 +1,6 @@
 # Astra Support Matrix — 2026 Q2 (Canonical)
 
-_Last updated: 2026-04-12_
+_Last updated: 2026-04-14_
 
 ## Purpose
 
@@ -24,6 +24,8 @@ Platforms covered in this matrix:
 - `wxt.config.ts`
 - `.github/workflows/ci.yml`
 - `.github/workflows/firefox-release.yml`
+
+**Owned reading + subtitle file chain (2026-04-14):** The unified v1 item model and vocabulary **Reading** queue (`src/utils/storage/owned-reading.ts`, Reading tab in `VocabularyApp`) are real for **schema + resume hints**, not full parity across every host or reader. File-import continuity is documented in `subtitle-reader-learning-chain-2026-04-14.md` with live smoke ID `bench-live/subtitle-file-basic`; reader fixtures include `bench-live/pdf-reader-basic` and `bench-live/epub-reader-basic`; vocabulary reopen smoke is `bench-live/learning-loop-revisit-smoke` (see `month-3-closeout-inputs-2026-04-14.md`). **In-page** video and caption claims stay in `support-matrix-video-addendum-2026-04-15.md` (YouTube + Bilibili fixture depth vs other adapters).
 
 ## Validation State Legend
 
