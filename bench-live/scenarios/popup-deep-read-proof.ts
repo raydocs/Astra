@@ -188,105 +188,13 @@ export const popupDeepReadProofScenario: LiveScenarioDefinition<PopupDeepReadPro
         customActions: [],
       }
 
+      // Seed relay config via storageState before the first navigation (same pattern as site-automation).
       extCtx = await withExtensionBrowserPage({
         initialUrl: servedFixturePage.url,
         waitForExtensionInject: 8_000,
-      })
-
-      await extCtx.context.addInitScript(({ storageKey, configValue }: {
-        storageKey: string
-        configValue: Record<string, unknown>
-      }) => {
-        const store = new Map<string, unknown>([[storageKey, configValue]])
-
-        const normalizeGetResult = (keys: unknown): Record<string, unknown> => {
-          if (keys == null) {
-            return Object.fromEntries(store.entries())
-          }
-          if (typeof keys === "string") {
-            return { [keys]: store.get(keys) }
-          }
-          if (Array.isArray(keys)) {
-            return Object.fromEntries(
-              keys
-                .filter((key): key is string => typeof key === "string")
-                .map((key) => [key, store.get(key)]),
-            )
-          }
-          if (typeof keys === "object") {
-            return Object.fromEntries(
-              Object.entries(keys as Record<string, unknown>).map(([key, fallback]) => [key, store.has(key) ? store.get(key) : fallback]),
-            )
-          }
-          return {}
-        }
-
-        const installStorageShim = () => {
-          const extensionChrome = (globalThis as typeof globalThis & {
-            chrome?: {
-              storage?: {
-                local?: {
-                  get?: (keys?: unknown) => Promise<Record<string, unknown>> | Record<string, unknown>
-                  set?: (items: Record<string, unknown>) => Promise<void> | void
-                  remove?: (keys: string | string[]) => Promise<void> | void
-                  clear?: () => Promise<void> | void
-                }
-              }
-            }
-          }).chrome
-
-          const local = extensionChrome?.storage?.local
-          if (!local) return false
-
-          const originalGet: ((keys?: unknown) => Promise<Record<string, unknown>> | Record<string, unknown>) | null =
-            typeof local.get === "function" ? local.get.bind(local) : null
-          const originalSet: ((items: Record<string, unknown>) => Promise<void> | void) | null =
-            typeof local.set === "function" ? local.set.bind(local) : null
-          const originalRemove: ((keys: string | string[]) => Promise<void> | void) | null =
-            typeof local.remove === "function" ? local.remove.bind(local) : null
-          const originalClear: (() => Promise<void> | void) | null =
-            typeof local.clear === "function" ? local.clear.bind(local) : null
-
-          local.get = async (keys?: unknown) => {
-            const seeded = normalizeGetResult(keys)
-            if (!originalGet) return seeded
-            try {
-              const original = await originalGet(keys)
-              return { ...original, ...seeded }
-            } catch {
-              return seeded
-            }
-          }
-          local.set = async (items: Record<string, unknown>) => {
-            for (const [key, value] of Object.entries(items)) {
-              store.set(key, value)
-            }
-            await originalSet?.(items)
-          }
-          local.remove = async (keys: string | string[]) => {
-            for (const key of Array.isArray(keys) ? keys : [keys]) {
-              store.delete(key)
-            }
-            await originalRemove?.(keys)
-          }
-          local.clear = async () => {
-            store.clear()
-            await originalClear?.()
-          }
-
-          return true
-        }
-
-        if (!installStorageShim()) {
-          const intervalId = globalThis.setInterval(() => {
-            if (installStorageShim()) {
-              globalThis.clearInterval(intervalId)
-            }
-          }, 25)
-        }
-      }, {
-        storageKey: "astra.config.v1",
-        configValue: liveConfig,
+        storageState: {
+          "astra.config.v1": liveConfig,
+        },
       })
 
       const consoleErrors: string[] = []
@@ -296,6 +204,13 @@ export const popupDeepReadProofScenario: LiveScenarioDefinition<PopupDeepReadPro
         }
       })
 
+      await extCtx.page.waitForFunction(
+        () => !!document.querySelector("article"),
+        { timeout: 10_000 },
+      )
+
+      // Ensure content scripts pick up freshly seeded storage (MV3 timing can miss the first navigation).
+      await extCtx.page.reload({ waitUntil: "domcontentloaded", timeout: 15_000 })
       await extCtx.page.waitForFunction(
         () => !!document.querySelector("article"),
         { timeout: 10_000 },
@@ -334,21 +249,33 @@ export const popupDeepReadProofScenario: LiveScenarioDefinition<PopupDeepReadPro
         const popupText = await popupPage.locator("body").innerText()
         articleExcerptVisible = popupText.includes("Readers can keep the original text visible")
           || popupText.includes("This fixture represents")
-        sentenceDeckPresent = popupText.includes("句卡精读") || popupText.includes("Sentence Drill")
+        sentenceDeckPresent = popupText.includes("Sentence drills")
+          || popupText.includes("逐句深读")
+          || popupText.includes("句卡精读")
+          || popupText.includes("Sentence Drill")
 
         const popupBeforePath = path.join(artifactDir, `${POPUP_DEEP_READ_PROOF_SLUG}.before-explain.png`)
         await popupPage.screenshot({ path: popupBeforePath, fullPage: true })
 
         await popupPage.locator('[data-testid="study-sentence-card-0"] button').nth(0).click()
         await popupPage.waitForFunction(
-          () => document.body.innerText.includes("EXPLAIN:"),
-          { timeout: 10_000 },
+          () => /EXPLAIN:|ZH:|Warning:/.test(document.body.innerText),
+          { timeout: 25_000 },
         )
         explainWorked = true
 
         await popupPage.locator('[data-testid="study-sentence-card-0"] button').nth(1).click()
         await popupPage.waitForSelector('[data-testid="study-sentence-saved-cta-0"]', { timeout: 10_000 })
         saveWorked = true
+
+        // Card 0 is the first split sentence of articleExcerpt — often the article title, not the second <p>.
+        const savedSentenceText = (
+          await popupPage
+            .locator('[data-testid="study-sentence-card-0"]')
+            .locator(":scope > div")
+            .nth(1)
+            .innerText()
+        ).trim()
 
         const popupAfterPath = path.join(artifactDir, `${POPUP_DEEP_READ_PROOF_SLUG}.after-save.png`)
         await popupPage.screenshot({ path: popupAfterPath, fullPage: true })
@@ -370,10 +297,21 @@ export const popupDeepReadProofScenario: LiveScenarioDefinition<PopupDeepReadPro
         )
         destinationOpened = destinationPage.url().includes("/vocabulary")
 
+        const sentenceNeedle = savedSentenceText.length > 48
+          ? savedSentenceText.slice(0, 48)
+          : savedSentenceText
+        await destinationPage.waitForFunction(
+          (needle) => document.body.innerText.includes(needle),
+          sentenceNeedle,
+          { timeout: 15_000 },
+        )
+        await destinationPage.getByText(sentenceNeedle, { exact: false }).first().click()
+
         const destinationText = await destinationPage.locator("body").innerText()
         sourceContextVisible = destinationText.includes("Popup deep-read")
           && destinationText.includes("Astra turns long-form reading into bilingual learning.")
           && destinationText.includes("Readers can keep the original text visible")
+          && destinationText.includes("Source context")
 
         const destinationScreenshotPath = path.join(artifactDir, `${POPUP_DEEP_READ_PROOF_SLUG}.vocabulary.png`)
         await destinationPage.screenshot({ path: destinationScreenshotPath, fullPage: true })

@@ -51,6 +51,18 @@ export function createMockBrowser(initialStorage: StorageData = {}) {
   const tabActivatedBus = createListenerBus<[unknown]>()
   const storageChangedBus = createListenerBus<[StorageChangeRecord, string]>()
 
+  type MockTab = { id?: number; url?: string; lastAccessed?: number; active?: boolean }
+  const tabsQuery = vi.fn((_query?: unknown) => Promise.resolve([] as MockTab[]))
+  const tabsGet = vi.fn(async (tabId: number) => {
+    const allTabs = (await tabsQuery({})) as MockTab[]
+    const found = allTabs.find((t) => t.id === tabId)
+    if (found) return found
+    const activeList = (await tabsQuery({ active: true, currentWindow: true })) as MockTab[]
+    const active = activeList[0]
+    if (active?.id === tabId) return active
+    throw new Error(`Mock tabs.get: no tab with id ${tabId}`)
+  })
+
   return {
     __storage: storage,
     __emitRuntimeMessage: runtimeMessageBus.emit,
@@ -104,7 +116,8 @@ export function createMockBrowser(initialStorage: StorageData = {}) {
       },
     },
     tabs: {
-      query: vi.fn(() => Promise.resolve([])),
+      query: tabsQuery,
+      get: tabsGet,
       create: vi.fn(() => Promise.resolve()),
       sendMessage: vi.fn(),
       onActivated: {

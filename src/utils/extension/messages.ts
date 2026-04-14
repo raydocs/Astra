@@ -51,13 +51,59 @@ function mapRuntimeConfigMessagingError(error: unknown): TranslationError {
   return toTranslationError(error, "UNKNOWN")
 }
 
-async function getActiveTabId(): Promise<number> {
+type TabLike = { id?: number; url?: string; lastAccessed?: number }
+
+function pickHttpTabs(tabs: readonly TabLike[]) {
+  return tabs.filter(
+    (tab): tab is TabLike & { id: number; url: string } =>
+      typeof tab.id === "number" && !!tab.url && /^https?:/i.test(tab.url),
+  )
+}
+
+/**
+ * The http(s) tab the popup should treat as "current reading" for site keys, digests, etc.
+ * When the action popup opens as a **tab**, it may steal focus; prefer last-accessed http tab.
+ */
+export async function resolveActiveHttpTab(): Promise<{ id: number; url: string } | null> {
+  const allTabs = await browser.tabs.query({})
+  let httpTabs = pickHttpTabs(allTabs)
+
+  if (httpTabs.length === 0) {
+    const [active] = await browser.tabs.query({ active: true, currentWindow: true })
+    if (active?.id && active.url && /^https?:/i.test(active.url)) {
+      return { id: active.id, url: active.url }
+    }
+    return null
+  }
+
+  httpTabs = [...httpTabs].sort((left, right) => (right.lastAccessed ?? 0) - (left.lastAccessed ?? 0))
+  const tab = httpTabs[0]!
+  return { id: tab.id, url: tab.url }
+}
+
+/**
+ * Tab id used for content-script messaging from the popup.
+ * When the action popup opens as a **tab** (e.g. Playwright CDP / window.open), that tab can
+ * become the active tab while the user is still "reading" an http(s) page in another tab.
+ * `tabs.query({ active: true, currentWindow: true })` would then target the popup and break
+ * `get-study-context` / translation commands. Prefer the most recently accessed normal web tab.
+ */
+export async function resolveMessagingTabId(): Promise<number> {
+  const target = await resolveActiveHttpTab()
+  if (target) {
+    return target.id
+  }
+
   const [tab] = await browser.tabs.query({ active: true, currentWindow: true })
   if (!tab?.id) {
     throw new Error("No active tab available.")
   }
 
   return tab.id
+}
+
+async function getActiveTabId(): Promise<number> {
+  return resolveMessagingTabId()
 }
 
 async function sendContentCommand(
