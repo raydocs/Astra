@@ -1,6 +1,6 @@
 # Popup Deep-Read State Mapping
 
-_Last updated: 2026-04-13 (Month 1 popup proof canonical naming sync)_
+_Last updated: 2026-04-14 (thin study-context sentence deck fallback)_
 
 This note is the explainer for the Month 1 popup deep-read close-out slice in plan.md section 8.3.
 
@@ -19,6 +19,10 @@ It does **not** add:
 - auto vocabulary extraction
 - popup-internal review
 - Month 4+ revisit/study-progress expansion
+
+## Thin study context (no `articleExcerpt`)
+
+When the active tab has **no** `articleExcerpt` but still has `contentSummary` or `metaDescription`, the popup builds the sentence drill deck from that fallback text (same `splitSentences` pipeline, still capped at three cards). This keeps explain/save/review flows usable on pages where the reader has not produced an excerpt yet.
 
 ## Sentence-card state semantics
 

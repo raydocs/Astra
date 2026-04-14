@@ -288,13 +288,28 @@ export default function App() {
     [configDraft.customActions],
   )
 
-  const studySentences = useMemo(
-    () => splitSentences(studyContext?.articleExcerpt ?? "")
+  const studySentenceFallbackText = useMemo(() => {
+    const excerpt = studyContext?.articleExcerpt?.trim() ?? ""
+    if (excerpt.length > 0) return excerpt
+    return (
+      studyContext?.contentSummary?.trim()
+      ?? studyContext?.metaDescription?.trim()
+      ?? ""
+    )
+  }, [studyContext?.articleExcerpt, studyContext?.contentSummary, studyContext?.metaDescription])
+
+  const studySentences = useMemo(() => {
+    const fromExcerpt = splitSentences(studyContext?.articleExcerpt ?? "")
       .map((sentence) => sentence.trim())
       .filter((sentence) => sentence.length > 0)
-      .slice(0, 3),
-    [studyContext?.articleExcerpt],
-  )
+    if (fromExcerpt.length > 0) {
+      return fromExcerpt.slice(0, 3)
+    }
+    return splitSentences(studySentenceFallbackText)
+      .map((sentence) => sentence.trim())
+      .filter((sentence) => sentence.length > 0)
+      .slice(0, 3)
+  }, [studyContext?.articleExcerpt, studySentenceFallbackText])
 
   const canSpeakStudy = studyActionText.trim().length > 0
     && persistedConfig.tts.enabled
@@ -336,7 +351,7 @@ export default function App() {
     setSpeakingSentenceId(null)
     setStudySpeaking(false)
     setSelectedSentenceIndex(0)
-  }, [studyContext?.pageUrl, studyContext?.articleExcerpt])
+  }, [studyContext?.pageUrl, studyContext?.articleExcerpt, studySentenceFallbackText])
 
   useEffect(() => {
     setSelectedSentenceIndex((current) => {

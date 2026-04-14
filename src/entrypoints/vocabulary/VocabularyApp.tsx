@@ -99,6 +99,8 @@ function getEntrySourceSurfaceLabel(entry: VocabularyEntry): string | null {
       return "Selection toolbar"
     case "hover_translate":
       return "Hover translate"
+    case "subtitle_reader":
+      return "File translator"
     default:
       return null
   }

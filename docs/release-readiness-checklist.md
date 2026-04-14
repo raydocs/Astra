@@ -1,6 +1,6 @@
 # Astra Release Readiness Checklist
 
-_Last updated: 2026-04-15 (control-plane evidence row + Month 4 Bilibili notes)_
+_Last updated: 2026-04-15 (Month 2 evidence registry link + optional popup replay note + control-plane evidence row + Month 4 Bilibili notes)_
 
 This checklist defines **release-blocking gates** and the minimum evidence required for a credible release decision.
 
@@ -53,13 +53,13 @@ CI enforces these in `.github/workflows/ci.yml` (`live-browser` job).
 
 - **Required gates unchanged**: `source-core` + `extension-core` only. `extension-core` already runs `bench-live/vocabulary-srs-smoke`.
 - **Chained `learning-loop` lane** (`pnpm bench:live:lane:learning-loop` = `popup-proof` + `vocabulary-srs-smoke`) remains **optional** for Month 2: credible for product narrative and regression discipline, but **not** promoted to Gate 2 until (a) flaky ownership matches `extension-core` rigor and (b) at least one green run summary is attached per RC / closeout (`docs/investigations/month-2-closeout-2026-04-14.md`).
-- **Evidence bundle**: `learning-loop-overview-2026-04-13.md`, `learning-metrics-2026-04-13.md`, `learning-loop-regression-checklist-2026-04-13.md`, `learning-loop-navigation-matrix-2026-04-14.md`, `learning-loop-claim-impact-2026-04-14.md`, `month-2-closeout-2026-04-14.md`.
+- **Evidence bundle**: `learning-loop-overview-2026-04-13.md`, `learning-metrics-2026-04-13.md`, `learning-loop-regression-checklist-2026-04-13.md`, `learning-loop-navigation-matrix-2026-04-14.md`, `learning-loop-claim-impact-2026-04-14.md`, `month-2-closeout-2026-04-14.md`, `month-2-evidence-registry-2026-04-14.md`.
 
 ## Current Month 1 reality notes (not a pass override)
 
 - Required release-proof lanes now cover: page-translation (source-backed), article-extraction (`bench-live/article-extraction-proof`), dynamic-content (source-contract), site-automation (extension-loaded), onboarding (extension-loaded), vocabulary (extension-loaded).
 - Month 1 policy decision: hover and selection-explain remain **optional** (`pnpm bench:live:lane:hover-selection`) rather than required release gates. Rationale: current evidence is credible, but the lane is still modeled as a combined UX proof lane, does not yet have separate required-lane semantics in CI, and Month 1 release discipline should not over-promote non-core UX proof before that structure exists.
-- Popup deep-read now has credible optional live proof via `bench-live/popup-deep-read-proof`, `pnpm bench:live:lane:popup-proof`, and `pnpm bench:live:lane:learning-loop`, but it remains outside required release-proof lanes for Month 1 and must stay explicit in matrix/close-out notes.
+- Popup deep-read now has credible optional live proof via `bench-live/popup-deep-read-proof`, `pnpm bench:live:lane:popup-proof`, and `pnpm bench:live:lane:learning-loop`, but it remains outside required release-proof lanes for Month 1 and must stay explicit in matrix/close-out notes. Optional replay / harness notes: `docs/investigations/m1-bf-01-popup-learning-loop-replay-2026-04-14.md`.
 - Month 1 gate close-out is recorded in `docs/investigations/month-1-closeout-2026-04-13.md`; the close-out verdict does not by itself override required lane failures.
 
 ## Pre-release execution order

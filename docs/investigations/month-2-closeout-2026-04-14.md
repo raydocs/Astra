@@ -31,7 +31,7 @@ Counted toward Month 2 bar: **6, 7, 8, 14, 15, 16, 17, 22, 23, 28, 29, 34, 35, 3
 
 ## Carry-over (≤1 primary)
 
-- **Primary**: Attach **one** fresh `pnpm bench:live:lane:learning-loop` green summary (run id + artifact path) to the next RC note or extend CI — required for promoting **`gate-ready`** without changing policy.
+- **Primary**: Attach **one** fresh `pnpm bench:live:lane:learning-loop` green summary (run id + artifact path) to the next RC note or extend CI — required for promoting **`gate-ready`** without changing policy. (Bench harness fixes 2026-04-14: `popup-deep-read-proof` relay-only provider seeding + `openExtensionActionPopup` DOM wait — see `m1-bf-01-popup-learning-loop-replay-2026-04-14.md` before interpreting older failures.)
 
 ## Git change artifact (full path inventory)
 

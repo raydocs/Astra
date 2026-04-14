@@ -1024,13 +1024,26 @@ export async function openExtensionActionPopup(options: {
     await openPopupViaWindowOrCdp()
   }
 
+  const waitForPopupDomReady = async (page: Page, remainingMs: number) => {
+    // `waitForLoadState("domcontentloaded")` can surface as `page.goto` failures with
+    // `net::ERR_BLOCKED_BY_CLIENT` for chrome-extension:// URLs in some Chromium builds.
+    // Waiting for DOM presence is enough for extension popups opened via window.open/CDP.
+    try {
+      await page.waitForSelector("body", { timeout: Math.max(500, remainingMs) })
+    } catch {
+      await page.waitForFunction(
+        () => document.readyState === "complete" || document.readyState === "interactive",
+        undefined,
+        { timeout: Math.max(500, remainingMs) },
+      )
+    }
+  }
+
   const deadline = Date.now() + timeoutMs
   while (Date.now() < deadline) {
     for (const page of options.context.pages()) {
       if (!knownPages.has(page) && page.url().startsWith(popupUrlPrefix)) {
-        await page.waitForLoadState("domcontentloaded", {
-          timeout: Math.max(250, deadline - Date.now()),
-        })
+        await waitForPopupDomReady(page, Math.max(250, deadline - Date.now()))
         return page
       }
     }
@@ -1039,7 +1052,7 @@ export async function openExtensionActionPopup(options: {
 
   const existingPopupPage = options.context.pages().find((page) => page.url().startsWith(popupUrlPrefix))
   if (existingPopupPage) {
-    await existingPopupPage.waitForLoadState("domcontentloaded", { timeout: timeoutMs })
+    await waitForPopupDomReady(existingPopupPage, timeoutMs)
     return existingPopupPage
   }
 

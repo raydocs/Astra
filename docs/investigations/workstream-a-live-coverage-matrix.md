@@ -1,6 +1,6 @@
 # Astra Live Coverage Matrix (Current Reality)
 
-_Last updated: 2026-04-13 (Month 1 close-out docs/policy sync)_
+_Last updated: 2026-04-14 (optional popup lane harness notes)_
 
 This matrix is the release-facing truth source for live coverage.
 
@@ -26,7 +26,7 @@ It separates:
 | site-automation | Yes | Yes (`bench-live/site-automation-autostart`) | **Yes** (`extension-core`) | Extension-loaded bootstrap proof is in required lane |
 | onboarding | No deterministic bench lane in `bench/` (live-only smoke today) | Yes (`bench-live/onboarding-smoke`) | **Yes** (`extension-core`) | Treated as extension-loaded smoke credibility check |
 | vocabulary | Deterministic bench exists (learning-loop surfaces) | Yes (`bench-live/vocabulary-srs-smoke`) | **Yes** (`extension-core`) | Extension-loaded smoke in required lane |
-| popup-deep-read | No deterministic bench lane yet | Yes (`bench-live/popup-deep-read-proof`) | No | Credible optional browser-backed popup proof exists via `popup-proof`; `learning-loop` remains optional in Month 1 |
+| popup-deep-read | No deterministic bench lane yet | Yes (`bench-live/popup-deep-read-proof`) | No | Credible optional browser-backed popup proof exists via `popup-proof`; `learning-loop` remains optional in Month 1. Harness notes + rerun instructions: `docs/investigations/m1-bf-01-popup-learning-loop-replay-2026-04-14.md`. |
 | interaction-priority | Yes | Yes (`bench-live/interaction-priority-basic` + holdout stress) | No | Live scenario exists but is not release-blocking today |
 | frame-coordination | Yes | Yes (`bench-live/frame-coordination-basic`) | No | Live scenario exists but is not release-blocking today |
 | hover | Yes | Yes (`bench-live/hover-translation-basic` + holdout moving-targets) | No | Standard browser-backed relay-stub proof exists; currently optional |
@@ -70,7 +70,7 @@ It separates:
 ## Open credibility gaps (must stay explicit)
 
 1. **Hover/selection now have credible browser-backed proof, but remain optional by Month 1 policy**: the current lane is a combined UX lane, separate required-lane semantics/CI ownership are not yet defined, and Month 1 should avoid over-promoting non-core UX proof.
-2. **Popup deep-read now has credible browser-backed proof, but is still optional** (`bench-live/popup-deep-read-proof`, `popup-proof`, `learning-loop`) and is not a required release gate in Month 1.
+2. **Popup deep-read now has credible browser-backed proof, but is still optional** (`bench-live/popup-deep-read-proof`, `popup-proof`, `learning-loop`) and is not a required release gate in Month 1. Treat older `ERR_BLOCKED_BY_CLIENT` / wrong-relay failures as **harness regressions** superseded by the 2026-04-14 driver + scenario fixes unless reproduced on current `main`.
 3. Several other live-covered surfaces remain **optional** rather than release-blocking.
 4. **Subtitle timing instability risk** remains open (`docs/investigations/workstream-f-live-flaky-inventory.md`).
 

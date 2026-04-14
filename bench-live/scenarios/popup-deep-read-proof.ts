@@ -169,7 +169,8 @@ export const popupDeepReadProofScenario: LiveScenarioDefinition<PopupDeepReadPro
         privacyMode: false,
         provider: {
           id: "openai",
-          apiKey: "bench-live-test-key",
+          // Omit apiKey so the provider router uses relay (matches real relay URL shape: …/translate).
+          accessToken: "bench-live-popup-proof-token",
           relayBaseURL: relayServer.origin,
           model: "gpt-5.4-nano",
         },

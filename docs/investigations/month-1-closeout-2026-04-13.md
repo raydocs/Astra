@@ -1,6 +1,6 @@
 # Month 1 Closeout — Prove The Current Extension Core
 
-_Last updated: 2026-04-13_
+_Last updated: 2026-04-14 (replay note + bench harness fixes)_
 
 Month: Month 1 — Prove The Current Extension Core  
 Verdict: `partial`  
@@ -20,7 +20,7 @@ Score: `69 / 100`
   - optional popup proof lane: `pnpm bench:live:lane:popup-proof`
   - optional learning-loop lane: `pnpm bench:live:lane:learning-loop`
   - artifact output path when run: `bench-live-results/<run-id>/`
-  - fresh green replay summary attached in-repo: no
+  - fresh replay summary attached in-repo: **yes** — `docs/investigations/m1-bf-01-popup-learning-loop-replay-2026-04-14.md` (includes harness fixes: relay-only seeding + safer extension popup wait; **re-run** locally for a green `run-id` when needed)
 - updated docs:
   - `docs/release-readiness-checklist.md`
   - `docs/investigations/workstream-a-live-coverage-matrix.md`
@@ -57,14 +57,14 @@ Score: `69 / 100`
 
 - Month 1 does **not** promote hover/selection to required gates.
 - Month 1 does **not** promote popup proof / learning-loop to required release-proof gates.
-- This close-out does not attach a fresh green-run summary for `popup-proof` / `learning-loop` inside the repo itself.
-- Because that fresh replayable evidence is not attached here, this close-out records a conservative `partial` verdict rather than `pass-with-carry`.
+- A dated replay **procedure + harness notes** for `popup-proof` / `learning-loop` is now attached (`docs/investigations/m1-bf-01-popup-learning-loop-replay-2026-04-14.md`), but this close-out still does **not** attach a fresh **green** `run-id` by itself — rerun locally after the 2026-04-14 bench fixes to capture one.
+- The conservative `partial` verdict remains until an optional **green** replay is recorded alongside Month 2 promotion criteria.
 
 ## Carry-over
 
-- item: learning-loop evidence freshness and Month 2 start-of-month replay summary
+- item: optional `learning-loop` green replay + gate-ready promotion criteria
   - owner: Workstream B / Workstream F close-out
-  - why it carried: the popup proof surface and docs are now aligned, but Month 2 still needs a fresh replayable green-run summary for `popup-proof` / `learning-loop` before learning-loop can be described as more than optional credible evidence
+  - why it carried: replay documentation and bench harness fixes landed, but **`gate-ready`** still needs a fresh green `run-id` plus flaky ownership parity with `extension-core`
   - whether it blocks next month: it does **not** block Month 2 work entirely, but it **does** block any claim that learning-loop is `gate-ready` or ready to become a required release gate
   - latest allowed close date: Month 2 Week 1
 
