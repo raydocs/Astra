@@ -2,6 +2,8 @@
 
 **Date:** 2026-04-14 (agent VM, branch `cursor/sequential-task-pack-phase2-abbb`)
 
+**Production www regression (manual):** `docs/investigations/month-4-video-production-regression-playbook-2026-04-17.md`
+
 ## Commands
 
 Both runs used:
