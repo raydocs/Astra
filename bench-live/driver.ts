@@ -968,6 +968,30 @@ export async function openExtensionActionPopup(options: {
   const popupPath = await resolveExtensionPopupPath(options.extensionPath)
   const popupUrlPrefix = `chrome-extension://${options.extensionId}/${popupPath}`
   const knownPages = new Set(options.context.pages())
+
+  const popupPageVisible = () => options.context.pages().some(
+    (page) => !knownPages.has(page) && page.url().startsWith(popupUrlPrefix),
+  )
+
+  const openPopupViaWindowOrCdp = async () => {
+    const fallbackPage = options.page ?? options.context.pages()[0] ?? await options.context.newPage()
+    await fallbackPage.bringToFront().catch(() => undefined)
+
+    await fallbackPage.evaluate((url) => {
+      globalThis.open(url, "_blank", "noopener,noreferrer")
+    }, popupUrlPrefix).catch(() => undefined)
+
+    await sleep(500)
+
+    if (!popupPageVisible()) {
+      const cdp = await options.context.newCDPSession(fallbackPage)
+      await cdp.send("Target.createTarget", {
+        url: popupUrlPrefix,
+        background: false,
+      })
+    }
+  }
+
   const existingServiceWorker = options.context.serviceWorkers()[0] ?? null
   const serviceWorker = existingServiceWorker ?? await options.context.waitForEvent("serviceworker", {
     timeout: timeoutMs,
@@ -977,6 +1001,8 @@ export async function openExtensionActionPopup(options: {
     await options.page.bringToFront()
   }
 
+  // MV3: chrome.action.openPopup() only works with a user gesture; in Playwright it often no-ops.
+  // Always fall back to window.open / CDP target creation when the popup tab does not appear.
   if (serviceWorker) {
     await serviceWorker.evaluate(async () => {
       const actionApi = (globalThis as typeof globalThis & {
@@ -987,29 +1013,15 @@ export async function openExtensionActionPopup(options: {
         }
       }).chrome?.action
 
-      if (!actionApi?.openPopup) {
-        throw new Error("chrome.action.openPopup is unavailable in the extension worker.")
+      if (actionApi?.openPopup) {
+        await actionApi.openPopup()
       }
+    }).catch(() => undefined)
+  }
 
-      await actionApi.openPopup()
-    })
-  } else {
-    const fallbackPage = options.page ?? options.context.pages()[0] ?? await options.context.newPage()
-
-    await fallbackPage.evaluate((url) => {
-      globalThis.open(url, "_blank", "noopener,noreferrer")
-    }, popupUrlPrefix).catch(() => undefined)
-
-    await sleep(500)
-
-    const hasPopupPage = options.context.pages().some((page) => !knownPages.has(page) && page.url().startsWith(popupUrlPrefix))
-    if (!hasPopupPage) {
-      const cdp = await options.context.newCDPSession(fallbackPage)
-      await cdp.send("Target.createTarget", {
-        url: popupUrlPrefix,
-        background: false,
-      })
-    }
+  await sleep(600)
+  if (!popupPageVisible()) {
+    await openPopupViaWindowOrCdp()
   }
 
   const deadline = Date.now() + timeoutMs

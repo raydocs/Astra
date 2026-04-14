@@ -98,13 +98,17 @@ vi.mock("@/utils/astra/quota", () => ({
   getQuotaInfo: getQuotaInfoMock,
 }))
 
-vi.mock("@/utils/extension/messages", () => ({
-  getActiveTabStudyContext: getActiveTabStudyContextMock,
-  getActiveTabTranslationState: getActiveTabTranslationStateMock,
-  saveConfigInBackground: saveConfigInBackgroundMock,
-  startActiveTabTranslation: startActiveTabTranslationMock,
-  stopActiveTabTranslation: stopActiveTabTranslationMock,
-}))
+vi.mock("@/utils/extension/messages", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/utils/extension/messages")>()
+  return {
+    ...actual,
+    getActiveTabStudyContext: getActiveTabStudyContextMock,
+    getActiveTabTranslationState: getActiveTabTranslationStateMock,
+    saveConfigInBackground: saveConfigInBackgroundMock,
+    startActiveTabTranslation: startActiveTabTranslationMock,
+    stopActiveTabTranslation: stopActiveTabTranslationMock,
+  }
+})
 
 vi.mock("@/utils/storage/reading-history", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/utils/storage/reading-history")>()
