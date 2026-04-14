@@ -7,7 +7,7 @@ import {
   getDueVocabularyCount,
   updateVocabularyEntry,
 } from "@/utils/storage/vocabulary"
-import { getPageStudyProgress } from "@/utils/storage/study-progress"
+import { getPageStudyProgress, getStudyProgress } from "@/utils/storage/study-progress"
 import type { OwnedReadingItem, OwnedReadingStatus } from "@/utils/storage/owned-reading"
 import {
   listOwnedReadingItems,
@@ -17,6 +17,7 @@ import {
   syncRecentReadingHistoryToOwnedQueue,
 } from "@/utils/storage/owned-reading"
 import ReviewMode from "./ReviewMode"
+import { t } from "@/utils/i18n"
 
 type ActiveTab = "list" | "review" | "reading"
 type ReadingSubTab = "recent" | "saved" | "in_progress"
@@ -142,14 +143,25 @@ export default function VocabularyApp() {
   const [expandedId, setExpandedId] = useState<string | null>(null)
   const [activeTagFilter, setActiveTagFilter] = useState<string | null>(null)
   const [readingStudyHints, setReadingStudyHints] = useState<Record<string, string>>({})
+  const [dailyPagesStudied, setDailyPagesStudied] = useState(0)
+  const [dailySentencesExplained, setDailySentencesExplained] = useState(0)
+  const [dailyVocabSaved, setDailyVocabSaved] = useState(0)
+  const [dailyVocabReviewed, setDailyVocabReviewed] = useState(0)
+  const [dailyStatsDate, setDailyStatsDate] = useState("")
 
   const loadEntries = async () => {
-    const [data, due] = await Promise.all([
+    const [data, due, progress] = await Promise.all([
       getVocabularyEntries(),
       getDueVocabularyCount(),
+      getStudyProgress(),
     ])
     setEntries(data)
     setDueCount(due)
+    setDailyPagesStudied(progress.dailyStats.pagesStudied)
+    setDailySentencesExplained(progress.dailyStats.sentencesExplained)
+    setDailyVocabSaved(progress.dailyStats.vocabSaved)
+    setDailyVocabReviewed(progress.dailyStats.vocabReviewed)
+    setDailyStatsDate(progress.dailyStats.date)
     setLoading(false)
   }
 
@@ -247,6 +259,12 @@ export default function VocabularyApp() {
       return row.status === "in_progress"
     })
     .sort((a, b) => b.openedAt - a.openedAt)
+
+  const hasDailyProgress =
+    dailyPagesStudied > 0
+    || dailySentencesExplained > 0
+    || dailyVocabSaved > 0
+    || dailyVocabReviewed > 0
 
   const openReadingItem = async (item: OwnedReadingItem) => {
     await markOwnedReadingOpened(item.id)
@@ -486,6 +504,31 @@ export default function VocabularyApp() {
 
       {activeTab === "list" && (
         <>
+          {hasDailyProgress && (
+            <div
+              style={{
+                marginBottom: 16,
+                padding: "12px 14px",
+                background: "#f8fafc",
+                border: "1px solid #e2e8f0",
+                borderRadius: 10,
+              }}
+              aria-label={t("review_todayProgressAria")}
+            >
+              <div style={{ fontSize: 12, fontWeight: 700, color: "#475569", marginBottom: 8 }}>
+                {t("popup_studyTodayStatsTitle")}
+              </div>
+              <div style={{ fontSize: 11, color: "#94a3b8", marginBottom: 8 }}>
+                {t("popup_studyTodayStatsHint", dailyStatsDate)}
+              </div>
+              <div style={{ display: "flex", flexWrap: "wrap", gap: "8px 14px", fontSize: 12, color: "#64748b" }}>
+                <span>{t("popup_studyStatPages", dailyPagesStudied.toString())}</span>
+                <span>{t("popup_studyStatExplained", dailySentencesExplained.toString())}</span>
+                <span>{t("popup_studyStatSaved", dailyVocabSaved.toString())}</span>
+                <span>{t("popup_studyStatReviewed", dailyVocabReviewed.toString())}</span>
+              </div>
+            </div>
+          )}
           <div style={{ marginBottom: 12 }}>
             <input
               type="text"
@@ -722,6 +765,31 @@ export default function VocabularyApp() {
                     >
                       source
                     </a>
+                  )}
+                  {entry.url && /^https?:\/\//i.test(entry.url.trim()) && (
+                    <>
+                      {" · "}
+                      <button
+                        type="button"
+                        data-testid={`vocab-open-source-${entry.id}`}
+                        style={{
+                          border: "none",
+                          background: "none",
+                          padding: 0,
+                          color: "#6366f1",
+                          textDecoration: "underline",
+                          cursor: "pointer",
+                          fontSize: "inherit",
+                          fontFamily: "inherit",
+                        }}
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          void browser.tabs.create({ url: entry.url!.trim() })
+                        }}
+                      >
+                        Open source page
+                      </button>
+                    </>
                   )}
                   {(entry.hostname || entry.url) && <span> &middot; </span>}
                   <span>{formatDate(entry.savedAt)}</span>

@@ -1,6 +1,6 @@
 # Workstream F Live Lane Conventions (Month 1 Baseline)
 
-_Last updated: 2026-04-13 (Month 1 close-out docs/policy sync)_
+_Last updated: 2026-04-14 (learning-loop revisit scenario)_
 
 This document defines the canonical lane naming used by release-proof checks.
 
@@ -13,7 +13,7 @@ This document defines the canonical lane naming used by release-proof checks.
 | `release-proof` | Aggregate required release-proof gate | `pnpm bench:live:lane:release-proof` | Indirectly (runs both required lanes) |
 | `hover-selection` | Optional browser-backed UX proof for hover + selection explain | `pnpm bench:live:lane:hover-selection` | No (manual/dispatch workflow) |
 | `popup-proof` | Optional standalone browser-backed popup deep-read proof | `pnpm bench:live:lane:popup-proof` | No |
-| `learning-loop` | Optional browser-backed popup-to-vocabulary learning-loop proof | `pnpm bench:live:lane:learning-loop` | No |
+| `learning-loop` | Optional browser-backed popup → vocabulary → **reading revisit** proof | `pnpm bench:live:lane:learning-loop` | No |
 
 Compatibility aliases remain available:
 
@@ -50,6 +50,7 @@ Compatibility aliases remain available:
 
 1. `bench-live/popup-deep-read-proof` (popup proof anchor)
 2. `bench-live/vocabulary-srs-smoke` (downstream vocabulary continuation)
+3. `bench-live/learning-loop-revisit-smoke` (vocabulary Reading tab → Open → http article fixture)
 
 ## Month 1 gate policy decisions
 

@@ -57,6 +57,7 @@ export {
   popupDeepReadProofScenario,
   popupDeepReadSmokeScenario,
   vocabularySrsSmokeScenario,
+  learningLoopRevisitSmokeScenario,
 } from "./scenarios/index"
 export { holdoutScenarios } from "./scenarios/holdout/index"
 

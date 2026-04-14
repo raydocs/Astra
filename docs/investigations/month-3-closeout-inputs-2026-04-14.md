@@ -7,6 +7,7 @@ _Tasks **`M3-F-04`** alignment (docs sync, honest claims)_
 1. **`bench-live/pdf-reader-basic`** — PDF reader path (optional lane; see `package.json` / scenario registry).
 2. **`bench-live/epub-reader-basic`** — EPUB reader path (optional).
 3. **`bench-live/subtitle-file-basic`** — Subtitle/file reader import path (optional).
+4. **`bench-live/learning-loop-revisit-smoke`** — Month 2 **revisit v1** contract (vocabulary Reading queue → Open → HTTP article); also runs as part of `pnpm bench:live:lane:learning-loop`.
 
 Re-run locally: `pnpm build`, `npx playwright install chromium`, then the desired `pnpm bench:live -- --scenario …` with `CI=true xvfb-run -a` on Linux headless hosts.
 

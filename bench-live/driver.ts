@@ -314,9 +314,10 @@ async function resolveExtensionSeedStoragePageCandidates(extensionPath?: string)
     }
   }
 
-  const fromManifest = manifest.action?.default_popup
-    ?? manifest.options_ui?.page
-    ?? manifest.options_page
+  // Do not use `action.default_popup` here: navigating to `popup.html` via `page.goto` often fails with
+  // `net::ERR_BLOCKED_BY_CLIENT` in Chromium builds used for bench-live, which breaks storage seeding for
+  // scenarios that need preloaded chrome.storage.local state.
+  const fromManifest = manifest.options_ui?.page ?? manifest.options_page
   if (fromManifest) {
     const normalized = fromManifest.replace(/^\//, "")
     if (!candidates.includes(normalized)) {
@@ -343,8 +344,10 @@ async function seedExtensionStorageFromPage(options: {
     const setupPage = await options.context.newPage()
     try {
       await setupPage.goto(`chrome-extension://${options.extensionId}/${extensionPagePath}`, {
-        waitUntil: "domcontentloaded",
-        timeout: 15_000,
+        // `domcontentloaded` can surface as `net::ERR_BLOCKED_BY_CLIENT` for some extension HTML
+        // entrypoints in Chromium-for-Testing; `commit` is enough to attach scripts + chrome.storage.
+        waitUntil: "commit",
+        timeout: 20_000,
       })
       await setupPage.waitForFunction(
         `typeof chrome !== "undefined" && !!chrome.storage?.local`,

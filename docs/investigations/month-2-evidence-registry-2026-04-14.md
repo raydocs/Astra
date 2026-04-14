@@ -10,9 +10,9 @@ This file **supplements** `docs/investigations/month-2-closeout-2026-04-14.md` p
 |------|-------------|----------------------|-------|
 | Popup deep-read explain/save | Yes (`src/entrypoints/popup/App.tsx`, `StudySection`) | **Optional** `pnpm bench:live:lane:popup-proof` | Bench harness fixes 2026-04-14: relay-only seeding + safer popup DOM wait — rerun for fresh `run-id`. |
 | Vocabulary / review surfaces | Yes | `extension-core` includes `bench-live/vocabulary-srs-smoke` | Required CI lane. |
-| Chained learning-loop lane | Script exists | **Optional** full chain | Still `popup-proof` + `vocabulary-srs-smoke`; not Gate 2 until policy + green replay discipline. |
+| Chained learning-loop lane | Script exists | **Optional** full chain | `popup-proof` + `vocabulary-srs-smoke` + `learning-loop-revisit-smoke`; not Gate 2 until policy + green replay discipline. |
 | Source metadata in vocab/review | Yes | Unit tests + manual | Selection/hover now persist `sourceContext`; subtitle reader adds `subtitle_reader` saves (see `vocabulary-core.ts`). |
-| Revisit (open source) | Yes (matrix + navigation) | Docs + partial live | See `learning-loop-navigation-matrix-2026-04-14.md`. |
+| Revisit (open source) | Yes (Reading queue + list button) | **Optional** `bench-live/learning-loop-revisit-smoke` (also in `learning-loop` lane) | Matrix: `learning-loop-navigation-matrix-2026-04-14.md`. |
 
 ## Release policy pointer
 

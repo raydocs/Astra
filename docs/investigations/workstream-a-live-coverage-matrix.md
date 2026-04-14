@@ -66,6 +66,7 @@ It separates:
 
 1. `bench-live/popup-deep-read-proof`
 2. `bench-live/vocabulary-srs-smoke`
+3. `bench-live/learning-loop-revisit-smoke`
 
 ## Open credibility gaps (must stay explicit)
 

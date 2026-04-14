@@ -8,6 +8,7 @@ const {
   getDueVocabularyCountMock,
   updateVocabularyEntryMock,
   getPageStudyProgressMock,
+  getStudyProgressMock,
   syncRecentReadingHistoryToOwnedQueueMock,
   listOwnedReadingItemsMock,
   markOwnedReadingOpenedMock,
@@ -19,6 +20,7 @@ const {
   getDueVocabularyCountMock: vi.fn(),
   updateVocabularyEntryMock: vi.fn(),
   getPageStudyProgressMock: vi.fn(),
+  getStudyProgressMock: vi.fn(),
   syncRecentReadingHistoryToOwnedQueueMock: vi.fn(),
   listOwnedReadingItemsMock: vi.fn(),
   markOwnedReadingOpenedMock: vi.fn(),
@@ -43,6 +45,7 @@ vi.mock("@/utils/storage/owned-reading", () => ({
 
 vi.mock("@/utils/storage/study-progress", () => ({
   getPageStudyProgress: getPageStudyProgressMock,
+  getStudyProgress: getStudyProgressMock,
 }))
 
 vi.mock("#imports", () => ({
@@ -96,6 +99,16 @@ describe("VocabularyApp", () => {
     setOwnedReadingStatusMock.mockResolvedValue(undefined)
     removeOwnedReadingItemMock.mockResolvedValue(undefined)
     getPageStudyProgressMock.mockResolvedValue(null)
+    getStudyProgressMock.mockResolvedValue({
+      pages: [],
+      dailyStats: {
+        date: "2026-04-14",
+        pagesStudied: 0,
+        sentencesExplained: 0,
+        vocabSaved: 0,
+        vocabReviewed: 0,
+      },
+    })
 
     container = document.createElement("div")
     document.body.appendChild(container)
