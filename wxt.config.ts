@@ -74,8 +74,9 @@ export default defineConfig({
           gecko: {
             id: "astra@nicepkg.cn",
             // Firefox requires data_collection_permissions for new submissions.
-            // Mozilla recommends 128+ when this field is present.
-            strict_min_version: "128.0",
+            // addons-linter requires a min version that actually supports this key
+            // (desktop 140+, Android 142+); use 142 to satisfy both.
+            strict_min_version: "142.0",
             data_collection_permissions: {
               required: ["none"],
             },
