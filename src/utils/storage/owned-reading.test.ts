@@ -8,6 +8,10 @@ import {
   setOwnedReadingStatus,
   syncRecentReadingHistoryToOwnedQueue,
   upsertOwnedArticleFromUrl,
+  upsertOwnedEpubFromImport,
+  upsertOwnedPdfFromFileName,
+  upsertOwnedPdfFromRemoteUrl,
+  upsertOwnedSubtitleFileFromImport,
 } from "./owned-reading"
 
 describe("owned reading storage", () => {
@@ -85,5 +89,47 @@ describe("owned reading storage", () => {
     })
     await removeOwnedReadingItem(item.id)
     expect(await listOwnedReadingItems()).toHaveLength(0)
+  })
+
+  it("upsertOwnedPdfFromRemoteUrl uses canonical URL as sourceUrl", async () => {
+    const item = await upsertOwnedPdfFromRemoteUrl({
+      url: "https://x.test/doc.pdf?q=1",
+      title: "doc.pdf",
+      pageCount: 3,
+    })
+    expect(item.sourceType).toBe("pdf")
+    expect(item.sourceUrl).toBe("https://x.test/doc.pdf")
+    expect(item.reopenHint).toBeUndefined()
+  })
+
+  it("upsertOwnedPdfFromFileName sets localUri and reopenHint", async () => {
+    const item = await upsertOwnedPdfFromFileName({ fileName: "a.pdf" })
+    expect(item.localUri).toContain("astra-local://pdf/")
+    expect(item.reopenHint).toContain("a.pdf")
+  })
+
+  it("upsertOwnedEpubFromImport merges by localUri", async () => {
+    const first = await upsertOwnedEpubFromImport({
+      fileName: "b.epub",
+      bookTitle: "Book",
+      chapterHref: "c1",
+    })
+    const second = await upsertOwnedEpubFromImport({
+      fileName: "b.epub",
+      bookTitle: "Book 2",
+      chapterHref: "c2",
+    })
+    expect(second.id).toBe(first.id)
+    expect(second.title).toContain("Book 2")
+  })
+
+  it("upsertOwnedSubtitleFileFromImport stores subtitle-file row", async () => {
+    const item = await upsertOwnedSubtitleFileFromImport({
+      fileName: "x.srt",
+      formatLabel: "SRT",
+      cueOrEntryCount: 12,
+    })
+    expect(item.sourceType).toBe("subtitle-file")
+    expect(item.title).toContain("12 items")
   })
 })

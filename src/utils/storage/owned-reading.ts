@@ -26,6 +26,8 @@ export const OwnedReadingItemSchema = z.object({
   title: z.string().trim().min(1),
   sourceUrl: z.string().trim().min(1).nullable().optional(),
   localUri: z.string().trim().min(1).nullable().optional(),
+  /** User-facing hint when `sourceUrl` is null (local file readers). */
+  reopenHint: z.string().trim().min(1).max(400).optional(),
   openedAt: z.number(),
   progress: OwnedReadingProgressSchema,
   status: OwnedReadingStatusSchema,
@@ -138,6 +140,130 @@ export async function upsertArticleFromReadingHistory(entry: ReadingHistoryEntry
     title: entry.title,
     status: "saved",
   })
+}
+
+function findExistingByStudyOrSource(
+  store: OwnedReadingStore,
+  match: { studyProgressRecordId?: string | null; sourceUrl?: string | null; localUri?: string | null },
+): OwnedReadingItem | undefined {
+  return store.items.find((row) => {
+    if (match.studyProgressRecordId && row.studyProgressRecordId === match.studyProgressRecordId) return true
+    if (match.sourceUrl && row.sourceUrl === match.sourceUrl) return true
+    if (match.localUri && row.localUri === match.localUri) return true
+    return false
+  })
+}
+
+/** Remote PDF opened via `?url=` — same canonical URL key as study progress when applicable. */
+export async function upsertOwnedPdfFromRemoteUrl(params: {
+  url: string
+  title: string
+  pageCount?: number
+  status?: OwnedReadingStatus
+}): Promise<OwnedReadingItem> {
+  const sourceUrl = buildStudyProgressRecordId(params.url)
+  let studyId: string | null = sourceUrl
+  const store = await readStore()
+  const existing = findExistingByStudyOrSource(store, { studyProgressRecordId: studyId, sourceUrl })
+  const now = Date.now()
+  const fraction = params.pageCount && params.pageCount > 0 ? 1 : undefined
+  const item: OwnedReadingItem = OwnedReadingItemSchema.parse({
+    id: existing?.id ?? newOwnedReadingId(),
+    sourceType: "pdf",
+    title: params.title.trim(),
+    sourceUrl,
+    openedAt: now,
+    status: existing?.status === "in_progress" ? "in_progress" : (params.status ?? "saved"),
+    studyProgressRecordId: studyId,
+    progress: fraction !== undefined ? { fraction } : undefined,
+  })
+  await upsertOwnedReadingItem(item)
+  return item
+}
+
+/** Local PDF from file picker / drop — keyed by display file name (Month 3 v0; sync-safe hash deferred). */
+export async function upsertOwnedPdfFromFileName(params: {
+  fileName: string
+  pageCount?: number
+  status?: OwnedReadingStatus
+}): Promise<OwnedReadingItem> {
+  const safeName = params.fileName.trim() || "document.pdf"
+  const localUri = `astra-local://pdf/${encodeURIComponent(safeName)}`
+  const store = await readStore()
+  const existing = findExistingByStudyOrSource(store, { localUri })
+  const now = Date.now()
+  const fraction = params.pageCount && params.pageCount > 0 ? 1 : undefined
+  const item: OwnedReadingItem = OwnedReadingItemSchema.parse({
+    id: existing?.id ?? newOwnedReadingId(),
+    sourceType: "pdf",
+    title: safeName,
+    sourceUrl: null,
+    localUri,
+    reopenHint: `Choose the same file in the PDF reader: ${safeName}`,
+    openedAt: now,
+    status: existing?.status === "in_progress" ? "in_progress" : (params.status ?? "saved"),
+    studyProgressRecordId: null,
+    progress: fraction !== undefined ? { fraction } : undefined,
+  })
+  await upsertOwnedReadingItem(item)
+  return item
+}
+
+/** Local EPUB after load — keyed by file name + book title for reopen hint. */
+export async function upsertOwnedEpubFromImport(params: {
+  fileName: string
+  bookTitle: string
+  chapterHref?: string | null
+  status?: OwnedReadingStatus
+}): Promise<OwnedReadingItem> {
+  const safeFile = params.fileName.trim() || "book.epub"
+  const localUri = `astra-local://epub/${encodeURIComponent(safeFile)}`
+  const store = await readStore()
+  const existing = findExistingByStudyOrSource(store, { localUri })
+  const now = Date.now()
+  const title = `${params.bookTitle.trim() || "Untitled"} (${safeFile})`
+  const item: OwnedReadingItem = OwnedReadingItemSchema.parse({
+    id: existing?.id ?? newOwnedReadingId(),
+    sourceType: "epub",
+    title,
+    sourceUrl: null,
+    localUri,
+    reopenHint: `Choose the same file in the ePub reader: ${safeFile}`,
+    openedAt: now,
+    status: existing?.status === "in_progress" ? "in_progress" : (params.status ?? "saved"),
+    studyProgressRecordId: null,
+    progress: params.chapterHref ? { chapterId: params.chapterHref } : undefined,
+  })
+  await upsertOwnedReadingItem(item)
+  return item
+}
+
+/** Local subtitle / document file after successful parse in extension subtitle reader. */
+export async function upsertOwnedSubtitleFileFromImport(params: {
+  fileName: string
+  formatLabel: string
+  cueOrEntryCount: number
+  status?: OwnedReadingStatus
+}): Promise<OwnedReadingItem> {
+  const safeFile = params.fileName.trim() || "subtitles.srt"
+  const localUri = `astra-local://subtitle/${encodeURIComponent(safeFile)}`
+  const store = await readStore()
+  const existing = findExistingByStudyOrSource(store, { localUri })
+  const now = Date.now()
+  const title = `${safeFile} · ${params.formatLabel} · ${params.cueOrEntryCount} items`
+  const item: OwnedReadingItem = OwnedReadingItemSchema.parse({
+    id: existing?.id ?? newOwnedReadingId(),
+    sourceType: "subtitle-file",
+    title,
+    sourceUrl: null,
+    localUri,
+    reopenHint: `Open the subtitle reader and choose the same file: ${safeFile}`,
+    openedAt: now,
+    status: existing?.status === "in_progress" ? "in_progress" : (params.status ?? "saved"),
+    studyProgressRecordId: null,
+  })
+  await upsertOwnedReadingItem(item)
+  return item
 }
 
 /** Merge recent reading history into saved queue entries (dedup by URL). Preserves non-article rows. */

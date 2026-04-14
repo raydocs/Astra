@@ -7,6 +7,7 @@ import {
   getDueVocabularyCount,
   updateVocabularyEntry,
 } from "@/utils/storage/vocabulary"
+import { getPageStudyProgress } from "@/utils/storage/study-progress"
 import type { OwnedReadingItem, OwnedReadingStatus } from "@/utils/storage/owned-reading"
 import {
   listOwnedReadingItems,
@@ -118,6 +119,13 @@ function getEntrySourceSnippet(entry: VocabularyEntry): string {
     ?? ""
 }
 
+function readerHtmlPath(item: OwnedReadingItem): "/pdf-reader.html" | "/epub-reader.html" | "/subtitle-reader.html" | null {
+  if (item.sourceType === "pdf") return "/pdf-reader.html"
+  if (item.sourceType === "epub") return "/epub-reader.html"
+  if (item.sourceType === "subtitle-file") return "/subtitle-reader.html"
+  return null
+}
+
 export default function VocabularyApp() {
   const [activeTab, setActiveTab] = useState<ActiveTab>(getInitialTab)
   const [readingSubTab, setReadingSubTab] = useState<ReadingSubTab>("recent")
@@ -131,6 +139,7 @@ export default function VocabularyApp() {
   const [dueCount, setDueCount] = useState(0)
   const [expandedId, setExpandedId] = useState<string | null>(null)
   const [activeTagFilter, setActiveTagFilter] = useState<string | null>(null)
+  const [readingStudyHints, setReadingStudyHints] = useState<Record<string, string>>({})
 
   const loadEntries = async () => {
     const [data, due] = await Promise.all([
@@ -145,7 +154,17 @@ export default function VocabularyApp() {
   const loadReadingQueue = async () => {
     setReadingLoading(true)
     await syncRecentReadingHistoryToOwnedQueue()
-    setReadingItems(await listOwnedReadingItems())
+    const items = await listOwnedReadingItems()
+    setReadingItems(items)
+    const hints: Record<string, string> = {}
+    for (const row of items) {
+      const key = row.studyProgressRecordId ?? row.sourceUrl ?? null
+      if (!key || row.sourceType !== "article") continue
+      const page = await getPageStudyProgress(key)
+      if (!page?.completedSteps?.length) continue
+      hints[row.id] = page.completedSteps.join(" → ")
+    }
+    setReadingStudyHints(hints)
     setReadingLoading(false)
     setLoading(false)
   }
@@ -227,11 +246,30 @@ export default function VocabularyApp() {
     })
     .sort((a, b) => b.openedAt - a.openedAt)
 
-  const openReadingUrl = async (item: OwnedReadingItem) => {
-    const raw = item.sourceUrl?.trim()
-    if (!raw) return
+  const openReadingItem = async (item: OwnedReadingItem) => {
     await markOwnedReadingOpened(item.id)
-    void browser.tabs.create({ url: raw })
+
+    if (item.sourceType === "article") {
+      const raw = item.sourceUrl?.trim()
+      if (!raw) return
+      void browser.tabs.create({ url: raw })
+      void loadReadingQueue()
+      return
+    }
+
+    const readerPath = readerHtmlPath(item)
+    if (!readerPath) return
+
+    const base = browser.runtime.getURL(readerPath)
+    const params = new URLSearchParams()
+    if (item.sourceType === "pdf" && item.sourceUrl?.startsWith("http")) {
+      params.set("url", item.sourceUrl)
+    }
+    if (item.reopenHint) {
+      params.set("reopenHint", item.reopenHint)
+    }
+    const qs = params.toString()
+    void browser.tabs.create({ url: qs ? `${base}?${qs}` : base })
     void loadReadingQueue()
   }
 
@@ -776,13 +814,18 @@ export default function VocabularyApp() {
                     </>
                   )}
                 </div>
+                {readingStudyHints[item.id] && (
+                  <div style={{ fontSize: 11, color: "#64748b", marginBottom: 6 }}>
+                    Study: {readingStudyHints[item.id]}
+                  </div>
+                )}
                 <div style={{ ...metaRowStyle, marginTop: 8 }}>
                   <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
                     <button
                       type="button"
                       style={sortButtonStyle(false)}
-                      onClick={() => void openReadingUrl(item)}
-                      disabled={!item.sourceUrl}
+                      onClick={() => void openReadingItem(item)}
+                      disabled={item.sourceType === "article" && !item.sourceUrl?.trim()}
                     >
                       Open
                     </button>

@@ -7,6 +7,7 @@ const {
   removeVocabularyEntryMock,
   getDueVocabularyCountMock,
   updateVocabularyEntryMock,
+  getPageStudyProgressMock,
   syncRecentReadingHistoryToOwnedQueueMock,
   listOwnedReadingItemsMock,
   markOwnedReadingOpenedMock,
@@ -17,6 +18,7 @@ const {
   removeVocabularyEntryMock: vi.fn(),
   getDueVocabularyCountMock: vi.fn(),
   updateVocabularyEntryMock: vi.fn(),
+  getPageStudyProgressMock: vi.fn(),
   syncRecentReadingHistoryToOwnedQueueMock: vi.fn(),
   listOwnedReadingItemsMock: vi.fn(),
   markOwnedReadingOpenedMock: vi.fn(),
@@ -39,8 +41,15 @@ vi.mock("@/utils/storage/owned-reading", () => ({
   removeOwnedReadingItem: removeOwnedReadingItemMock,
 }))
 
+vi.mock("@/utils/storage/study-progress", () => ({
+  getPageStudyProgress: getPageStudyProgressMock,
+}))
+
 vi.mock("#imports", () => ({
   browser: {
+    runtime: {
+      getURL: vi.fn((path: string) => `chrome-extension://test-id${path}`),
+    },
     tabs: {
       create: vi.fn(),
     },
@@ -86,6 +95,7 @@ describe("VocabularyApp", () => {
     markOwnedReadingOpenedMock.mockResolvedValue(undefined)
     setOwnedReadingStatusMock.mockResolvedValue(undefined)
     removeOwnedReadingItemMock.mockResolvedValue(undefined)
+    getPageStudyProgressMock.mockResolvedValue(null)
 
     container = document.createElement("div")
     document.body.appendChild(container)
@@ -174,5 +184,38 @@ describe("VocabularyApp", () => {
 
     expect(markOwnedReadingOpenedMock).toHaveBeenCalledWith("or_test1")
     expect(browser.tabs.create).toHaveBeenCalledWith({ url: "https://example.com/hello" })
+  })
+
+  it("opens PDF reader for pdf queue rows with remote url", async () => {
+    listOwnedReadingItemsMock.mockResolvedValueOnce([
+      {
+        id: "or_pdf1",
+        sourceType: "pdf",
+        title: "Paper.pdf",
+        sourceUrl: "https://cdn.example/paper.pdf",
+        openedAt: 10_000,
+        status: "saved",
+        readingHistoryRecordId: null,
+        studyProgressRecordId: "https://cdn.example/paper.pdf",
+      },
+    ])
+
+    const readingBtn = [...container.querySelectorAll("button")].find((b) => b.textContent?.trim() === "Reading")
+    await act(async () => {
+      readingBtn!.click()
+      await Promise.resolve()
+      await Promise.resolve()
+    })
+
+    const openBtn = [...container.querySelectorAll("button")].find((b) => b.textContent?.trim() === "Open")
+    await act(async () => {
+      openBtn!.click()
+      await Promise.resolve()
+    })
+
+    expect(markOwnedReadingOpenedMock).toHaveBeenCalledWith("or_pdf1")
+    expect(browser.tabs.create).toHaveBeenCalledWith({
+      url: "chrome-extension://test-id/pdf-reader.html?url=https%3A%2F%2Fcdn.example%2Fpaper.pdf",
+    })
   })
 })
