@@ -1,6 +1,6 @@
 # Month 1 Closeout — Prove The Current Extension Core
 
-_Last updated: 2026-04-13_
+_Last updated: 2026-04-14 (M1-BF-01 replay evidence attached)_
 
 Month: Month 1 — Prove The Current Extension Core  
 Verdict: `partial`  
@@ -20,7 +20,7 @@ Score: `69 / 100`
   - optional popup proof lane: `pnpm bench:live:lane:popup-proof`
   - optional learning-loop lane: `pnpm bench:live:lane:learning-loop`
   - artifact output path when run: `bench-live-results/<run-id>/`
-  - fresh green replay summary attached in-repo: no
+  - fresh replay summary attached in-repo: **yes** — `docs/investigations/m1-bf-01-popup-learning-loop-replay-2026-04-14.md` (outcome: **fail** on `bench-live/popup-deep-read-proof`, run id `live-20260414T061146-0odzcd`; chained `vocabulary-srs-smoke` not reached)
 - updated docs:
   - `docs/release-readiness-checklist.md`
   - `docs/investigations/workstream-a-live-coverage-matrix.md`
@@ -57,14 +57,14 @@ Score: `69 / 100`
 
 - Month 1 does **not** promote hover/selection to required gates.
 - Month 1 does **not** promote popup proof / learning-loop to required release-proof gates.
-- This close-out does not attach a fresh green-run summary for `popup-proof` / `learning-loop` inside the repo itself.
-- Because that fresh replayable evidence is not attached here, this close-out records a conservative `partial` verdict rather than `pass-with-carry`.
+- A **fresh** replay summary for `popup-proof` / `learning-loop` is now attached in-repo, but the replay **did not pass** (popup deep-read proof timed out waiting for the popup surface).
+- The prior “evidence freshness unknown” gap is therefore **closed**; the conservative `partial` verdict remains because optional learning-loop proof is **not currently green** on the replayed baseline.
 
 ## Carry-over
 
-- item: learning-loop evidence freshness and Month 2 start-of-month replay summary
+- item: popup deep-read live stability + green `popup-proof` / `learning-loop` replay
   - owner: Workstream B / Workstream F close-out
-  - why it carried: the popup proof surface and docs are now aligned, but Month 2 still needs a fresh replayable green-run summary for `popup-proof` / `learning-loop` before learning-loop can be described as more than optional credible evidence
+  - why it carried: M1-BF-01 attached a dated replay with a **failed** `bench-live/popup-deep-read-proof` result; learning-loop cannot be described as `gate-ready` or promoted toward required gates until a green replay exists and ownership matches `extension-core` rigor
   - whether it blocks next month: it does **not** block Month 2 work entirely, but it **does** block any claim that learning-loop is `gate-ready` or ready to become a required release gate
   - latest allowed close date: Month 2 Week 1
 

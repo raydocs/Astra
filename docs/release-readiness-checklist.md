@@ -1,6 +1,6 @@
 # Astra Release Readiness Checklist
 
-_Last updated: 2026-04-15 (control-plane evidence row + Month 4 Bilibili notes)_
+_Last updated: 2026-04-15 (M1-BF-01 optional popup/learning-loop replay pointer + control-plane evidence row + Month 4 Bilibili notes)_
 
 This checklist defines **release-blocking gates** and the minimum evidence required for a credible release decision.
 
@@ -60,6 +60,7 @@ CI enforces these in `.github/workflows/ci.yml` (`live-browser` job).
 - Required release-proof lanes now cover: page-translation (source-backed), article-extraction (`bench-live/article-extraction-proof`), dynamic-content (source-contract), site-automation (extension-loaded), onboarding (extension-loaded), vocabulary (extension-loaded).
 - Month 1 policy decision: hover and selection-explain remain **optional** (`pnpm bench:live:lane:hover-selection`) rather than required release gates. Rationale: current evidence is credible, but the lane is still modeled as a combined UX proof lane, does not yet have separate required-lane semantics in CI, and Month 1 release discipline should not over-promote non-core UX proof before that structure exists.
 - Popup deep-read now has credible optional live proof via `bench-live/popup-deep-read-proof`, `pnpm bench:live:lane:popup-proof`, and `pnpm bench:live:lane:learning-loop`, but it remains outside required release-proof lanes for Month 1 and must stay explicit in matrix/close-out notes.
+- **Latest optional replay (2026-04-14, M1-BF-01):** `docs/investigations/m1-bf-01-popup-learning-loop-replay-2026-04-14.md` — `popup-proof` **failed** on that baseline (`run-id` `live-20260414T061146-0odzcd`); do not describe the optional lane as “known green” without a newer passing replay.
 - Month 1 gate close-out is recorded in `docs/investigations/month-1-closeout-2026-04-13.md`; the close-out verdict does not by itself override required lane failures.
 
 ## Pre-release execution order
