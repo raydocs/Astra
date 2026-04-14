@@ -177,7 +177,7 @@ function isBenchLiveCiBlockedProviderHost(hostname: string): boolean {
 async function installCiExtensionOutboundGuards(context: BrowserContext) {
   await context.route("**/*", async (route: Route) => {
     const url = route.request().url()
-    let hostname = ""
+    let hostname: string
     try {
       hostname = new URL(url).hostname
     } catch {

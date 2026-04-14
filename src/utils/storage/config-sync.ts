@@ -1000,9 +1000,8 @@ export async function runPhaseOneCollectionSync(): Promise<AstraPhaseOneSyncResu
     await replaceReadingHistory(nextReadingHistoryEntries)
   }
 
-  let nextStudyProgressPages = latestStudyProgress.pages
   if (studyProgressDeltas.length > 0) {
-    nextStudyProgressPages = applyStudyProgressSyncMutations(
+    const nextStudyProgressPages = applyStudyProgressSyncMutations(
       latestStudyProgress.pages,
       studyProgressDeltas.map((delta) => ({
         recordId: delta.recordId,
