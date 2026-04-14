@@ -11,6 +11,7 @@ import type { PageStudyContext } from "@/types/messages"
 import type { TranslationSnapshot } from "@/types/translation"
 import type { QuotaInfo } from "@/utils/astra/quota"
 import {
+  resolveActiveHttpTab,
   getActiveTabStudyContext,
   getActiveTabTranslationState,
   retryActiveTabFailedBlocks,
@@ -74,9 +75,8 @@ import UsageInsightsCard from "./components/UsageInsightsCard"
 import { btnPrimary, btnSecondary, btnDisabled, warningStyle, inputStyle, labelStyle } from "./components/styles"
 
 async function getActiveSiteKey(): Promise<string | null> {
-  const [tab] = await browser.tabs.query({ active: true, currentWindow: true })
-  if (!tab?.url) return null
-  if (!/^https?:/i.test(tab.url)) return null
+  const tab = await resolveActiveHttpTab()
+  if (!tab) return null
   return normalizeSiteKey(tab.url)
 }
 
@@ -378,9 +378,9 @@ export default function App() {
     setUsageSummary(usage)
     setIosBootstrapStatus(iosStatus)
 
-    // Derive study loop view model from current tab URL
-    const [activeTab] = await browser.tabs.query({ active: true, currentWindow: true })
-    const currentUrl = activeTab?.url && /^https?:/i.test(activeTab.url) ? activeTab.url : undefined
+    // Derive study loop from the http(s) tab we treat as "current reading" (popup-as-tab safe).
+    const activeHttp = await resolveActiveHttpTab()
+    const currentUrl = activeHttp?.url
     setActivePageUrl(currentUrl ?? null)
     setStudyLoop(deriveStudyLoopViewModel(studyStore, currentUrl))
     const currentStudyUrl = sanitizeVocabularyUrl(currentUrl ?? (studyContextResponse.ok ? studyContextResponse.context.pageUrl : undefined))
@@ -517,8 +517,8 @@ export default function App() {
         targetLang: configDraft.targetLang,
         languageLevel: configDraft.languageLevel,
       })
-      const [activeTab] = await browser.tabs.query({ active: true, currentWindow: true })
-      const url = activeTab?.url ?? studyContext.pageUrl ?? ""
+      const activeHttp = await resolveActiveHttpTab()
+      const url = activeHttp?.url ?? studyContext.pageUrl ?? ""
       const hostname = studyContext.hostname ?? ""
       const record = await savePageDigest(
         {
