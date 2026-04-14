@@ -198,7 +198,7 @@ async function installCiExtensionOutboundGuards(context: BrowserContext) {
       return
     }
 
-    let hostname = ""
+    let hostname: string
     try {
       hostname = new URL(url).hostname
     } catch {

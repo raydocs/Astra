@@ -54,7 +54,7 @@ function normalizeUrl(value: string): string {
     if (error instanceof Error && error.message === "Only http(s) article URLs are supported.") {
       throw error
     }
-    throw new Error("Enter a valid absolute URL, including https://.")
+    throw new Error("Enter a valid absolute URL, including https://.", { cause: error })
   }
 }
 
