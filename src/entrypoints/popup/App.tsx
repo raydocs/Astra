@@ -6,10 +6,9 @@ import type {
   SiteConfig,
   TranslationMode,
 } from "@/types/config"
-import type { AstraAccount, AstraDeviceIdentity, AstraSession } from "@/types/auth"
-import type { PageStudyContext } from "@/types/messages"
+import type { AstraAccount, AstraDeviceIdentity, AstraSession, AstraUsageSnapshot } from "@/types/auth"
+import { isRuntimeResponse, type PageStudyContext } from "@/types/messages"
 import type { TranslationSnapshot } from "@/types/translation"
-import type { QuotaInfo } from "@/utils/astra/quota"
 import {
   resolveActiveHttpTab,
   getActiveTabStudyContext,
@@ -49,19 +48,24 @@ import {
   revokeAstraSession,
 } from "@/utils/astra/auth"
 import {
-  fetchAstraAccount,
+  fetchAstraAccountSummary,
   fetchAstraContinuitySnapshot,
 } from "@/utils/astra/account"
-import { getQuotaInfo } from "@/utils/astra/quota"
 import {
   getDueVocabularyCount,
   getVocabularyEntries,
   sanitizeVocabularyUrl,
   saveVocabularyEntry,
 } from "@/utils/storage/vocabulary"
+import { buildOwnedReadingVocabularySourceLink, upsertOwnedArticleFromUrl } from "@/utils/storage/owned-reading"
 import { getTranslationUsageSummary, type TranslationUsageSummary } from "@/utils/storage/translation-usage"
 import { buildContinuityStatus, type AstraContinuityRemoteSnapshot, type AstraContinuityStatus } from "@/utils/storage/config-sync"
 import { deriveStudyLoopViewModel, getStudyProgress, recordStudyEvent, type StudyLoopViewModel } from "@/utils/storage/study-progress"
+import {
+  buildQuotaInfoFromAccountState,
+  formatAstraPlanLabel,
+  resolveAstraAccountSurfaceSource,
+} from "@/utils/astra/account-surface"
 import TranslationStatusCard from "./components/TranslationStatusCard"
 import SimpleControls from "./components/SimpleControls"
 import QuotaBar from "./components/QuotaBar"
@@ -91,11 +95,54 @@ function formatContinuityTimestamp(value: string | null | undefined): string {
   return parsed.toLocaleString()
 }
 
+function isSupportedVideoUrl(url: string | null | undefined): boolean {
+  if (!url) return false
+  try {
+    const parsed = new URL(url)
+    const host = parsed.hostname.toLowerCase()
+    return host === "youtu.be"
+      || host.endsWith("youtube.com")
+      || host.endsWith("bilibili.com")
+  } catch {
+    return false
+  }
+}
+
+function resolveWebViewerBaseUrl(relayBaseURL: string | null | undefined): string {
+  const trimmed = relayBaseURL?.trim()
+  if (!trimmed) {
+    return "http://127.0.0.1:4173"
+  }
+
+  return trimmed
+    .replace(/\/+$/, "")
+    .replace(/\/v1$/, "")
+}
+
+function buildVideoNoteViewerUrl(jobId: string, relayBaseURL: string | null | undefined): string {
+  return `${resolveWebViewerBaseUrl(relayBaseURL)}/#/video-notes?jobId=${encodeURIComponent(jobId)}`
+}
+
 interface PopupSentenceState {
   explanationText: string | null
   explainStatus: PopupSentenceExplainStatus
   saveStatus: PopupSentenceSaveStatus
 }
+
+type PopupStudySentenceSource = "article_excerpt" | "content_summary" | "meta_description" | "empty"
+
+interface PopupStudyDeckState {
+  summaryText: string
+  actionText: string
+  sentenceSourceText: string
+  sentenceSource: PopupStudySentenceSource
+  sentences: string[]
+  hasStudyText: boolean
+}
+
+type PopupSentenceActionLock =
+  | { type: "idle"; sentenceId: null }
+  | { type: "explaining" | "saving"; sentenceId: string }
 
 function buildPopupSentenceCardId(index: number, sentence: string): string {
   return `${index}:${sentence}`
@@ -113,6 +160,71 @@ function createPopupSentenceState(
     explainStatus: "idle",
     saveStatus: "idle",
     ...patch,
+  }
+}
+
+function normalizeStudyText(value: string | null | undefined): string {
+  return value?.trim() ?? ""
+}
+
+function derivePopupStudyDeck(studyContext: PageStudyContext | null): PopupStudyDeckState {
+  const articleExcerpt = normalizeStudyText(studyContext?.articleExcerpt)
+  const contentSummary = normalizeStudyText(studyContext?.contentSummary)
+  const metaDescription = normalizeStudyText(studyContext?.metaDescription)
+  const summaryText = contentSummary || metaDescription
+  const sentenceSourceText = articleExcerpt || contentSummary || metaDescription
+  const sentenceSource: PopupStudySentenceSource = articleExcerpt
+    ? "article_excerpt"
+    : contentSummary
+      ? "content_summary"
+      : metaDescription
+        ? "meta_description"
+        : "empty"
+
+  return {
+    summaryText,
+    actionText: sentenceSourceText,
+    sentenceSourceText,
+    sentenceSource,
+    sentences: sentenceSourceText.length > 0
+      ? splitSentences(sentenceSourceText)
+        .map((sentence) => sentence.trim())
+        .filter((sentence) => sentence.length > 0)
+        .slice(0, 3)
+      : [],
+    hasStudyText: sentenceSourceText.length > 0,
+  }
+}
+
+function derivePopupSentenceActionLock(
+  sentenceStateById: Record<string, PopupSentenceState>,
+): PopupSentenceActionLock {
+  for (const [sentenceId, sentenceState] of Object.entries(sentenceStateById)) {
+    if (sentenceState.explainStatus === "explaining") {
+      return { type: "explaining", sentenceId }
+    }
+  }
+
+  for (const [sentenceId, sentenceState] of Object.entries(sentenceStateById)) {
+    if (sentenceState.saveStatus === "saving") {
+      return { type: "saving", sentenceId }
+    }
+  }
+
+  return { type: "idle", sentenceId: null }
+}
+
+function patchPopupSentenceState(
+  current: Record<string, PopupSentenceState>,
+  sentenceId: string,
+  patch: Partial<PopupSentenceState>,
+): Record<string, PopupSentenceState> {
+  return {
+    ...current,
+    [sentenceId]: {
+      ...(current[sentenceId] ?? createPopupSentenceState()),
+      ...patch,
+    },
   }
 }
 
@@ -204,6 +316,7 @@ export default function App() {
   const [activeSiteKey, setActiveSiteKey] = useState<string | null>(null)
   const [authSession, setAuthSession] = useState<AstraSession | null>(null)
   const [authAccount, setAuthAccount] = useState<AstraAccount | null>(null)
+  const [authUsage, setAuthUsage] = useState<AstraUsageSnapshot | null>(null)
   const [deviceIdentity, setDeviceIdentity] = useState<AstraDeviceIdentity | null>(null)
   const [continuityRemote, setContinuityRemote] = useState<AstraContinuityRemoteSnapshot | null>(null)
   const [continuityStatus, setContinuityStatus] = useState<AstraContinuityStatus | null>(null)
@@ -213,7 +326,6 @@ export default function App() {
   const [recentHistory, setRecentHistory] = useState<ReadingHistoryEntry[]>([])
   const [studyContext, setStudyContext] = useState<PageStudyContext | null>(null)
   const [dueCount, setDueCount] = useState(0)
-  const [quotaInfo, setQuotaInfo] = useState<QuotaInfo | null>(null)
   const [usageSummary, setUsageSummary] = useState<TranslationUsageSummary | null>(null)
   const [studyLoop, setStudyLoop] = useState<StudyLoopViewModel | null>(null)
   const [pageDigest, setPageDigest] = useState<PageDigestRecord | null>(null)
@@ -232,6 +344,9 @@ export default function App() {
     history: IosBootstrapHistoryEvent[]
   }>({ bridgeAvailable: false, status: null, history: [] })
   const [iosBridgeActionMessage, setIosBridgeActionMessage] = useState("")
+  const [videoNoteBusy, setVideoNoteBusy] = useState(false)
+  const [videoNoteStatusMessage, setVideoNoteStatusMessage] = useState("")
+  const [lastVideoNoteJobId, setLastVideoNoteJobId] = useState<string | null>(null)
   const hasUnsavedChangesRef = useRef(false)
   const isMountedRef = useRef(true)
   const saveSequenceRef = useRef<Promise<void>>(Promise.resolve())
@@ -267,6 +382,11 @@ export default function App() {
     && currentDigestFingerprint !== null
     && isDigestStale(pageDigest, currentDigestFingerprint)
 
+  const popupStudyDeck = useMemo(
+    () => derivePopupStudyDeck(studyContext),
+    [studyContext],
+  )
+
   const studyActionText = useMemo(() => {
     if (pageDigest) {
       const digestPoints = pageDigest.keyPoints.slice(0, 3).join(" ")
@@ -277,43 +397,26 @@ export default function App() {
       ].filter(Boolean).join("\n\n")
     }
 
-    return studyContext?.articleExcerpt
-      ?? studyContext?.contentSummary
-      ?? studyContext?.metaDescription
-      ?? ""
-  }, [pageDigest, studyContext])
+    return popupStudyDeck.actionText
+  }, [pageDigest, popupStudyDeck.actionText])
 
   const studyQuickActions = useMemo(
     () => (configDraft.customActions ?? []).filter((action) => action.enabled).slice(0, 3),
     [configDraft.customActions],
   )
 
-  const studySentenceFallbackText = useMemo(() => {
-    const excerpt = studyContext?.articleExcerpt?.trim() ?? ""
-    if (excerpt.length > 0) return excerpt
-    return (
-      studyContext?.contentSummary?.trim()
-      ?? studyContext?.metaDescription?.trim()
-      ?? ""
-    )
-  }, [studyContext?.articleExcerpt, studyContext?.contentSummary, studyContext?.metaDescription])
-
-  const studySentences = useMemo(() => {
-    const fromExcerpt = splitSentences(studyContext?.articleExcerpt ?? "")
-      .map((sentence) => sentence.trim())
-      .filter((sentence) => sentence.length > 0)
-    if (fromExcerpt.length > 0) {
-      return fromExcerpt.slice(0, 3)
-    }
-    return splitSentences(studySentenceFallbackText)
-      .map((sentence) => sentence.trim())
-      .filter((sentence) => sentence.length > 0)
-      .slice(0, 3)
-  }, [studyContext?.articleExcerpt, studySentenceFallbackText])
+  const studySentences = popupStudyDeck.sentences
 
   const canSpeakStudy = studyActionText.trim().length > 0
     && persistedConfig.tts.enabled
     && isTtsSupported(persistedConfig.tts.engine)
+
+  const studySentenceDeckFallbackMessage = useMemo(
+    () => popupStudyDeck.sentenceSource === "content_summary" || popupStudyDeck.sentenceSource === "meta_description"
+      ? t("popup_studySentenceDeckFallback")
+      : null,
+    [popupStudyDeck.sentenceSource],
+  )
 
   const savedSentenceKeySet = useMemo(
     () => new Set(currentPageSavedSentenceKeys),
@@ -344,6 +447,16 @@ export default function App() {
     [savedSentenceKeySet, selectedSentenceIndex, sentenceStateById, speakingSentenceId, studySentences],
   )
 
+  const sentenceCardById = useMemo(
+    () => new Map(sentenceCards.map((card) => [card.id, card])),
+    [sentenceCards],
+  )
+
+  const sentenceActionLock = useMemo(
+    () => derivePopupSentenceActionLock(sentenceStateById),
+    [sentenceStateById],
+  )
+
   useEffect(() => {
     sentenceDeckRevisionRef.current += 1
     stopSpeaking()
@@ -351,7 +464,7 @@ export default function App() {
     setSpeakingSentenceId(null)
     setStudySpeaking(false)
     setSelectedSentenceIndex(0)
-  }, [studyContext?.pageUrl, studyContext?.articleExcerpt, studySentenceFallbackText])
+  }, [studyContext?.pageUrl, popupStudyDeck.sentenceSource, popupStudyDeck.sentenceSourceText])
 
   useEffect(() => {
     setSelectedSentenceIndex((current) => {
@@ -431,6 +544,7 @@ export default function App() {
 
     let session = storedSession
     let account: AstraAccount | null = null
+    let accountUsage: AstraUsageSnapshot | null = null
     let remote: AstraContinuityRemoteSnapshot | null = null
     let continuityMessage: string | null = null
     if (storedSession?.identityMode === "authenticated") {
@@ -451,10 +565,11 @@ export default function App() {
       }
 
       if (session) {
-        const [accountResult, continuityResult] = await Promise.allSettled([
-          fetchAstraAccount({
+        const [summaryResult, continuityResult] = await Promise.allSettled([
+          fetchAstraAccountSummary({
             baseURL: session.relayBaseURL,
             sessionToken: session.sessionToken,
+            deviceId: device.deviceId,
           }),
           fetchAstraContinuitySnapshot({
             baseURL: session.relayBaseURL,
@@ -463,7 +578,8 @@ export default function App() {
             includePull: false,
           }),
         ])
-        account = accountResult.status === "fulfilled" ? accountResult.value : null
+        account = summaryResult.status === "fulfilled" ? summaryResult.value.account : null
+        accountUsage = summaryResult.status === "fulfilled" ? summaryResult.value.usage : null
         remote = continuityResult.status === "fulfilled"
           ? continuityResult.value
           : {
@@ -480,6 +596,7 @@ export default function App() {
     setActiveSiteKey(siteKey)
     setAuthSession(session)
     setAuthAccount(account)
+    setAuthUsage(accountUsage)
     setDeviceIdentity(device)
     setContinuityRemote(remote)
     setContinuityStatus(buildContinuityStatus({
@@ -488,14 +605,6 @@ export default function App() {
       device,
       remote,
     }))
-
-    // Fetch quota info (best-effort)
-    try {
-      const quota = await getQuotaInfo()
-      setQuotaInfo(quota)
-    } catch {
-      setQuotaInfo(null)
-    }
 
     await refreshTranslationState()
     if (continuityMessage) {
@@ -654,26 +763,20 @@ export default function App() {
     if (!target || studyActionRunningId) return
 
     const { targetIndex, targetSentence, targetSentenceId } = target
-    const currentState = sentenceStateById[targetSentenceId] ?? createPopupSentenceState()
-    const anySentenceExplaining = Object.values(sentenceStateById).some((state) => state.explainStatus === "explaining")
-    const anySentenceSaving = Object.values(sentenceStateById).some((state) => state.saveStatus === "saving")
-    if (anySentenceExplaining || anySentenceSaving) return
+    const currentCard = sentenceCardById.get(targetSentenceId) ?? null
+    if (sentenceActionLock.type !== "idle") return
 
     setSelectedSentenceIndex(targetIndex)
 
-    if (currentState.explainStatus === "explained" && currentState.explanationText) {
+    if (currentCard?.explainStatus === "explained" && currentCard.explanationText) {
       return
     }
 
     const meta = buildStudyRecordMeta()
     const deckRevision = sentenceDeckRevisionRef.current
-    setSentenceStateById((current) => ({
-      ...current,
-      [targetSentenceId]: {
-        ...(current[targetSentenceId] ?? createPopupSentenceState()),
-        explainStatus: "explaining",
-        explanationText: null,
-      },
+    setSentenceStateById((current) => patchPopupSentenceState(current, targetSentenceId, {
+      explainStatus: "explaining",
+      explanationText: null,
     }))
 
     try {
@@ -691,13 +794,9 @@ export default function App() {
         : `Warning: ${result.error.message}`
 
       if (sentenceDeckRevisionRef.current === deckRevision) {
-        setSentenceStateById((current) => ({
-          ...current,
-          [targetSentenceId]: {
-            ...(current[targetSentenceId] ?? createPopupSentenceState()),
-            explainStatus: result.ok ? "explained" : "idle",
-            explanationText: text,
-          },
+        setSentenceStateById((current) => patchPopupSentenceState(current, targetSentenceId, {
+          explainStatus: result.ok ? "explained" : "idle",
+          explanationText: text,
         }))
       }
 
@@ -706,13 +805,9 @@ export default function App() {
       }
     } catch (error) {
       if (sentenceDeckRevisionRef.current === deckRevision) {
-        setSentenceStateById((current) => ({
-          ...current,
-          [targetSentenceId]: {
-            ...(current[targetSentenceId] ?? createPopupSentenceState()),
-            explainStatus: "idle",
-            explanationText: `Warning: ${error instanceof Error ? error.message : "Request failed."}`,
-          },
+        setSentenceStateById((current) => patchPopupSentenceState(current, targetSentenceId, {
+          explainStatus: "idle",
+          explanationText: `Warning: ${error instanceof Error ? error.message : "Request failed."}`,
         }))
       }
     }
@@ -723,42 +818,40 @@ export default function App() {
     if (!target) return
 
     const { targetIndex, targetSentence, targetSentenceId } = target
-    const currentState = sentenceStateById[targetSentenceId] ?? createPopupSentenceState()
-    const legacyTargetSentenceSaveKey = buildLegacyPopupSentenceSaveKey(targetSentence)
-    const anySentenceExplaining = Object.values(sentenceStateById).some((state) => state.explainStatus === "explaining")
-    const anySentenceSaving = Object.values(sentenceStateById).some((state) => state.saveStatus === "saving")
-    if (
-      anySentenceExplaining
-      || anySentenceSaving
-      || currentState.saveStatus === "saved"
-      || savedSentenceKeySet.has(targetSentenceId)
-      || savedSentenceKeySet.has(legacyTargetSentenceSaveKey)
-    ) return
+    const currentCard = sentenceCardById.get(targetSentenceId) ?? null
+    if (sentenceActionLock.type !== "idle" || currentCard?.saveStatus === "saved") return
 
     const meta = buildStudyRecordMeta()
     if (!meta) return
 
+    setSelectedSentenceIndex(targetIndex)
+
     const deckRevision = sentenceDeckRevisionRef.current
-    setSentenceStateById((current) => ({
-      ...current,
-      [targetSentenceId]: {
-        ...(current[targetSentenceId] ?? createPopupSentenceState()),
-        saveStatus: "saving",
-      },
+    setSentenceStateById((current) => patchPopupSentenceState(current, targetSentenceId, {
+      saveStatus: "saving",
     }))
 
     try {
+      const ownedReadingItem = await upsertOwnedArticleFromUrl({
+        url: meta.url,
+        title: studyContext?.pageTitle ?? meta.hostname ?? targetSentence,
+        status: "saved",
+      })
+
       await saveVocabularyEntry({
         text: targetSentence,
-        explanation: currentState.explanationText ?? undefined,
-        context: studyContext?.articleExcerpt ?? studyContext?.contentSummary ?? studyContext?.metaDescription,
+        explanation: currentCard?.explanationText ?? undefined,
+        context: popupStudyDeck.sentenceSourceText || undefined,
         sourceContext: {
           surface: "popup_deep_read",
           pageTitle: studyContext?.pageTitle,
+          pageUrl: meta.url,
+          hostname: meta.hostname,
           contentSummary: studyContext?.contentSummary,
           articleExcerpt: studyContext?.articleExcerpt,
           sentenceText: targetSentence,
           sentenceIndex: targetIndex,
+          ...buildOwnedReadingVocabularySourceLink(ownedReadingItem),
         },
         url: meta.url,
         hostname: meta.hostname,
@@ -767,12 +860,8 @@ export default function App() {
       const nextDueCount = await getDueVocabularyCount()
 
       if (sentenceDeckRevisionRef.current === deckRevision) {
-        setSentenceStateById((current) => ({
-          ...current,
-          [targetSentenceId]: {
-            ...(current[targetSentenceId] ?? createPopupSentenceState()),
-            saveStatus: "saved",
-          },
+        setSentenceStateById((current) => patchPopupSentenceState(current, targetSentenceId, {
+          saveStatus: "saved",
         }))
         setCurrentPageSavedSentenceKeys((current) => {
           const nextKeys = new Set(current)
@@ -783,23 +872,21 @@ export default function App() {
       setDueCount(nextDueCount)
     } catch {
       if (sentenceDeckRevisionRef.current === deckRevision) {
-        setSentenceStateById((current) => ({
-          ...current,
-          [targetSentenceId]: {
-            ...(current[targetSentenceId] ?? createPopupSentenceState()),
-            saveStatus: "idle",
-          },
+        setSentenceStateById((current) => patchPopupSentenceState(current, targetSentenceId, {
+          saveStatus: "idle",
         }))
       }
     }
   }
 
   const handleSelectSentence = (index: number) => {
+    if (sentenceActionLock.type !== "idle") return
     if (index < 0 || index >= studySentences.length) return
     setSelectedSentenceIndex(index)
   }
 
   const handleToggleSentenceSpeech = async (sentenceIndex?: number) => {
+    if (sentenceActionLock.type !== "idle") return
     const target = resolveSentenceTarget(sentenceIndex)
     if (!target) return
 
@@ -1161,6 +1248,15 @@ export default function App() {
     ? persistedResolvedSite.enabled
     : currentSite.enabled
 
+  const quotaInfo = useMemo(
+    () => buildQuotaInfoFromAccountState({
+      account: authAccount,
+      usage: authUsage,
+      session: authSession,
+    }),
+    [authAccount, authUsage, authSession],
+  )
+
   // Compute daily words translated from quota/session
   const wordsTranslated = quotaInfo ? Math.round(quotaInfo.used / 5) : 0
 
@@ -1169,14 +1265,27 @@ export default function App() {
     ? t("popup_notConnected")
     : isAuthenticatedSession
       ? t("popup_connected")
-      : "Guest session"
+      : "Local guest"
 
-  // Determine plan label
-  const planLabel = isAuthenticatedSession && authAccount?.plan === "pro"
-    ? "Pro Plan"
-    : quotaInfo?.plan === "custom"
-      ? "Custom"
-      : "Free Plan"
+  const planLabel = formatAstraPlanLabel(
+    isAuthenticatedSession
+      ? (authAccount?.plan ?? authSession?.plan ?? null)
+      : null,
+  )
+  const accountSurfaceSource = resolveAstraAccountSurfaceSource({
+    account: authAccount,
+    usage: authUsage,
+    session: authSession,
+  })
+  const accountSourceNote = accountSurfaceSource === "account_summary"
+    ? "Plan and daily quota mirror Astra account summary."
+    : accountSurfaceSource === "session_snapshot"
+      ? "Showing the last session snapshot until Astra account summary refresh succeeds."
+      : "Sign in to load Astra account plan and daily quota."
+
+  const isSupportedVideoTab = isSupportedVideoUrl(activePageUrl)
+  const videoNoteViewerBaseUrl = authSession?.relayBaseURL ?? configDraft.provider.relayBaseURL ?? ""
+  const canCreateVideoNote = isAuthenticatedSession && isSupportedVideoTab && !videoNoteBusy
 
   const localOnlyLabel = continuityStatus?.sync.localOnly.localOnlyFields.join(", ")
   const remoteConfigCollection = continuityStatus?.remote.configCollection ?? null
@@ -1187,11 +1296,12 @@ export default function App() {
   const hydrateAccountState = async (
     session: AstraSession,
     device: AstraDeviceIdentity,
-  ): Promise<{ account: AstraAccount | null; remote: AstraContinuityRemoteSnapshot | null }> => {
-    const [accountResult, continuityResult] = await Promise.allSettled([
-      fetchAstraAccount({
+  ): Promise<{ account: AstraAccount | null; usage: AstraUsageSnapshot | null; remote: AstraContinuityRemoteSnapshot | null }> => {
+    const [summaryResult, continuityResult] = await Promise.allSettled([
+      fetchAstraAccountSummary({
         baseURL: session.relayBaseURL,
         sessionToken: session.sessionToken,
+        deviceId: device.deviceId,
       }),
       fetchAstraContinuitySnapshot({
         baseURL: session.relayBaseURL,
@@ -1202,7 +1312,8 @@ export default function App() {
     ])
 
     return {
-      account: accountResult.status === "fulfilled" ? accountResult.value : null,
+      account: summaryResult.status === "fulfilled" ? summaryResult.value.account : null,
+      usage: summaryResult.status === "fulfilled" ? summaryResult.value.usage : null,
       remote: continuityResult.status === "fulfilled"
         ? continuityResult.value
         : {
@@ -1224,9 +1335,10 @@ export default function App() {
       })
       const persistedSession = await saveAstraSession(session)
       const activeDevice = deviceIdentity ?? await ensureAstraDeviceIdentity()
-      const { account, remote } = await hydrateAccountState(persistedSession, activeDevice)
+      const { account, usage, remote } = await hydrateAccountState(persistedSession, activeDevice)
       setAuthSession(persistedSession)
       setAuthAccount(account)
+      setAuthUsage(usage)
       setDeviceIdentity(activeDevice)
       setContinuityRemote(remote)
       setContinuityStatus(buildContinuityStatus({
@@ -1261,6 +1373,7 @@ export default function App() {
       await clearAstraSession()
       setAuthSession(null)
       setAuthAccount(null)
+      setAuthUsage(null)
       setContinuityRemote(null)
       setAuthPassword("")
       if (deviceIdentity) {
@@ -1288,6 +1401,58 @@ export default function App() {
 
   const openUrlInTab = (url: string) => {
     void browser.tabs.create({ url })
+  }
+
+  const handleCreateVideoNoteFromCurrentTab = async () => {
+    if (!isAuthenticatedSession) {
+      setVideoNoteStatusMessage("Sign in to Astra before creating video notes.")
+      return
+    }
+
+    if (!isSupportedVideoTab) {
+      setVideoNoteStatusMessage("Open a supported YouTube or Bilibili tab before creating a note.")
+      return
+    }
+
+    setVideoNoteBusy(true)
+    setVideoNoteStatusMessage("")
+
+    try {
+      const response = await browser.runtime.sendMessage({
+        type: "runtime/video-note:create-from-current-tab",
+      }) as unknown
+
+      if (!isRuntimeResponse(response)) {
+        setVideoNoteStatusMessage("Received an unexpected response from video-note creation.")
+        return
+      }
+
+      if (response.type === "runtime/video-note:create-from-current-tab:error") {
+        setVideoNoteStatusMessage(response.error.message)
+        return
+      }
+
+      if (response.type !== "runtime/video-note:create-from-current-tab:success") {
+        setVideoNoteStatusMessage("Received an unexpected response from video-note creation.")
+        return
+      }
+
+      const jobId = response.payload.job.jobId
+      setLastVideoNoteJobId(jobId)
+      openUrlInTab(buildVideoNoteViewerUrl(jobId, videoNoteViewerBaseUrl))
+      setVideoNoteStatusMessage(response.payload.deduped
+        ? "Opened your existing video-note job in Astra Web."
+        : "Video note created. Opened Astra Web viewer.")
+    } catch (error) {
+      setVideoNoteStatusMessage(error instanceof Error ? error.message : "Failed to create video note")
+    } finally {
+      setVideoNoteBusy(false)
+    }
+  }
+
+  const handleOpenLastVideoNote = () => {
+    if (!lastVideoNoteJobId) return
+    openUrlInTab(buildVideoNoteViewerUrl(lastVideoNoteJobId, videoNoteViewerBaseUrl))
   }
 
   const handleOpenInAstraApp = async () => {
@@ -1332,7 +1497,7 @@ export default function App() {
   const currentPageHistory = studyContext?.pageUrl
     ? recentHistory.find((entry) => entry.url === studyContext.pageUrl) ?? null
     : null
-  const studyReady = !!(studyContext?.contentSummary || studyContext?.metaDescription || currentPageHistory)
+  const studyReady = popupStudyDeck.hasStudyText || !!currentPageHistory
   const shouldShowSignIn = !isAuthenticatedSession
 
   return (
@@ -1396,6 +1561,49 @@ export default function App() {
         </button>
       )}
 
+      <div style={{ marginTop: 8 }}>
+        <button
+          type="button"
+          onClick={() => { void handleCreateVideoNoteFromCurrentTab() }}
+          style={{
+            ...btnSecondary,
+            width: "100%",
+            padding: "8px 10px",
+            fontSize: 13,
+            fontWeight: 600,
+            ...(canCreateVideoNote ? {} : btnDisabled),
+          }}
+          disabled={!canCreateVideoNote}
+        >
+          {videoNoteBusy ? "Creating video note…" : "Create video note from current tab"}
+        </button>
+        {lastVideoNoteJobId && (
+          <button
+            type="button"
+            onClick={handleOpenLastVideoNote}
+            style={{
+              ...btnSecondary,
+              width: "100%",
+              marginTop: 6,
+              padding: "8px 10px",
+              fontSize: 12,
+            }}
+          >
+            Open last video note
+          </button>
+        )}
+        <div style={{ fontSize: 11, color: "#64748b", marginTop: 4 }}>
+          {isSupportedVideoTab
+            ? "Supported video tab detected."
+            : "Open a YouTube or Bilibili tab to enable video-note creation."}
+        </div>
+        {videoNoteStatusMessage && (
+          <div style={{ ...warningStyle, marginTop: 6 }}>
+            {videoNoteStatusMessage}
+          </div>
+        )}
+      </div>
+
       {/* Status + Quota section */}
       <div style={{
         marginTop: 12,
@@ -1424,6 +1632,9 @@ export default function App() {
             {t("popup_wordsTranslatedToday", wordsTranslated.toLocaleString())}
           </div>
         )}
+        <div style={{ fontSize: 11, color: "#64748b", marginTop: 4, lineHeight: 1.45 }}>
+          {accountSourceNote}
+        </div>
         <div style={{ fontSize: 11, color: "#64748b", marginTop: 6, lineHeight: 1.45 }}>
           <div>
             iOS bridge: {iosBootstrapStatus.bridgeAvailable ? "available" : "unavailable"}
@@ -1592,6 +1803,8 @@ export default function App() {
         studyActionRunningId={studyActionRunningId}
         studyActionResult={studyActionResult}
         sentenceCards={sentenceCards}
+        sentenceActionLocked={sentenceActionLock.type !== "idle"}
+        sentenceDeckFallbackMessage={studySentenceDeckFallbackMessage}
         selectedSentenceIndex={selectedSentenceIndex}
         onToggleStudySpeech={() => { void handleToggleStudySpeech() }}
         onToggleSentenceSpeech={(sentenceIndex) => { void handleToggleSentenceSpeech(sentenceIndex) }}
@@ -1693,7 +1906,7 @@ export default function App() {
 
       {!isAuthenticatedSession && authSession?.identityMode === "anonymous" && (
         <div style={{ fontSize: 11, color: "#64748b", marginTop: 4 }}>
-          This device has a local Astra guest session. Sign in to enable account continuity later.
+          This device is using a local Astra guest session. Sign in later to attach plan, quota, and continuity state.
         </div>
       )}
 

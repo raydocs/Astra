@@ -188,6 +188,9 @@
   "popup_studySentenceDeck": {
     "message": "Sentence drills"
   },
+  "popup_studySentenceDeckFallback": {
+    "message": "Sentence drills are using fallback page context until a fuller article excerpt is available."
+  },
   "popup_studyDueCount": {
     "message": "$1 due",
     "placeholders": {
@@ -237,7 +240,7 @@
     "message": "no route info"
   },
   "popup_usageLiveOnly": {
-    "message": "This only counts translation attempts. Cache hits stay invisible here."
+    "message": "Local device translation activity only. This does not change your Astra account quota, and cache hits stay invisible here."
   },
   "label_targetLanguage": {
     "message": "Target Language"
@@ -449,6 +452,24 @@
   "popup_studyNext": {
     "message": "Next:"
   },
+  "popup_studyNoStepsYet": {
+    "message": "No steps completed yet"
+  },
+  "popup_studyNextHintRead": {
+    "message": "Open the article and start reading or translating it to begin this page's study loop."
+  },
+  "popup_studyNextHintGuidedRead": {
+    "message": "Run guided reading once so this page keeps sentence-level study context."
+  },
+  "popup_studyNextHintExplain": {
+    "message": "Explain at least one sentence before you save vocabulary from this page."
+  },
+  "popup_studyNextHintSaveWords": {
+    "message": "Save at least one useful word from this page so it enters vocabulary."
+  },
+  "popup_studyNextHintReview": {
+    "message": "Review at least one saved card from this page to close the study loop."
+  },
   "popup_studyStartGuidedRead": {
     "message": "Start Guided Read"
   },
@@ -503,11 +524,23 @@
   "review_todayProgressTitle": {
     "message": "Today's study loop (all pages)"
   },
+  "review_currentPageProgressTitle": {
+    "message": "Current page loop"
+  },
+  "review_currentPageProgressHint": {
+    "message": "These counts use the same page-level study rules as the popup."
+  },
   "review_todayProgressAria": {
     "message": "Today's study progress summary"
   },
   "popup_studyResumeFromLast": {
     "message": "Pick up where you left off — your next step is highlighted below."
+  },
+  "popup_studyCurrentPageProgressTitle": {
+    "message": "Current page progress"
+  },
+  "popup_studyCurrentPageProgressHint": {
+    "message": "These counters only track the active page."
   },
   "review_openSourcePage": {
     "message": "Open source page"

@@ -5,7 +5,7 @@
 import { useState, useCallback, useRef, useEffect } from "react"
 import { browser } from "#imports"
 import type { RuntimeResponse } from "@/types/messages"
-import { upsertOwnedSubtitleFileFromImport } from "@/utils/storage/owned-reading"
+import { buildOwnedReadingVocabularySourceLink, upsertOwnedSubtitleFileFromImport } from "@/utils/storage/owned-reading"
 import {
   parseSubtitles,
   exportBilingualSrt,
@@ -68,6 +68,10 @@ export function SubtitleReaderApp() {
   const loadFile = async (file: File) => {
     try {
       const text = await file.text()
+      setError(null)
+      setExplanations({})
+      setSavedRowKeys(new Set())
+      setProgress({ current: 0, total: 0 })
 
       // Try document format first (by extension)
       const docFormat = detectDocumentFormat(file.name)
@@ -157,6 +161,13 @@ export function SubtitleReaderApp() {
   const handleExplainRow = async (rowIndex: number, text: string) => {
     if (!text.trim() || explainingIndex !== null) return
     setExplainingIndex(rowIndex)
+    void upsertOwnedSubtitleFileFromImport({
+      fileName: fileName || "subtitles.srt",
+      formatLabel: formatLabel(fileFormat),
+      cueOrEntryCount: itemCount,
+      status: "in_progress",
+      sentenceIndex: rowIndex,
+    }).catch(() => undefined)
     try {
       const targetLang = await getTargetLang()
       const result = await translateTexts({
@@ -185,6 +196,15 @@ export function SubtitleReaderApp() {
 
     setSavingIndex(rowIndex)
     try {
+      const ownedReadingItem = await upsertOwnedSubtitleFileFromImport({
+        fileName: fileName || "subtitles.srt",
+        formatLabel: formatLabel(fileFormat),
+        cueOrEntryCount: itemCount,
+        status: "saved",
+        sentenceIndex: rowIndex,
+      })
+      const pageIdentity = ownedReadingItem.localUri ?? (typeof window !== "undefined" ? window.location.href : undefined)
+
       await saveVocabularyEntry({
         text: text.trim(),
         translation: translations.get(rowIndex) || undefined,
@@ -192,28 +212,30 @@ export function SubtitleReaderApp() {
         context: `${fileName} · row ${rowIndex + 1}`,
         sourceContext: {
           surface: "subtitle_reader",
-          pageTitle: fileName || "File translator",
-          contentSummary: formatLabel(fileFormat),
+          pageTitle: fileName || "Subtitle reader",
+          pageUrl: pageIdentity,
+          hostname: "subtitle-reader",
+          contentSummary: `${formatLabel(fileFormat)} · ${itemCount} items`,
           sentenceText: text.trim(),
           sentenceIndex: rowIndex,
+          ...buildOwnedReadingVocabularySourceLink(ownedReadingItem),
         },
-        url: typeof window !== "undefined" ? window.location.href : undefined,
-        hostname: typeof window !== "undefined" && window.location.hostname
-          ? window.location.hostname
-          : "extension",
+        url: pageIdentity,
+        hostname: "subtitle-reader",
       })
       setSavedRowKeys((prev) => new Set(prev).add(key))
-      void upsertOwnedSubtitleFileFromImport({
-        fileName: fileName || "subtitles.srt",
-        formatLabel: formatLabel(fileFormat),
-        cueOrEntryCount: itemCount,
-        status: "saved",
-      })
     } catch {
       // Non-fatal — user can retry
     } finally {
       setSavingIndex(null)
     }
+  }
+
+  const openLearningSurface = (tab: "list" | "review" | "reading") => {
+    const target = tab === "list"
+      ? browser.runtime.getURL("/vocabulary.html")
+      : browser.runtime.getURL(`/vocabulary.html?tab=${tab}`)
+    void browser.tabs.create({ url: target })
   }
 
   const handleExport = (exportFormat: "srt" | "vtt" | "md") => {
@@ -319,16 +341,42 @@ export function SubtitleReaderApp() {
       {(phase === "translating" || phase === "done") && (
         <>
           {phase === "done" && (
-            <div style={{ display: "flex", gap: 8, marginBottom: 16 }}>
-              {isDocument ? (
-                <button type="button" onClick={() => handleExport("md")} style={btnStyle}>Export Markdown</button>
-              ) : (
-                <>
-                  <button type="button" onClick={() => handleExport("srt")} style={btnStyle}>Export SRT</button>
-                  <button type="button" onClick={() => handleExport("vtt")} style={btnStyle}>Export VTT</button>
-                </>
+            <>
+              <div style={{ display: "flex", gap: 8, marginBottom: savedRowKeys.size > 0 ? 12 : 16 }}>
+                {isDocument ? (
+                  <button type="button" onClick={() => handleExport("md")} style={btnStyle}>Export Markdown</button>
+                ) : (
+                  <>
+                    <button type="button" onClick={() => handleExport("srt")} style={btnStyle}>Export SRT</button>
+                    <button type="button" onClick={() => handleExport("vtt")} style={btnStyle}>Export VTT</button>
+                  </>
+                )}
+              </div>
+              {savedRowKeys.size > 0 && (
+                <div
+                  data-role="subtitle-learning-chain"
+                  style={{
+                    marginBottom: 16,
+                    padding: "12px 14px",
+                    borderRadius: 10,
+                    border: "1px solid rgba(99, 102, 241, 0.2)",
+                    background: "rgba(99, 102, 241, 0.06)",
+                  }}
+                >
+                  <div style={{ fontSize: 12, fontWeight: 700, color: "#4338ca", marginBottom: 4 }}>
+                    Learning chain ready
+                  </div>
+                  <div style={{ fontSize: 13, color: "#475569", marginBottom: 8 }}>
+                    {savedRowKeys.size} saved {savedRowKeys.size === 1 ? "row is" : "rows are"} now available in Vocabulary, Review, and Reading queue revisit.
+                  </div>
+                  <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                    <button type="button" onClick={() => openLearningSurface("list")} style={smallBtnStyle}>Open Vocabulary</button>
+                    <button type="button" onClick={() => openLearningSurface("review")} style={smallBtnStyle}>Start Review</button>
+                    <button type="button" onClick={() => openLearningSurface("reading")} style={smallBtnStyle}>Open Reading Queue</button>
+                  </div>
+                </div>
               )}
-            </div>
+            </>
           )}
 
           {isDocument ? (

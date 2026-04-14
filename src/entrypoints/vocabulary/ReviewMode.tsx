@@ -1,9 +1,21 @@
 import { useCallback, useEffect, useState } from "react"
+import { browser } from "#imports"
 import type { VocabularyEntry } from "@/utils/storage/vocabulary"
 import { updateVocabularyEntry, getVocabularyEntries } from "@/utils/storage/vocabulary"
 import { applyReview, getDueCards, getBoxDistribution } from "@/utils/srs/leitner"
 import type { SrsFields, BoxDistribution } from "@/utils/srs/leitner"
-import { buildVocabularyReviewStudyEvent, getStudyProgress, recordStudyEvent } from "@/utils/storage/study-progress"
+import { buildVocabularyReviewStudyEvent, deriveStudyLoopViewModel, getStudyProgress, recordStudyEvent, type StudyLoopViewModel, type StudyStep } from "@/utils/storage/study-progress"
+import { deriveVocabularySourceDisplay } from "@/utils/storage/vocabulary-core"
+import type { OwnedReadingItem } from "@/utils/storage/owned-reading"
+import {
+  buildOwnedReadingResumeTarget,
+  describeOwnedReadingProgress,
+  describeOwnedReadingResumeBehavior,
+  getOwnedReadingSourceTypeLabel,
+  listOwnedReadingItems,
+  markOwnedReadingOpened,
+  matchOwnedReadingItemForVocabularyEntry,
+} from "@/utils/storage/owned-reading"
 import { t } from "@/utils/i18n"
 import ReviewStats from "./ReviewStats"
 
@@ -24,34 +36,45 @@ function toSrsFields(entry: VocabularyEntry): SrsFields {
   }
 }
 
-function getReviewSourceSurfaceLabel(entry: VocabularyEntry): string | null {
-  switch (entry.sourceContext?.surface) {
-    case "popup_deep_read":
-      return "Popup deep-read"
-    case "selection_toolbar":
-      return "Selection toolbar"
-    case "hover_translate":
-      return "Hover translate"
-    case "subtitle_reader":
-      return "File translator"
-    default:
-      return null
+function getStepLabel(step: StudyStep): string {
+  const labels: Record<StudyStep, string> = {
+    read: t("popup_studyStepRead"),
+    guided_read: t("popup_studyStepGuidedRead"),
+    explain: t("popup_studyStepExplain"),
+    vocab_save: t("popup_studyStepSaveWords"),
+    vocab_review: t("popup_studyStepReview"),
   }
+  return labels[step]
 }
 
-function getReviewSourceLabel(entry: VocabularyEntry): string {
-  return entry.sourceContext?.pageTitle
-    ?? entry.hostname
-    ?? entry.url
-    ?? ""
+function CurrentPageLoopCard({ studyLoop }: { studyLoop: StudyLoopViewModel }) {
+  if (!studyLoop.currentPage) return null
+
+  return (
+    <div style={currentPageLoopStyle} aria-label={t("review_currentPageProgressTitle")}>
+      <div style={currentPageLoopTitleStyle}>{t("review_currentPageProgressTitle")}</div>
+      <div style={currentPageLoopHintStyle}>{t("review_currentPageProgressHint")}</div>
+      <div style={currentPageLoopMetaStyle}>
+        {studyLoop.completionPercent}% — {studyLoop.completedSteps.length > 0
+          ? studyLoop.completedSteps.map((step) => getStepLabel(step)).join(" → ")
+          : t("popup_studyNoStepsYet")}
+      </div>
+      <div style={currentPageLoopCountersStyle}>
+        <span>{t("popup_studyStatExplained", studyLoop.currentCounts.sentencesExplained.toString())}</span>
+        <span>{t("popup_studyStatSaved", studyLoop.currentCounts.vocabSaved.toString())}</span>
+        <span>{t("popup_studyStatReviewed", studyLoop.currentCounts.vocabReviewed.toString())}</span>
+      </div>
+      {studyLoop.nextStep && (
+        <div style={currentPageLoopNextStyle}>
+          {t("popup_studyNext")} {getStepLabel(studyLoop.nextStep)}
+        </div>
+      )}
+    </div>
+  )
 }
 
-function getReviewSourceSnippet(entry: VocabularyEntry): string {
-  return entry.sourceContext?.sentenceText
-    ?? entry.context
-    ?? entry.sourceContext?.articleExcerpt
-    ?? entry.sourceContext?.contentSummary
-    ?? ""
+function getReviewStudyLoopUrl(entry?: VocabularyEntry | null): string | undefined {
+  return entry?.sourceContext?.studyProgressRecordId ?? entry?.url
 }
 
 export default function ReviewMode() {
@@ -66,10 +89,16 @@ export default function ReviewMode() {
   const [dailyVocabSaved, setDailyVocabSaved] = useState(0)
   const [dailyVocabReviewed, setDailyVocabReviewed] = useState(0)
   const [snippetExpanded, setSnippetExpanded] = useState(false)
+  const [studyLoop, setStudyLoop] = useState<StudyLoopViewModel | null>(null)
+  const [ownedReadingItems, setOwnedReadingItems] = useState<OwnedReadingItem[]>([])
 
   const loadDueCards = useCallback(async () => {
-    const entries = await getVocabularyEntries()
+    const [entries, linkedItems] = await Promise.all([
+      getVocabularyEntries(),
+      listOwnedReadingItems(),
+    ])
     const due = getDueCards(entries)
+    setOwnedReadingItems(linkedItems)
     setDueCards(due)
     setDistribution(getBoxDistribution(entries))
     setCurrentIndex(0)
@@ -80,6 +109,7 @@ export default function ReviewMode() {
     setDailySentencesExplained(progress.dailyStats.sentencesExplained)
     setDailyVocabSaved(progress.dailyStats.vocabSaved)
     setDailyVocabReviewed(progress.dailyStats.vocabReviewed)
+    setStudyLoop(deriveStudyLoopViewModel(progress, getReviewStudyLoopUrl(due[0])))
     setSnippetExpanded(false)
     setLoading(false)
   }, [])
@@ -105,7 +135,7 @@ export default function ReviewMode() {
 
     const studyEvent = buildVocabularyReviewStudyEvent(currentCard)
     if (studyEvent) {
-      void recordStudyEvent(studyEvent).catch(() => undefined)
+      await recordStudyEvent(studyEvent).catch(() => undefined)
     }
 
     setSummary((prev) => ({
@@ -124,13 +154,20 @@ export default function ReviewMode() {
       setDailySentencesExplained(progress.dailyStats.sentencesExplained)
       setDailyVocabSaved(progress.dailyStats.vocabSaved)
       setDailyVocabReviewed(progress.dailyStats.vocabReviewed)
+      setStudyLoop(deriveStudyLoopViewModel(progress, undefined))
       setPhase("session-complete")
     } else {
+      const progress = await getStudyProgress()
+      setDailyPagesStudied(progress.dailyStats.pagesStudied)
+      setDailySentencesExplained(progress.dailyStats.sentencesExplained)
+      setDailyVocabSaved(progress.dailyStats.vocabSaved)
+      setDailyVocabReviewed(progress.dailyStats.vocabReviewed)
+      setStudyLoop(deriveStudyLoopViewModel(progress, getReviewStudyLoopUrl(dueCards[nextIndex])))
       setCurrentIndex(nextIndex)
       setPhase("showing-front")
       setSnippetExpanded(false)
     }
-  }, [currentCard, currentIndex, dueCards.length])
+  }, [currentCard, currentIndex, dueCards])
 
   const handleFlip = useCallback(() => {
     if (phase === "showing-front") {
@@ -170,16 +207,27 @@ export default function ReviewMode() {
 
   const dueCount = dueCards.length - currentIndex
   const totalDue = phase === "session-complete" ? 0 : dueCount
-  const sourceSurfaceLabel = currentCard ? getReviewSourceSurfaceLabel(currentCard) : null
-  const sourceLabel = currentCard ? getReviewSourceLabel(currentCard) : ""
-  const sourceSnippet = currentCard ? getReviewSourceSnippet(currentCard) : ""
-  const snippetLong = sourceSnippet.length > 300
+  const sourceDisplay = currentCard
+    ? deriveVocabularySourceDisplay(currentCard)
+    : { surfaceLabel: null, sourceLabel: "", snippet: "", articleExcerpt: "", contentSummary: "", pageUrl: "", hostname: "", sourceContext: undefined, ownedReadingItemId: "", ownedReadingSourceType: undefined, ownedReadingTitle: "", studyProgressRecordId: "" }
+  const linkedReadingItem = currentCard ? matchOwnedReadingItemForVocabularyEntry(ownedReadingItems, currentCard) : null
+  const linkedReadingResumeTarget = linkedReadingItem ? buildOwnedReadingResumeTarget(linkedReadingItem) : null
+  const linkedReadingProgress = linkedReadingItem ? describeOwnedReadingProgress(linkedReadingItem) : null
+  const currentPageLoop = studyLoop
+  const snippetLong = sourceDisplay.snippet.length > 300
+  const sourcePageIsWeb = /^https?:\/\//i.test(sourceDisplay.pageUrl)
 
   const hasDailyProgress =
     dailyPagesStudied > 0
     || dailySentencesExplained > 0
     || dailyVocabSaved > 0
     || dailyVocabReviewed > 0
+
+  const handleResumeLinkedReading = async () => {
+    if (!linkedReadingItem || !linkedReadingResumeTarget) return
+    await markOwnedReadingOpened(linkedReadingItem.id)
+    void browser.tabs.create({ url: linkedReadingResumeTarget.url })
+  }
 
   return (
     <div style={containerStyle}>
@@ -240,6 +288,8 @@ export default function ReviewMode() {
             </span>
           </div>
 
+          {currentPageLoop && <CurrentPageLoopCard studyLoop={currentPageLoop} />}
+
           <div
             style={flashcardStyle}
             onClick={phase === "showing-front" ? handleFlip : undefined}
@@ -260,21 +310,21 @@ export default function ReviewMode() {
                 {currentCard.explanation && (
                   <div style={explanationTextStyle}>{currentCard.explanation}</div>
                 )}
-                {sourceSurfaceLabel && (
+                {sourceDisplay.surfaceLabel && (
                   <div style={{ fontSize: 11, color: "#6366f1", fontWeight: 700, marginBottom: 6 }}>
-                    {sourceSurfaceLabel}
+                    {sourceDisplay.surfaceLabel}
                   </div>
                 )}
-                {sourceLabel && (
+                {sourceDisplay.sourceLabel && (
                   <div style={{ fontSize: 12, color: "#334155", fontWeight: 600, marginBottom: 6 }}>
-                    {sourceLabel}
+                    {sourceDisplay.sourceLabel}
                   </div>
                 )}
-                {sourceSnippet && (
+                {sourceDisplay.snippet && (
                   <div style={contextTextStyle}>
                     {snippetLong && !snippetExpanded
-                      ? `${sourceSnippet.slice(0, 300)}...`
-                      : sourceSnippet}
+                      ? `${sourceDisplay.snippet.slice(0, 300)}...`
+                      : sourceDisplay.snippet}
                   </div>
                 )}
                 {snippetLong && (
@@ -295,14 +345,68 @@ export default function ReviewMode() {
                     {snippetExpanded ? t("review_hideFullContext") : t("review_showFullContext")}
                   </button>
                 )}
-                {(currentCard.sourceContext?.articleExcerpt || currentCard.sourceContext?.contentSummary) && currentCard.sourceContext?.sentenceText !== currentCard.sourceContext?.articleExcerpt && (
-                  <div style={{ ...contextTextStyle, marginTop: 8 }}>
-                    {currentCard.sourceContext?.articleExcerpt ?? currentCard.sourceContext?.contentSummary}
+                {linkedReadingItem && (
+                  <div style={{ ...contextTextStyle, marginTop: 8, background: "rgba(99, 102, 241, 0.05)", border: "1px solid rgba(99, 102, 241, 0.15)", borderRadius: 10, padding: "10px 12px" }}>
+                    <div style={{ fontSize: 12, color: "#334155", fontWeight: 700, marginBottom: 4 }}>
+                      Reading asset
+                    </div>
+                    <div style={{ fontSize: 12, color: "#334155", fontWeight: 600, marginBottom: 4 }}>
+                      {linkedReadingItem.title} · {getOwnedReadingSourceTypeLabel(linkedReadingItem.sourceType)}
+                    </div>
+                    <div style={{ fontSize: 11, color: "#64748b", marginBottom: linkedReadingProgress ? 4 : 8 }}>
+                      {describeOwnedReadingResumeBehavior(linkedReadingItem)}
+                    </div>
+                    {linkedReadingProgress && (
+                      <div style={{ fontSize: 11, color: "#64748b", marginBottom: 8 }}>
+                        {linkedReadingProgress}
+                      </div>
+                    )}
+                    {linkedReadingResumeTarget && (
+                      <button
+                        type="button"
+                        onClick={() => void handleResumeLinkedReading()}
+                        style={{
+                          marginTop: 2,
+                          border: "1px solid #c7d2fe",
+                          background: "rgba(99, 102, 241, 0.08)",
+                          color: "#4338ca",
+                          borderRadius: 8,
+                          padding: "6px 12px",
+                          fontSize: 12,
+                          fontWeight: 600,
+                          cursor: "pointer",
+                        }}
+                      >
+                        Resume reading asset
+                      </button>
+                    )}
                   </div>
                 )}
-                {currentCard.url && (
+                {(sourceDisplay.articleExcerpt || sourceDisplay.contentSummary || sourceDisplay.hostname || sourceDisplay.pageUrl) && (
+                  <div style={{ ...contextTextStyle, marginTop: 8 }}>
+                    {sourceDisplay.hostname && (
+                      <div style={{ fontSize: 11, color: "#94a3b8", marginBottom: 4 }}>
+                        Host: {sourceDisplay.hostname}
+                      </div>
+                    )}
+                    {sourceDisplay.pageUrl && (
+                      <div style={{ fontSize: 11, color: "#94a3b8", marginBottom: 4, wordBreak: "break-all" }}>
+                        {sourcePageIsWeb ? "URL" : "File"}: {sourceDisplay.pageUrl}
+                      </div>
+                    )}
+                    {sourceDisplay.articleExcerpt && (
+                      <div style={{ marginBottom: sourceDisplay.contentSummary ? 6 : 0 }}>
+                        Excerpt: {sourceDisplay.articleExcerpt}
+                      </div>
+                    )}
+                    {sourceDisplay.contentSummary && (
+                      <div>Summary: {sourceDisplay.contentSummary}</div>
+                    )}
+                  </div>
+                )}
+                {sourcePageIsWeb && (
                   <a
-                    href={currentCard.url}
+                    href={sourceDisplay.pageUrl}
                     target="_blank"
                     rel="noopener noreferrer"
                     style={sourceLinkStyle}
@@ -373,6 +477,49 @@ const dailyProgressRowStyle: React.CSSProperties = {
   gap: "8px 14px",
   fontSize: 12,
   color: "#64748b",
+}
+
+const currentPageLoopStyle: React.CSSProperties = {
+  marginBottom: 16,
+  padding: "12px 14px",
+  background: "#eff6ff",
+  border: "1px solid #bfdbfe",
+  borderRadius: 10,
+}
+
+const currentPageLoopTitleStyle: React.CSSProperties = {
+  fontSize: 12,
+  fontWeight: 700,
+  color: "#1e3a8a",
+  marginBottom: 4,
+}
+
+const currentPageLoopHintStyle: React.CSSProperties = {
+  fontSize: 10,
+  color: "#64748b",
+  marginBottom: 8,
+}
+
+const currentPageLoopMetaStyle: React.CSSProperties = {
+  fontSize: 11,
+  color: "#1e293b",
+  marginBottom: 8,
+}
+
+const currentPageLoopCountersStyle: React.CSSProperties = {
+  display: "flex",
+  flexWrap: "wrap",
+  gap: "6px 10px",
+  fontSize: 11,
+  color: "#334155",
+  fontWeight: 600,
+}
+
+const currentPageLoopNextStyle: React.CSSProperties = {
+  marginTop: 8,
+  fontSize: 11,
+  color: "#1d4ed8",
+  fontWeight: 600,
 }
 
 const containerStyle: React.CSSProperties = {

@@ -35,6 +35,10 @@ interface LearningLoopRevisitSmokeExecution extends LiveScenarioExecution {
     vocabularyOpened: boolean
     readingTabOpened: boolean
     openButtonEnabled: boolean
+    pageIdentityVisible: boolean
+    translatedCountVisible: boolean
+    studyLoopVisible: boolean
+    nextStepVisible: boolean
     newTabUrlMatchesFixture: boolean
     consoleErrors: string[]
   }
@@ -81,7 +85,7 @@ export const learningLoopRevisitSmokeScenario: LiveScenarioDefinition<LearningLo
   surface: "vocabulary",
   fixture: "page:none",
   description:
-    "Serves a minimal article page, seeds vocabulary + reading history + study progress, opens vocabulary Reading tab, and verifies Open launches the same origin in a new tab (Month 2 revisit v1).",
+    "Serves a minimal article page, seeds vocabulary + reading history + study progress, opens vocabulary Reading tab, and verifies Resume launches the same origin in a new tab (Month 3 queue/revisit v1).",
   tags: ["playwright", "vocabulary", "reading-queue", "revisit", "extension-loaded", "smoke"],
   async run(runtime, context) {
     runtime.start(context.id, context.title)
@@ -178,20 +182,31 @@ export const learningLoopRevisitSmokeScenario: LiveScenarioDefinition<LearningLo
 
       const vocabularyOpened = await extCtx.page.evaluate(() => {
         const body = document.body.innerText
-        return body.includes("Revisit pages") || body.includes("Recent")
+        return body.includes("Revisit reading items") || body.includes("Recent (")
       })
 
       const openButtonEnabled = await extCtx.page.evaluate(() => {
         const btn = Array.from(document.querySelectorAll("button")).find(
-          (b) => (b.textContent ?? "").trim() === "Open",
+          (b) => (b.textContent ?? "").trim() === "Resume",
         ) as HTMLButtonElement | undefined
         return !!btn && !btn.disabled
       })
 
+      const revisitContextVisible = await extCtx.page.evaluate((expectedUrl) => {
+        const body = document.body.innerText
+        return {
+          pageIdentityVisible: body.includes(`Page: ${expectedUrl}`) && body.includes("Host: 127.0.0.1"),
+          translatedCountVisible: body.includes("Translated: 12 words translated"),
+          studyLoopVisible: body.includes("Study loop: Read → Explain → Save words")
+            && body.includes("Counts: 1 explained · 1 saved · 0 reviewed"),
+          nextStepVisible: body.includes("Next: Review the saved card from this page to close the loop."),
+        }
+      }, fixtureUrl)
+
       const pagesBefore = extCtx.context.pages().length
       await extCtx.page.evaluate(() => {
         const btn = Array.from(document.querySelectorAll("button")).find(
-          (b) => (b.textContent ?? "").trim() === "Open",
+          (b) => (b.textContent ?? "").trim() === "Resume",
         ) as HTMLButtonElement | undefined
         btn?.click()
       })
@@ -222,6 +237,10 @@ export const learningLoopRevisitSmokeScenario: LiveScenarioDefinition<LearningLo
         vocabularyOpened,
         readingTabOpened,
         openButtonEnabled,
+        pageIdentityVisible: revisitContextVisible.pageIdentityVisible,
+        translatedCountVisible: revisitContextVisible.translatedCountVisible,
+        studyLoopVisible: revisitContextVisible.studyLoopVisible,
+        nextStepVisible: revisitContextVisible.nextStepVisible,
         newTabUrlMatchesFixture,
         consoleErrors,
       }
@@ -229,13 +248,17 @@ export const learningLoopRevisitSmokeScenario: LiveScenarioDefinition<LearningLo
       return {
         status: snapshot.status,
         summary: newTabUrlMatchesFixture
-          ? "Revisit smoke: Open from Reading queue launched fixture URL."
-          : "Revisit smoke: could not confirm new tab navigated to fixture origin.",
+          ? "Revisit smoke: Resume from Reading queue launched fixture URL."
+          : "Revisit smoke: could not confirm resume navigated to fixture origin.",
         notes: [
           `fixtureOrigin=${fixtureServer.origin}`,
           `vocabularyOpened=${vocabularyOpened}`,
           `readingTabOpened=${readingTabOpened}`,
           `openButtonEnabled=${openButtonEnabled}`,
+          `pageIdentityVisible=${revisitContextVisible.pageIdentityVisible}`,
+          `translatedCountVisible=${revisitContextVisible.translatedCountVisible}`,
+          `studyLoopVisible=${revisitContextVisible.studyLoopVisible}`,
+          `nextStepVisible=${revisitContextVisible.nextStepVisible}`,
           `newTabUrlMatchesFixture=${newTabUrlMatchesFixture}`,
           `newTabUrl=${newPage?.url() ?? "none"}`,
           `tabsBefore=${pagesBefore} tabsAfter=${pagesAfter.length}`,
@@ -268,6 +291,10 @@ export const learningLoopRevisitSmokeScenario: LiveScenarioDefinition<LearningLo
             vocabularyOpened: false,
             readingTabOpened: false,
             openButtonEnabled: false,
+            pageIdentityVisible: false,
+            translatedCountVisible: false,
+            studyLoopVisible: false,
+            nextStepVisible: false,
             newTabUrlMatchesFixture: false,
             consoleErrors: [],
           },
@@ -290,6 +317,10 @@ export const learningLoopRevisitSmokeScenario: LiveScenarioDefinition<LearningLo
             vocabularyOpened: false,
             readingTabOpened: false,
             openButtonEnabled: false,
+            pageIdentityVisible: false,
+            translatedCountVisible: false,
+            studyLoopVisible: false,
+            nextStepVisible: false,
             newTabUrlMatchesFixture: false,
             consoleErrors: [],
           },
@@ -309,6 +340,10 @@ export const learningLoopRevisitSmokeScenario: LiveScenarioDefinition<LearningLo
       vocabularyOpened: false,
       readingTabOpened: false,
       openButtonEnabled: false,
+      pageIdentityVisible: false,
+      translatedCountVisible: false,
+      studyLoopVisible: false,
+      nextStepVisible: false,
       newTabUrlMatchesFixture: false,
       consoleErrors: [] as string[],
     }
@@ -325,8 +360,12 @@ export const learningLoopRevisitSmokeScenario: LiveScenarioDefinition<LearningLo
       nextActions.push("Verify VocabularyApp exposes a Reading tab button.")
     }
     if (!revisit.openButtonEnabled) {
-      issues.push("Open button was missing or disabled on the reading queue.")
-      nextActions.push("Check owned-reading sync from reading history and article Open preconditions.")
+      issues.push("Resume button was missing or disabled on the reading queue.")
+      nextActions.push("Check owned-reading sync from reading history and article resume preconditions.")
+    }
+    if (!revisit.pageIdentityVisible || !revisit.translatedCountVisible || !revisit.studyLoopVisible || !revisit.nextStepVisible) {
+      issues.push("Revisit row did not show the expected source/progress summary.")
+      nextActions.push("Verify Vocabulary Reading rows render page identity, translated count, ordered study steps, counts, and the next-step hint.")
     }
     if (!revisit.newTabUrlMatchesFixture) {
       issues.push("New tab did not navigate to the expected fixture origin.")
@@ -336,7 +375,13 @@ export const learningLoopRevisitSmokeScenario: LiveScenarioDefinition<LearningLo
       issues.push(`${revisit.consoleErrors.length} console error(s) captured.`)
     }
 
-    const pass = revisit.openButtonEnabled && revisit.newTabUrlMatchesFixture && revisit.consoleErrors.length === 0
+    const pass = revisit.openButtonEnabled
+      && revisit.pageIdentityVisible
+      && revisit.translatedCountVisible
+      && revisit.studyLoopVisible
+      && revisit.nextStepVisible
+      && revisit.newTabUrlMatchesFixture
+      && revisit.consoleErrors.length === 0
 
     const scenario: LiveScenarioMetadata = {
       id: context.scenario.id,
@@ -354,7 +399,7 @@ export const learningLoopRevisitSmokeScenario: LiveScenarioDefinition<LearningLo
       pass,
       score: pass ? 100 : 0,
       summary: pass
-        ? "Revisit smoke passed: Reading queue Open launches the article URL."
+        ? "Revisit smoke passed: Reading queue Resume launches the article URL."
         : "Revisit smoke failed: reading queue reopen path incomplete.",
       issues,
       nextActions,

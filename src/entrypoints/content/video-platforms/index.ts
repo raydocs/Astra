@@ -9,10 +9,20 @@ import { runInlineAction } from "../inline-actions"
 import { translateTexts } from "@/utils/translate/translate"
 import { readConfig } from "@/utils/storage/config"
 import { resolveSiteTranslationSettings } from "@/types/config"
+import type { VideoNotePlatform, VideoNoteTranscriptCapture } from "@/types/video-notes"
 
 import type { VideoPlatformConfig } from "./types"
-import { startYouTubeHybridSubtitleSession, youtubePlatform } from "./youtube"
-import { bilibiliPlatform } from "./bilibili"
+import {
+  captureYouTubeVideoNoteTranscript,
+  getYouTubeVideoNoteTitle,
+  startYouTubeHybridSubtitleSession,
+  youtubePlatform,
+} from "./youtube"
+import {
+  bilibiliPlatform,
+  captureBilibiliVideoNoteTranscript,
+  getBilibiliVideoNoteTitle,
+} from "./bilibili"
 import { netflixPlatform } from "./netflix"
 import { primevideoPlatform } from "./primevideo"
 import { disneyplusPlatform } from "./disneyplus"
@@ -72,6 +82,54 @@ let activeSessionStop: (() => void) | null = null
 function detectPlatform(): VideoPlatformConfig | null {
   const hostname = window.location.hostname
   return ALL_PLATFORMS.find((p) => p.hostnames.includes(hostname)) ?? null
+}
+
+export interface VideoNoteSourcePayload {
+  sourceUrl: string
+  title: string | null
+  platform: VideoNotePlatform
+  capture: VideoNoteTranscriptCapture | null
+}
+
+function normalizeSourceUrlForVideoNote(): string {
+  const url = new URL(window.location.href)
+  url.hash = ""
+  return url.toString()
+}
+
+export function detectVideoPlatform(): VideoPlatformConfig | null {
+  return detectPlatform()
+}
+
+export async function captureCurrentVideoNoteSource(): Promise<VideoNoteSourcePayload | null> {
+  const platform = detectPlatform()
+  if (!platform || !platform.isVideoPage()) {
+    return null
+  }
+
+  if (platform.id === "youtube") {
+    const rootContainer = document.querySelector(platform.captionContainerSelector)
+    const captureHost = rootContainer instanceof HTMLElement ? rootContainer : document.body
+    const capture = await captureYouTubeVideoNoteTranscript(captureHost)
+
+    return {
+      sourceUrl: normalizeSourceUrlForVideoNote(),
+      title: getYouTubeVideoNoteTitle(),
+      platform: "youtube",
+      capture,
+    }
+  }
+
+  if (platform.id === "bilibili") {
+    return {
+      sourceUrl: normalizeSourceUrlForVideoNote(),
+      title: getBilibiliVideoNoteTitle(),
+      platform: "bilibili",
+      capture: captureBilibiliVideoNoteTranscript(),
+    }
+  }
+
+  return null
 }
 
 async function getTargetLang(): Promise<string> {

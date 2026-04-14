@@ -378,6 +378,31 @@ describe("video platform subtitle translation", () => {
     expect(document.querySelector(".astra-video-subtitle")).toBeNull()
   })
 
+  it("clears stale YouTube timedtext overlays when caption tracks disappear", async () => {
+    setLocation("www.youtube.com", "/watch")
+    const { container } = appendYouTubeFixture("", 0.2)
+    setYouTubePlayerResponse()
+    fetchMock.mockResolvedValue({
+      ok: true,
+      text: async () => timedTextJson([
+        { startMs: 0, durationMs: 900, text: "Hello world" },
+      ]),
+    } as Response)
+
+    await startVideoSubtitleTranslation()
+    await flushPromises(8)
+    expect(document.querySelector(".astra-video-subtitle")?.textContent).toBe("[translated] Hello world")
+
+    clearYouTubePlayerResponse()
+    container.innerHTML = '<div class="ytp-caption-window-bottom"></div>'
+    container.appendChild(document.createElement("span"))
+    await flushPromises(6)
+
+    expect(document.querySelector(".astra-video-subtitle")).toBeNull()
+    expect(container.dataset.astraCaptionAnomalies).toContain("missing-track")
+    expect(container.dataset.astraCaptionStatus).toBe("dom-fallback")
+  })
+
   it("binds the YouTube hybrid pipeline to the video in the same player subtree", async () => {
     setLocation("www.youtube.com", "/watch")
     document.body.innerHTML = `
@@ -659,6 +684,59 @@ describe("video platform subtitle translation", () => {
       text: "你好世界",
       task: "translate",
     }))
+  })
+
+  it("translates Bilibili fallback captions when subtitle text uses alternate nested selectors", async () => {
+    setLocation("www.bilibili.com", "/video/BV1234567")
+    document.body.innerHTML = `
+      <div class="bpx-player-subtitle-wrap">
+        <div class="subtitle-panel-shell">
+          <div class="subtitle-line-row">
+            <span class="astra-bili-subtitle-text">变体字幕</span>
+          </div>
+          <div class="subtitle-line-row">
+            <span class="astra-bili-subtitle-text">变体字幕</span>
+          </div>
+        </div>
+      </div>
+    `
+
+    await startVideoSubtitleTranslation()
+    await flushPromises(4)
+
+    expect(runInlineActionMock).toHaveBeenCalledWith(expect.objectContaining({
+      text: "变体字幕",
+      task: "translate",
+    }))
+    expect(document.querySelector(".bpx-player-subtitle-wrap .astra-video-subtitle")?.textContent).toBe("翻译结果")
+  })
+
+  it("marks Bilibili as dom-fallback when subtitle surfaces are present but empty", async () => {
+    setLocation("www.bilibili.com", "/video/BV1234567")
+    document.body.innerHTML = `
+      <div class="bpx-player-container">
+        <video id="bili-empty-video"></video>
+        <div class="bpx-player-subtitle-wrap">
+          <div class="subtitle-panel-shell">
+            <span class="astra-bili-subtitle-text"> </span>
+          </div>
+        </div>
+      </div>
+    `
+    const video = document.getElementById("bili-empty-video") as HTMLVideoElement
+    Object.defineProperty(video, "currentTime", {
+      configurable: true,
+      writable: true,
+      value: 0.2,
+    })
+    attachTextTracks(video, [])
+
+    await startVideoSubtitleTranslation()
+    await flushPromises(6)
+
+    expect(runInlineActionMock).not.toHaveBeenCalled()
+    expect(document.querySelector(".bpx-player-subtitle-wrap .astra-video-subtitle")).toBeNull()
+    expect(document.querySelector(".bpx-player-subtitle-wrap")?.getAttribute("data-astra-caption-status")).toBe("dom-fallback")
   })
 
   it("translates Netflix timedtext containers", async () => {

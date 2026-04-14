@@ -60,7 +60,7 @@ function stripUrlSensitiveComponents(url: string): string {
     const parsed = new URL(url)
     return `${parsed.origin}${parsed.pathname}`
   } catch {
-    return url
+    return url.split(/[?#]/, 1)[0] ?? url
   }
 }
 
@@ -76,4 +76,18 @@ export function sanitizeTranslationContext(
     ...(context.pageUrl ? { pageUrl: stripUrlSensitiveComponents(context.pageUrl) } : {}),
     // Strip: pageTitle, metaDescription, contentSummary, selectionContext
   }
+}
+
+/**
+ * Authoritative transport-boundary privacy enforcement for translation requests.
+ *
+ * Caller surfaces may still pre-sanitize earlier for local UI behavior, but the
+ * background transport boundary must not rely on caller discipline alone.
+ */
+export function sanitizeTranslationContextForTransport(
+  context: TranslationRequestContext | undefined,
+  privacyMode: boolean,
+): TranslationRequestContext | undefined {
+  if (!context) return undefined
+  return privacyMode ? sanitizeTranslationContext(context) : context
 }

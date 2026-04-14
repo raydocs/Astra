@@ -23,6 +23,12 @@ describe("message response guards", () => {
       type: "runtime/translate-batch:success",
       payload: {
         translations: ["你好"],
+        metadata: {
+          route: "direct",
+          attemptedTransports: ["direct"],
+          finalTransport: "direct",
+          fallbackUsed: false,
+        },
       },
     }
 

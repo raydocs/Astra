@@ -25,6 +25,7 @@ export const StudyPageProgressSchema = z.object({
   completedSteps: z.array(StudyStepSchema),
   sentencesExplained: z.number().int().nonnegative().default(0),
   vocabSaved: z.number().int().nonnegative().default(0),
+  vocabReviewed: z.number().int().nonnegative().default(0),
   startedAt: z.number(),
   lastActivityAt: z.number(),
 })
@@ -93,6 +94,7 @@ function mergeStudyPageProgress(
     ],
     sentencesExplained: Math.max(existing.sentencesExplained, incoming.sentencesExplained),
     vocabSaved: Math.max(existing.vocabSaved, incoming.vocabSaved),
+    vocabReviewed: Math.max(existing.vocabReviewed, incoming.vocabReviewed),
     startedAt: Math.min(existing.startedAt, incoming.startedAt),
     lastActivityAt: Math.max(existing.lastActivityAt, incoming.lastActivityAt),
   })

@@ -168,6 +168,7 @@ describe("provider router", () => {
         attemptedTransports: ["direct", "relay"],
         finalTransport: "relay",
         fallbackUsed: true,
+        route: "fallback",
       },
     })
   })
@@ -243,6 +244,7 @@ describe("provider router", () => {
         attemptedTransports: ["direct"],
         finalTransport: null,
         fallbackUsed: false,
+        route: "direct",
       },
     })
     expect(translateWithRelayMock).not.toHaveBeenCalled()
@@ -272,6 +274,7 @@ describe("provider router", () => {
         attemptedTransports: ["direct", "relay"],
         finalTransport: "relay",
         fallbackUsed: true,
+        route: "fallback",
       },
     })
   })
@@ -307,6 +310,7 @@ describe("provider router", () => {
         attemptedTransports: ["direct"],
         finalTransport: null,
         fallbackUsed: false,
+        route: "direct",
       },
     })
 
@@ -337,6 +341,7 @@ describe("provider router", () => {
         attemptedTransports: ["direct", "relay"],
         finalTransport: "relay",
         fallbackUsed: true,
+        route: "fallback",
       },
     })
   })
@@ -365,6 +370,7 @@ describe("provider router", () => {
         attemptedTransports: ["direct"],
         finalTransport: null,
         fallbackUsed: false,
+        route: "direct",
       },
     })
     expect(translateWithRelayMock).not.toHaveBeenCalled()
@@ -427,6 +433,7 @@ describe("provider router", () => {
       attemptedTransports: ["direct", "relay"],
       finalTransport: "relay",
       fallbackUsed: true,
+      route: "fallback",
     })
   })
 

@@ -65,6 +65,7 @@ const SyncedStudyProgressEntrySchema = z.object({
   completedSteps: z.array(StudyStepSchema).default([]),
   sentencesExplained: z.number().int().nonnegative(),
   vocabSaved: z.number().int().nonnegative(),
+  vocabReviewed: z.number().int().nonnegative().default(0),
   startedAt: z.number().int().nonnegative(),
   lastActivityAt: z.number().int().nonnegative(),
 }).strict()

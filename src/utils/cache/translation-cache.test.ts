@@ -80,7 +80,7 @@ describe("translation-cache", () => {
       })).toBeNull()
       expect(await getCachedTranslation("Hello", "zh-CN", {
         ...openAiNanoContext,
-        requestContextKey: JSON.stringify({ terminologyGlossary: "Astra=阿斯特拉" }),
+        requestContextKey: JSON.stringify({ terminologyGlossary: "Astra => 阿斯特拉" }),
       })).toBeNull()
     })
   })

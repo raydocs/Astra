@@ -12,6 +12,10 @@ import type {
   AstraSession,
   AstraUsageSnapshot,
 } from "@/types/auth"
+import {
+  formatAstraPlanLabel,
+  formatAstraSubscriptionStatusLabel,
+} from "@/utils/astra/account-surface"
 import { summarizeConfigContinuity, type AstraConfig } from "@/types/config"
 import type { PdfPage } from "@/entrypoints/pdf-reader/pdf-extractor"
 import {
@@ -32,6 +36,7 @@ import {
   createWebCloudDataDelete,
   createWebContinuityExport,
   createWebSession,
+  createWebVideoNoteJob,
   repairWebCloudSync,
   downloadWebContinuityExport,
   ensureWebDeviceIdentity,
@@ -40,6 +45,8 @@ import {
   fetchWebCloudAssets,
   fetchWebContinuityExportJob,
   fetchWebImportQueueObservability,
+  fetchWebVideoNoteArtifact,
+  fetchWebVideoNoteJob,
   mergeWebConfig,
   normalizeApiBaseUrl,
   openBillingCheckout,
@@ -65,6 +72,7 @@ import {
   type WebDeviceEntry,
   type WebImportQueueObservability,
   type WebSyncRepairResult,
+  type WebVideoNoteArtifact,
 } from "./lib/astra-web"
 import { importReadableArticleFromUrl } from "./lib/article-import"
 import {
@@ -74,6 +82,7 @@ import {
   clearRecentImports,
   clearSubtitleWorkspace,
   clearTextWorkspaceDraft,
+  clearVideoNoteWorkspace,
   inspectWorkspaceStorageHealth,
   readArticleWorkspace,
   readEpubWorkspace,
@@ -83,6 +92,7 @@ import {
   readRecentImports,
   readSubtitleWorkspace,
   readTextWorkspaceDraft,
+  readVideoNoteWorkspace,
   saveArticleWorkspace,
   saveEpubWorkspace,
   removeRecentImport,
@@ -91,6 +101,7 @@ import {
   saveRecentImport,
   saveSubtitleWorkspace,
   saveTextWorkspaceDraft,
+  saveVideoNoteWorkspace,
   resetWorkspaceStorageLifecycle,
   repairWorkspaceStorageCorruption,
   type WorkspaceStorageHealthSnapshot,
@@ -102,9 +113,10 @@ import {
   type PdfWorkspaceSnapshot,
   type RecentWebImport,
   type SubtitleWorkspaceSnapshot,
+  type VideoNoteWorkspaceSnapshot,
 } from "./lib/workspace-store"
 
-type AppRoute = "/" | "/text" | "/articles" | "/files/pdf" | "/files/epub" | "/files/subtitles" | "/assets" | "/account"
+type AppRoute = "/" | "/text" | "/articles" | "/files/pdf" | "/files/epub" | "/files/subtitles" | "/video-notes" | "/assets" | "/account"
 type AuthState = "idle" | "refreshing" | "signing-in" | "signing-out"
 
 const CONTINUITY_EXPORT_COLLECTION_OPTIONS: AstraContinuityExportCollection[] = [
@@ -176,6 +188,7 @@ const NAV_ITEMS: NavigationItem[] = [
   { route: "/files/pdf", label: "PDF", detail: "reader + resume" },
   { route: "/files/epub", label: "EPUB", detail: "chapter reader" },
   { route: "/files/subtitles", label: "Subtitle & docs", detail: "translate + export" },
+  { route: "/video-notes", label: "Video notes", detail: "job + artifact viewer" },
   { route: "/assets", label: "Assets", detail: "library + details" },
   { route: "/account", label: "Account", detail: "session / usage / billing" },
 ]
@@ -207,9 +220,24 @@ async function loadEpubModule() {
   return import("epubjs")
 }
 
-function readRouteFromHash(): AppRoute {
+function parseHashLocation(): { route: AppRoute; searchParams: URLSearchParams } {
   const raw = window.location.hash.replace(/^#/, "") || "/"
-  return isRoute(raw) ? raw : "/"
+  const [rawRoute, rawQuery = ""] = raw.split("?", 2)
+  const route = isRoute(rawRoute) ? rawRoute : "/"
+  return {
+    route,
+    searchParams: new URLSearchParams(rawQuery),
+  }
+}
+
+function readRouteFromHash(): AppRoute {
+  return parseHashLocation().route
+}
+
+function readVideoNoteJobIdFromHash(): string {
+  const location = parseHashLocation()
+  if (location.route !== "/video-notes") return ""
+  return location.searchParams.get("jobId")?.trim() ?? ""
 }
 
 function navigate(route: AppRoute) {
@@ -275,6 +303,77 @@ function downloadBlobFile(fileName: string, blob: Blob) {
 
 function downloadTextFile(fileName: string, content: string) {
   downloadBlobFile(fileName, new Blob([content], { type: "text/plain;charset=utf-8" }))
+}
+
+function readLifecycleErrorMessage(reason: unknown, fallback: string): string {
+  if (reason instanceof Error && reason.message.trim()) {
+    return reason.message.trim()
+  }
+  return fallback
+}
+
+function formatLifecycleActionError(
+  action: "export_create" | "export_refresh" | "export_download" | "delete_create" | "delete_refresh" | "repair" | "revoke",
+  reason: unknown,
+): string {
+  const message = readLifecycleErrorMessage(reason, "Unexpected lifecycle failure.")
+
+  switch (action) {
+    case "export_create":
+      return `Continuity export failed. ${message} Refresh status once; if no queued job appears, create a fresh export.`
+    case "export_refresh":
+      return `Continuity export status refresh failed. ${message} Treat the export as pending until a refresh or a new export proves otherwise.`
+    case "export_download":
+      return `Continuity export download failed. ${message} If the artifact is expired or not ready, refresh status and create a new export if needed.`
+    case "delete_create":
+      return `Cloud delete scheduling failed. ${message} Destructive deletes stay scheduled until the grace window expires, so confirm the selected collections and retry.`
+    case "delete_refresh":
+      return `Cloud delete status refresh failed. ${message} Treat the delete as pending until the Worker reports completed, failed, or canceled.`
+    case "repair":
+      return `Cloud sync repair failed. ${message} Refresh the cloud snapshot first; if the failure persists after auth or cursor recovery, escalate.`
+    case "revoke":
+      return `Device revoke failed. ${message} Refresh the device list once before retrying; if the target already disappeared, trust the refreshed state.`
+    default:
+      return message
+  }
+}
+
+function describeContinuityExportJob(job: WebContinuityExportJob): string {
+  switch (job.status) {
+    case "queued":
+      return "Queued in the lifecycle worker. Wait for polling or refresh status before treating the export as missing."
+    case "running":
+      return "The export bundle is building now. Leave the job in place until it either completes or fails."
+    case "completed":
+      return job.expiresAt
+        ? `Ready to download until ${formatRelativeDate(job.expiresAt)}.`
+        : "Ready to download now."
+    case "failed":
+      return `Export failed${job.error?.code ? ` (${job.error.code})` : ""}. Refresh once, then create a new export if the failure is persistent.`
+    case "expired":
+      return "The export artifact expired. Create a fresh export before promising that a download still exists."
+    default:
+      return "No export lifecycle state available yet."
+  }
+}
+
+function describeCloudDeleteJob(job: WebCloudDataDeleteJob): string {
+  switch (job.status) {
+    case "scheduled":
+      return `Deletion is scheduled for ${formatRelativeDate(job.scheduledForAt)}. Do not describe this as already deleted.`
+    case "queued":
+      return "The grace window elapsed and the delete job is queued. Wait for completion before claiming cloud data is removed."
+    case "running":
+      return "Deletion is running now. Wait for completed status and deleted-record counts before closing the incident."
+    case "completed":
+      return "Delete mutations were appended. Clients still need normal sync pull to observe the removal."
+    case "failed":
+      return `Delete failed${job.error?.code ? ` (${job.error.code})` : ""}. Keep the data treated as present until a later completed job proves removal.`
+    case "canceled":
+      return "Deletion was canceled during the grace window. No removal should be claimed from this job."
+    default:
+      return "No cloud delete lifecycle state available yet."
+  }
 }
 
 function flattenNavItems(items: NavItem[], depth = 0): EpubChapterItem[] {
@@ -524,6 +623,7 @@ function useInstallPrompt() {
 
 export function AstraWebApp() {
   const [route, setRoute] = useState<AppRoute>(() => readRouteFromHash())
+  const [videoNoteDeepLinkedJobId, setVideoNoteDeepLinkedJobId] = useState<string>(() => readVideoNoteJobIdFromHash())
   const [apiBaseUrl, setApiBaseUrl] = useState(() => readApiBaseUrl())
   const [device] = useState<AstraDeviceIdentity>(() => ensureWebDeviceIdentity())
   const [config, setConfig] = useState<AstraConfig>(() => readWebConfig())
@@ -554,7 +654,10 @@ export function AstraWebApp() {
   const installPrompt = useInstallPrompt()
 
   useEffect(() => {
-    const onHashChange = () => setRoute(readRouteFromHash())
+    const onHashChange = () => {
+      setRoute(readRouteFromHash())
+      setVideoNoteDeepLinkedJobId(readVideoNoteJobIdFromHash())
+    }
     window.addEventListener("hashchange", onHashChange)
     return () => window.removeEventListener("hashchange", onHashChange)
   }, [])
@@ -896,7 +999,7 @@ export function AstraWebApp() {
       const revokedLabel = nextDevices.find((entry) => entry.deviceId === targetDeviceId)?.label ?? "Device"
       setMessage(`Revoked ${revokedLabel}.`)
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : "Device revoke failed.")
+      setMessage(formatLifecycleActionError("revoke", error))
     } finally {
       setDeviceActionBusyId(null)
     }
@@ -1092,6 +1195,14 @@ export function AstraWebApp() {
               />
             )}
 
+            {route === "/video-notes" && (
+              <VideoNoteWorkspacePage
+                session={session}
+                deepLinkedJobId={videoNoteDeepLinkedJobId}
+                onNavigate={saveRoute}
+              />
+            )}
+
             {route === "/account" && (
               <AccountPage
                 apiBaseUrl={apiBaseUrl}
@@ -1217,6 +1328,11 @@ function OverviewPage(props: {
       route: "/files/subtitles" as const,
     },
     {
+      title: "Video-note jobs",
+      detail: "Create relay jobs, poll status, and open cached video-note artifacts.",
+      route: "/video-notes" as const,
+    },
+    {
       title: "Asset details",
       detail: "Inspect local and cloud assets, per-item detail views, and import queue operations from one place.",
       route: "/assets" as const,
@@ -1258,7 +1374,7 @@ function OverviewPage(props: {
           />
           <MetricCard
             label="Plan"
-            value={props.account?.plan ?? "—"}
+            value={formatAstraPlanLabel(props.account?.plan ?? props.session?.plan ?? null)}
             hint={props.account?.providerEntitlements.join(", ") ?? "No provider entitlements loaded"}
           />
           <MetricCard
@@ -1269,12 +1385,12 @@ function OverviewPage(props: {
           <MetricCard
             label="Remaining daily requests"
             value={formatNumber(props.usage?.quota.remainingDailyRequests)}
-            hint={`${formatNumber(props.usage?.usage.dailyRequestsUsed)} used today`}
+            hint={`${formatNumber(props.usage?.usage.dailyRequestsUsed)} used today · Astra account summary`}
           />
           <MetricCard
             label="Last workspace refresh"
             value={props.lastWorkspaceRefreshAt ? formatRelativeDate(props.lastWorkspaceRefreshAt) : "—"}
-            hint="account, usage, and device data"
+            hint="account summary, devices, and sync state"
           />
         </div>
       </section>
@@ -1673,6 +1789,399 @@ function TextWorkspacePage(props: {
         </div>
       </section>
     </>
+  )
+}
+
+function VideoNoteWorkspacePage(props: {
+  session: AstraSession | null
+  deepLinkedJobId: string
+  onNavigate: (route: AppRoute) => void
+}) {
+  const [sourceUrl, setSourceUrl] = useState("")
+  const [jobId, setJobId] = useState("")
+  const [workspace, setWorkspace] = useState<VideoNoteWorkspaceSnapshot | null>(null)
+  const [restoreState, setRestoreState] = useState<"loading" | "ready">("loading")
+  const [busyAction, setBusyAction] = useState<"create" | "status" | "artifact" | null>(null)
+  const [notice, setNotice] = useState("")
+  const [error, setError] = useState("")
+  const deepLinkAutoloadedJobIdRef = useRef<string | null>(null)
+
+  useEffect(() => {
+    let cancelled = false
+
+    void readVideoNoteWorkspace()
+      .then((saved) => {
+        if (!saved || cancelled) return
+        setWorkspace(saved)
+        setSourceUrl(saved.sourceUrl)
+        setJobId(saved.jobId)
+      })
+      .finally(() => {
+        if (!cancelled) {
+          setRestoreState("ready")
+        }
+      })
+
+    return () => {
+      cancelled = true
+    }
+  }, [])
+
+  useEffect(() => {
+    if (!workspace) return
+    void saveVideoNoteWorkspace(workspace)
+  }, [workspace])
+
+  useEffect(() => {
+    const trimmedDeepLinkedJobId = props.deepLinkedJobId.trim()
+    if (!trimmedDeepLinkedJobId) return
+    setJobId(trimmedDeepLinkedJobId)
+  }, [props.deepLinkedJobId])
+
+  const applyJobStatus = useCallback((nextJob: {
+    jobId: string
+    sourceUrl: string
+    platform: VideoNoteWorkspaceSnapshot["platform"]
+    title: string | null
+    status: VideoNoteWorkspaceSnapshot["status"]
+    artifactId: string | null
+    updatedAt: string
+  }) => {
+    setWorkspace((current) => ({
+      jobId: nextJob.jobId,
+      artifactId: nextJob.artifactId,
+      sourceUrl: nextJob.sourceUrl,
+      platform: nextJob.platform,
+      title: nextJob.title,
+      status: nextJob.status,
+      markdown: current?.jobId === nextJob.jobId ? current.markdown : "",
+      transcriptSegments: current?.jobId === nextJob.jobId ? current.transcriptSegments : [],
+      keyMoments: current?.jobId === nextJob.jobId ? current.keyMoments : [],
+      screenshots: current?.jobId === nextJob.jobId ? current.screenshots : [],
+      generatedAt: current?.jobId === nextJob.jobId ? current.generatedAt : nextJob.updatedAt,
+      updatedAt: nextJob.updatedAt,
+      lastViewedAt: new Date().toISOString(),
+    }))
+  }, [])
+
+  const applyArtifact = useCallback((artifact: WebVideoNoteArtifact) => {
+    const keyMoments = artifact.transcriptSegments.slice(0, 8).map((segment) => ({
+      label: segment.text.length > 72 ? `${segment.text.slice(0, 69)}…` : segment.text,
+      startMs: segment.startMs,
+    }))
+
+    setWorkspace((current) => ({
+      jobId: artifact.jobId,
+      artifactId: artifact.id,
+      sourceUrl: artifact.sourceUrl,
+      platform: artifact.platform,
+      title: artifact.title,
+      status: current?.jobId === artifact.jobId ? current.status : "completed",
+      markdown: artifact.markdown,
+      transcriptSegments: artifact.transcriptSegments,
+      keyMoments,
+      screenshots: current?.jobId === artifact.jobId ? current.screenshots : [],
+      generatedAt: artifact.generatedAt,
+      updatedAt: artifact.updatedAt,
+      lastViewedAt: new Date().toISOString(),
+    }))
+  }, [])
+
+  const requireSession = useCallback((): AstraSession | null => {
+    if (props.session) return props.session
+    props.onNavigate("/account")
+    return null
+  }, [props.onNavigate, props.session])
+
+  const handleCreate = useCallback(async () => {
+    const session = requireSession()
+    if (!session) return
+
+    const trimmedSourceUrl = sourceUrl.trim()
+    if (!trimmedSourceUrl) {
+      setError("Enter a video URL first.")
+      return
+    }
+
+    setBusyAction("create")
+    setError("")
+    setNotice("")
+
+    try {
+      const created = await createWebVideoNoteJob({
+        session,
+        request: {
+          sourceUrl: trimmedSourceUrl,
+          sourceTitle: null,
+          forceRegenerate: false,
+          capture: null,
+        },
+      })
+      setJobId(created.job.jobId)
+      applyJobStatus({
+        jobId: created.job.jobId,
+        sourceUrl: created.job.sourceUrl,
+        platform: created.job.platform,
+        title: created.job.title,
+        status: created.job.status,
+        artifactId: created.job.artifactId,
+        updatedAt: created.job.updatedAt,
+      })
+      setNotice(created.deduped ? "Reused an existing video-note job for this URL." : "Video-note job created.")
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : "Video-note job creation failed.")
+    } finally {
+      setBusyAction(null)
+    }
+  }, [applyJobStatus, requireSession, sourceUrl])
+
+  const handleFetchStatus = useCallback(async () => {
+    const session = requireSession()
+    if (!session) return
+
+    const trimmedJobId = jobId.trim()
+    if (!trimmedJobId) {
+      setError("Enter a video-note job id.")
+      return
+    }
+
+    setBusyAction("status")
+    setError("")
+    setNotice("")
+
+    try {
+      const status = await fetchWebVideoNoteJob({
+        session,
+        jobId: trimmedJobId,
+      })
+      applyJobStatus({
+        jobId: status.job.jobId,
+        sourceUrl: status.job.sourceUrl,
+        platform: status.job.platform,
+        title: status.job.title,
+        status: status.job.status,
+        artifactId: status.job.artifactId,
+        updatedAt: status.job.updatedAt,
+      })
+      setNotice(`Job status: ${status.job.status}`)
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : "Video-note status fetch failed.")
+    } finally {
+      setBusyAction(null)
+    }
+  }, [applyJobStatus, jobId, requireSession])
+
+  const handleFetchArtifact = useCallback(async () => {
+    const session = requireSession()
+    if (!session) return
+
+    const trimmedJobId = jobId.trim()
+    if (!trimmedJobId) {
+      setError("Enter a video-note job id.")
+      return
+    }
+
+    setBusyAction("artifact")
+    setError("")
+    setNotice("")
+
+    try {
+      const artifact = await fetchWebVideoNoteArtifact({
+        session,
+        jobId: trimmedJobId,
+      })
+      applyArtifact(artifact)
+      setNotice("Video-note artifact loaded and cached locally.")
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : "Video-note artifact fetch failed.")
+    } finally {
+      setBusyAction(null)
+    }
+  }, [applyArtifact, jobId, requireSession])
+
+  useEffect(() => {
+    const trimmedDeepLinkedJobId = props.deepLinkedJobId.trim()
+    const session = props.session
+    if (!trimmedDeepLinkedJobId || !session) return
+    if (deepLinkAutoloadedJobIdRef.current === trimmedDeepLinkedJobId) return
+
+    deepLinkAutoloadedJobIdRef.current = trimmedDeepLinkedJobId
+    setJobId(trimmedDeepLinkedJobId)
+    setBusyAction("status")
+    setError("")
+    setNotice("")
+
+    let cancelled = false
+
+    void (async () => {
+      try {
+        const status = await fetchWebVideoNoteJob({
+          session,
+          jobId: trimmedDeepLinkedJobId,
+        })
+        if (cancelled) return
+
+        applyJobStatus({
+          jobId: status.job.jobId,
+          sourceUrl: status.job.sourceUrl,
+          platform: status.job.platform,
+          title: status.job.title,
+          status: status.job.status,
+          artifactId: status.job.artifactId,
+          updatedAt: status.job.updatedAt,
+        })
+
+        try {
+          const artifact = await fetchWebVideoNoteArtifact({
+            session,
+            jobId: trimmedDeepLinkedJobId,
+          })
+          if (cancelled) return
+          applyArtifact(artifact)
+          setNotice("Deep-linked video-note artifact loaded and cached locally.")
+        } catch {
+          if (cancelled) return
+          setNotice(`Deep-linked job status: ${status.job.status}`)
+        }
+      } catch (reason) {
+        if (cancelled) return
+        setError(reason instanceof Error ? reason.message : "Deep-linked video-note load failed.")
+      } finally {
+        if (!cancelled) {
+          setBusyAction(null)
+        }
+      }
+    })()
+
+    return () => {
+      cancelled = true
+    }
+  }, [applyArtifact, applyJobStatus, props.deepLinkedJobId, props.session])
+
+  const clearSaved = useCallback(() => {
+    setWorkspace(null)
+    setNotice("")
+    setError("")
+    setSourceUrl("")
+    setJobId("")
+    deepLinkAutoloadedJobIdRef.current = null
+    void clearVideoNoteWorkspace()
+  }, [])
+
+  return (
+    <section className="card">
+      <div className="section-heading">
+        <div>
+          <div className="card-title">Video-note workspace</div>
+          <div className="card-copy">Thin MVP for relay-backed video-note jobs: submit URL, poll status, fetch artifact, and cache note content locally.</div>
+        </div>
+        <span className="status-pill">{workspace ? `cached · ${workspace.status}` : restoreState === "loading" ? "checking cache…" : "no cached note"}</span>
+      </div>
+
+      {!props.session && (
+        <InlineGate
+          title="Sign in to use relay video-note jobs"
+          copy="Video-note jobs and artifacts are authenticated relay resources."
+          actionLabel="Open account workspace"
+          onAction={() => props.onNavigate("/account")}
+        />
+      )}
+
+      <label className="field">
+        <span>Video URL</span>
+        <div className="field-inline">
+          <input
+            value={sourceUrl}
+            onChange={(event) => setSourceUrl(event.target.value)}
+            placeholder="https://www.youtube.com/watch?v=..."
+          />
+          <button type="button" className="button primary" onClick={() => void handleCreate()} disabled={busyAction !== null}>
+            {busyAction === "create" ? "Creating…" : "Create job"}
+          </button>
+        </div>
+      </label>
+
+      <label className="field">
+        <span>Job ID</span>
+        <div className="field-inline">
+          <input
+            value={jobId}
+            onChange={(event) => setJobId(event.target.value)}
+            placeholder="Paste an existing job id"
+          />
+          <button type="button" className="button secondary" onClick={() => void handleFetchStatus()} disabled={busyAction !== null}>
+            {busyAction === "status" ? "Loading…" : "Fetch status"}
+          </button>
+          <button type="button" className="button secondary" onClick={() => void handleFetchArtifact()} disabled={busyAction !== null}>
+            {busyAction === "artifact" ? "Loading…" : "Fetch artifact"}
+          </button>
+        </div>
+      </label>
+
+      {notice && <div className="card subtle inline-card">{notice}</div>}
+      {error && <div className="error-note">{error}</div>}
+
+      {workspace && (
+        <>
+          <div className="row gap wrap" style={{ marginTop: "0.75rem" }}>
+            <span className="status-pill">Status: {workspace.status}</span>
+            <span className="status-pill">Platform: {workspace.platform}</span>
+            {workspace.artifactId && <span className="status-pill success">Artifact ready</span>}
+            <button type="button" className="button ghost" onClick={() => window.open(workspace.sourceUrl, "_blank", "noopener,noreferrer")}>
+              Open source
+            </button>
+            <button type="button" className="button ghost" onClick={clearSaved}>
+              Clear cached note
+            </button>
+          </div>
+
+          <div className="grid cards-3 compact" style={{ marginTop: "0.75rem" }}>
+            <MetricCard label="Job" value={workspace.jobId} hint={workspace.title ?? "Untitled video"} />
+            <MetricCard label="Segments" value={formatNumber(workspace.transcriptSegments.length)} hint={`Updated ${formatRelativeDate(workspace.updatedAt)}`} />
+            <MetricCard label="Key moments" value={formatNumber(workspace.keyMoments.length)} hint={workspace.artifactId ? "Artifact cached" : "Waiting for artifact"} />
+          </div>
+
+          <div className="reader-shell" style={{ marginTop: "0.75rem" }}>
+            <aside className="reader-sidebar">
+              <div className="reader-sidebar-title">Transcript preview</div>
+              <div className="stack list">
+                {workspace.transcriptSegments.length === 0 && (
+                  <div className="preview-block">No transcript segments cached yet.</div>
+                )}
+                {workspace.transcriptSegments.slice(0, 24).map((segment, index) => (
+                  <a
+                    key={`${segment.startMs}-${segment.endMs}-${index}`}
+                    className="preview-block"
+                    href={workspace.sourceUrl}
+                    target="_blank"
+                    rel="noreferrer"
+                  >
+                    <strong>{formatDurationMs(segment.startMs)}</strong>
+                    {"\n"}
+                    {segment.text}
+                  </a>
+                ))}
+              </div>
+            </aside>
+
+            <div className="reader-content">
+              <div className="reader-content-header">
+                <div>
+                  <div className="card-title">Rendered note content</div>
+                  <div className="card-copy">Latest cached markdown artifact from relay.</div>
+                </div>
+              </div>
+
+              <div className="reader-body stack list">
+                <pre className="preview-block" style={{ whiteSpace: "pre-wrap" }}>
+                  {workspace.markdown.trim() || "No markdown cached yet. Fetch an artifact for this job."}
+                </pre>
+              </div>
+            </div>
+          </div>
+        </>
+      )}
+    </section>
   )
 }
 
@@ -2800,7 +3309,7 @@ function AccountPage(props: {
       }).then((job) => {
         setContinuityExportJob(job)
       }).catch((reason) => {
-        setLifecycleError(reason instanceof Error ? reason.message : "Continuity export status refresh failed.")
+        setLifecycleError(formatLifecycleActionError("export_refresh", reason))
       })
     }, 2500)
     return () => window.clearTimeout(timeoutId)
@@ -2817,7 +3326,7 @@ function AccountPage(props: {
       }).then((job) => {
         setCloudDeleteJob(job)
       }).catch((reason) => {
-        setLifecycleError(reason instanceof Error ? reason.message : "Cloud delete status refresh failed.")
+        setLifecycleError(formatLifecycleActionError("delete_refresh", reason))
       })
     }, 3000)
     return () => window.clearTimeout(timeoutId)
@@ -2884,7 +3393,7 @@ function AccountPage(props: {
       setContinuityExportJob(job)
       setLifecycleNotice("Continuity export queued. The control-plane will poll until the bundle is ready.")
     } catch (reason) {
-      setLifecycleError(reason instanceof Error ? reason.message : "Continuity export failed.")
+      setLifecycleError(formatLifecycleActionError("export_create", reason))
     } finally {
       setExportBusy(false)
     }
@@ -2903,7 +3412,7 @@ function AccountPage(props: {
       downloadBlobFile(`astra-continuity-export-${continuityExportJob.jobId}.json`, blob)
       setLifecycleNotice("Downloaded the continuity export bundle.")
     } catch (reason) {
-      setLifecycleError(reason instanceof Error ? reason.message : "Continuity export download failed.")
+      setLifecycleError(formatLifecycleActionError("export_download", reason))
     } finally {
       setDownloadBusy(false)
     }
@@ -2938,7 +3447,7 @@ function AccountPage(props: {
       setCloudDeleteJob(job)
       setLifecycleNotice("Cloud delete scheduled. The Worker will enqueue deletion when the grace period expires.")
     } catch (reason) {
-      setLifecycleError(reason instanceof Error ? reason.message : "Cloud delete scheduling failed.")
+      setLifecycleError(formatLifecycleActionError("delete_create", reason))
     } finally {
       setDeleteBusy(false)
     }
@@ -2960,7 +3469,7 @@ function AccountPage(props: {
       const repairedRecordCount = repairedCollections.reduce((sum, collection) => sum + collection.records.length, 0)
       setLifecycleNotice(`Cloud sync repair refreshed ${formatNumber(repairedRecordCount)} materialized records across ${formatNumber(repairedCollections.length)} collections.`)
     } catch (reason) {
-      setLifecycleError(reason instanceof Error ? reason.message : "Cloud sync repair failed.")
+      setLifecycleError(formatLifecycleActionError("repair", reason))
     } finally {
       setRepairBusy(false)
     }
@@ -3034,7 +3543,11 @@ function AccountPage(props: {
         ) : (
           <div className="grid cards-3 compact">
             <MetricCard label="Email" value={props.account?.email ?? props.session.email} hint="current Astra account" />
-            <MetricCard label="Plan" value={props.account?.plan ?? props.session.plan} hint={props.account?.subscriptionStatus ?? props.session.subscriptionStatus} />
+            <MetricCard
+              label="Plan"
+              value={formatAstraPlanLabel(props.account?.plan ?? props.session.plan)}
+              hint={formatAstraSubscriptionStatusLabel(props.account?.subscriptionStatus ?? props.session.subscriptionStatus)}
+            />
             <MetricCard label="Relay" value={props.session.relayBaseURL} hint={`Last refresh ${formatRelativeDate(props.lastWorkspaceRefreshAt)}`} />
           </div>
         )}
@@ -3047,11 +3560,14 @@ function AccountPage(props: {
               <div className="section-heading">
                 <div>
                   <div className="card-title">Quota and recent usage</div>
-                  <div className="card-copy">Server-backed session metrics for the current signed-in device.</div>
+                  <div className="card-copy">Server-backed account summary for the current signed-in device.</div>
                 </div>
                 <button type="button" className="button ghost" onClick={() => void props.onRefresh()} disabled={props.authState !== "idle"}>
                   Refresh now
                 </button>
+              </div>
+              <div className="helper-copy" style={{ marginBottom: "1rem" }}>
+                Plan, status, and quota prefer <code>/v1/account/summary</code>. Legacy <code>/v1/account</code> and <code>/v1/account/usage</code> reads only backfill rollout fallback.
               </div>
               <div className="metrics-grid">
                 <MetricCard
@@ -3505,6 +4021,15 @@ function AccountPage(props: {
                       <MetricCard label="Collections" value={formatNumber(continuityExportJob.scope.collections.length)} hint={continuityExportJob.scope.collections.join(", ").replace(/_/g, " ")} />
                     </div>
 
+                    <div className="helper-copy" style={{ marginTop: "1rem" }}>
+                      {describeContinuityExportJob(continuityExportJob)}
+                    </div>
+                    {continuityExportJob.error && (
+                      <div className="error-note" style={{ marginTop: "0.75rem" }}>
+                        {continuityExportJob.error.code}: {continuityExportJob.error.message}
+                      </div>
+                    )}
+
                     <div className="row gap wrap" style={{ marginTop: "1rem" }}>
                       <button
                         type="button"
@@ -3555,11 +4080,21 @@ function AccountPage(props: {
                 </div>
 
                 {cloudDeleteJob ? (
-                  <div className="grid cards-3 compact" style={{ marginTop: "1rem" }}>
-                    <MetricCard label="Status" value={cloudDeleteJob.status} hint={`Requested ${formatRelativeDate(cloudDeleteJob.requestedAt)}`} />
-                    <MetricCard label="Scheduled" value={formatRelativeDate(cloudDeleteJob.scheduledForAt)} hint={`${formatNumber(cloudDeleteJob.scope.collections.length)} collections`} />
-                    <MetricCard label="Deleted records" value={formatNumber(Object.values(cloudDeleteJob.deletedRecords).reduce((sum, count) => sum + count, 0))} hint="delete mutations appended" />
-                  </div>
+                  <>
+                    <div className="grid cards-3 compact" style={{ marginTop: "1rem" }}>
+                      <MetricCard label="Status" value={cloudDeleteJob.status} hint={`Requested ${formatRelativeDate(cloudDeleteJob.requestedAt)}`} />
+                      <MetricCard label="Scheduled" value={formatRelativeDate(cloudDeleteJob.scheduledForAt)} hint={`${formatNumber(cloudDeleteJob.scope.collections.length)} collections`} />
+                      <MetricCard label="Deleted records" value={formatNumber(Object.values(cloudDeleteJob.deletedRecords).reduce((sum, count) => sum + count, 0))} hint="delete mutations appended" />
+                    </div>
+                    <div className="helper-copy" style={{ marginTop: "1rem" }}>
+                      {describeCloudDeleteJob(cloudDeleteJob)}
+                    </div>
+                    {cloudDeleteJob.error && (
+                      <div className="error-note" style={{ marginTop: "0.75rem" }}>
+                        {cloudDeleteJob.error.code}: {cloudDeleteJob.error.message}
+                      </div>
+                    )}
+                  </>
                 ) : (
                   <div className="helper-copy" style={{ marginTop: "1rem" }}>No cloud delete job scheduled yet.</div>
                 )}
@@ -3583,6 +4118,7 @@ function AccountPage(props: {
 
                 <div className="helper-copy">Bridge-first/Web-PWA-first recovery surface for portable cloud data only. Local IndexedDB repair stays separate above.</div>
                 <div className="helper-copy">Use this after `CURSOR_EXPIRED` or whenever a mobile web session needs to reconcile its cloud continuity snapshot.</div>
+                <div className="helper-copy">If repair fails, refresh the cloud snapshot first. Persistent auth/cursor failures need operator follow-up rather than repeated blind retries.</div>
 
                 {syncRepairResult ? (
                   <div className="grid cards-3 compact" style={{ marginTop: "1rem" }}>
@@ -3593,6 +4129,22 @@ function AccountPage(props: {
                 ) : (
                   <div className="helper-copy" style={{ marginTop: "1rem" }}>No manual repair run yet.</div>
                 )}
+              </div>
+            </div>
+
+            <div className="card subtle" style={{ marginTop: "1rem" }}>
+              <div className="card-title">Operator guidance</div>
+              <div className="helper-copy" style={{ marginTop: "0.75rem" }}>
+                Export: refresh once before declaring a job missing; failed or expired exports require a fresh export job.
+              </div>
+              <div className="helper-copy">
+                Cloud delete: `scheduled` is not deletion yet. Only `completed` plus later client sync proves removal.
+              </div>
+              <div className="helper-copy">
+                Sync repair: use after auth/cursor recovery or `CURSOR_EXPIRED`; repeated failures should be escalated with the request id and route.
+              </div>
+              <div className="helper-copy">
+                Device revoke: refresh the device list once before retrying. Current-device sign-out stays separate from remote revoke.
               </div>
             </div>
 
@@ -3615,9 +4167,12 @@ function AccountPage(props: {
             </div>
 
             <div className="grid cards-3 compact">
-              <MetricCard label="Current device" value={currentDevice?.label ?? "—"} hint={currentDevice ? formatDeviceHost(currentDevice) : "No current device label returned"} />
-              <MetricCard label="Active devices" value={formatNumber(activeDeviceCount)} hint={`${formatNumber(props.devices.length - activeDeviceCount)} revoked`} />
+              <MetricCard label="Current device" value={currentDevice?.label ?? "—"} hint={currentDevice ? formatDeviceHost(currentDevice) : "No current device known"} />
+              <MetricCard label="Active devices" value={formatNumber(activeDeviceCount)} hint={`${formatNumber(props.devices.length - activeDeviceCount)} revoked devices`} />
               <MetricCard label="Last device refresh" value={formatRelativeDate(props.lastWorkspaceRefreshAt)} hint="list, status, and current-device marker" />
+            </div>
+            <div className="helper-copy" style={{ marginTop: "1rem" }}>
+              Use remote revoke only for other active devices. If revoke fails, refresh once before retrying so operators do not overstate current access state.
             </div>
 
             <div className="helper-copy" style={{ marginTop: "1rem" }}>

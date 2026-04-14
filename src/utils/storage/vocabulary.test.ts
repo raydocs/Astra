@@ -4,10 +4,13 @@ import { createMockBrowser, setMockBrowser } from "../../../test/utils/mockBrows
 import {
   applyVocabularySyncMutations,
   buildSyncSafeVocabularyEntry,
+  buildTerminologyGlossary,
   getVocabularyCount,
   getVocabularyEntries,
+  listGlossaryEntriesForHostname,
   removeVocabularyEntry,
   saveVocabularyEntry,
+  serializeGlossary,
 } from "./vocabulary"
 
 describe("vocabulary storage", () => {
@@ -107,20 +110,30 @@ describe("vocabulary storage", () => {
     await saveVocabularyEntry({
       text: "Hello from subtitles",
       context: "sample.srt · row 1",
-      url: "chrome-extension://abc/subtitle-reader.html",
-      hostname: "extension",
+      url: "astra-local://subtitle/sample.srt",
+      hostname: "subtitle-reader",
       sourceContext: {
         surface: "subtitle_reader",
         pageTitle: "sample.srt",
-        contentSummary: "SRT",
+        pageUrl: "astra-local://subtitle/sample.srt",
+        hostname: "subtitle-reader",
+        contentSummary: "SRT · 12 items",
         sentenceText: "Hello from subtitles",
         sentenceIndex: 0,
+        ownedReadingItemId: "or_subtitle_sample",
+        ownedReadingSourceType: "subtitle-file",
+        ownedReadingTitle: "sample.srt · SRT · 12 items",
       },
     })
 
     const entries = await getVocabularyEntries()
+    expect(entries[0].url).toBe("astra-local://subtitle/sample.srt")
+    expect(entries[0].hostname).toBe("subtitle-reader")
     expect(entries[0].sourceContext?.surface).toBe("subtitle_reader")
     expect(entries[0].sourceContext?.pageTitle).toBe("sample.srt")
+    expect(entries[0].sourceContext?.pageUrl).toBe("astra-local://subtitle/sample.srt")
+    expect(entries[0].sourceContext?.contentSummary).toBe("SRT · 12 items")
+    expect(entries[0].sourceContext?.ownedReadingItemId).toBe("or_subtitle_sample")
   })
 
   it("round-trips popup source context metadata", async () => {
@@ -133,9 +146,15 @@ describe("vocabulary storage", () => {
       sourceContext: {
         surface: "popup_deep_read",
         pageTitle: "Example article",
+        pageUrl: "https://example.com/article?view=full",
+        hostname: "example.com",
         articleExcerpt: "The ephemeral phase passes quickly. Another sentence follows.",
         sentenceText: "The ephemeral phase passes quickly.",
         sentenceIndex: 0,
+        ownedReadingItemId: "or_article_example",
+        ownedReadingSourceType: "article",
+        ownedReadingTitle: "Example article",
+        studyProgressRecordId: "https://example.com/article?tracked=1",
       },
     })
 
@@ -143,9 +162,15 @@ describe("vocabulary storage", () => {
     expect(entries[0].sourceContext).toEqual({
       surface: "popup_deep_read",
       pageTitle: "Example article",
+      pageUrl: "https://example.com/article",
+      hostname: "example.com",
       articleExcerpt: "The ephemeral phase passes quickly. Another sentence follows.",
       sentenceText: "The ephemeral phase passes quickly.",
       sentenceIndex: 0,
+      ownedReadingItemId: "or_article_example",
+      ownedReadingSourceType: "article",
+      ownedReadingTitle: "Example article",
+      studyProgressRecordId: "https://example.com/article",
     })
   })
 
@@ -156,6 +181,8 @@ describe("vocabulary storage", () => {
       sourceContext: {
         surface: "popup_deep_read",
         pageTitle: "Example article",
+        pageUrl: "https://example.com/article#section",
+        hostname: "example.com",
         sentenceText: "Review this sentence.",
       },
     })
@@ -176,10 +203,105 @@ describe("vocabulary storage", () => {
     expect(entries[0].sourceContext).toEqual({
       surface: "popup_deep_read",
       pageTitle: "Example article",
+      pageUrl: "https://example.com/article",
+      hostname: "example.com",
       sentenceText: "Review this sentence.",
       articleExcerpt: "Review this sentence. Then continue reading.",
       sentenceIndex: 1,
     })
+  })
+
+  it("preserves owned reading source link metadata when resaving a deduped entry", async () => {
+    await saveVocabularyEntry({
+      text: "continuity",
+      url: "https://example.com/article",
+      sourceContext: {
+        surface: "popup_deep_read",
+        pageTitle: "Example article",
+        ownedReadingItemId: "or_article_example",
+        ownedReadingSourceType: "article",
+        ownedReadingTitle: "Example article",
+        studyProgressRecordId: "https://example.com/article",
+      },
+    })
+
+    await saveVocabularyEntry({
+      text: "continuity",
+      url: "https://example.com/article",
+      sourceContext: {
+        surface: "popup_deep_read",
+        sentenceText: "Continuity sentence.",
+      },
+    })
+
+    const entries = await getVocabularyEntries()
+    expect(entries[0].sourceContext).toEqual({
+      surface: "popup_deep_read",
+      pageTitle: "Example article",
+      pageUrl: "https://example.com/article",
+      hostname: undefined,
+      sentenceText: "Continuity sentence.",
+      ownedReadingItemId: "or_article_example",
+      ownedReadingSourceType: "article",
+      ownedReadingTitle: "Example article",
+      studyProgressRecordId: "https://example.com/article",
+    })
+  })
+
+  it("builds the canonical terminology glossary with hostname entries before global entries", async () => {
+    await saveVocabularyEntry({
+      text: "Astra",
+      translation: "旧词条",
+      glossaryEnabled: true,
+      glossaryScope: "global",
+    })
+    await saveVocabularyEntry({
+      text: "router",
+      glossaryTargetText: "路由器",
+      glossaryEnabled: true,
+      glossaryScope: "global",
+    })
+    await saveVocabularyEntry({
+      text: "Astra",
+      translation: "阿斯特拉",
+      hostname: "example.com",
+      glossaryEnabled: true,
+      glossaryScope: "hostname",
+    })
+
+    const entries = await listGlossaryEntriesForHostname("example.com")
+    expect(entries.map((entry) => entry.text)).toEqual(["Astra", "router"])
+    expect(serializeGlossary(entries)).toBe("Astra => 阿斯特拉\nrouter => 路由器")
+    expect(await buildTerminologyGlossary("example.com")).toBe("Astra => 阿斯特拉\nrouter => 路由器")
+  })
+
+  it("uses only global glossary entries when hostname is unavailable", async () => {
+    await saveVocabularyEntry({
+      text: "router",
+      glossaryTargetText: "路由器",
+      glossaryEnabled: true,
+      glossaryScope: "global",
+    })
+    await saveVocabularyEntry({
+      text: "Astra",
+      translation: "阿斯特拉",
+      hostname: "example.com",
+      glossaryEnabled: true,
+      glossaryScope: "hostname",
+    })
+
+    expect(await buildTerminologyGlossary(undefined)).toBe("router => 路由器")
+  })
+
+  it("escapes embedded newlines and separator-like content in the canonical glossary format", async () => {
+    await saveVocabularyEntry({
+      text: "Line 1\nLine 2 => term",
+      glossaryTargetText: "target\nline => value",
+      glossaryEnabled: true,
+      glossaryScope: "global",
+    })
+
+    expect(await buildTerminologyGlossary(undefined)).toBe("Line 1\\nLine 2 \\=> term => target\\nline \\=> value")
   })
 
   it("applies synced vocabulary updates while preserving local review progress", async () => {
@@ -193,6 +315,8 @@ describe("vocabulary storage", () => {
       sourceContext: {
         surface: "popup_deep_read",
         pageTitle: "Original title",
+        pageUrl: "https://example.com/review?from=sync",
+        hostname: "example.com",
         sentenceText: "Original sentence",
       },
     })
@@ -221,6 +345,8 @@ describe("vocabulary storage", () => {
       sourceContext: {
         surface: "popup_deep_read",
         pageTitle: "Original title",
+        pageUrl: "https://example.com/review",
+        hostname: "example.com",
         sentenceText: "Original sentence",
         articleExcerpt: "Original sentence. Supporting excerpt.",
       },

@@ -17,7 +17,7 @@ describe("translation usage storage", () => {
   it("records request usage and summarizes session + today counts", async () => {
     await initializeTranslationUsageSession(10_000)
 
-    await recordTranslationUsage({
+    const directEvent = await recordTranslationUsage({
       timestamp: 11_000,
       providerId: "openai",
       model: "gpt-5.4-nano",
@@ -27,7 +27,7 @@ describe("translation usage storage", () => {
       success: true,
     })
 
-    await recordTranslationUsage({
+    const fallbackEvent = await recordTranslationUsage({
       timestamp: 12_000,
       providerId: "openai",
       model: "gpt-5.4-nano",
@@ -39,6 +39,9 @@ describe("translation usage storage", () => {
       success: false,
       errorCode: "PROVIDER_REQUEST_FAILED",
     })
+
+    expect(directEvent.route).toBe("direct")
+    expect(fallbackEvent.route).toBe("fallback")
 
     const summary = await getTranslationUsageSummary(12_500)
     expect(summary.sessionStartedAt).toBe(10_000)
@@ -55,6 +58,7 @@ describe("translation usage storage", () => {
       model: "gpt-5.4-nano",
       finalTransport: "relay",
       fallbackUsed: true,
+      route: "fallback",
       success: false,
       errorCode: "PROVIDER_REQUEST_FAILED",
     })
@@ -62,7 +66,7 @@ describe("translation usage storage", () => {
 
   it("keeps today totals but resets session totals after a new session starts", async () => {
     await initializeTranslationUsageSession(1_000)
-    await recordTranslationUsage({
+    const directEvent = await recordTranslationUsage({
       timestamp: 2_000,
       providerId: "gemini",
       model: "gemini-3.1-flash-lite-preview",
@@ -70,9 +74,10 @@ describe("translation usage storage", () => {
       finalTransport: "direct",
       success: true,
     })
+    expect(directEvent.route).toBe("direct")
 
     await initializeTranslationUsageSession(3_000, { force: true })
-    await recordTranslationUsage({
+    const relayEvent = await recordTranslationUsage({
       timestamp: 4_000,
       providerId: "openai",
       model: "gpt-5.4-nano",
@@ -80,13 +85,96 @@ describe("translation usage storage", () => {
       finalTransport: "relay",
       success: true,
     })
+    expect(relayEvent.route).toBe("relay")
 
     const summary = await getTranslationUsageSummary(4_500)
     expect(summary.today.requests).toBe(2)
     expect(summary.session.requests).toBe(1)
     expect(summary.session.relayRequests).toBe(1)
     expect(summary.session.directRequests).toBe(0)
-    expect(summary.lastEvent?.model).toBe("gpt-5.4-nano")
+    expect(summary.lastEvent).toMatchObject({
+      model: "gpt-5.4-nano",
+      route: "relay",
+    })
+  })
+
+  it("normalizes legacy stored events that predate the canonical route field", async () => {
+    const browser = (globalThis as unknown as { __ASTRA_TEST_BROWSER__: ReturnType<typeof createMockBrowser> }).__ASTRA_TEST_BROWSER__
+    browser.__storage[TRANSLATION_USAGE_STORAGE_KEY] = {
+      sessionStartedAt: 1_000,
+      events: [
+        {
+          id: "evt-no-route",
+          timestamp: 1_400,
+          providerId: "openai",
+          model: "gpt-5.4-nano",
+          task: "translate",
+          textCount: 1,
+          charCount: 5,
+          estimatedInputTokens: 1,
+          attemptedTransports: [],
+          finalTransport: null,
+          fallbackUsed: false,
+          success: false,
+          errorCode: "CONFIG_MISSING",
+        },
+        {
+          id: "evt-fallback",
+          timestamp: 1_300,
+          providerId: "openai",
+          model: "gpt-5.4-nano",
+          task: "translate",
+          textCount: 1,
+          charCount: 5,
+          estimatedInputTokens: 1,
+          attemptedTransports: ["direct", "relay"],
+          finalTransport: "relay",
+          fallbackUsed: true,
+          success: false,
+          errorCode: "PROVIDER_REQUEST_FAILED",
+        },
+        {
+          id: "evt-relay",
+          timestamp: 1_200,
+          providerId: "openai",
+          model: "gpt-5.4-nano",
+          task: "translate",
+          textCount: 1,
+          charCount: 5,
+          estimatedInputTokens: 1,
+          attemptedTransports: ["relay"],
+          finalTransport: "relay",
+          fallbackUsed: false,
+          success: true,
+        },
+        {
+          id: "evt-direct",
+          timestamp: 1_100,
+          providerId: "openai",
+          model: "gpt-5.4-nano",
+          task: "translate",
+          textCount: 1,
+          charCount: 5,
+          estimatedInputTokens: 1,
+          attemptedTransports: ["direct"],
+          finalTransport: "direct",
+          fallbackUsed: false,
+          success: true,
+        },
+      ],
+    }
+
+    await initializeTranslationUsageSession(1_500)
+
+    expect(browser.__storage[TRANSLATION_USAGE_STORAGE_KEY]).toMatchObject({
+      sessionStartedAt: 1_000,
+      events: [
+        expect.objectContaining({ id: "evt-no-route", route: null }),
+        expect.objectContaining({ id: "evt-fallback", route: "fallback" }),
+        expect.objectContaining({ id: "evt-relay", route: "relay" }),
+        expect.objectContaining({ id: "evt-direct", route: "direct" }),
+      ],
+    })
   })
 
   it("clears persisted usage state", async () => {

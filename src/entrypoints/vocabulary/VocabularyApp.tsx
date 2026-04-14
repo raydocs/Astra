@@ -7,11 +7,28 @@ import {
   getDueVocabularyCount,
   updateVocabularyEntry,
 } from "@/utils/storage/vocabulary"
-import { getPageStudyProgress, getStudyProgress } from "@/utils/storage/study-progress"
-import type { OwnedReadingItem, OwnedReadingStatus } from "@/utils/storage/owned-reading"
+import { deriveVocabularySourceDisplay } from "@/utils/storage/vocabulary-core"
+import { getReadingHistoryEntry } from "@/utils/storage/reading-history"
 import {
+  deriveStudyLoopPageSummary,
+  getPageStudyProgress,
+  getStudyProgress,
+  type StudyLoopPageCounts,
+  type StudyLoopPageSummary,
+  type StudyStep,
+} from "@/utils/storage/study-progress"
+import type { OwnedReadingItem, OwnedReadingQueueView, OwnedReadingStatus } from "@/utils/storage/owned-reading"
+import {
+  buildOwnedReadingResumeTarget,
+  countOwnedReadingItemsByView,
+  deriveOwnedReadingArticleUrl,
+  describeOwnedReadingProgress,
+  describeOwnedReadingResumeBehavior,
+  filterOwnedReadingItemsByView,
+  getOwnedReadingSourceTypeLabel,
   listOwnedReadingItems,
   markOwnedReadingOpened,
+  matchOwnedReadingItemForVocabularyEntry,
   removeOwnedReadingItem,
   setOwnedReadingStatus,
   syncRecentReadingHistoryToOwnedQueue,
@@ -93,41 +110,76 @@ function getInitialTab(): ActiveTab {
   return "list"
 }
 
-function getEntrySourceSurfaceLabel(entry: VocabularyEntry): string | null {
-  switch (entry.sourceContext?.surface) {
-    case "popup_deep_read":
-      return "Popup deep-read"
-    case "selection_toolbar":
-      return "Selection toolbar"
-    case "hover_translate":
-      return "Hover translate"
-    case "subtitle_reader":
-      return "File translator"
+interface ReadingArticleSummary {
+  pageUrl: string
+  hostname: string
+  wordsTranslated: number | null
+  progress: StudyLoopPageSummary
+}
+
+function getReadingStepLabel(step: StudyStep): string {
+  const labels: Record<StudyStep, string> = {
+    read: "Read",
+    guided_read: "Guided read",
+    explain: "Explain",
+    vocab_save: "Save words",
+    vocab_review: "Review",
+  }
+  return labels[step]
+}
+
+function formatReadingStepTrail(steps: StudyStep[]): string {
+  return steps.length > 0
+    ? steps.map((step) => getReadingStepLabel(step)).join(" → ")
+    : "No recorded steps yet"
+}
+
+function formatReadingCounts(counts: StudyLoopPageCounts): string {
+  return `${counts.sentencesExplained} explained · ${counts.vocabSaved} saved · ${counts.vocabReviewed} reviewed`
+}
+
+function getReadingNextStepHint(step: StudyStep | null): string {
+  switch (step) {
+    case "read":
+      return "Open the page and start reading or translating it again."
+    case "guided_read":
+      return "Run guided read once to rebuild sentence-level study context."
+    case "explain":
+      return "Explain a sentence from this page before saving more words."
+    case "vocab_save":
+      return "Save at least one useful word from this page."
+    case "vocab_review":
+      return "Review the saved card from this page to close the loop."
     default:
-      return null
+      return "Loop complete — reopen the page when you want more context."
   }
 }
 
-function getEntrySourceLabel(entry: VocabularyEntry): string {
-  return entry.sourceContext?.pageTitle
-    ?? entry.hostname
-    ?? entry.url
-    ?? ""
+function formatWordsTranslated(wordsTranslated: number | null): string | null {
+  if (wordsTranslated === null || wordsTranslated < 0) return null
+  return `${wordsTranslated} ${wordsTranslated === 1 ? "word" : "words"} translated`
 }
 
-function getEntrySourceSnippet(entry: VocabularyEntry): string {
-  return entry.sourceContext?.sentenceText
-    ?? entry.context
-    ?? entry.sourceContext?.articleExcerpt
-    ?? entry.sourceContext?.contentSummary
-    ?? ""
+function getReadingViewLabel(view: OwnedReadingQueueView): string {
+  switch (view) {
+    case "recent":
+      return "Recent"
+    case "saved":
+      return "Saved"
+    case "in_progress":
+      return "In progress"
+  }
 }
 
-function readerHtmlPath(item: OwnedReadingItem): "/pdf-reader.html" | "/epub-reader.html" | "/subtitle-reader.html" | null {
-  if (item.sourceType === "pdf") return "/pdf-reader.html"
-  if (item.sourceType === "epub") return "/epub-reader.html"
-  if (item.sourceType === "subtitle-file") return "/subtitle-reader.html"
-  return null
+function getReadingViewHint(view: OwnedReadingQueueView): string {
+  switch (view) {
+    case "recent":
+      return "Recent shows active queue items ordered by last opened. Archived rows stay hidden here."
+    case "saved":
+      return "Saved keeps items you want easy access to later."
+    case "in_progress":
+      return "In progress highlights items you are still actively working through."
+  }
 }
 
 export default function VocabularyApp() {
@@ -135,6 +187,7 @@ export default function VocabularyApp() {
   const [readingSubTab, setReadingSubTab] = useState<ReadingSubTab>("recent")
   const [readingSortMode, setReadingSortMode] = useState<ReadingSortMode>("opened")
   const [readingItems, setReadingItems] = useState<OwnedReadingItem[]>([])
+  const [linkedOwnedReadingItems, setLinkedOwnedReadingItems] = useState<OwnedReadingItem[]>([])
   const [readingLoading, setReadingLoading] = useState(() => getInitialTab() === "reading")
   const [entries, setEntries] = useState<VocabularyEntry[]>([])
   const [search, setSearch] = useState("")
@@ -144,7 +197,7 @@ export default function VocabularyApp() {
   const [dueCount, setDueCount] = useState(0)
   const [expandedId, setExpandedId] = useState<string | null>(null)
   const [activeTagFilter, setActiveTagFilter] = useState<string | null>(null)
-  const [readingStudyHints, setReadingStudyHints] = useState<Record<string, string>>({})
+  const [readingArticleSummaries, setReadingArticleSummaries] = useState<Record<string, ReadingArticleSummary>>({})
   const [dailyPagesStudied, setDailyPagesStudied] = useState(0)
   const [dailySentencesExplained, setDailySentencesExplained] = useState(0)
   const [dailyVocabSaved, setDailyVocabSaved] = useState(0)
@@ -152,12 +205,14 @@ export default function VocabularyApp() {
   const [dailyStatsDate, setDailyStatsDate] = useState("")
 
   const loadEntries = async () => {
-    const [data, due, progress] = await Promise.all([
+    const [data, due, progress, ownedItems] = await Promise.all([
       getVocabularyEntries(),
       getDueVocabularyCount(),
       getStudyProgress(),
+      listOwnedReadingItems(),
     ])
     setEntries(data)
+    setLinkedOwnedReadingItems(ownedItems)
     setDueCount(due)
     setDailyPagesStudied(progress.dailyStats.pagesStudied)
     setDailySentencesExplained(progress.dailyStats.sentencesExplained)
@@ -172,15 +227,28 @@ export default function VocabularyApp() {
     await syncRecentReadingHistoryToOwnedQueue()
     const items = await listOwnedReadingItems()
     setReadingItems(items)
-    const hints: Record<string, string> = {}
-    for (const row of items) {
-      const key = row.studyProgressRecordId ?? row.sourceUrl ?? null
-      if (!key || row.sourceType !== "article") continue
-      const page = await getPageStudyProgress(key)
-      if (!page?.completedSteps?.length) continue
-      hints[row.id] = page.completedSteps.join(" → ")
-    }
-    setReadingStudyHints(hints)
+    setLinkedOwnedReadingItems(items)
+
+    const articleSummaryEntries = await Promise.all(items.map(async (row) => {
+      if (row.sourceType !== "article") return null
+      const pageUrl = deriveOwnedReadingArticleUrl(row)
+      const progressKey = row.studyProgressRecordId?.trim() || pageUrl
+      const [historyEntry, page] = await Promise.all([
+        pageUrl ? getReadingHistoryEntry(pageUrl) : Promise.resolve(null),
+        progressKey ? getPageStudyProgress(progressKey) : Promise.resolve(null),
+      ])
+
+      return [row.id, {
+        pageUrl: pageUrl ?? progressKey ?? "",
+        hostname: historyEntry?.hostname ?? page?.hostname ?? "",
+        wordsTranslated: historyEntry?.wordsTranslated ?? null,
+        progress: deriveStudyLoopPageSummary(page),
+      }] as [string, ReadingArticleSummary]
+    }))
+
+    setReadingArticleSummaries(Object.fromEntries(
+      articleSummaryEntries.filter((entry): entry is [string, ReadingArticleSummary] => entry !== null),
+    ))
     setReadingLoading(false)
     setLoading(false)
   }
@@ -254,12 +322,13 @@ export default function VocabularyApp() {
     return b.savedAt - a.savedAt
   })
 
-  const readingFiltered = [...readingItems]
-    .filter((row) => {
-      if (readingSubTab === "recent") return true
-      if (readingSubTab === "saved") return row.status === "saved"
-      return row.status === "in_progress"
-    })
+  const readingCounts: Record<ReadingSubTab, number> = {
+    recent: countOwnedReadingItemsByView(readingItems, "recent"),
+    saved: countOwnedReadingItemsByView(readingItems, "saved"),
+    in_progress: countOwnedReadingItemsByView(readingItems, "in_progress"),
+  }
+
+  const readingFiltered = [...filterOwnedReadingItemsByView(readingItems, readingSubTab)]
     .sort((a, b) => {
       if (readingSortMode === "title") {
         return a.title.localeCompare(b.title)
@@ -274,29 +343,11 @@ export default function VocabularyApp() {
     || dailyVocabReviewed > 0
 
   const openReadingItem = async (item: OwnedReadingItem) => {
+    const target = buildOwnedReadingResumeTarget(item)
+    if (!target) return
+
     await markOwnedReadingOpened(item.id)
-
-    if (item.sourceType === "article") {
-      const raw = item.sourceUrl?.trim()
-      if (!raw) return
-      void browser.tabs.create({ url: raw })
-      void loadReadingQueue()
-      return
-    }
-
-    const readerPath = readerHtmlPath(item)
-    if (!readerPath) return
-
-    const base = browser.runtime.getURL(readerPath)
-    const params = new URLSearchParams()
-    if (item.sourceType === "pdf" && item.sourceUrl?.startsWith("http")) {
-      params.set("url", item.sourceUrl)
-    }
-    if (item.reopenHint) {
-      params.set("reopenHint", item.reopenHint)
-    }
-    const qs = params.toString()
-    void browser.tabs.create({ url: qs ? `${base}?${qs}` : base })
+    void browser.tabs.create({ url: target.url })
     void loadReadingQueue()
   }
 
@@ -617,13 +668,16 @@ export default function VocabularyApp() {
           {sorted.map((entry) => (
             <div key={entry.id} style={cardStyle}>
               {(() => {
-                const sourceSurfaceLabel = getEntrySourceSurfaceLabel(entry)
-                const sourceLabel = getEntrySourceLabel(entry)
-                const sourceSnippet = getEntrySourceSnippet(entry)
+                const sourceDisplay = deriveVocabularySourceDisplay(entry)
+                const linkedReadingItem = matchOwnedReadingItemForVocabularyEntry(linkedOwnedReadingItems, entry)
+                const linkedReadingResumeTarget = linkedReadingItem ? buildOwnedReadingResumeTarget(linkedReadingItem) : null
+                const linkedReadingProgress = linkedReadingItem ? describeOwnedReadingProgress(linkedReadingItem) : null
 
                 return (
                   <>
               <div
+                data-role="vocabulary-entry-card"
+                data-entry-id={entry.id}
                 style={{ cursor: "pointer" }}
                 onClick={() => setExpandedId(expandedId === entry.id ? null : entry.id)}
               >
@@ -631,21 +685,21 @@ export default function VocabularyApp() {
                 {entry.translation && (
                   <div style={translationStyle}>{entry.translation}</div>
                 )}
-                {sourceSurfaceLabel && (
+                {sourceDisplay.surfaceLabel && (
                   <div style={{ fontSize: 11, color: "#6366f1", fontWeight: 700, marginBottom: 4 }}>
-                    {sourceSurfaceLabel}
+                    {sourceDisplay.surfaceLabel}
                   </div>
                 )}
-                {sourceLabel && (
+                {sourceDisplay.sourceLabel && (
                   <div style={{ fontSize: 12, color: "#334155", fontWeight: 600, marginBottom: 4 }}>
-                    {sourceLabel}
+                    {sourceDisplay.sourceLabel}
                   </div>
                 )}
-                {sourceSnippet && (
+                {sourceDisplay.snippet && (
                   <div style={contextStyle}>
-                    {sourceSnippet.length > 200
-                      ? `${sourceSnippet.slice(0, 200)}...`
-                      : sourceSnippet}
+                    {sourceDisplay.snippet.length > 200
+                      ? `${sourceDisplay.snippet.slice(0, 200)}...`
+                      : sourceDisplay.snippet}
                   </div>
                 )}
                 {entry.note && expandedId !== entry.id && (
@@ -676,7 +730,7 @@ export default function VocabularyApp() {
 
               {expandedId === entry.id && (
                 <div style={{ marginTop: 8, borderTop: "1px solid #f1f5f9", paddingTop: 8 }}>
-                  {(entry.sourceContext?.pageTitle || entry.sourceContext?.sentenceText || entry.sourceContext?.articleExcerpt || entry.sourceContext?.contentSummary) && (
+                  {(sourceDisplay.sourceContext?.pageTitle || sourceDisplay.sourceContext?.sentenceText || sourceDisplay.articleExcerpt || sourceDisplay.contentSummary || sourceDisplay.pageUrl || sourceDisplay.hostname) && (
                     <div
                       style={{
                         marginBottom: 10,
@@ -689,25 +743,73 @@ export default function VocabularyApp() {
                       <div style={{ fontSize: 12, fontWeight: 700, color: "#334155", marginBottom: 6 }}>
                         Source context
                       </div>
-                      {entry.sourceContext?.pageTitle && (
+                      {sourceDisplay.sourceContext?.pageTitle && (
                         <div style={{ fontSize: 12, color: "#334155", fontWeight: 600, marginBottom: 4 }}>
-                          {entry.sourceContext.pageTitle}
+                          {sourceDisplay.sourceContext.pageTitle}
                         </div>
                       )}
-                      {entry.sourceContext?.sentenceText && (
+                      {sourceDisplay.hostname && (
+                        <div style={{ fontSize: 11, color: "#64748b", marginBottom: 4 }}>
+                          Host: {sourceDisplay.hostname}
+                        </div>
+                      )}
+                      {sourceDisplay.pageUrl && (
+                        <div style={{ fontSize: 11, color: "#64748b", marginBottom: 4, wordBreak: "break-all" }}>
+                          {/^https?:\/\//i.test(sourceDisplay.pageUrl) ? "URL" : "File"}: {sourceDisplay.pageUrl}
+                        </div>
+                      )}
+                      {sourceDisplay.sourceContext?.sentenceText && (
                         <div style={{ fontSize: 12, color: "#475569", lineHeight: 1.5, marginBottom: 4 }}>
-                          Sentence: {entry.sourceContext.sentenceText}
+                          Sentence: {sourceDisplay.sourceContext.sentenceText}
                         </div>
                       )}
-                      {entry.sourceContext?.articleExcerpt && entry.sourceContext.articleExcerpt !== entry.sourceContext.sentenceText && (
-                        <div style={{ fontSize: 12, color: "#64748b", lineHeight: 1.5, whiteSpace: "pre-wrap" }}>
-                          Excerpt: {entry.sourceContext.articleExcerpt}
+                      {sourceDisplay.articleExcerpt && (
+                        <div style={{ fontSize: 12, color: "#64748b", lineHeight: 1.5, whiteSpace: "pre-wrap", marginBottom: 4 }}>
+                          Excerpt: {sourceDisplay.articleExcerpt}
                         </div>
                       )}
-                      {!entry.sourceContext?.articleExcerpt && entry.sourceContext?.contentSummary && (
+                      {sourceDisplay.contentSummary && (
                         <div style={{ fontSize: 12, color: "#64748b", lineHeight: 1.5, whiteSpace: "pre-wrap" }}>
-                          Summary: {entry.sourceContext.contentSummary}
+                          Summary: {sourceDisplay.contentSummary}
                         </div>
+                      )}
+                    </div>
+                  )}
+                  {linkedReadingItem && (
+                    <div
+                      style={{
+                        marginBottom: 10,
+                        padding: "8px 10px",
+                        background: "rgba(99, 102, 241, 0.05)",
+                        border: "1px solid rgba(99, 102, 241, 0.15)",
+                        borderRadius: 8,
+                      }}
+                    >
+                      <div style={{ fontSize: 12, fontWeight: 700, color: "#334155", marginBottom: 4 }}>
+                        Reading asset
+                      </div>
+                      <div style={{ fontSize: 12, color: "#334155", fontWeight: 600, marginBottom: 4 }}>
+                        {linkedReadingItem.title} · {getOwnedReadingSourceTypeLabel(linkedReadingItem.sourceType)}
+                      </div>
+                      <div style={{ fontSize: 11, color: "#64748b", marginBottom: linkedReadingProgress ? 4 : 8 }}>
+                        {describeOwnedReadingResumeBehavior(linkedReadingItem)}
+                      </div>
+                      {linkedReadingProgress && (
+                        <div style={{ fontSize: 11, color: "#64748b", marginBottom: 8 }}>
+                          {linkedReadingProgress}
+                        </div>
+                      )}
+                      {linkedReadingResumeTarget && (
+                        <button
+                          type="button"
+                          style={sortButtonStyle(false)}
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            void openReadingItem(linkedReadingItem)
+                          }}
+                        >
+                          Resume reading asset
+                        </button>
                       )}
                     </div>
                   )}
@@ -760,46 +862,53 @@ export default function VocabularyApp() {
 
               <div style={metaRowStyle}>
                 <div style={metaStyle}>
-                  {entry.hostname && (
-                    <span>{entry.hostname} &middot; </span>
-                  )}
-                  {entry.url && (
-                    <a
-                      href={entry.url}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      style={{ color: "#94a3b8", textDecoration: "underline" }}
-                    >
-                      source
-                    </a>
-                  )}
-                  {entry.url && /^https?:\/\//i.test(entry.url.trim()) && (
-                    <>
-                      {" · "}
-                      <button
-                        type="button"
-                        data-testid={`vocab-open-source-${entry.id}`}
-                        style={{
-                          border: "none",
-                          background: "none",
-                          padding: 0,
-                          color: "#6366f1",
-                          textDecoration: "underline",
-                          cursor: "pointer",
-                          fontSize: "inherit",
-                          fontFamily: "inherit",
-                        }}
-                        onClick={(e) => {
-                          e.stopPropagation()
-                          void browser.tabs.create({ url: entry.url!.trim() })
-                        }}
-                      >
-                        Open source page
-                      </button>
-                    </>
-                  )}
-                  {(entry.hostname || entry.url) && <span> &middot; </span>}
-                  <span>{formatDate(entry.savedAt)}</span>
+                  {(() => {
+                    const sourcePageUrl = /^https?:\/\//i.test(sourceDisplay.pageUrl) ? sourceDisplay.pageUrl.trim() : ""
+                    return (
+                      <>
+                        {entry.hostname && (
+                          <span>{entry.hostname} &middot; </span>
+                        )}
+                        {sourcePageUrl && (
+                          <a
+                            href={sourcePageUrl}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            style={{ color: "#94a3b8", textDecoration: "underline" }}
+                          >
+                            source
+                          </a>
+                        )}
+                        {sourcePageUrl && (
+                          <>
+                            {" · "}
+                            <button
+                              type="button"
+                              data-testid={`vocab-open-source-${entry.id}`}
+                              style={{
+                                border: "none",
+                                background: "none",
+                                padding: 0,
+                                color: "#6366f1",
+                                textDecoration: "underline",
+                                cursor: "pointer",
+                                fontSize: "inherit",
+                                fontFamily: "inherit",
+                              }}
+                              onClick={(e) => {
+                                e.stopPropagation()
+                                void browser.tabs.create({ url: sourcePageUrl })
+                              }}
+                            >
+                              Open source page
+                            </button>
+                          </>
+                        )}
+                        {(entry.hostname || sourcePageUrl) && <span> &middot; </span>}
+                        <span>{formatDate(entry.savedAt)}</span>
+                      </>
+                    )
+                  })()}
                 </div>
                 <div style={{ display: "flex", gap: 6 }}>
                   {confirmDeleteId === entry.id ? (
@@ -840,31 +949,37 @@ export default function VocabularyApp() {
 
       {activeTab === "reading" && (
         <>
-          <p style={{ fontSize: 13, color: "#64748b", marginTop: 0, marginBottom: 16 }}>
-            Revisit pages you translated. Recent merges from reading history; use Saved / In progress to organize.
+          <p style={{ fontSize: 13, color: "#64748b", marginTop: 0, marginBottom: 8 }}>
+            Revisit reading items from one queue. Articles and remote PDFs resume directly; local PDF / EPUB / subtitle files reopen the right reader and ask for the same file again.
+          </p>
+          <p style={{ fontSize: 12, color: "#94a3b8", marginTop: 0, marginBottom: 16 }}>
+            {getReadingViewHint(readingSubTab)}
           </p>
           <div style={{ ...toolbarStyle, marginBottom: 12 }}>
             <span style={{ fontSize: 12, color: "#64748b", marginRight: 4 }}>View:</span>
             <button
               type="button"
+              data-testid="reading-view-recent"
               style={sortButtonStyle(readingSubTab === "recent")}
               onClick={() => setReadingSubTab("recent")}
             >
-              Recent
+              {getReadingViewLabel("recent")} ({readingCounts.recent})
             </button>
             <button
               type="button"
+              data-testid="reading-view-saved"
               style={sortButtonStyle(readingSubTab === "saved")}
               onClick={() => setReadingSubTab("saved")}
             >
-              Saved
+              {getReadingViewLabel("saved")} ({readingCounts.saved})
             </button>
             <button
               type="button"
+              data-testid="reading-view-in-progress"
               style={sortButtonStyle(readingSubTab === "in_progress")}
               onClick={() => setReadingSubTab("in_progress")}
             >
-              In progress
+              {getReadingViewLabel("in_progress")} ({readingCounts.in_progress})
             </button>
             <div style={{ flex: 1 }} />
             <span style={{ fontSize: 12, color: "#64748b", marginRight: 4 }}>Sort:</span>
@@ -895,23 +1010,65 @@ export default function VocabularyApp() {
                   : "Nothing in progress. Mark a page as in progress from Recent or Saved."}
             </div>
           ) : (
-            readingFiltered.map((item) => (
-              <div key={item.id} style={cardStyle}>
+            readingFiltered.map((item) => {
+              const articleSummary = readingArticleSummaries[item.id]
+              const translatedLabel = formatWordsTranslated(articleSummary?.wordsTranslated ?? null)
+              const resumeTarget = buildOwnedReadingResumeTarget(item)
+              const sourceTypeLabel = getOwnedReadingSourceTypeLabel(item.sourceType)
+              const progressLabel = describeOwnedReadingProgress(item)
+
+              return (
+            <div key={item.id} style={cardStyle}>
                 <div style={wordStyle}>{item.title}</div>
                 <div style={{ ...metaStyle, marginBottom: 8 }}>
                   <span style={{ textTransform: "capitalize" }}>{item.status.replace("_", " ")}</span>
                   {" · "}
                   <span>{formatDate(item.openedAt)}</span>
-                  {item.sourceType !== "article" && (
-                    <>
-                      {" · "}
-                      <span>{item.sourceType}</span>
-                    </>
-                  )}
+                  {" · "}
+                  <span>{sourceTypeLabel}</span>
                 </div>
-                {readingStudyHints[item.id] && (
-                  <div style={{ fontSize: 11, color: "#64748b", marginBottom: 6 }}>
-                    Study: {readingStudyHints[item.id]}
+                <div style={{ fontSize: 11, color: resumeTarget?.requiresFileSelection ? "#92400e" : "#2563eb", marginBottom: progressLabel ? 4 : 8, fontWeight: 600 }}>
+                  Resume: {describeOwnedReadingResumeBehavior(item)}
+                </div>
+                {progressLabel && (
+                  <div style={{ fontSize: 11, color: "#64748b", marginBottom: 8 }}>
+                    {progressLabel}
+                  </div>
+                )}
+                {articleSummary && (
+                  <div
+                    style={{
+                      marginBottom: 8,
+                      padding: "8px 10px",
+                      background: "#f8fafc",
+                      border: "1px solid #e2e8f0",
+                      borderRadius: 8,
+                    }}
+                  >
+                    {articleSummary.hostname && (
+                      <div style={{ fontSize: 11, color: "#334155", fontWeight: 600, marginBottom: 4 }}>
+                        Host: {articleSummary.hostname}
+                      </div>
+                    )}
+                    {articleSummary.pageUrl && (
+                      <div style={{ fontSize: 11, color: "#64748b", marginBottom: 4, wordBreak: "break-all" }}>
+                        Page: {articleSummary.pageUrl}
+                      </div>
+                    )}
+                    {translatedLabel && (
+                      <div style={{ fontSize: 11, color: "#64748b", marginBottom: 4 }}>
+                        Translated: {translatedLabel}
+                      </div>
+                    )}
+                    <div style={{ fontSize: 11, color: "#334155", marginBottom: 4 }}>
+                      Study loop: {formatReadingStepTrail(articleSummary.progress.completedSteps)}
+                    </div>
+                    <div style={{ fontSize: 11, color: "#64748b", marginBottom: 4 }}>
+                      Counts: {formatReadingCounts(articleSummary.progress.currentCounts)}
+                    </div>
+                    <div style={{ fontSize: 11, color: "#2563eb", fontWeight: 600 }}>
+                      Next: {getReadingNextStepHint(articleSummary.progress.nextStep)}
+                    </div>
                   </div>
                 )}
                 <div style={{ ...metaRowStyle, marginTop: 8 }}>
@@ -920,9 +1077,9 @@ export default function VocabularyApp() {
                       type="button"
                       style={sortButtonStyle(false)}
                       onClick={() => void openReadingItem(item)}
-                      disabled={item.sourceType === "article" && !item.sourceUrl?.trim()}
+                      disabled={!resumeTarget}
                     >
-                      Open
+                      Resume
                     </button>
                     <button
                       type="button"
@@ -951,7 +1108,7 @@ export default function VocabularyApp() {
                   </button>
                 </div>
               </div>
-            ))
+            )})
           )}
         </>
       )}

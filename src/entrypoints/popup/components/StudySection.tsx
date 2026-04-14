@@ -2,7 +2,7 @@ import { t } from "@/utils/i18n"
 import type { PageStudyContext } from "@/types/messages"
 import type { ReadingHistoryEntry } from "@/utils/storage/reading-history"
 import type { PageDigestRecord } from "@/utils/storage/page-digests"
-import { orderStudySteps, STUDY_STEPS_ORDER, type StudyLoopViewModel, type StudyStep } from "@/utils/storage/study-progress"
+import { STUDY_STEPS_ORDER, type StudyLoopViewModel, type StudyStep } from "@/utils/storage/study-progress"
 
 export type PopupSentenceExplainStatus = "idle" | "explaining" | "explained"
 export type PopupSentenceSaveStatus = "idle" | "saving" | "saved"
@@ -34,6 +34,8 @@ interface StudySectionProps {
   studyActionRunningId: string | null
   studyActionResult: { actionId: string; text: string } | null
   sentenceCards: PopupSentenceCardViewModel[]
+  sentenceActionLocked: boolean
+  sentenceDeckFallbackMessage: string | null
   selectedSentenceIndex: number
   onGenerateDigest: () => void
   onRegenerateDigest: () => void
@@ -115,7 +117,54 @@ function StudyProgressBar({ completionPercent, completedSteps }: {
         })}
       </div>
       <div style={{ fontSize: 10, color: "#94a3b8" }}>
-        {completionPercent}% — {completedSteps.map((s) => getStepLabel(s)).join(" → ")}
+        {completionPercent}% — {completedSteps.length > 0
+          ? completedSteps.map((s) => getStepLabel(s)).join(" → ")
+          : t("popup_studyNoStepsYet")}
+      </div>
+    </div>
+  )
+}
+
+function getNextStepHint(step: StudyStep): string {
+  const hintKeys: Record<StudyStep, string> = {
+    read: "popup_studyNextHintRead",
+    guided_read: "popup_studyNextHintGuidedRead",
+    explain: "popup_studyNextHintExplain",
+    vocab_save: "popup_studyNextHintSaveWords",
+    vocab_review: "popup_studyNextHintReview",
+  }
+  return t(hintKeys[step])
+}
+
+function CurrentPageProgressCard({ studyLoop }: { studyLoop: StudyLoopViewModel }) {
+  if (!studyLoop.currentPage) return null
+
+  return (
+    <div
+      style={{
+        marginTop: 10,
+        padding: "10px 12px",
+        background: "#f8fafc",
+        border: "1px solid #dbeafe",
+        borderRadius: 10,
+      }}
+    >
+      <div style={{ fontSize: 12, fontWeight: 700, color: "#1e3a8a", marginBottom: 4 }}>
+        {t("popup_studyCurrentPageProgressTitle")}
+      </div>
+      <div style={{ fontSize: 10, color: "#64748b", marginBottom: 8 }}>
+        {t("popup_studyCurrentPageProgressHint")}
+      </div>
+      <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+        <span style={{ fontSize: 11, color: "#1e293b", background: "#fff", border: "1px solid #cbd5e1", borderRadius: 999, padding: "3px 8px", fontWeight: 600 }}>
+          {t("popup_studyStatExplained", String(studyLoop.currentCounts.sentencesExplained))}
+        </span>
+        <span style={{ fontSize: 11, color: "#1e293b", background: "#fff", border: "1px solid #cbd5e1", borderRadius: 999, padding: "3px 8px", fontWeight: 600 }}>
+          {t("popup_studyStatSaved", String(studyLoop.currentCounts.vocabSaved))}
+        </span>
+        <span style={{ fontSize: 11, color: "#1e293b", background: "#fff", border: "1px solid #cbd5e1", borderRadius: 999, padding: "3px 8px", fontWeight: 600 }}>
+          {t("popup_studyStatReviewed", String(studyLoop.currentCounts.vocabReviewed))}
+        </span>
       </div>
     </div>
   )
@@ -170,9 +219,14 @@ function NextStepBanner({ nextStep, onReadArticle, onExplainSentence, onOpenVoca
       alignItems: "center",
     }}
     >
-      <span style={{ fontSize: 12, color: "#1e40af", fontWeight: 500 }}>
-        {t("popup_studyNext")} {getStepLabel(nextStep)}
-      </span>
+      <div style={{ minWidth: 0 }}>
+        <div style={{ fontSize: 12, color: "#1e40af", fontWeight: 600 }}>
+          {t("popup_studyNext")} {getStepLabel(nextStep)}
+        </div>
+        <div style={{ fontSize: 11, color: "#1d4ed8", marginTop: 2, lineHeight: 1.4 }}>
+          {getNextStepHint(nextStep)}
+        </div>
+      </div>
       <button
         type="button"
         style={{
@@ -206,6 +260,8 @@ export default function StudySection({
   studyActionRunningId,
   studyActionResult,
   sentenceCards,
+  sentenceActionLocked,
+  sentenceDeckFallbackMessage,
   selectedSentenceIndex,
   onGenerateDigest,
   onRegenerateDigest,
@@ -220,10 +276,8 @@ export default function StudySection({
   onReadArticle,
   onExplainSentence,
 }: StudySectionProps) {
-  const summary = studyContext?.contentSummary ?? studyContext?.metaDescription
+  const summary = studyContext?.contentSummary?.trim() || studyContext?.metaDescription?.trim() || ""
   const selectedSentence = sentenceCards[selectedSentenceIndex] ?? null
-  const hasExplainingSentence = sentenceCards.some((card) => card.explainStatus === "explaining")
-  const hasSavingSentence = sentenceCards.some((card) => card.saveStatus === "saving")
 
   return (
     <section style={cardStyle}>
@@ -253,7 +307,7 @@ export default function StudySection({
         {summary || t("popup_studySummaryEmpty")}
       </div>
 
-      {studyContext?.articleExcerpt && (
+      {!!studyContext?.articleExcerpt?.trim() && (
         <div style={{
           marginTop: 8,
           padding: "8px 10px",
@@ -265,7 +319,7 @@ export default function StudySection({
             {t("popup_studyArticleExcerpt")}
           </div>
           <div style={{ fontSize: 12, color: "#334155", lineHeight: 1.55 }}>
-            {studyContext.articleExcerpt}
+            {studyContext.articleExcerpt?.trim()}
           </div>
         </div>
       )}
@@ -285,7 +339,7 @@ export default function StudySection({
                 type="button"
                 style={actionButtonStyle}
                 onClick={() => onSelectSentence(selectedSentenceIndex - 1)}
-                disabled={selectedSentenceIndex <= 0}
+                disabled={sentenceActionLocked || selectedSentenceIndex <= 0}
               >
                 {t("actionPrevious")}
               </button>
@@ -294,7 +348,7 @@ export default function StudySection({
                 type="button"
                 style={actionButtonStyle}
                 onClick={() => onToggleSentenceSpeech(selectedSentence?.index)}
-                disabled={!selectedSentence}
+                disabled={sentenceActionLocked || !selectedSentence}
               >
                 {selectedSentence?.speaking ? t("actionStop") : t("actionSpeak")}
               </button>
@@ -303,12 +357,29 @@ export default function StudySection({
                 type="button"
                 style={actionButtonStyle}
                 onClick={() => onSelectSentence(selectedSentenceIndex + 1)}
-                disabled={selectedSentenceIndex >= sentenceCards.length - 1}
+                disabled={sentenceActionLocked || selectedSentenceIndex >= sentenceCards.length - 1}
               >
                 {t("actionNext")}
               </button>
             </div>
           </div>
+          {sentenceDeckFallbackMessage && (
+            <div
+              data-testid="study-sentence-deck-fallback"
+              style={{
+                marginBottom: 8,
+                padding: "6px 8px",
+                background: "#fff7ed",
+                border: "1px solid #fdba74",
+                borderRadius: 8,
+                fontSize: 11,
+                color: "#9a3412",
+                lineHeight: 1.45,
+              }}
+            >
+              {sentenceDeckFallbackMessage}
+            </div>
+          )}
           <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
             {sentenceCards.map((card) => {
               const statusChips = [
@@ -329,9 +400,13 @@ export default function StudySection({
                     background: card.selected ? "#eff6ff" : "#fff",
                     border: card.selected ? "1px solid #60a5fa" : "1px solid #dbeafe",
                     borderRadius: 8,
-                    cursor: "pointer",
+                    cursor: sentenceActionLocked ? "default" : "pointer",
                   }}
-                  onClick={() => onSelectSentence(card.index)}
+                  onClick={() => {
+                    if (!sentenceActionLocked) {
+                      onSelectSentence(card.index)
+                    }
+                  }}
                 >
                   <div style={{ fontSize: 11, color: "#64748b", marginBottom: 4 }}>
                     {card.index + 1}
@@ -367,7 +442,7 @@ export default function StudySection({
                         event.stopPropagation()
                         onExplainSentence(card.index)
                       }}
-                      disabled={hasExplainingSentence || studyActionRunningId !== null || hasSavingSentence}
+                      disabled={sentenceActionLocked || studyActionRunningId !== null}
                     >
                       {card.explainStatus === "explaining" ? `${t("popup_studyExplainSentence")}...` : t("popup_studyExplainSentence")}
                     </button>
@@ -378,7 +453,7 @@ export default function StudySection({
                         event.stopPropagation()
                         onSaveSentence(card.index)
                       }}
-                      disabled={hasSavingSentence || hasExplainingSentence || card.saveStatus === "saved"}
+                      disabled={sentenceActionLocked || card.saveStatus === "saved"}
                     >
                       {card.saveStatus === "saved" ? t("actionSaved") : card.saveStatus === "saving" ? t("actionSaving") : t("actionSave")}
                     </button>
@@ -586,7 +661,7 @@ export default function StudySection({
 
       {studyLoop && (
         <>
-          {studyLoop.currentPage && studyLoop.nextStep && studyLoop.currentPage.completedSteps.length > 0 && (
+          {studyLoop.currentPage && studyLoop.nextStep && studyLoop.completedSteps.length > 0 && (
             <div
               style={{
                 marginTop: 10,
@@ -602,9 +677,10 @@ export default function StudySection({
               {t("popup_studyResumeFromLast")}
             </div>
           )}
+          <CurrentPageProgressCard studyLoop={studyLoop} />
           <StudyProgressBar
             completionPercent={studyLoop.completionPercent}
-            completedSteps={orderStudySteps(studyLoop.currentPage?.completedSteps ?? [])}
+            completedSteps={studyLoop.completedSteps}
           />
           <NextStepBanner
             nextStep={studyLoop.nextStep}
@@ -704,7 +780,7 @@ export default function StudySection({
                   ...(studyActionRunningId === action.id ? { opacity: 0.7 } : {}),
                 }}
                 onClick={() => onRunStudyAction(action.id)}
-                disabled={studyActionRunningId !== null || hasExplainingSentence}
+                disabled={studyActionRunningId !== null || sentenceActionLocked}
               >
                 {studyActionRunningId === action.id ? `${action.labelZh}…` : action.labelZh}
               </button>

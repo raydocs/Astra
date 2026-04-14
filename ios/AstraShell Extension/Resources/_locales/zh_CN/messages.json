@@ -188,6 +188,9 @@
   "popup_studySentenceDeck": {
     "message": "逐句深读"
   },
+  "popup_studySentenceDeckFallback": {
+    "message": "当前还没有完整的文章摘录，逐句深读暂时使用页面摘要作为回退上下文。"
+  },
   "popup_studyDueCount": {
     "message": "待复习 $1 个",
     "placeholders": {
@@ -237,7 +240,7 @@
     "message": "无路由信息"
   },
   "popup_usageLiveOnly": {
-    "message": "这里只统计发起过的翻译请求；命中缓存的内容不会出现在这里。"
+    "message": "这里只显示当前设备上的翻译活动；它不会改变你的 Astra 账户配额，命中缓存的内容也不会出现在这里。"
   },
   "label_targetLanguage": {
     "message": "目标语言"
@@ -449,6 +452,24 @@
   "popup_studyNext": {
     "message": "下一步："
   },
+  "popup_studyNoStepsYet": {
+    "message": "尚未完成任何步骤"
+  },
+  "popup_studyNextHintRead": {
+    "message": "打开文章并开始阅读或翻译，启动这页的学习回路。"
+  },
+  "popup_studyNextHintGuidedRead": {
+    "message": "至少运行一次引导阅读，让这页保留逐句学习上下文。"
+  },
+  "popup_studyNextHintExplain": {
+    "message": "先讲解至少一句，再从这页保存词汇。"
+  },
+  "popup_studyNextHintSaveWords": {
+    "message": "至少保存一个来自这页的有用词条，让它进入词汇表。"
+  },
+  "popup_studyNextHintReview": {
+    "message": "复习这篇页面里至少一张已保存卡片，闭合本页的学习回路。"
+  },
   "popup_studyStartGuidedRead": {
     "message": "开始引导阅读"
   },
@@ -503,11 +524,23 @@
   "review_todayProgressTitle": {
     "message": "今日学习进度（全页汇总）"
   },
+  "review_currentPageProgressTitle": {
+    "message": "当前页面学习回路"
+  },
+  "review_currentPageProgressHint": {
+    "message": "这里的计数规则与弹窗里的当前页面进度保持一致。"
+  },
   "review_todayProgressAria": {
     "message": "今日学习进度摘要"
   },
   "popup_studyResumeFromLast": {
     "message": "继续上次学习 — 下一步已在下方高亮。"
+  },
+  "popup_studyCurrentPageProgressTitle": {
+    "message": "当前页面进度"
+  },
+  "popup_studyCurrentPageProgressHint": {
+    "message": "这里只统计当前页面的学习步骤与计数。"
   },
   "review_openSourcePage": {
     "message": "打开来源页面"

@@ -13,9 +13,8 @@ const {
   createAstraSessionMock,
   refreshAstraSessionMock,
   revokeAstraSessionMock,
-  fetchAstraAccountMock,
+  fetchAstraAccountSummaryMock,
   fetchAstraContinuitySnapshotMock,
-  fetchAstraUsageSnapshotMock,
   getActiveTabStudyContextMock,
   getActiveTabTranslationStateMock,
   startActiveTabTranslationMock,
@@ -23,11 +22,11 @@ const {
   getDueVocabularyCountMock,
   getVocabularyEntriesMock,
   saveVocabularyEntryMock,
-  getQuotaInfoMock,
   getReadingHistoryMock,
   getTranslationUsageSummaryMock,
   getStudyProgressMock,
   recordStudyEventMock,
+  deriveStudyLoopViewModelMock,
   getPageDigestMock,
   isDigestStaleMock,
   generatePageDigestMock,
@@ -46,9 +45,8 @@ const {
   createAstraSessionMock: vi.fn(),
   refreshAstraSessionMock: vi.fn(),
   revokeAstraSessionMock: vi.fn(),
-  fetchAstraAccountMock: vi.fn(),
+  fetchAstraAccountSummaryMock: vi.fn(),
   fetchAstraContinuitySnapshotMock: vi.fn(),
-  fetchAstraUsageSnapshotMock: vi.fn(),
   getActiveTabStudyContextMock: vi.fn(),
   getActiveTabTranslationStateMock: vi.fn(),
   startActiveTabTranslationMock: vi.fn(),
@@ -56,11 +54,11 @@ const {
   getDueVocabularyCountMock: vi.fn(),
   getVocabularyEntriesMock: vi.fn(),
   saveVocabularyEntryMock: vi.fn(),
-  getQuotaInfoMock: vi.fn(),
   getReadingHistoryMock: vi.fn(),
   getTranslationUsageSummaryMock: vi.fn(),
   getStudyProgressMock: vi.fn(),
   recordStudyEventMock: vi.fn(),
+  deriveStudyLoopViewModelMock: vi.fn(),
   getPageDigestMock: vi.fn(),
   isDigestStaleMock: vi.fn(),
   generatePageDigestMock: vi.fn(),
@@ -89,13 +87,8 @@ vi.mock("@/utils/astra/auth", () => ({
 }))
 
 vi.mock("@/utils/astra/account", () => ({
-  fetchAstraAccount: fetchAstraAccountMock,
+  fetchAstraAccountSummary: fetchAstraAccountSummaryMock,
   fetchAstraContinuitySnapshot: fetchAstraContinuitySnapshotMock,
-  fetchAstraUsageSnapshot: fetchAstraUsageSnapshotMock,
-}))
-
-vi.mock("@/utils/astra/quota", () => ({
-  getQuotaInfo: getQuotaInfoMock,
 }))
 
 vi.mock("@/utils/extension/messages", async (importOriginal) => {
@@ -163,13 +156,7 @@ vi.mock("@/utils/storage/study-progress", async (importOriginal) => {
     ...actual,
     getStudyProgress: getStudyProgressMock,
     recordStudyEvent: recordStudyEventMock,
-    deriveStudyLoopViewModel: vi.fn(() => ({
-      currentPage: null,
-      nextStep: "read" as const,
-      completionPercent: 0,
-      dailyStats: { date: "2026-04-03", pagesStudied: 0, sentencesExplained: 0, vocabSaved: 0, vocabReviewed: 0 },
-      recentPages: [],
-    })),
+    deriveStudyLoopViewModel: deriveStudyLoopViewModelMock,
   }
 })
 
@@ -272,6 +259,55 @@ function createAccount(patch: Partial<AstraAccount> = {}): AstraAccount {
   }
 }
 
+function createAccountSummary(overrides: Record<string, unknown> = {}) {
+  return {
+    serverTime: "2026-04-09T01:05:00.000Z",
+    account: createAccount(),
+    usage: {
+      generatedAt: "2026-04-09T01:05:00.000Z",
+      quota: {
+        dailyRequestsLimit: 2000,
+        dailyCharactersLimit: 200000,
+        requestsPerMinuteLimit: 120,
+        remainingDailyRequests: 1996,
+        remainingDailyCharacters: 100000,
+      },
+      usage: {
+        totalRequests: 4,
+        totalCharacters: 100000,
+        dailyRequestsUsed: 4,
+        dailyCharactersUsed: 100000,
+        lastRequestAt: "2026-04-09T01:00:00.000Z",
+        recentEvents: [],
+      },
+    },
+    session: {
+      sessionId: "sess-123",
+      deviceId: "device-123",
+      issuedAt: "2026-04-09T00:00:00.000Z",
+      expiresAt: null,
+      identityMode: "authenticated",
+      status: "active",
+    },
+    devices: {
+      activeCount: 1,
+      revokedCount: 0,
+      current: null,
+      entries: [],
+    },
+    sync: {
+      maxMutationsPerRequest: 100,
+      collections: {
+        config: { enabled: true, defaultEnabled: true, cursor: "cfg-3", mutationCount: 3, activeCount: 1, lastSyncAt: null, compactionFloorCursor: null },
+        vocabulary: { enabled: false, defaultEnabled: false, cursor: null, mutationCount: 0, activeCount: 0, lastSyncAt: null, compactionFloorCursor: null },
+        reading_history: { enabled: false, defaultEnabled: false, cursor: null, mutationCount: 0, activeCount: 0, lastSyncAt: null, compactionFloorCursor: null },
+        study_progress: { enabled: false, defaultEnabled: false, cursor: null, mutationCount: 0, activeCount: 0, lastSyncAt: null, compactionFloorCursor: null },
+      },
+    },
+    ...overrides,
+  }
+}
+
 describe("popup App", () => {
   let container: HTMLDivElement
   let root: ReactDOM.Root
@@ -307,7 +343,7 @@ describe("popup App", () => {
     createAstraSessionMock.mockResolvedValue(createSession())
     refreshAstraSessionMock.mockResolvedValue(createSession())
     revokeAstraSessionMock.mockResolvedValue(undefined)
-    fetchAstraAccountMock.mockResolvedValue(createAccount())
+    fetchAstraAccountSummaryMock.mockResolvedValue(createAccountSummary())
     fetchAstraContinuitySnapshotMock.mockImplementation(async (params: { includePull?: boolean }) => ({
       devices: [{
         deviceId: "device-123",
@@ -372,7 +408,6 @@ describe("popup App", () => {
           }
         : null,
     }))
-    fetchAstraUsageSnapshotMock.mockResolvedValue(undefined)
     getActiveTabTranslationStateMock.mockResolvedValue(createIdleState())
     getActiveTabStudyContextMock.mockResolvedValue({
       ok: true,
@@ -393,7 +428,6 @@ describe("popup App", () => {
       savedAt: Date.now(),
       ...(entry as Record<string, unknown>),
     }))
-    getQuotaInfoMock.mockResolvedValue({ used: 100000, limit: 200000, plan: "free", resetsAt: "" })
     getReadingHistoryMock.mockResolvedValue([])
     getTranslationUsageSummaryMock.mockResolvedValue({
       sessionStartedAt: 1000,
@@ -437,6 +471,7 @@ describe("popup App", () => {
         attemptedTransports: ["direct", "relay"],
         finalTransport: "relay",
         fallbackUsed: true,
+        route: "fallback",
         success: false,
         errorCode: "PROVIDER_REQUEST_FAILED",
       },
@@ -475,6 +510,15 @@ describe("popup App", () => {
     getStudyProgressMock.mockResolvedValue({
       pages: [],
       dailyStats: { date: "2026-04-03", pagesStudied: 0, sentencesExplained: 0, vocabSaved: 0, vocabReviewed: 0 },
+    })
+    deriveStudyLoopViewModelMock.mockReturnValue({
+      currentPage: null,
+      completedSteps: [],
+      currentCounts: { sentencesExplained: 0, vocabSaved: 0, vocabReviewed: 0 },
+      nextStep: "read",
+      completionPercent: 0,
+      dailyStats: { date: "2026-04-03", pagesStudied: 0, sentencesExplained: 0, vocabSaved: 0, vocabReviewed: 0 },
+      recentPages: [],
     })
 
     container = document.createElement("div")
@@ -551,12 +595,13 @@ describe("popup App", () => {
     await flushApp()
 
     expect(container.textContent).toContain(t("popup_connected"))
-    expect(container.textContent).toContain("Pro Plan")
+    expect(container.textContent).toContain("Pro plan")
     expect(container.textContent).toContain("Astra continuity · 1 device · 1 active")
     expect(container.textContent).toContain("Config bootstrap: enabled · Cursor cfg-3")
     expect(container.textContent).toContain("Reading history sync: off · Optional")
     expect(container.textContent).toContain("Study progress sync: off · Optional · Daily stats stay local")
     expect(container.textContent).toContain("Config continuity ready · Optional collections available in Settings")
+    expect(container.textContent).toContain("Plan and daily quota mirror Astra account summary.")
   })
 
   it("shows quota bar with usage info", async () => {
@@ -574,7 +619,6 @@ describe("popup App", () => {
       },
     }))
     readAstraSessionMock.mockResolvedValue(null)
-    getQuotaInfoMock.mockResolvedValue({ used: 0, limit: 200000, plan: "free", resetsAt: "" })
 
     await act(async () => {
       window.dispatchEvent(new Event("focus"))
@@ -618,7 +662,7 @@ describe("popup App", () => {
       email: "user@example.com",
       password: "secret-pass",
     })
-    expect(fetchAstraAccountMock).toHaveBeenCalled()
+    expect(fetchAstraAccountSummaryMock).toHaveBeenCalled()
     expect(saveAstraSessionMock).toHaveBeenCalled()
   })
 
@@ -667,6 +711,42 @@ describe("popup App", () => {
     expect(container.textContent).toContain("阅读文章")
   })
 
+  it("shows the same current-page progress counters and next-step hint in the popup", async () => {
+    deriveStudyLoopViewModelMock.mockReturnValue({
+      currentPage: {
+        url: "https://example.com/article",
+        hostname: "example.com",
+        title: "Example article",
+        completedSteps: ["read", "guided_read", "explain", "vocab_save"],
+        sentencesExplained: 2,
+        vocabSaved: 1,
+        vocabReviewed: 0,
+        startedAt: 1000,
+        lastActivityAt: 2000,
+      },
+      completedSteps: ["read", "guided_read", "explain", "vocab_save"],
+      currentCounts: { sentencesExplained: 2, vocabSaved: 1, vocabReviewed: 0 },
+      nextStep: "vocab_review",
+      completionPercent: 80,
+      dailyStats: { date: "2026-04-03", pagesStudied: 1, sentencesExplained: 2, vocabSaved: 1, vocabReviewed: 0 },
+      recentPages: [],
+    })
+
+    await act(async () => {
+      window.dispatchEvent(new Event("focus"))
+      await Promise.resolve()
+      await Promise.resolve()
+    })
+    await flushApp()
+
+    expect(container.textContent).toContain("当前页面进度")
+    expect(container.textContent).toContain("讲解 2 句")
+    expect(container.textContent).toContain("保存 1 词")
+    expect(container.textContent).toContain("复习 0 词")
+    expect(container.textContent).toContain("下一步： 复习")
+    expect(container.textContent).toContain("复习这篇页面里至少一张已保存卡片，闭合本页的学习回路。")
+  })
+
   it("starts article-mode translation from the study hub", async () => {
     await flushApp()
 
@@ -697,7 +777,7 @@ describe("popup App", () => {
     expect(container.textContent).toContain("24")
     expect(container.textContent).toContain("openai / gpt-5.4-nano")
     expect(container.textContent).toContain("direct → relay")
-    expect(container.textContent).toContain("这里只统计发起过的翻译请求；命中缓存的内容不会出现在这里。")
+    expect(container.textContent).toContain("这里只显示当前设备上的翻译活动；它不会改变你的 Astra 账户配额，命中缓存的内容也不会出现在这里。")
   })
 
   it("persists site advanced rules from the popup", async () => {
@@ -945,6 +1025,7 @@ describe("popup App", () => {
         vocabSaved: 0,
         startedAt: 1000,
         lastActivityAt: 2000,
+        vocabReviewed: 0,
       }],
       dailyStats: { date: "2026-04-03", pagesStudied: 1, sentencesExplained: 1, vocabSaved: 0, vocabReviewed: 0 },
     })
@@ -1066,6 +1147,61 @@ describe("popup App", () => {
     expect(prevButton.disabled).toBe(false)
   })
 
+  it("locks sentence navigation and speech while an explain request is in flight", async () => {
+    let resolveExplain: ((value: { ok: true; translations: string[] }) => void) | null = null
+    translateTextsMock.mockImplementationOnce(() => new Promise((resolve) => {
+      resolveExplain = resolve as (value: { ok: true; translations: string[] }) => void
+    }))
+
+    const explainButtons = getButtons().filter((button) => button.textContent === t("popup_studyExplainSentence"))
+    const nextButton = container.querySelector('[data-testid="study-sentence-next"]') as HTMLButtonElement
+    const speakButton = container.querySelector('[data-testid="study-sentence-speak"]') as HTMLButtonElement
+
+    await act(async () => {
+      explainButtons[0].click()
+      await Promise.resolve()
+      await Promise.resolve()
+    })
+
+    expect(nextButton.disabled).toBe(true)
+    expect(speakButton.disabled).toBe(true)
+
+    await act(async () => {
+      resolveExplain?.({ ok: true, translations: ["Resolved explanation output"] })
+      await Promise.resolve()
+      await Promise.resolve()
+      await Promise.resolve()
+    })
+
+    expect(nextButton.disabled).toBe(false)
+    expect(speakButton.disabled).toBe(false)
+    expect(container.textContent).toContain("Resolved explanation output")
+  })
+
+  it("selects the saved sentence card before showing the saved CTA", async () => {
+    const secondSentenceCard = container.querySelector('[data-testid="study-sentence-card-1"]') as HTMLDivElement
+    const secondSentenceSaveButton = secondSentenceCard.querySelectorAll("button")[1] as HTMLButtonElement
+
+    await act(async () => {
+      secondSentenceSaveButton.click()
+      await Promise.resolve()
+      await Promise.resolve()
+      await Promise.resolve()
+    })
+
+    expect(saveVocabularyEntryMock).toHaveBeenCalledWith(expect.objectContaining({
+      text: "Second article sentence with more detail.",
+      sourceContext: expect.objectContaining({
+        surface: "popup_deep_read",
+        pageUrl: "https://example.com/article",
+        hostname: "example.com",
+        sentenceText: "Second article sentence with more detail.",
+        sentenceIndex: 1,
+      }),
+    }))
+    expect(container.querySelector('[data-testid="study-sentence-saved-cta-1"]')).toBeTruthy()
+  })
+
   it("runs the popup deep-read chain from explain to save to review and speak", async () => {
     translateTextsMock.mockResolvedValue({
       ok: true,
@@ -1081,6 +1217,7 @@ describe("popup App", () => {
         vocabSaved: 1,
         startedAt: 1000,
         lastActivityAt: 2000,
+        vocabReviewed: 0,
       }],
       dailyStats: { date: "2026-04-03", pagesStudied: 1, sentencesExplained: 1, vocabSaved: 1, vocabReviewed: 0 },
     })
@@ -1112,6 +1249,8 @@ describe("popup App", () => {
       sourceContext: expect.objectContaining({
         surface: "popup_deep_read",
         pageTitle: "Example article",
+        pageUrl: "https://example.com/article",
+        hostname: "example.com",
         sentenceText: "First article sentence.",
         sentenceIndex: 0,
       }),
@@ -1179,6 +1318,73 @@ describe("popup App", () => {
 
     expect(container.querySelector('[data-testid="study-sentence-saved-cta-0"]')).toBeTruthy()
     expect(container.textContent).toContain(t("actionSaved"))
+  })
+
+  it("builds the sentence deck from fallback summary text when no article excerpt is available", async () => {
+    getActiveTabStudyContextMock.mockResolvedValue({
+      ok: true,
+      context: {
+        pageTitle: "Summary-only page",
+        pageUrl: "https://example.com/summary-only",
+        hostname: "example.com",
+        contentSummary: "Fallback summary sentence one. Fallback summary sentence two.",
+        articleExcerpt: "",
+      },
+    })
+
+    await act(async () => {
+      window.dispatchEvent(new Event("focus"))
+      await Promise.resolve()
+      await Promise.resolve()
+      await Promise.resolve()
+    })
+
+    expect(container.querySelector('[data-testid="study-sentence-deck-fallback"]')?.textContent).toContain(t("popup_studySentenceDeckFallback"))
+    expect(container.textContent).toContain("Fallback summary sentence one.")
+    expect(Array.from(container.querySelectorAll("div")).some((element) => element.textContent?.trim() === t("popup_studyArticleExcerpt"))).toBe(false)
+
+    const explainButtons = getButtons().filter((button) => button.textContent === t("popup_studyExplainSentence"))
+    await act(async () => {
+      explainButtons[0].click()
+      await Promise.resolve()
+      await Promise.resolve()
+      await Promise.resolve()
+    })
+
+    expect(translateTextsMock).toHaveBeenCalledWith(expect.objectContaining({
+      task: "explain",
+      texts: ["Fallback summary sentence one."],
+      context: expect.objectContaining({
+        pageTitle: "Summary-only page",
+        selectionContext: "Fallback summary sentence one.",
+      }),
+    }))
+  })
+
+  it("shows the empty study fallback with no sentence deck when study context is blank", async () => {
+    getActiveTabStudyContextMock.mockResolvedValue({
+      ok: true,
+      context: {
+        pageTitle: "Blank page",
+        pageUrl: "https://example.com/blank",
+        hostname: "example.com",
+        contentSummary: "   ",
+        metaDescription: "",
+        articleExcerpt: "",
+      },
+    })
+
+    await act(async () => {
+      window.dispatchEvent(new Event("focus"))
+      await Promise.resolve()
+      await Promise.resolve()
+      await Promise.resolve()
+    })
+
+    expect(container.textContent).toContain(t("popup_studySummaryEmpty"))
+    expect(container.textContent).not.toContain(t("popup_studySentenceDeck"))
+    expect(container.querySelector('[data-testid="study-sentence-deck-fallback"]')).toBeFalsy()
+    expect(getButtons().filter((button) => button.textContent === t("popup_studyExplainSentence"))).toHaveLength(0)
   })
 
   it("keeps duplicate sentence occurrences separate when only one popup sentence was saved", async () => {

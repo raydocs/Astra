@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest"
 
-import { isSensitiveInput, sanitizeTranslationContext } from "./privacy"
+import {
+  isSensitiveInput,
+  sanitizeTranslationContext,
+  sanitizeTranslationContextForTransport,
+} from "./privacy"
 
 describe("privacy", () => {
   describe("isSensitiveInput", () => {
@@ -111,6 +115,43 @@ describe("privacy", () => {
         hostname: "example.com",
         pageUrl: "https://example.com/page",
       })
+    })
+
+    it("fails closed for malformed pageUrl values by stripping query string and fragment", () => {
+      const sanitized = sanitizeTranslationContext({
+        pageUrl: "/page?token=abc123#section",
+        hostname: "example.com",
+      })
+      expect(sanitized).toEqual({
+        hostname: "example.com",
+        pageUrl: "/page",
+      })
+    })
+  })
+
+  describe("sanitizeTranslationContextForTransport", () => {
+    it("sanitizes context at the transport boundary when privacy mode is enabled", () => {
+      const sanitized = sanitizeTranslationContextForTransport({
+        hostname: "example.com",
+        pageUrl: "https://example.com/page?token=abc123#section",
+        pageTitle: "Private title",
+        contentSummary: "Private summary",
+      }, true)
+
+      expect(sanitized).toEqual({
+        hostname: "example.com",
+        pageUrl: "https://example.com/page",
+      })
+    })
+
+    it("preserves context when privacy mode is disabled", () => {
+      const context = {
+        hostname: "example.com",
+        pageUrl: "https://example.com/page?token=abc123#section",
+        pageTitle: "Visible title",
+      }
+
+      expect(sanitizeTranslationContextForTransport(context, false)).toEqual(context)
     })
   })
 })

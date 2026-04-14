@@ -4,18 +4,21 @@ import { trackEvent } from "@/utils/telemetry"
 import { translateWithGemini } from "./gemini"
 import { translateWithOpenAI } from "./openai"
 import { translateWithRelay } from "./relay"
+import { summarizeProviderRoute, type ProviderTransport, type ProviderRoute } from "./routing-metadata"
 import type { ConfiguredProvider, ProviderTranslationRequest } from "./types"
 
-export type ProviderTransport = "direct" | "relay"
+export type { ProviderTransport, ProviderRoute } from "./routing-metadata"
 
 export interface ProviderRoutingMetadata {
   attemptedTransports: ProviderTransport[]
   finalTransport: ProviderTransport | null
   fallbackUsed: boolean
+  route: ProviderRoute | null
 }
 
 export interface ProviderRoutingSuccessMetadata extends ProviderRoutingMetadata {
   finalTransport: ProviderTransport
+  route: ProviderRoute
 }
 
 export interface ProviderTranslationResult {
@@ -112,10 +115,12 @@ function metadataFor(
   attemptedTransports: ProviderTransport[],
   finalTransport: ProviderTransport | null,
 ): ProviderRoutingMetadata {
+  const route = summarizeProviderRoute(attemptedTransports, finalTransport)
   return {
     attemptedTransports: [...attemptedTransports],
     finalTransport,
-    fallbackUsed: attemptedTransports.includes("direct") && attemptedTransports.includes("relay"),
+    fallbackUsed: route === "fallback",
+    route,
   }
 }
 

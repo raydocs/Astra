@@ -1,5 +1,6 @@
 import { translateTexts } from "@/utils/translate/translate"
 import { runInlineAction } from "../inline-actions"
+import type { VideoNoteTranscriptCapture, VideoTranscriptSegment } from "@/types/video-notes"
 import type { VideoPlatformConfig } from "./types"
 
 const YOUTUBE_RENDER_TARGET_SELECTOR = ".ytp-caption-window-bottom, .ytp-caption-window-top"
@@ -148,6 +149,24 @@ function selectPreferredTrack(
     })[0] ?? null
 }
 
+function selectPreferredTrackForVideoNoteCapture(
+  tracks: YouTubeCaptionTrack[],
+): YouTubeCaptionTrack | null {
+  return [...tracks]
+    .filter((track) => typeof track.baseUrl === "string")
+    .sort((left, right) => {
+      const leftScore
+        = (left.kind !== "asr" ? 60 : 10)
+          + (left.isTranslatable ? 8 : 0)
+          + ((left.languageCode ?? "").trim() ? 4 : 0)
+      const rightScore
+        = (right.kind !== "asr" ? 60 : 10)
+          + (right.isTranslatable ? 8 : 0)
+          + ((right.languageCode ?? "").trim() ? 4 : 0)
+      return rightScore - leftScore
+    })[0] ?? null
+}
+
 function buildTimedTextUrls(baseUrl: string): string[] {
   const urls = new Set<string>()
 
@@ -267,6 +286,68 @@ function findYouTubeVideo(rootContainer: HTMLElement): HTMLVideoElement | null {
 
   const firstVideo = document.querySelector("video")
   return firstVideo instanceof HTMLVideoElement ? firstVideo : null
+}
+
+function normalizeYouTubeVideoTitle(rawTitle: string): string | null {
+  const trimmed = rawTitle.trim()
+  if (!trimmed) return null
+  return trimmed.replace(/\s*-\s*YouTube$/i, "").trim() || null
+}
+
+function buildYouTubeDeepLinkTemplate(): string | null {
+  try {
+    const currentUrl = new URL(window.location.href)
+    currentUrl.hash = ""
+    if (currentUrl.pathname.startsWith("/shorts/")) {
+      const shortsId = currentUrl.pathname.split("/").filter(Boolean)[1]
+      if (shortsId) {
+        return `https://www.youtube.com/watch?v=${encodeURIComponent(shortsId)}&t={seconds}s`
+      }
+    }
+    currentUrl.searchParams.set("t", "{seconds}s")
+    return currentUrl.toString()
+  } catch {
+    return null
+  }
+}
+
+function toVideoTranscriptSegments(cues: YouTubeTimedCue[]): VideoTranscriptSegment[] {
+  return cues
+    .map((cue) => ({
+      startMs: Math.max(0, Math.floor(cue.startTime * 1000)),
+      endMs: Math.max(0, Math.floor(cue.endTime * 1000)),
+      text: cue.text.trim(),
+    }))
+    .filter((segment) => segment.text.length > 0 && segment.endMs > segment.startMs)
+}
+
+export async function captureYouTubeVideoNoteTranscript(
+  rootContainer: HTMLElement,
+): Promise<VideoNoteTranscriptCapture | null> {
+  const video = findYouTubeVideo(rootContainer)
+  const tracks = getCaptionTracksFromPlayerResponse()
+  const track = selectPreferredTrackForVideoNoteCapture(tracks)
+  if (!track) {
+    return null
+  }
+
+  const abortController = new AbortController()
+  const cues = await fetchTimedTextCues(track, abortController.signal, () => {})
+  const transcriptSegments = toVideoTranscriptSegments(cues)
+  if (transcriptSegments.length === 0) {
+    return null
+  }
+
+  return {
+    transcriptSegments,
+    language: normalizeLanguageCode(track.languageCode) || null,
+    deepLinkTemplate: buildYouTubeDeepLinkTemplate(),
+    durationSec: Number.isFinite(video?.duration) ? Number(video!.duration) : null,
+  }
+}
+
+export function getYouTubeVideoNoteTitle(): string | null {
+  return normalizeYouTubeVideoTitle(document.title)
 }
 
 function getRenderTarget(rootContainer: HTMLElement): HTMLElement {
@@ -555,10 +636,14 @@ export function startYouTubeHybridSubtitleSession(
   const maybeRefreshTrack = () => {
     const nextTrack = selectPreferredTrack(getCaptionTracksFromPlayerResponse(), deps.targetLang)
     if (!nextTrack?.baseUrl) {
-      if (activeTrackBaseUrl === null) {
-        recordAnomaly("missing-track")
-        refreshRootDataset("dom-fallback")
+      if (activeTrackBaseUrl !== null || cues.length > 0) {
+        activeTrackBaseUrl = null
+        cues = []
+        lastFallbackToken += 1
+        clearRenderedTranslation(deps.rootContainer)
       }
+      recordAnomaly("missing-track")
+      refreshRootDataset("dom-fallback")
       return
     }
 

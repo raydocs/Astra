@@ -40,6 +40,9 @@ const mocks = vi.hoisted(() => ({
   createWebCloudDataDeleteMock: vi.fn(),
   fetchWebCloudDataDeleteJobMock: vi.fn(),
   repairWebCloudSyncMock: vi.fn(),
+  createWebVideoNoteJobMock: vi.fn(),
+  fetchWebVideoNoteJobMock: vi.fn(),
+  fetchWebVideoNoteArtifactMock: vi.fn(),
 }))
 
 vi.mock("@/entrypoints/pdf-reader/pdf-extractor", () => ({
@@ -60,6 +63,9 @@ vi.mock("./lib/astra-web", () => ({
   fetchWebImportQueueObservability: mocks.fetchWebImportQueueObservabilityMock,
   fetchWebContinuityExportJob: mocks.fetchWebContinuityExportJobMock,
   fetchWebCloudDataDeleteJob: mocks.fetchWebCloudDataDeleteJobMock,
+  createWebVideoNoteJob: mocks.createWebVideoNoteJobMock,
+  fetchWebVideoNoteJob: mocks.fetchWebVideoNoteJobMock,
+  fetchWebVideoNoteArtifact: mocks.fetchWebVideoNoteArtifactMock,
   createWebContinuityExport: mocks.createWebContinuityExportMock,
   repairWebCloudSync: mocks.repairWebCloudSyncMock,
   createWebCloudDataDelete: mocks.createWebCloudDataDeleteMock,
@@ -462,6 +468,9 @@ describe("AstraWebApp smoke", () => {
     mocks.createWebCloudDataDeleteMock.mockReset()
     mocks.fetchWebCloudDataDeleteJobMock.mockReset()
     mocks.repairWebCloudSyncMock.mockReset()
+    mocks.createWebVideoNoteJobMock.mockReset()
+    mocks.fetchWebVideoNoteJobMock.mockReset()
+    mocks.fetchWebVideoNoteArtifactMock.mockReset()
 
     mocks.readWebSessionMock.mockReturnValue(null)
     mocks.fetchWebAccountWorkspaceMock.mockResolvedValue(createWorkspace())
@@ -693,6 +702,7 @@ describe("AstraWebApp smoke", () => {
       targetDeviceId: "device-remote",
     })
     expect(container.textContent).toContain("Revoked Firefox on Windows.")
+    expect(container.textContent).toContain("Use remote revoke only for other active devices.")
     expect(container.textContent).toContain("Already revoked")
 
     await unmount()
@@ -718,6 +728,7 @@ describe("AstraWebApp smoke", () => {
       idempotencyKey: expect.stringContaining("web-export-device-123-"),
     })
     expect(container.textContent).toContain("Continuity export queued.")
+    expect(container.textContent).toContain("Queued in the lifecycle worker.")
 
     await act(async () => {
       clickButton(container, "Schedule delete")
@@ -731,6 +742,8 @@ describe("AstraWebApp smoke", () => {
       idempotencyKey: expect.stringContaining("web-cloud-delete-device-123-"),
     })
     expect(container.textContent).toContain("Cloud delete scheduled.")
+    expect(container.textContent).toContain("Deletion is scheduled for")
+    expect(container.textContent).toContain("Cloud delete: `scheduled` is not deletion yet.")
 
     await unmount()
   })
@@ -754,7 +767,49 @@ describe("AstraWebApp smoke", () => {
     })
     expect(mocks.fetchWebCloudAssetsMock).toHaveBeenCalledTimes(2)
     expect(container.textContent).toContain("Cloud sync repair refreshed 2 materialized records across 4 collections.")
+    expect(container.textContent).toContain("Persistent auth/cursor failures need operator follow-up")
     expect(container.textContent).toContain("compaction floors observed")
+
+    await unmount()
+  })
+
+  it("shows actionable revoke guidance when remote device revoke fails", async () => {
+    const session = createSession()
+    mocks.readWebSessionMock.mockReturnValue(session)
+    mocks.refreshWebSessionMock.mockResolvedValue(session)
+    mocks.revokeWebDeviceMock.mockRejectedValue(new Error("DEVICE_NOT_FOUND"))
+    window.location.hash = "#/account"
+
+    const { container, unmount } = await renderApp()
+
+    await act(async () => {
+      clickButton(container, "Revoke access")
+    })
+    await flush()
+
+    expect(container.textContent).toContain("Device revoke failed. DEVICE_NOT_FOUND Refresh the device list once before retrying")
+    expect(container.textContent).toContain("Use remote revoke only for other active devices.")
+
+    await unmount()
+  })
+
+  it("shows destructive lifecycle guidance when cloud delete scheduling fails", async () => {
+    const session = createSession()
+    mocks.readWebSessionMock.mockReturnValue(session)
+    mocks.refreshWebSessionMock.mockResolvedValue(session)
+    mocks.createWebCloudDataDeleteMock.mockRejectedValue(new Error("LIFECYCLE_QUEUE_UNAVAILABLE"))
+    window.location.hash = "#/account"
+
+    const { container, unmount } = await renderApp()
+
+    await act(async () => {
+      clickButton(container, "Schedule delete")
+    })
+    await flush()
+
+    expect(container.textContent).toContain("Cloud delete scheduling failed. LIFECYCLE_QUEUE_UNAVAILABLE")
+    expect(container.textContent).toContain("Destructive deletes stay scheduled until the grace window expires")
+    expect(container.textContent).toContain("Cloud delete: `scheduled` is not deletion yet.")
 
     await unmount()
   })
@@ -771,6 +826,10 @@ describe("AstraWebApp smoke", () => {
       session,
       device: expect.objectContaining({ deviceId: "device-123" }),
     })
+    expect(container.textContent).toContain("Pro plan")
+    expect(container.textContent).toContain("Active")
+    expect(container.textContent).toContain("Server-backed account summary for the current signed-in device.")
+    expect(container.textContent).toContain("Plan, status, and quota prefer /v1/account/summary.")
     expect(container.textContent).toContain("Synced cloud assets")
     expect(container.textContent).toContain("Synced config")
     expect(container.textContent).toContain("gemini")
@@ -814,6 +873,9 @@ describe("AstraWebApp smoke", () => {
 
     const { container, unmount } = await renderApp()
 
+    expect(container.textContent).toContain("Pro plan")
+    expect(container.textContent).toContain("Astra account summary")
+    expect(container.textContent).toContain("account summary, devices, and sync state")
     expect(container.textContent).toContain("Cloud console snapshot")
     expect(container.textContent).toContain("This is the latest fetched snapshot")
     expect(container.textContent).toContain("Saved workspace library")

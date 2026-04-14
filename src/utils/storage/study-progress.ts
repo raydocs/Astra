@@ -33,6 +33,7 @@ const StudyPageProgressSchema = z.object({
   completedSteps: z.array(StudyStepSchema),
   sentencesExplained: z.number().int().nonnegative().default(0),
   vocabSaved: z.number().int().nonnegative().default(0),
+  vocabReviewed: z.number().int().nonnegative().default(0),
   startedAt: z.number(),
   lastActivityAt: z.number(),
 })
@@ -130,6 +131,7 @@ function mergeStudyPageProgress(
     ],
     sentencesExplained: Math.max(existing.sentencesExplained, incoming.sentencesExplained),
     vocabSaved: Math.max(existing.vocabSaved, incoming.vocabSaved),
+    vocabReviewed: Math.max(existing.vocabReviewed, incoming.vocabReviewed),
     startedAt: Math.min(existing.startedAt, incoming.startedAt),
     lastActivityAt: Math.max(existing.lastActivityAt, incoming.lastActivityAt),
   })
@@ -216,6 +218,7 @@ export async function recordStudyEvent(input: RecordStudyEventInput): Promise<St
       completedSteps: [],
       sentencesExplained: 0,
       vocabSaved: 0,
+      vocabReviewed: 0,
       startedAt: now,
       lastActivityAt: now,
     }
@@ -245,6 +248,7 @@ export async function recordStudyEvent(input: RecordStudyEventInput): Promise<St
       store.dailyStats.vocabSaved += increment
       break
     case "vocab_review":
+      page.vocabReviewed += increment
       store.dailyStats.vocabReviewed += increment
       break
   }
@@ -274,12 +278,55 @@ export async function getPageStudyProgress(url: string): Promise<StudyPageProgre
   return store.pages.find((p) => p.url === buildStudyProgressRecordId(url)) ?? null
 }
 
-export interface StudyLoopViewModel {
-  currentPage: StudyPageProgress | null
+export interface StudyLoopPageCounts {
+  sentencesExplained: number
+  vocabSaved: number
+  vocabReviewed: number
+}
+
+export interface StudyLoopPageSummary {
+  completedSteps: StudyStep[]
+  currentCounts: StudyLoopPageCounts
   nextStep: StudyStep | null
   completionPercent: number
+}
+
+export interface StudyLoopViewModel extends StudyLoopPageSummary {
+  currentPage: StudyPageProgress | null
   dailyStats: StudyProgressStore["dailyStats"]
   recentPages: StudyPageProgress[]
+}
+
+export function deriveStudyLoopPageCounts(page: StudyPageProgress | null | undefined): StudyLoopPageCounts {
+  return {
+    sentencesExplained: page?.sentencesExplained ?? 0,
+    vocabSaved: page?.vocabSaved ?? 0,
+    vocabReviewed: page?.vocabReviewed ?? 0,
+  }
+}
+
+export function deriveStudyLoopPageSummary(
+  page: StudyPageProgress | null | undefined,
+): StudyLoopPageSummary {
+  const completedSteps = orderStudySteps(page?.completedSteps ?? [])
+  // Revisit should point forward from the furthest durable step already reached,
+  // rather than forcing users to backfill earlier optional/missed steps (for example,
+  // pages that skipped guided_read but already reached explain/save).
+  const highestCompletedIndex = completedSteps.reduce(
+    (maxIndex, step) => Math.max(maxIndex, STUDY_STEPS_ORDER.indexOf(step)),
+    -1,
+  )
+  const nextStep = highestCompletedIndex < 0
+    ? STUDY_STEPS_ORDER[0] ?? null
+    : (STUDY_STEPS_ORDER[highestCompletedIndex + 1] ?? null)
+  const completionPercent = Math.round((completedSteps.length / STUDY_STEPS_ORDER.length) * 100)
+
+  return {
+    completedSteps,
+    currentCounts: deriveStudyLoopPageCounts(page),
+    nextStep,
+    completionPercent,
+  }
 }
 
 export function deriveStudyLoopViewModel(
@@ -290,28 +337,38 @@ export function deriveStudyLoopViewModel(
     ? store.pages.find((p) => p.url === buildStudyProgressRecordId(currentUrl)) ?? null
     : null
 
-  const completedSteps = currentPage?.completedSteps ?? []
-  const nextStep = STUDY_STEPS_ORDER.find((s) => !completedSteps.includes(s)) ?? null
-  const completionPercent = Math.round((completedSteps.length / STUDY_STEPS_ORDER.length) * 100)
-
   return {
     currentPage,
-    nextStep,
-    completionPercent,
+    ...deriveStudyLoopPageSummary(currentPage),
     dailyStats: store.dailyStats,
     recentPages: store.pages.slice(0, 5),
   }
 }
 
 export function buildVocabularyReviewStudyEvent(entry: VocabularyEntry): RecordStudyEventInput | null {
-  const rawUrl = entry.url?.trim()
+  const linkedStudyUrl = entry.sourceContext?.studyProgressRecordId?.trim()
+  const rawUrl = linkedStudyUrl || entry.url?.trim()
   if (!rawUrl) return null
-  const sanitizedUrl = buildStudyProgressRecordId(rawUrl)
 
-  let hostname = entry.hostname?.trim() ?? ""
+  let sanitizedUrl: string
+  if (linkedStudyUrl) {
+    sanitizedUrl = buildStudyProgressRecordId(linkedStudyUrl)
+  } else {
+    try {
+      const parsed = new URL(rawUrl)
+      if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
+        return null
+      }
+      sanitizedUrl = buildStudyProgressRecordId(rawUrl)
+    } catch {
+      return null
+    }
+  }
+
+  let hostname = entry.sourceContext?.hostname?.trim() ?? entry.hostname?.trim() ?? ""
   if (!hostname) {
     try {
-      hostname = new URL(rawUrl).hostname
+      hostname = new URL(sanitizedUrl).hostname
     } catch {
       hostname = ""
     }
@@ -320,7 +377,7 @@ export function buildVocabularyReviewStudyEvent(entry: VocabularyEntry): RecordS
   return {
     url: sanitizedUrl,
     hostname,
-    title: entry.sourceContext?.pageTitle ?? entry.hostname ?? entry.text,
+    title: entry.sourceContext?.pageTitle ?? entry.sourceContext?.ownedReadingTitle ?? entry.hostname ?? entry.text,
     step: "vocab_review",
   }
 }

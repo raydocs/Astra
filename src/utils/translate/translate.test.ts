@@ -52,7 +52,7 @@ describe("translateTexts", () => {
       context: {
         pageTitle: "Astra",
         contentSummary: "Browser translation",
-        terminologyGlossary: "Astra=阿斯特拉",
+        terminologyGlossary: "Astra => 阿斯特拉",
       },
     })
 
@@ -63,7 +63,7 @@ describe("translateTexts", () => {
       context: {
         pageTitle: "Astra",
         contentSummary: "Browser translation",
-        terminologyGlossary: "Astra=阿斯特拉",
+        terminologyGlossary: "Astra => 阿斯特拉",
       },
     })
   })

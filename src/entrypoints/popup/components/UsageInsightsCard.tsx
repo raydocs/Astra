@@ -18,9 +18,9 @@ function formatCost(usd: number): string {
 }
 
 function formatRoute(event: TranslationUsageEvent): string {
-  if (event.fallbackUsed) return t("popup_usageFallbackRoute")
-  if (event.finalTransport === "direct") return t("popup_usageViaDirect")
-  if (event.finalTransport === "relay") return t("popup_usageViaRelay")
+  if (event.route === "fallback") return t("popup_usageFallbackRoute")
+  if (event.route === "direct") return t("popup_usageViaDirect")
+  if (event.route === "relay") return t("popup_usageViaRelay")
   return t("popup_usageNoRoute")
 }
 

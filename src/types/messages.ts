@@ -7,6 +7,12 @@ import {
   TranslationModeSchema,
   TranslationThemeSchema,
 } from "./config"
+import {
+  VideoNoteCreateResponseSchema,
+  VideoNotePlatformSchema,
+  VideoNoteStatusResponseSchema,
+  VideoNoteTranscriptCaptureSchema,
+} from "./video-notes"
 import type { TranslationError, TranslationSnapshot } from "./translation"
 
 export const TranslationRequestContextSchema = z.object({
@@ -96,12 +102,14 @@ const TranslationSnapshotSchema = z.object({
 })
 
 const ProviderRoutingSuccessMetadataSchema = z.object({
+  route: z.enum(["direct", "relay", "fallback"]),
   attemptedTransports: z.array(z.enum(["direct", "relay"])),
   finalTransport: z.enum(["direct", "relay"]),
   fallbackUsed: z.boolean(),
 })
 
 const ProviderRoutingErrorMetadataSchema = z.object({
+  route: z.enum(["direct", "relay", "fallback"]).nullable(),
   attemptedTransports: z.array(z.enum(["direct", "relay"])),
   finalTransport: z.enum(["direct", "relay"]).nullable(),
   fallbackUsed: z.boolean(),
@@ -135,9 +143,41 @@ const RuntimeSaveConfigResponseSchema = z.union([
   }),
 ])
 
+const RuntimeVideoNoteCreateFromCurrentTabPayloadSchema = z.object({
+  forceRegenerate: z.boolean().optional(),
+})
+
+const RuntimeVideoNoteGetJobPayloadSchema = z.object({
+  jobId: z.string().trim().min(1),
+})
+
+const RuntimeVideoNoteCreateResponseSchema = z.union([
+  z.object({
+    type: z.literal("runtime/video-note:create-from-current-tab:success"),
+    payload: VideoNoteCreateResponseSchema,
+  }),
+  z.object({
+    type: z.literal("runtime/video-note:create-from-current-tab:error"),
+    error: TranslationErrorSchema,
+  }),
+])
+
+const RuntimeVideoNoteGetJobResponseSchema = z.union([
+  z.object({
+    type: z.literal("runtime/video-note:get-job:success"),
+    payload: VideoNoteStatusResponseSchema,
+  }),
+  z.object({
+    type: z.literal("runtime/video-note:get-job:error"),
+    error: TranslationErrorSchema,
+  }),
+])
+
 const RuntimeResponseSchema = z.union([
   RuntimeTranslateResponseSchema,
   RuntimeSaveConfigResponseSchema,
+  RuntimeVideoNoteCreateResponseSchema,
+  RuntimeVideoNoteGetJobResponseSchema,
 ])
 
 const ContentCommandResponseSchema = z.union([
@@ -163,11 +203,30 @@ const ContentStudyContextResponseSchema = z.union([
   }),
 ])
 
+const ContentVideoNoteSourceSchema = z.object({
+  sourceUrl: z.string().trim().url(),
+  title: z.string().trim().min(1).nullable(),
+  platform: VideoNotePlatformSchema,
+  capture: VideoNoteTranscriptCaptureSchema.nullable(),
+})
+
+const ContentVideoNoteSourceResponseSchema = z.union([
+  z.object({
+    ok: z.literal(true),
+    source: ContentVideoNoteSourceSchema,
+  }),
+  z.object({
+    ok: z.literal(false),
+    error: TranslationErrorSchema,
+  }),
+])
+
 export type TranslationRequestContext = z.infer<typeof TranslationRequestContextSchema>
 export type PageStudyContext = z.infer<typeof PageStudyContextSchema>
 export type TranslationTask = z.infer<typeof TranslationTaskSchema>
 export type TranslationPlaceholderFormat = z.infer<typeof TranslationPlaceholderFormatSchema>
 export type ContentTranslationOverrides = z.infer<typeof ContentTranslationOverridesSchema>
+export type ContentVideoNoteSource = z.infer<typeof ContentVideoNoteSourceSchema>
 
 export interface RuntimeTranslateBatchRequest {
   type: "runtime/translate-batch"
@@ -176,12 +235,13 @@ export interface RuntimeTranslateBatchRequest {
 
 export interface RuntimeTranslateBatchSuccessResponse {
   type: "runtime/translate-batch:success"
-  payload: {
-    translations: string[]
-    metadata?: {
-      attemptedTransports: Array<"direct" | "relay">
-      finalTransport: "direct" | "relay"
-      fallbackUsed: boolean
+    payload: {
+      translations: string[]
+      metadata?: {
+        route: "direct" | "relay" | "fallback"
+        attemptedTransports: Array<"direct" | "relay">
+        finalTransport: "direct" | "relay"
+        fallbackUsed: boolean
     }
   }
 }
@@ -190,6 +250,7 @@ export interface RuntimeTranslateBatchErrorResponse {
   type: "runtime/translate-batch:error"
   error: TranslationError
   metadata?: {
+    route: "direct" | "relay" | "fallback" | null
     attemptedTransports: Array<"direct" | "relay">
     finalTransport: "direct" | "relay" | null
     fallbackUsed: boolean
@@ -212,6 +273,16 @@ export interface RuntimeSaveConfigRequest {
   payload: z.infer<typeof AstraConfigInputSchema>
 }
 
+export interface RuntimeVideoNoteCreateFromCurrentTabRequest {
+  type: "runtime/video-note:create-from-current-tab"
+  payload?: z.infer<typeof RuntimeVideoNoteCreateFromCurrentTabPayloadSchema>
+}
+
+export interface RuntimeVideoNoteGetJobRequest {
+  type: "runtime/video-note:get-job"
+  payload: z.infer<typeof RuntimeVideoNoteGetJobPayloadSchema>
+}
+
 export interface RuntimeSaveConfigSuccessResponse {
   type: "runtime/save-config:success"
   payload: {
@@ -224,16 +295,42 @@ export interface RuntimeSaveConfigErrorResponse {
   error: TranslationError
 }
 
+export interface RuntimeVideoNoteCreateFromCurrentTabSuccessResponse {
+  type: "runtime/video-note:create-from-current-tab:success"
+  payload: z.infer<typeof VideoNoteCreateResponseSchema>
+}
+
+export interface RuntimeVideoNoteCreateFromCurrentTabErrorResponse {
+  type: "runtime/video-note:create-from-current-tab:error"
+  error: TranslationError
+}
+
+export interface RuntimeVideoNoteGetJobSuccessResponse {
+  type: "runtime/video-note:get-job:success"
+  payload: z.infer<typeof VideoNoteStatusResponseSchema>
+}
+
+export interface RuntimeVideoNoteGetJobErrorResponse {
+  type: "runtime/video-note:get-job:error"
+  error: TranslationError
+}
+
 export type RuntimeRequest =
   | RuntimeTranslateBatchRequest
   | RuntimeTabCommandRequest
   | RuntimeCurrentTabCommandRequest
   | RuntimeSaveConfigRequest
+  | RuntimeVideoNoteCreateFromCurrentTabRequest
+  | RuntimeVideoNoteGetJobRequest
 export type RuntimeResponse =
   | RuntimeTranslateBatchSuccessResponse
   | RuntimeTranslateBatchErrorResponse
   | RuntimeSaveConfigSuccessResponse
   | RuntimeSaveConfigErrorResponse
+  | RuntimeVideoNoteCreateFromCurrentTabSuccessResponse
+  | RuntimeVideoNoteCreateFromCurrentTabErrorResponse
+  | RuntimeVideoNoteGetJobSuccessResponse
+  | RuntimeVideoNoteGetJobErrorResponse
 
 export interface ContentGetTranslationStateCommand {
   type: "content/get-translation-state"
@@ -250,6 +347,10 @@ export interface ContentStopTranslationCommand {
 
 export interface ContentGetStudyContextCommand {
   type: "content/get-study-context"
+}
+
+export interface ContentGetVideoNoteSourceCommand {
+  type: "content/get-video-note-source"
 }
 
 export interface ContentDetectArticleCommand {
@@ -283,6 +384,10 @@ export type ContentCommandResponse =
 
 export type ContentStudyContextResponse =
   | { ok: true; context: PageStudyContext }
+  | { ok: false; error: TranslationError }
+
+export type ContentVideoNoteSourceResponse =
+  | { ok: true; source: ContentVideoNoteSource }
   | { ok: false; error: TranslationError }
 
 export function isRuntimeTranslateBatchRequest(
@@ -320,6 +425,24 @@ export function isRuntimeSaveConfigRequest(
   const candidate = value as Partial<RuntimeSaveConfigRequest>
   return candidate.type === "runtime/save-config"
     && AstraConfigInputSchema.safeParse(candidate.payload).success
+}
+
+export function isRuntimeVideoNoteCreateFromCurrentTabRequest(
+  value: unknown,
+): value is RuntimeVideoNoteCreateFromCurrentTabRequest {
+  if (typeof value !== "object" || value === null) return false
+  const candidate = value as Partial<RuntimeVideoNoteCreateFromCurrentTabRequest>
+  return candidate.type === "runtime/video-note:create-from-current-tab"
+    && (candidate.payload === undefined || RuntimeVideoNoteCreateFromCurrentTabPayloadSchema.safeParse(candidate.payload).success)
+}
+
+export function isRuntimeVideoNoteGetJobRequest(
+  value: unknown,
+): value is RuntimeVideoNoteGetJobRequest {
+  if (typeof value !== "object" || value === null) return false
+  const candidate = value as Partial<RuntimeVideoNoteGetJobRequest>
+  return candidate.type === "runtime/video-note:get-job"
+    && RuntimeVideoNoteGetJobPayloadSchema.safeParse(candidate.payload).success
 }
 
 export function isRuntimeResponse(value: unknown): value is RuntimeResponse {
@@ -364,6 +487,13 @@ export function isContentStudyContextCommand(
   return (value as { type?: string }).type === "content/get-study-context"
 }
 
+export function isContentVideoNoteSourceCommand(
+  value: unknown,
+): value is ContentGetVideoNoteSourceCommand {
+  if (typeof value !== "object" || value === null) return false
+  return (value as { type?: string }).type === "content/get-video-note-source"
+}
+
 export function isContentDetectArticleCommand(
   value: unknown,
 ): value is ContentDetectArticleCommand {
@@ -381,4 +511,10 @@ export function isContentStudyContextResponse(
   value: unknown,
 ): value is ContentStudyContextResponse {
   return ContentStudyContextResponseSchema.safeParse(value).success
+}
+
+export function isContentVideoNoteSourceResponse(
+  value: unknown,
+): value is ContentVideoNoteSourceResponse {
+  return ContentVideoNoteSourceResponseSchema.safeParse(value).success
 }

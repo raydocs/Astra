@@ -9,13 +9,21 @@ export const VocabularySourceContextSurfaceSchema = z.enum([
   "subtitle_reader",
 ])
 
+const VocabularyOwnedReadingSourceTypeSchema = z.enum(["article", "pdf", "epub", "subtitle-file"])
+
 export const VocabularySourceContextSchema = z.object({
   surface: VocabularySourceContextSurfaceSchema,
   pageTitle: z.string().trim().min(1).optional(),
+  pageUrl: z.string().trim().min(1).optional(),
+  hostname: z.string().trim().min(1).optional(),
   contentSummary: z.string().trim().min(1).optional(),
   articleExcerpt: z.string().trim().min(1).optional(),
   sentenceText: z.string().trim().min(1).optional(),
   sentenceIndex: z.number().int().nonnegative().optional(),
+  ownedReadingItemId: z.string().trim().min(1).optional(),
+  ownedReadingSourceType: VocabularyOwnedReadingSourceTypeSchema.optional(),
+  ownedReadingTitle: z.string().trim().min(1).optional(),
+  studyProgressRecordId: z.string().trim().min(1).optional(),
 })
 
 export const VocabularyEntrySchema = z.object({
@@ -76,6 +84,10 @@ export function buildSyncSafeVocabularyEntry(
 ): SyncedVocabularyEntry {
   return SyncedVocabularyEntrySchema.parse({
     ...entry,
+    sourceContext: normalizeVocabularySourceContext(entry.sourceContext, {
+      url: entry.url,
+      hostname: entry.hostname,
+    }),
     ...(sanitizeVocabularyUrl(entry.url) ? { url: sanitizeVocabularyUrl(entry.url) } : { url: undefined }),
   })
 }
@@ -101,16 +113,98 @@ function stripUndefinedFields<T extends Record<string, unknown>>(value?: T | nul
   ) as Partial<T>
 }
 
+function normalizeSourceText(value?: string | null): string | undefined {
+  const trimmed = value?.trim()
+  return trimmed ? trimmed : undefined
+}
+
+export function normalizeVocabularySourceContext(
+  sourceContext?: VocabularySourceContext,
+  fallback?: { url?: string | null; hostname?: string | null },
+): VocabularySourceContext | undefined {
+  if (!sourceContext) return undefined
+
+  return VocabularySourceContextSchema.parse({
+    ...stripUndefinedFields(sourceContext),
+    pageTitle: normalizeSourceText(sourceContext.pageTitle),
+    pageUrl: sanitizeVocabularyUrl(sourceContext.pageUrl ?? fallback?.url),
+    hostname: normalizeSourceText(sourceContext.hostname ?? fallback?.hostname),
+    contentSummary: normalizeSourceText(sourceContext.contentSummary),
+    articleExcerpt: normalizeSourceText(sourceContext.articleExcerpt),
+    sentenceText: normalizeSourceText(sourceContext.sentenceText),
+    ownedReadingItemId: normalizeSourceText(sourceContext.ownedReadingItemId),
+    ownedReadingTitle: normalizeSourceText(sourceContext.ownedReadingTitle),
+    studyProgressRecordId: sanitizeVocabularyUrl(sourceContext.studyProgressRecordId),
+  })
+}
+
 export function mergeVocabularySourceContext(
   existing?: VocabularySourceContext,
   incoming?: VocabularySourceContext,
+  fallback?: { url?: string | null; hostname?: string | null },
 ): VocabularySourceContext | undefined {
   if (!existing && !incoming) return undefined
 
-  return VocabularySourceContextSchema.parse({
+  return normalizeVocabularySourceContext(VocabularySourceContextSchema.parse({
     ...stripUndefinedFields(existing),
     ...stripUndefinedFields(incoming),
+  }), fallback)
+}
+
+export function getVocabularySourceSurfaceLabel(
+  surface?: VocabularySourceContext["surface"],
+): string | null {
+  switch (surface) {
+    case "popup_deep_read":
+      return "Popup deep-read"
+    case "selection_toolbar":
+      return "Selection toolbar"
+    case "hover_translate":
+      return "Hover translate"
+    case "subtitle_reader":
+      return "Subtitle reader"
+    default:
+      return null
+  }
+}
+
+export function deriveVocabularySourceDisplay(entry: Pick<VocabularyEntry, "context" | "url" | "hostname" | "sourceContext">) {
+  const sourceContext = normalizeVocabularySourceContext(entry.sourceContext, {
+    url: entry.url,
+    hostname: entry.hostname,
   })
+  const sourceLabel = sourceContext?.pageTitle
+    ?? sourceContext?.hostname
+    ?? sourceContext?.pageUrl
+    ?? normalizeSourceText(entry.hostname)
+    ?? sanitizeVocabularyUrl(entry.url)
+    ?? ""
+  const snippet = sourceContext?.sentenceText
+    ?? sourceContext?.articleExcerpt
+    ?? sourceContext?.contentSummary
+    ?? normalizeSourceText(entry.context)
+    ?? ""
+  const articleExcerpt = sourceContext?.articleExcerpt && sourceContext.articleExcerpt !== sourceContext.sentenceText
+    ? sourceContext.articleExcerpt
+    : ""
+  const contentSummary = !articleExcerpt
+    ? (sourceContext?.contentSummary ?? "")
+    : (sourceContext?.contentSummary && sourceContext.contentSummary !== snippet ? sourceContext.contentSummary : "")
+
+  return {
+    sourceContext,
+    surfaceLabel: getVocabularySourceSurfaceLabel(sourceContext?.surface),
+    sourceLabel,
+    snippet,
+    articleExcerpt,
+    contentSummary,
+    pageUrl: sourceContext?.pageUrl ?? sanitizeVocabularyUrl(entry.url) ?? "",
+    hostname: sourceContext?.hostname ?? normalizeSourceText(entry.hostname) ?? "",
+    ownedReadingItemId: sourceContext?.ownedReadingItemId ?? "",
+    ownedReadingSourceType: sourceContext?.ownedReadingSourceType,
+    ownedReadingTitle: sourceContext?.ownedReadingTitle ?? "",
+    studyProgressRecordId: sourceContext?.studyProgressRecordId ?? "",
+  }
 }
 
 export function applySyncedVocabularyMutation(
@@ -130,7 +224,10 @@ export function applySyncedVocabularyMutation(
   const existing = existingIndex >= 0 ? entries[existingIndex] : null
   const mergedEntry = SyncedVocabularyEntrySchema.parse({
     ...syncedEntry,
-    sourceContext: mergeVocabularySourceContext(existing?.sourceContext, syncedEntry.sourceContext),
+    sourceContext: mergeVocabularySourceContext(existing?.sourceContext, syncedEntry.sourceContext, {
+      url: syncedEntry.url,
+      hostname: syncedEntry.hostname,
+    }),
   })
   const nextEntries = [...entries]
   if (existingIndex >= 0) {
@@ -169,7 +266,10 @@ export function applyVocabularySyncMutation(
   const existing = existingIndex >= 0 ? ensureSrsFields(entries[existingIndex]) : null
   const mergedEntry = ensureSrsFields({
     ...syncedEntry,
-    sourceContext: mergeVocabularySourceContext(existing?.sourceContext, syncedEntry.sourceContext),
+    sourceContext: mergeVocabularySourceContext(existing?.sourceContext, syncedEntry.sourceContext, {
+      url: syncedEntry.url,
+      hostname: syncedEntry.hostname,
+    }),
     ...(existing
       ? {
           srsBox: existing.srsBox,

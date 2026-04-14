@@ -1675,7 +1675,7 @@ function AboutSection({
         </h3>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12, gap: 12 }}>
           <div style={{ ...hintStyle, marginTop: 0 }}>
-            Device/session registry and config bootstrap status from Astra.
+            Device/session registry and config bootstrap status from Astra. Plan, quota, and billing labels live in the popup and web account surfaces.
           </div>
           <button
             type="button"

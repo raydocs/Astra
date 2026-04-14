@@ -1,10 +1,14 @@
 import "@/utils/zod-config"
 import { defineBackground, browser } from "#imports"
 import {
+  isContentVideoNoteSourceResponse,
   isRuntimeCurrentTabCommandRequest,
   isRuntimeSaveConfigRequest,
   isRuntimeTabCommandRequest,
   isRuntimeTranslateBatchRequest,
+  isRuntimeVideoNoteCreateFromCurrentTabRequest,
+  isRuntimeVideoNoteGetJobRequest,
+  type ContentVideoNoteSourceResponse,
   type ContentCommandResponse,
   type RuntimeTranslateBatchRequest,
   type RuntimeResponse,
@@ -16,6 +20,7 @@ import {
   getProviderRoutingMetadataFromError,
   translateWithProviderDetailed,
 } from "@/utils/providers/router"
+import { summarizeProviderRoute } from "@/utils/providers/routing-metadata"
 import { readConfig, saveConfig } from "@/utils/storage/config"
 import { runPhaseOneCollectionSync } from "@/utils/storage/config-sync"
 import {
@@ -29,7 +34,7 @@ import {
 } from "@/utils/cache/translation-cache-context"
 import { isOcrFeatureEnabled } from "@/utils/ocr/image-text"
 import { STUDY_PROGRESS_STORAGE_KEY } from "@/utils/storage/study-progress"
-import { getDueVocabularyCount } from "@/utils/storage/vocabulary"
+import { buildTerminologyGlossary, getDueVocabularyCount } from "@/utils/storage/vocabulary"
 import {
   ensureAstraDeviceIdentity,
   readAstraSession,
@@ -37,6 +42,11 @@ import {
   saveAstraSession,
 } from "@/utils/storage/auth"
 import { bootstrapAnonymousAstraSession } from "@/utils/astra/auth"
+import {
+  AstraVideoNoteApiError,
+  createAstraVideoNoteJob,
+  fetchAstraVideoNoteJob,
+} from "@/utils/astra/video-notes"
 import { resolveManagedProviderConfig, type HoverTrigger } from "@/types/config"
 import { initializeTranslationUsageSession, recordTranslationUsage } from "@/utils/storage/translation-usage"
 import { trackEvent } from "@/utils/telemetry"
@@ -49,6 +59,7 @@ import {
   type IosBootstrapHistoryEvent,
   type IosBootstrapStatus,
 } from "@/utils/extension/ios-host-bridge"
+import { sanitizeTranslationContextForTransport } from "@/utils/privacy"
 
 let anonymousRegistrationPromise: Promise<void> | null = null
 let collectionSyncPromise: Promise<void> | null = null
@@ -173,6 +184,144 @@ async function replayIosBootstrap(sessionId?: string | null): Promise<{ opened: 
 
   const opened = await openIosLaunchURL(event.launchURL)
   return { opened, event }
+}
+
+function selectMostRecentHttpTab(tabs: Array<{ id?: number; url?: string; lastAccessed?: number }>): { id: number; url: string } | null {
+  const eligibleTabs = tabs
+    .filter((tab): tab is { id: number; url: string; lastAccessed?: number } =>
+      typeof tab.id === "number" && typeof tab.url === "string" && /^https?:/i.test(tab.url),
+    )
+    .sort((left, right) => (right.lastAccessed ?? 0) - (left.lastAccessed ?? 0))
+  return eligibleTabs[0] ?? null
+}
+
+async function resolveCurrentHttpTab(): Promise<{ id: number; url: string } | null> {
+  const tabs = await browser.tabs.query({})
+  const recent = selectMostRecentHttpTab(tabs)
+  if (recent) return recent
+
+  const [active] = await browser.tabs.query({ active: true, currentWindow: true })
+  if (active?.id && active.url && /^https?:/i.test(active.url)) {
+    return { id: active.id, url: active.url }
+  }
+  return null
+}
+
+async function requestVideoNoteSourceFromTab(tabId: number): Promise<ContentVideoNoteSourceResponse> {
+  try {
+    const response = await browser.tabs.sendMessage(tabId, { type: "content/get-video-note-source" }, { frameId: 0 }) as unknown
+    if (!isContentVideoNoteSourceResponse(response)) {
+      return {
+        ok: false,
+        error: toTranslationError(new Error("Received an unexpected video-note source response."), "INVALID_RESPONSE"),
+      }
+    }
+    return response
+  } catch (error) {
+    return {
+      ok: false,
+      error: toTranslationError(error, "CONTENT_UNAVAILABLE"),
+    }
+  }
+}
+
+async function handleCreateVideoNoteFromCurrentTab(
+  payload: { forceRegenerate?: boolean } = {},
+): Promise<RuntimeResponse> {
+  const [session, device, activeTab] = await Promise.all([
+    readAstraSession(),
+    ensureAstraDeviceIdentity(),
+    resolveCurrentHttpTab(),
+  ])
+
+  if (!session?.sessionToken || !session.relayBaseURL) {
+    return {
+      type: "runtime/video-note:create-from-current-tab:error",
+      error: toTranslationError(new Error("Sign in to Astra before creating video notes."), "CONFIG_MISSING"),
+    }
+  }
+
+  if (session.identityMode !== "authenticated") {
+    return {
+      type: "runtime/video-note:create-from-current-tab:error",
+      error: toTranslationError(new Error("Video-note jobs require an authenticated Astra account."), "CONFIG_MISSING"),
+    }
+  }
+
+  if (!activeTab) {
+    return {
+      type: "runtime/video-note:create-from-current-tab:error",
+      error: toTranslationError(new Error("Open a supported video tab before creating a note."), "CONTENT_UNAVAILABLE"),
+    }
+  }
+
+  const sourceResponse = await requestVideoNoteSourceFromTab(activeTab.id)
+  if (!sourceResponse.ok) {
+    return {
+      type: "runtime/video-note:create-from-current-tab:error",
+      error: sourceResponse.error,
+    }
+  }
+
+  try {
+    const createResponse = await createAstraVideoNoteJob({
+      baseURL: session.relayBaseURL,
+      sessionToken: session.sessionToken,
+      deviceId: device.deviceId,
+      request: {
+        sourceUrl: sourceResponse.source.sourceUrl,
+        platformHint: sourceResponse.source.platform,
+        sourceTitle: sourceResponse.source.title,
+        forceRegenerate: payload.forceRegenerate ?? false,
+        capture: sourceResponse.source.capture,
+      },
+    })
+
+    return {
+      type: "runtime/video-note:create-from-current-tab:success",
+      payload: createResponse,
+    }
+  } catch (error) {
+    const fallbackCode = error instanceof AstraVideoNoteApiError && error.status === 403
+      ? "CONFIG_MISSING"
+      : "UNKNOWN"
+    return {
+      type: "runtime/video-note:create-from-current-tab:error",
+      error: toTranslationError(error, fallbackCode),
+    }
+  }
+}
+
+async function handleGetVideoNoteJob(payload: { jobId: string }): Promise<RuntimeResponse> {
+  const [session, device] = await Promise.all([
+    readAstraSession(),
+    ensureAstraDeviceIdentity(),
+  ])
+
+  if (!session?.sessionToken || !session.relayBaseURL) {
+    return {
+      type: "runtime/video-note:get-job:error",
+      error: toTranslationError(new Error("Sign in to Astra before checking video-note jobs."), "CONFIG_MISSING"),
+    }
+  }
+
+  try {
+    const statusResponse = await fetchAstraVideoNoteJob({
+      baseURL: session.relayBaseURL,
+      sessionToken: session.sessionToken,
+      deviceId: device.deviceId,
+      jobId: payload.jobId,
+    })
+    return {
+      type: "runtime/video-note:get-job:success",
+      payload: statusResponse,
+    }
+  } catch (error) {
+    return {
+      type: "runtime/video-note:get-job:error",
+      error: toTranslationError(error, "UNKNOWN"),
+    }
+  }
 }
 
 export default defineBackground({
@@ -596,6 +745,30 @@ export default defineBackground({
         return true
       }
 
+      if (isRuntimeVideoNoteCreateFromCurrentTabRequest(message)) {
+        handleCreateVideoNoteFromCurrentTab(message.payload)
+          .then(sendResponse)
+          .catch((error) => {
+            sendResponse({
+              type: "runtime/video-note:create-from-current-tab:error",
+              error: toTranslationError(error, "UNKNOWN"),
+            } satisfies RuntimeResponse)
+          })
+        return true
+      }
+
+      if (isRuntimeVideoNoteGetJobRequest(message)) {
+        handleGetVideoNoteJob(message.payload)
+          .then(sendResponse)
+          .catch((error) => {
+            sendResponse({
+              type: "runtime/video-note:get-job:error",
+              error: toTranslationError(error, "UNKNOWN"),
+            } satisfies RuntimeResponse)
+          })
+        return true
+      }
+
       return false
     })
   },
@@ -617,6 +790,26 @@ async function handleTranslate(
     readConfig(),
     readAstraSession(),
   ])
+  const transportContext = sanitizeTranslationContextForTransport(
+    payload.context,
+    config.privacyMode ?? false,
+  )
+  const terminologyGlossary = await buildTerminologyGlossary(transportContext?.hostname)
+  const requestContext = (() => {
+    const baseContext = transportContext ? { ...transportContext } : undefined
+    if (baseContext?.terminologyGlossary) {
+      delete baseContext.terminologyGlossary
+    }
+
+    if (terminologyGlossary) {
+      return {
+        ...(baseContext ?? {}),
+        terminologyGlossary,
+      }
+    }
+
+    return baseContext && Object.keys(baseContext).length > 0 ? baseContext : undefined
+  })()
   const resolvedProvider = resolveManagedProviderConfig(config.provider, session)
   const task = payload.task ?? "translate"
   const cacheContext = isTranslationCacheable(
@@ -626,7 +819,7 @@ async function handleTranslate(
   )
     ? buildTranslationCacheContext(config, {
       sourceLang: payload.sourceLang,
-      context: payload.context,
+      context: requestContext,
     })
     : null
 
@@ -665,7 +858,7 @@ async function handleTranslate(
       texts: uncachedTexts,
       targetLang: payload.targetLang,
       sourceLang: payload.sourceLang,
-      context: payload.context,
+      context: requestContext,
       task: payload.task,
       customSystemPrompt: payload.customSystemPrompt,
       placeholderFormat: payload.placeholderFormat,
@@ -698,7 +891,9 @@ async function handleTranslate(
       )))
     }
 
-    if (result.metadata.fallbackUsed) {
+    const route = summarizeProviderRoute(result.metadata.attemptedTransports, result.metadata.finalTransport)
+
+    if (route === "fallback") {
       trackEvent({
         type: "provider_fallback",
         data: {
@@ -718,6 +913,7 @@ async function handleTranslate(
       attemptedTransports: result.metadata.attemptedTransports,
       finalTransport: result.metadata.finalTransport,
       fallbackUsed: result.metadata.fallbackUsed,
+      route,
       success: true,
     }).catch(() => {})
 
@@ -731,6 +927,7 @@ async function handleTranslate(
   } catch (error) {
     const translatedError = toTranslationError(error, "UNKNOWN")
     const metadata = getProviderRoutingMetadataFromError(error)
+    const route = metadata ? summarizeProviderRoute(metadata.attemptedTransports, metadata.finalTransport) : null
 
     recordTranslationUsage({
       providerId: resolvedProvider.id,
@@ -740,6 +937,7 @@ async function handleTranslate(
       attemptedTransports: metadata?.attemptedTransports,
       finalTransport: metadata?.finalTransport,
       fallbackUsed: metadata?.fallbackUsed,
+      route,
       success: false,
       errorCode: translatedError.code,
     }).catch(() => {})

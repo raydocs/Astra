@@ -4,9 +4,11 @@ import { z } from "zod"
 import type { TranslationTask } from "@/types/messages"
 import type { TranslationErrorCode } from "@/types/translation"
 import type { ProviderId } from "@/types/config"
-import type { ProviderTransport } from "@/utils/providers/router"
+import { summarizeProviderRoute, type ProviderRoute, type ProviderTransport } from "@/utils/providers/routing-metadata"
 
-const TranslationUsageEventSchema = z.object({
+const TranslationRouteSchema = z.enum(["direct", "relay", "fallback"])
+
+const StoredTranslationUsageEventSchema = z.object({
   id: z.string(),
   timestamp: z.number(),
   providerId: z.enum(["openai", "gemini"]),
@@ -22,6 +24,7 @@ const TranslationUsageEventSchema = z.object({
   attemptedTransports: z.array(z.enum(["direct", "relay"])),
   finalTransport: z.enum(["direct", "relay"]).nullable(),
   fallbackUsed: z.boolean(),
+  route: TranslationRouteSchema.nullable().optional(),
   success: z.boolean(),
   errorCode: z.enum([
     "CONFIG_MISSING",
@@ -35,12 +38,21 @@ const TranslationUsageEventSchema = z.object({
   ]).optional(),
 })
 
-const TranslationUsageStoreSchema = z.object({
+const StoredTranslationUsageStoreSchema = z.object({
   sessionStartedAt: z.number().nullable(),
-  events: z.array(TranslationUsageEventSchema),
+  events: z.array(StoredTranslationUsageEventSchema),
 })
 
-export type TranslationUsageEvent = z.infer<typeof TranslationUsageEventSchema>
+type StoredTranslationUsageEvent = z.infer<typeof StoredTranslationUsageEventSchema>
+
+export interface TranslationUsageEvent extends Omit<StoredTranslationUsageEvent, "route"> {
+  route: ProviderRoute | null
+}
+
+interface TranslationUsageStore {
+  sessionStartedAt: number | null
+  events: TranslationUsageEvent[]
+}
 
 export type RequestSource = "page-translation" | "selection" | "hover" | "input" | "pdf" | "epub" | "subtitle"
 
@@ -75,6 +87,7 @@ export interface RecordTranslationUsageInput {
   attemptedTransports?: ProviderTransport[]
   finalTransport?: ProviderTransport | null
   fallbackUsed?: boolean
+  route?: ProviderRoute | null
   success: boolean
   errorCode?: TranslationErrorCode
   estimatedOutputTokens?: number
@@ -113,10 +126,20 @@ function createEventId(timestamp: number): string {
   return `${timestamp}-${Math.random().toString(36).slice(2, 8)}`
 }
 
-function parseStoredUsage(raw: unknown): z.infer<typeof TranslationUsageStoreSchema> {
-  const parsed = TranslationUsageStoreSchema.safeParse(raw)
+function normalizeEvent(event: StoredTranslationUsageEvent): TranslationUsageEvent {
+  return {
+    ...event,
+    route: event.route ?? summarizeProviderRoute(event.attemptedTransports, event.finalTransport),
+  }
+}
+
+function parseStoredUsage(raw: unknown): TranslationUsageStore {
+  const parsed = StoredTranslationUsageStoreSchema.safeParse(raw)
   if (parsed.success) {
-    return parsed.data
+    return {
+      sessionStartedAt: parsed.data.sessionStartedAt,
+      events: parsed.data.events.map(normalizeEvent),
+    }
   }
 
   return {
@@ -132,12 +155,12 @@ function pruneEvents(events: TranslationUsageEvent[], now: number): TranslationU
     .slice(0, MAX_EVENTS)
 }
 
-async function readUsageStore(): Promise<z.infer<typeof TranslationUsageStoreSchema>> {
+async function readUsageStore(): Promise<TranslationUsageStore> {
   const stored = await browser.storage.local.get(TRANSLATION_USAGE_STORAGE_KEY)
   return parseStoredUsage(stored[TRANSLATION_USAGE_STORAGE_KEY])
 }
 
-async function writeUsageStore(store: z.infer<typeof TranslationUsageStoreSchema>): Promise<void> {
+async function writeUsageStore(store: TranslationUsageStore): Promise<void> {
   await browser.storage.local.set({
     [TRANSLATION_USAGE_STORAGE_KEY]: store,
   })
@@ -197,6 +220,9 @@ export async function recordTranslationUsage(input: RecordTranslationUsageInput)
   const timestamp = input.timestamp ?? Date.now()
   const store = await readUsageStore()
   const charCount = input.texts.reduce((sum, text) => sum + text.length, 0)
+  const attemptedTransports = input.attemptedTransports ?? []
+  const finalTransport = input.finalTransport ?? null
+  const route = input.route ?? summarizeProviderRoute(attemptedTransports, finalTransport)
 
   const event: TranslationUsageEvent = {
     id: createEventId(timestamp),
@@ -207,9 +233,10 @@ export async function recordTranslationUsage(input: RecordTranslationUsageInput)
     textCount: input.texts.length,
     charCount,
     estimatedInputTokens: estimateInputTokens(charCount),
-    attemptedTransports: input.attemptedTransports ?? [],
-    finalTransport: input.finalTransport ?? null,
+    attemptedTransports,
+    finalTransport,
     fallbackUsed: input.fallbackUsed ?? false,
+    route,
     success: input.success,
     ...(input.errorCode ? { errorCode: input.errorCode } : {}),
     ...(input.estimatedOutputTokens != null ? { estimatedOutputTokens: input.estimatedOutputTokens } : {}),

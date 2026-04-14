@@ -11,6 +11,7 @@ import {
   buildSyncSafeVocabularyEntry,
   ensureSrsFields,
   mergeVocabularySourceContext,
+  normalizeVocabularySourceContext,
   sanitizeVocabularyUrl,
   type SyncedVocabularyEntry,
   type VocabularyEntry,
@@ -54,7 +55,10 @@ export async function saveVocabularyEntry(entry: Omit<VocabularyEntry, "id" | "s
 
   const newEntry: VocabularyEntry = {
     ...entry,
-    sourceContext: mergeVocabularySourceContext(existingEntry?.sourceContext, entry.sourceContext),
+    sourceContext: mergeVocabularySourceContext(existingEntry?.sourceContext, entry.sourceContext, {
+      url: entry.url,
+      hostname: entry.hostname,
+    }),
     id: existing >= 0 ? entries[existing].id : generateId(),
     savedAt: now,
     srsBox: entry.srsBox ?? srsDefaults.srsBox,
@@ -113,7 +117,20 @@ export async function updateVocabularyEntry(
   const index = entries.findIndex((e) => e.id === id)
   if (index < 0) return null
 
-  const updated: VocabularyEntry = { ...entries[index], ...patch, id: entries[index].id }
+  const updated: VocabularyEntry = {
+    ...entries[index],
+    ...patch,
+    sourceContext: patch.sourceContext
+      ? mergeVocabularySourceContext(entries[index].sourceContext, patch.sourceContext, {
+          url: patch.url ?? entries[index].url,
+          hostname: patch.hostname ?? entries[index].hostname,
+        })
+      : normalizeVocabularySourceContext(entries[index].sourceContext, {
+          url: patch.url ?? entries[index].url,
+          hostname: patch.hostname ?? entries[index].hostname,
+        }),
+    id: entries[index].id,
+  }
   entries[index] = updated
   await writeEntries(entries)
   return updated
@@ -139,25 +156,45 @@ export async function setGlossaryState(
 
 const MAX_GLOSSARY_ENTRIES = 20
 const MAX_GLOSSARY_CHARS = 800
+const GLOSSARY_LINE_SEPARATOR = " => "
+
+function normalizeGlossaryValue(value?: string | null): string {
+  return value?.trim() ?? ""
+}
+
+function escapeGlossaryValue(value: string): string {
+  return value
+    .replace(/\\/g, "\\\\")
+    .replace(/\r\n?|\n/g, "\\n")
+    .replace(/=>/g, "\\=>")
+}
+
+function resolveGlossaryTarget(entry: VocabularyEntry): string {
+  return normalizeGlossaryValue(entry.glossaryTargetText || entry.translation || "")
+}
 
 /**
- * Get glossary entries for a specific hostname.
- * Returns hostname-scoped entries first, then global, deduped by normalized source text.
+ * Get glossary entries for request-time translation use.
+ * Returns hostname-scoped entries first when hostname is available, then global,
+ * deduped by normalized source text.
  */
 export async function listGlossaryEntriesForHostname(
-  hostname: string,
+  hostname?: string | null,
   options: { limit?: number } = {},
 ): Promise<VocabularyEntry[]> {
   const entries = await getVocabularyEntries()
   const limit = options.limit ?? MAX_GLOSSARY_ENTRIES
+  const normalizedHostname = hostname?.trim()
 
   const glossaryEntries = entries
-    .filter((e) => e.glossaryEnabled === true && (e.translation || e.glossaryTargetText))
+    .filter((e) => e.glossaryEnabled === true && resolveGlossaryTarget(e))
 
-  // Sort: hostname-scoped first, then global; newest first within each scope
-  const hostnameEntries = glossaryEntries
-    .filter((e) => e.glossaryScope === "hostname" && e.hostname === hostname)
-    .sort((a, b) => b.savedAt - a.savedAt)
+  // Sort: hostname-scoped first when hostname is known, then global; newest first within each scope
+  const hostnameEntries = normalizedHostname
+    ? glossaryEntries
+      .filter((e) => e.glossaryScope === "hostname" && e.hostname === normalizedHostname)
+      .sort((a, b) => b.savedAt - a.savedAt)
+    : []
   const globalEntries = glossaryEntries
     .filter((e) => e.glossaryScope === "global")
     .sort((a, b) => b.savedAt - a.savedAt)
@@ -168,12 +205,13 @@ export async function listGlossaryEntriesForHostname(
   let charCount = 0
 
   for (const entry of [...hostnameEntries, ...globalEntries]) {
-    const normalizedText = entry.text.trim().toLowerCase()
-    if (seen.has(normalizedText)) continue
+    const source = normalizeGlossaryValue(entry.text)
+    const normalizedText = source.toLowerCase()
+    if (!source || !resolveGlossaryTarget(entry) || seen.has(normalizedText)) continue
     seen.add(normalizedText)
 
-    const target = entry.glossaryTargetText || entry.translation || ""
-    const lineChars = entry.text.length + target.length + 4 // " => " separator
+    const target = resolveGlossaryTarget(entry)
+    const lineChars = source.length + target.length + GLOSSARY_LINE_SEPARATOR.length
     if (charCount + lineChars > MAX_GLOSSARY_CHARS) break
     if (result.length >= limit) break
 
@@ -185,13 +223,31 @@ export async function listGlossaryEntriesForHostname(
 }
 
 /**
- * Serialize glossary entries into a format suitable for the terminologyGlossary field.
- * Output: "source => target" per line, deterministic.
+ * Serialize glossary entries into the canonical terminologyGlossary format.
+ * Output: "source => target" per line, deterministic, with embedded newlines and
+ * separator-like content escaped so each glossary entry remains one physical line.
  */
 export function serializeGlossary(entries: VocabularyEntry[]): string {
   return entries
-    .map((e) => `${e.text} => ${e.glossaryTargetText || e.translation || ""}`)
+    .map((entry) => {
+      const source = escapeGlossaryValue(normalizeGlossaryValue(entry.text))
+      const target = escapeGlossaryValue(resolveGlossaryTarget(entry))
+      return source && target ? `${source}${GLOSSARY_LINE_SEPARATOR}${target}` : ""
+    })
+    .filter(Boolean)
     .join("\n")
+}
+
+/**
+ * Build the canonical request-time glossary string from vocabulary-backed glossary entries.
+ */
+export async function buildTerminologyGlossary(
+  hostname?: string | null,
+  options: { limit?: number } = {},
+): Promise<string | undefined> {
+  const entries = await listGlossaryEntriesForHostname(hostname, options)
+  const glossary = serializeGlossary(entries)
+  return glossary || undefined
 }
 
 export {

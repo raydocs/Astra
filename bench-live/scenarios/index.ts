@@ -25,6 +25,7 @@ import { bilibiliSubtitleBasicScenario } from "./bilibili-subtitle-basic"
 import { youtubeSubtitleBasicScenario } from "./youtube-subtitle-basic"
 import { subtitleBasicScenario } from "./subtitle-basic"
 import { subtitleFileBasicScenario } from "./subtitle-file-basic"
+import { subtitleLearningChainSmokeScenario } from "./subtitle-learning-chain-smoke"
 
 export { articleExtractionDocsScenario } from "./article-extraction-docs"
 export { dynamicContentAppendScenario } from "./dynamic-content-append"
@@ -50,6 +51,7 @@ export { bilibiliSubtitleBasicScenario } from "./bilibili-subtitle-basic"
 export { youtubeSubtitleBasicScenario } from "./youtube-subtitle-basic"
 export { subtitleBasicScenario } from "./subtitle-basic"
 export { subtitleFileBasicScenario } from "./subtitle-file-basic"
+export { subtitleLearningChainSmokeScenario } from "./subtitle-learning-chain-smoke"
 export { onboardingSmokeScenario } from "./onboarding-smoke"
 export { popupDeepReadProofScenario } from "./popup-deep-read-proof"
 export { popupDeepReadSmokeScenario } from "./popup-deep-read-smoke"
@@ -74,6 +76,7 @@ export const liveScenarios = [
   bilibiliSubtitleBasicScenario,
   subtitleBasicScenario,
   subtitleFileBasicScenario,
+  subtitleLearningChainSmokeScenario,
   epubReaderBasicScenario,
   siteAutomationAutostartScenario,
   articleExtractionDocsScenario,

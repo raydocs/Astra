@@ -692,6 +692,7 @@ describe("OptionsApp — Sites section", () => {
 
     await navigateToAbout()
 
+    expect(container.textContent).toContain("Plan, quota, and billing labels live in the popup and web account surfaces")
     expect(container.textContent).toContain("Registered devices: 2 total · 2 active")
     expect(container.textContent).toContain("Config bootstrap: enabled · cursor cfg-3")
     expect(container.textContent).toContain("Optional collections: reading history, study progress")

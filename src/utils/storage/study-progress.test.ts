@@ -4,7 +4,9 @@ import {
   applyStudyProgressSyncMutations,
   buildStudyProgressRecordId,
   buildSyncSafeStudyPageProgress,
+  buildVocabularyReviewStudyEvent,
   clearStudyProgress,
+  deriveStudyLoopPageSummary,
   deriveStudyLoopViewModel,
   getPageStudyProgress,
   getStudyProgress,
@@ -48,9 +50,45 @@ describe("study-progress", () => {
     expect(page.sentencesExplained).toBe(3)
   })
 
+  it("tracks page-level review count without inflating pages studied", async () => {
+    const input = {
+      url: "https://example.com/article",
+      hostname: "example.com",
+      title: "Test Article",
+    }
+
+    await recordStudyEvent({ ...input, step: "read" })
+    const page = await recordStudyEvent({ ...input, step: "vocab_review", count: 2 })
+    const store = await getStudyProgress()
+
+    expect(page.completedSteps).toEqual(["read", "vocab_review"])
+    expect(page.vocabReviewed).toBe(2)
+    expect(store.dailyStats.pagesStudied).toBe(1)
+    expect(store.dailyStats.vocabReviewed).toBe(2)
+  })
+
   it("orders completed steps in canonical pipeline order", () => {
     expect(orderStudySteps(["explain", "read"])).toEqual(["read", "explain"])
     expect(orderStudySteps(["vocab_review", "read", "explain"])).toEqual(["read", "explain", "vocab_review"])
+  })
+
+  it("derives a page summary with ordered steps and next-step hint", () => {
+    expect(deriveStudyLoopPageSummary({
+      url: "https://example.com/article",
+      hostname: "example.com",
+      title: "Example",
+      completedSteps: ["vocab_save", "read", "explain"],
+      sentencesExplained: 2,
+      vocabSaved: 1,
+      vocabReviewed: 0,
+      startedAt: 10,
+      lastActivityAt: 20,
+    })).toEqual({
+      completedSteps: ["read", "explain", "vocab_save"],
+      currentCounts: { sentencesExplained: 2, vocabSaved: 1, vocabReviewed: 0 },
+      nextStep: "vocab_review",
+      completionPercent: 60,
+    })
   })
 
   it("does not duplicate steps", async () => {
@@ -119,6 +157,45 @@ describe("study-progress", () => {
     )
   })
 
+  it("builds vocabulary review events from linked study-progress ids", () => {
+    expect(buildVocabularyReviewStudyEvent({
+      id: "entry-1",
+      text: "ephemeral",
+      url: "chrome-extension://abc/subtitle-reader.html",
+      hostname: "extension",
+      savedAt: 1,
+      sourceContext: {
+        surface: "popup_deep_read",
+        pageTitle: "Example article",
+        hostname: "example.com",
+        studyProgressRecordId: "https://example.com/article?from=popup",
+        ownedReadingTitle: "Example article",
+      },
+    })).toEqual({
+      url: "https://example.com/article",
+      hostname: "example.com",
+      title: "Example article",
+      step: "vocab_review",
+    })
+  })
+
+  it("skips vocabulary review study events for extension-only source urls without linked study progress", () => {
+    expect(buildVocabularyReviewStudyEvent({
+      id: "entry-2",
+      text: "subtitle word",
+      url: "chrome-extension://abc/subtitle-reader.html",
+      hostname: "extension",
+      savedAt: 1,
+      sourceContext: {
+        surface: "subtitle_reader",
+        pageTitle: "clip.srt",
+        ownedReadingItemId: "or_subtitle_clip",
+        ownedReadingSourceType: "subtitle-file",
+        ownedReadingTitle: "clip.srt · SRT · 12 items",
+      },
+    })).toBeNull()
+  })
+
   it("canonicalizes sync-safe page progress step order", () => {
     const page = buildSyncSafeStudyPageProgress({
       url: "https://example.com/article?utm=1",
@@ -127,6 +204,7 @@ describe("study-progress", () => {
       completedSteps: ["vocab_save", "read", "guided_read", "read"],
       sentencesExplained: 1,
       vocabSaved: 2,
+      vocabReviewed: 0,
       startedAt: 100,
       lastActivityAt: 200,
     })
@@ -140,10 +218,11 @@ describe("study-progress", () => {
       url: "https://example.com/article",
       hostname: "example.com",
       title: "Local title",
-      completedSteps: ["read", "guided_read"],
-      sentencesExplained: 1,
-      vocabSaved: 1,
-      startedAt: 100,
+        completedSteps: ["read", "guided_read"],
+        sentencesExplained: 1,
+        vocabSaved: 1,
+        vocabReviewed: 0,
+        startedAt: 100,
       lastActivityAt: 200,
     }], {
       recordId: "https://example.com/article",
@@ -152,10 +231,11 @@ describe("study-progress", () => {
         url: "https://example.com/article?utm=1",
         hostname: "example.com",
         title: "Remote title",
-        completedSteps: ["read", "explain", "vocab_review"],
-        sentencesExplained: 3,
-        vocabSaved: 2,
-        startedAt: 50,
+          completedSteps: ["read", "explain", "vocab_review"],
+          sentencesExplained: 3,
+          vocabSaved: 2,
+          vocabReviewed: 1,
+          startedAt: 50,
         lastActivityAt: 300,
       },
     })
@@ -166,6 +246,7 @@ describe("study-progress", () => {
       completedSteps: ["read", "guided_read", "explain", "vocab_review"],
       sentencesExplained: 3,
       vocabSaved: 2,
+      vocabReviewed: 1,
       startedAt: 50,
       lastActivityAt: 300,
     })])
@@ -176,10 +257,11 @@ describe("study-progress", () => {
       url: "https://example.com/article",
       hostname: "example.com",
       title: "Example",
-      completedSteps: ["read"],
-      sentencesExplained: 0,
-      vocabSaved: 0,
-      startedAt: 100,
+        completedSteps: ["read"],
+        sentencesExplained: 0,
+        vocabSaved: 0,
+        vocabReviewed: 0,
+        startedAt: 100,
       lastActivityAt: 100,
     }], [{
       recordId: "https://example.com/article",
@@ -206,6 +288,7 @@ describe("study-progress", () => {
       completedSteps: ["read", "guided_read"],
       sentencesExplained: 4,
       vocabSaved: 1,
+      vocabReviewed: 0,
       startedAt: 10,
       lastActivityAt: 20,
     }])
@@ -231,6 +314,7 @@ describe("study-progress", () => {
           completedSteps: ["read", "guided_read"],
           sentencesExplained: 0,
           vocabSaved: 0,
+          vocabReviewed: 0,
           startedAt: Date.now(),
           lastActivityAt: Date.now(),
         }],
@@ -245,6 +329,8 @@ describe("study-progress", () => {
 
       const vm = deriveStudyLoopViewModel(store, "https://example.com/article")
       expect(vm.currentPage).not.toBeNull()
+      expect(vm.completedSteps).toEqual(["read", "guided_read"])
+      expect(vm.currentCounts).toEqual({ sentencesExplained: 0, vocabSaved: 0, vocabReviewed: 0 })
       expect(vm.nextStep).toBe("explain")
       expect(vm.completionPercent).toBe(40) // 2/5 steps
     })
@@ -258,6 +344,7 @@ describe("study-progress", () => {
           completedSteps: [...STUDY_STEPS_ORDER],
           sentencesExplained: 5,
           vocabSaved: 3,
+          vocabReviewed: 2,
           startedAt: Date.now(),
           lastActivityAt: Date.now(),
         }],
@@ -272,6 +359,7 @@ describe("study-progress", () => {
 
       const vm = deriveStudyLoopViewModel(store, "https://example.com/article")
       expect(vm.nextStep).toBeNull()
+      expect(vm.currentCounts).toEqual({ sentencesExplained: 5, vocabSaved: 3, vocabReviewed: 2 })
       expect(vm.completionPercent).toBe(100)
     })
 
@@ -289,6 +377,8 @@ describe("study-progress", () => {
 
       const vm = deriveStudyLoopViewModel(store, "https://unknown.com")
       expect(vm.currentPage).toBeNull()
+      expect(vm.completedSteps).toEqual([])
+      expect(vm.currentCounts).toEqual({ sentencesExplained: 0, vocabSaved: 0, vocabReviewed: 0 })
       expect(vm.nextStep).toBe("read")
       expect(vm.completionPercent).toBe(0)
     })
