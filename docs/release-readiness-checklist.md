@@ -1,6 +1,6 @@
 # Astra Release Readiness Checklist
 
-_Last updated: 2026-04-15 (Month 2 evidence bundle: popup state mapping + study-progress counting rules; evidence registry + optional popup replay note; control-plane evidence row; Month 4 Bilibili notes; Month 6 pack index pointer)_
+_Last updated: 2026-04-15 (Month 2 evidence bundle: popup state mapping + study-progress counting rules; evidence registry + optional popup replay note; control-plane evidence row; Month 4 Bilibili notes; Month 6 investigation table row in Gate 4)_
 
 This checklist defines **release-blocking gates** and the minimum evidence required for a credible release decision.
 
@@ -46,10 +46,9 @@ CI enforces these in `.github/workflows/ci.yml` (`live-browser` job).
 | Unsupported/unproven surfaces are marked as gaps | Manual review | Same matrix + RC notes | Yes |
 | Video / subtitle claims reviewed (when RC touches video) | Read `docs/investigations/support-matrix-video-addendum-2026-04-15.md` + `video-subtitle-adapter-inventory-2026-04-15.md` | Same + adapter inventory | No (set **Yes** for Month 4+ video RCs) |
 | Control-plane / account evidence reviewed (when RC touches billing, devices, or sync) | Read `docs/investigations/control-plane-surface-inventory-2026-04-15.md` + `lifecycle-operations-runbook-month5-2026-04-15.md` | Same + web `/account` smoke notes | No (set **Yes** for Month 5+ account / lifecycle RCs) |
+| Month 6 — claims, handoff, privacy/routing inventory | Read `docs/investigations/month-6-release-claim-audit-2026-04-14.md`, `docs/investigations/month-6-final-evidence-pack-2026-04-14.md`, `docs/investigations/month-6-privacy-routing-failure-inventory-2026-04-14.md` | Same docs + Gate 1–3 artifacts for the RC | No (set **Yes** for Month 6 narrative / routing RCs) |
 
 **Block if:** docs claim coverage that is not currently implemented or gated.
-
-- **Month 6 pack (claims + handoff)** — For RC narrative vs proof alignment, read `docs/investigations/month-6-release-claim-audit-2026-04-14.md`, `docs/investigations/month-6-final-evidence-pack-2026-04-14.md`, and `docs/investigations/month-6-privacy-routing-failure-inventory-2026-04-14.md` (index table + routing failure buckets).
 
 ## Month 2 — Learning-loop policy (2026-04-14)
 
