@@ -21,9 +21,23 @@ Re-run locally after `pnpm build` and `npx playwright install chromium`:
 CI=true xvfb-run -a pnpm bench:live:lane:learning-loop
 ```
 
+## Green replay summary (2026-04-14)
+
+**Lane:** `pnpm bench:live:lane:learning-loop` (`CI=true`, `xvfb-run -a`) — **pass** (first attempt, headless VM).
+
+`package.json` runs the lane as **three separate** `pnpm bench:live` invocations, so each scenario gets its own **Run ID** and artifact directory:
+
+| Scenario | Run ID | Artifacts |
+|----------|--------|-----------|
+| `bench-live/popup-deep-read-proof` | `live-20260414T082101-tv27s0` | `bench-live-results/live-20260414T082101-tv27s0/` |
+| `bench-live/vocabulary-srs-smoke` | `live-20260414T082106-6s38in` | `bench-live-results/live-20260414T082106-6s38in/` |
+| `bench-live/learning-loop-revisit-smoke` | `live-20260414T082109-c792v2` | `bench-live-results/live-20260414T082109-c792v2/` |
+
+Structured pointers: each folder’s `result.json` / `result.md`; `bench-live-results/latest.result.json` reflects the **last** scenario in the chain (revisit smoke) only.
+
 ## Green `run-id` (optional attach)
 
-Run locally after Playwright install (see prerequisites). On success, note the printed **Run ID** and link `bench-live-results/<run-id>/` (for example `bench-live-results/live-20260414T123456-abcdef/`) from Month 1 / Month 2 closeout or RC notes. This agent run did not produce a green lane in the headless VM; treat any local green `run-id` as the authoritative replay attach.
+After a future re-run, refresh this section with new run ids. Artifacts under `bench-live-results/<run-id>/` remain gitignored; keep ids in docs or RC notes for traceability.
 
 ## Canonical scenario IDs
 

@@ -3,7 +3,7 @@
 _Last updated: 2026-04-14 (final ledger sweep)_
 
 Month: **Month 2 — Finish Learning-Loop V1** (`plan.md` §11)  
-Verdict: **`pass-with-carry`** (aligned with `13G`; not **`gate-ready`** for optional `learning-loop` CI lane)
+Verdict: **`pass-with-carry`** (aligned with `13G`; not **`gate-ready`** until optional `learning-loop` CI lane matches `extension-core` flaky discipline — unchanged by the 2026-04-14 green doc replay)
 
 **Ledger 1–36:** all items closed in-repo (`plan.md` 任务表)；`#9` 以预研文档交付，无 pin UI。
 
@@ -11,7 +11,7 @@ Verdict: **`pass-with-carry`** (aligned with `13G`; not **`gate-ready`** for opt
 
 | Row | Status | Pointer |
 |-----|--------|---------|
-| `live` | **Partial** | Commands: `pnpm bench:live:lane:learning-loop` (`popup-proof` → `vocabulary-srs-smoke` → `learning-loop-revisit-smoke`), artifacts under `bench-live-results/<run-id>/`. CI runs `extension-core` (includes `vocabulary-srs-smoke` only); full chained lane remains optional. |
+| `live` | **Green (doc replay 2026-04-14)** | `CI=true xvfb-run -a pnpm bench:live:lane:learning-loop` — three sequential runs (see `m1-bf-01-popup-learning-loop-replay-2026-04-14.md`): `live-20260414T082101-tv27s0` (popup-deep-read-proof), `live-20260414T082106-6s38in` (vocabulary-srs-smoke), `live-20260414T082109-c792v2` (learning-loop-revisit-smoke). CI still runs `extension-core` (vocabulary-srs-smoke only); full lane remains optional in CI. |
 | `docs` | **Yes** | `learning-loop-overview-2026-04-13.md`, `learning-metrics-2026-04-13.md`, `learning-loop-regression-checklist-2026-04-13.md`, `learning-loop-navigation-matrix-2026-04-14.md`, `learning-loop-claim-impact-2026-04-14.md`, `popup-deep-read-state-mapping.md`, `study-progress-counting-rules-2026-04-14.md` |
 | `release-policy` | **Yes** | `docs/release-readiness-checklist.md` — Month 2 subsection: learning-loop stays **optional** until green-run discipline + flaky ownership match `extension-core`. |
 | `claim-impact` | **Yes** | `learning-loop-claim-impact-2026-04-14.md` |
@@ -31,7 +31,7 @@ Counted toward Month 2 bar: **6, 7, 8, 14, 15, 16, 17, 22, 23, 28, 29, 34, 35, 3
 
 ## Carry-over (≤1 primary)
 
-- **Primary**: Attach **one** fresh `pnpm bench:live:lane:learning-loop` green summary (run id + `bench-live-results/<run-id>/`) to the next RC note or extend CI — required for promoting **`gate-ready`** without changing policy. Lane composition: `bench-live/popup-deep-read-proof` → `bench-live/vocabulary-srs-smoke` → `bench-live/learning-loop-revisit-smoke`. (Bench harness fixes 2026-04-14: `popup-deep-read-proof` relay-only provider seeding + `openExtensionActionPopup` DOM wait — see `m1-bf-01-popup-learning-loop-replay-2026-04-14.md` before interpreting older failures.)
+- **Primary**: Promote **`gate-ready`** only after optional CI adopts the full chained lane with the same flaky ownership bar as `extension-core` (policy unchanged). Doc replay for the manual lane is attached in `m1-bf-01-popup-learning-loop-replay-2026-04-14.md` (2026-04-14 run ids). Harness context for older failures: `popup-deep-read-proof` relay-only provider seeding + `openExtensionActionPopup` DOM wait — same note.
 
 ## Task pack traceability (Phase 1–2, sequential pack)
 
