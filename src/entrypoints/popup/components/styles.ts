@@ -3,9 +3,9 @@ import type React from "react"
 export const btnPrimary: React.CSSProperties = {
   flex: 1,
   padding: "8px 12px",
-  background: "#6366f1",
-  color: "#fff",
-  border: "none",
+  background: "linear-gradient(135deg, #9a3412 0%, #ea580c 52%, #fb923c 100%)",
+  color: "#fff7ed",
+  border: "1px solid #c2410c",
   borderRadius: 6,
   cursor: "pointer",
   fontSize: 14,
@@ -15,9 +15,9 @@ export const btnPrimary: React.CSSProperties = {
 export const btnSecondary: React.CSSProperties = {
   flex: 1,
   padding: "8px 12px",
-  background: "#f1f5f9",
-  color: "#334155",
-  border: "1px solid #e2e8f0",
+  background: "#fff7ed",
+  color: "#9a3412",
+  border: "1px solid #fed7aa",
   borderRadius: 6,
   cursor: "pointer",
   fontSize: 14,
@@ -31,7 +31,7 @@ export const btnDisabled: React.CSSProperties = {
 export const labelStyle: React.CSSProperties = {
   display: "block",
   fontSize: 12,
-  color: "#64748b",
+  color: "#7c2d12",
   marginBottom: 4,
   marginTop: 8,
 }
@@ -39,7 +39,7 @@ export const labelStyle: React.CSSProperties = {
 export const inputStyle: React.CSSProperties = {
   width: "100%",
   padding: "6px 8px",
-  border: "1px solid #e2e8f0",
+  border: "1px solid #fed7aa",
   borderRadius: 4,
   fontSize: 13,
   boxSizing: "border-box",
@@ -47,8 +47,8 @@ export const inputStyle: React.CSSProperties = {
 
 export const statusCardStyle: React.CSSProperties = {
   marginBottom: 12,
-  background: "#f8fafc",
-  border: "1px solid #e2e8f0",
+  background: "#fffaf3",
+  border: "1px solid #fed7aa",
   borderRadius: 8,
   padding: 10,
 }
@@ -58,7 +58,7 @@ export const statusRowStyle: React.CSSProperties = {
   justifyContent: "space-between",
   gap: 8,
   fontSize: 12,
-  color: "#334155",
+  color: "#7c2d12",
   marginBottom: 4,
 }
 
@@ -67,7 +67,7 @@ export const checkboxRowStyle: React.CSSProperties = {
   alignItems: "center",
   gap: 8,
   fontSize: 13,
-  color: "#334155",
+  color: "#7c2d12",
   marginBottom: 8,
 }
 

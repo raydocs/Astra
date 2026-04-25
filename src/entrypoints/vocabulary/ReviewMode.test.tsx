@@ -11,6 +11,7 @@ const {
   deriveStudyLoopViewModelMock,
   listOwnedReadingItemsMock,
   markOwnedReadingOpenedMock,
+  openVocabularyEntryInDeepReadMock,
 } = vi.hoisted(() => ({
   getVocabularyEntriesMock: vi.fn(),
   updateVocabularyEntryMock: vi.fn(),
@@ -20,6 +21,7 @@ const {
   deriveStudyLoopViewModelMock: vi.fn(),
   listOwnedReadingItemsMock: vi.fn(),
   markOwnedReadingOpenedMock: vi.fn(),
+  openVocabularyEntryInDeepReadMock: vi.fn(),
 }))
 
 vi.mock("@/utils/storage/vocabulary", () => ({
@@ -70,11 +72,19 @@ vi.mock("#imports", () => ({
   },
 }))
 
+vi.mock("@/utils/deep-read-link", () => ({
+  openVocabularyEntryInDeepRead: openVocabularyEntryInDeepReadMock,
+}))
+
 vi.mock("@/utils/i18n", () => ({
   t: (key: string, sub?: string | string[]) => {
-    const s = typeof sub === "string" ? sub : ""
+    const values = Array.isArray(sub) ? sub : sub ? [sub] : []
+    const s = typeof sub === "string" ? sub : values[0] ?? ""
     if (key === "review_todayProgressTitle") return "Today's study loop"
     if (key === "review_todayProgressAria") return "Today's study progress summary"
+    if (key === "popup_studyTodayStatsInfoAction") return "How it resets"
+    if (key === "popup_studyTodayStatsHint") return `Local calendar day: ${s}`
+    if (key === "popup_studyTodayStatsResetBoundary") return "These counts follow your local calendar day and reset at local midnight on this device, not at UTC midnight."
     if (key === "review_currentPageProgressTitle") return "Current page loop"
     if (key === "review_currentPageProgressHint") return "These counts use the same page-level study rules as the popup."
     if (key === "popup_studyStatPages") return `${s} pages`
@@ -84,6 +94,28 @@ vi.mock("@/utils/i18n", () => ({
     if (key === "review_openSourcePage") return "Open source page"
     if (key === "review_showFullContext") return "Show full context"
     if (key === "review_hideFullContext") return "Show less"
+    if (key === "vocabulary_readingAssetTitle") return "Reading asset"
+    if (key === "vocabulary_actionResumeReadingAsset") return "Resume reading asset"
+    if (key === "vocabulary_actionOpenDeepRead") return "Open in deep read"
+    if (key === "vocabulary_sourceHostLabel") return "Host:"
+    if (key === "vocabulary_sourceUrlLabel") return "URL:"
+    if (key === "vocabulary_sourceFileLabel") return "File:"
+    if (key === "vocabulary_sourceExcerptLabel") return "Excerpt:"
+    if (key === "vocabulary_sourceSummaryLabel") return "Summary:"
+    if (key === "review_emptyCaughtUpTitle") return "All caught up!"
+    if (key === "review_emptyCaughtUpHint") return "No cards due for review. Check back later."
+    if (key === "review_sessionCompleteTitle") return "Session Complete"
+    if (key === "review_summaryCardsReviewed") return "Cards reviewed"
+    if (key === "review_summaryCorrect") return "Correct (promoted)"
+    if (key === "review_summaryIncorrect") return "Incorrect (demoted)"
+    if (key === "review_actionReviewAgain") return "Review again"
+    if (key === "review_cardProgress") return `Card ${values[0] ?? "$1"} of ${values[1] ?? "$2"}`
+    if (key === "review_boxLabel") return `Box ${values[0] ?? "$1"}`
+    if (key === "review_flipHint") return "Click or press Space to reveal"
+    if (key === "review_answerDontKnow") return "Don't know"
+    if (key === "review_answerKnowIt") return "Know it"
+    if (key === "review_keyboardHintFront") return "Space = flip"
+    if (key === "review_keyboardHintBack") return "← = don't know · → = know it"
     return key
   },
 }))
@@ -274,6 +306,18 @@ describe("ReviewMode", () => {
     const resumeButton = Array.from(container.querySelectorAll("button")).find((button) => button.textContent === "Resume reading asset") as HTMLButtonElement
     expect(resumeButton).toBeTruthy()
 
+    const deepReadButton = Array.from(container.querySelectorAll("button")).find((button) => button.textContent === "Open in deep read") as HTMLButtonElement
+    expect(deepReadButton).toBeTruthy()
+
+    await act(async () => {
+      deepReadButton.click()
+      await Promise.resolve()
+    })
+
+    expect(openVocabularyEntryInDeepReadMock).toHaveBeenCalledWith(expect.objectContaining({
+      id: "entry-1",
+    }))
+
     await act(async () => {
       resumeButton.click()
       await Promise.resolve()
@@ -345,5 +389,18 @@ describe("ReviewMode", () => {
     expect(browser.tabs.create).toHaveBeenCalledWith({
       url: "chrome-extension://test-id/subtitle-reader.html?reopenHint=Open%20the%20subtitle%20reader%20and%20choose%20the%20same%20file%3A%20sample.srt%20%C2%B7%20continue%20from%20row%202",
     })
+  })
+
+  it("explains the daily stats reset boundary on the review surface", async () => {
+    const infoButton = Array.from(container.querySelectorAll("button")).find((button) => button.textContent === "How it resets") as HTMLButtonElement
+    expect(infoButton).toBeTruthy()
+
+    await act(async () => {
+      infoButton.click()
+      await Promise.resolve()
+    })
+
+    expect(container.textContent).toContain("Local calendar day: Apr 13, 2026")
+    expect(container.textContent).toContain("local midnight on this device")
   })
 })

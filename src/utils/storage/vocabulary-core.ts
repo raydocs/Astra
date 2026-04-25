@@ -1,6 +1,7 @@
 import { z } from "zod"
 
 import { createDefaultSrsFields } from "@/utils/srs/leitner"
+import { buildSentenceHash } from "@/utils/sentence-anchor"
 
 export const VocabularySourceContextSurfaceSchema = z.enum([
   "popup_deep_read",
@@ -19,6 +20,7 @@ export const VocabularySourceContextSchema = z.object({
   contentSummary: z.string().trim().min(1).optional(),
   articleExcerpt: z.string().trim().min(1).optional(),
   sentenceText: z.string().trim().min(1).optional(),
+  sentenceHash: z.string().trim().min(1).optional(),
   sentenceIndex: z.number().int().nonnegative().optional(),
   ownedReadingItemId: z.string().trim().min(1).optional(),
   ownedReadingSourceType: VocabularyOwnedReadingSourceTypeSchema.optional(),
@@ -132,6 +134,7 @@ export function normalizeVocabularySourceContext(
     contentSummary: normalizeSourceText(sourceContext.contentSummary),
     articleExcerpt: normalizeSourceText(sourceContext.articleExcerpt),
     sentenceText: normalizeSourceText(sourceContext.sentenceText),
+    sentenceHash: buildSentenceHash(sourceContext.sentenceText) ?? normalizeSourceText(sourceContext.sentenceHash),
     ownedReadingItemId: normalizeSourceText(sourceContext.ownedReadingItemId),
     ownedReadingTitle: normalizeSourceText(sourceContext.ownedReadingTitle),
     studyProgressRecordId: sanitizeVocabularyUrl(sourceContext.studyProgressRecordId),

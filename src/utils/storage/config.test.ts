@@ -343,6 +343,7 @@ describe("config storage", () => {
       inputTranslation: "enabled",
       inputTranslationMode: "replace",
       languageLevel: "advanced",
+      explainMode: "deep",
       privacyMode: true,
       provider: {
         id: "gemini",

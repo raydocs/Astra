@@ -7,6 +7,7 @@ import {
   buildTerminologyGlossary,
   getVocabularyCount,
   getVocabularyEntries,
+  hasVocabularyEntryByText,
   listGlossaryEntriesForHostname,
   removeVocabularyEntry,
   saveVocabularyEntry,
@@ -94,6 +95,23 @@ describe("vocabulary storage", () => {
     expect(await getVocabularyCount()).toBe(0)
   })
 
+  it("checks whether a vocabulary entry already exists by source text", async () => {
+    await saveVocabularyEntry({
+      text: "Hello world",
+      translation: "你好，世界",
+      url: "https://example.com/page-a",
+    })
+    await saveVocabularyEntry({
+      text: "Hello world",
+      translation: "你好，世界（另一个来源）",
+      url: "https://example.com/page-b",
+    })
+
+    expect(await hasVocabularyEntryByText("hello world")).toBe(true)
+    expect(await hasVocabularyEntryByText("  HELLO WORLD  ")).toBe(true)
+    expect(await hasVocabularyEntryByText("goodbye world")).toBe(false)
+  })
+
   it("builds a sync-safe vocabulary entry without SRS fields and with sanitized urls", async () => {
     const entry = await saveVocabularyEntry({
       text: "router",
@@ -166,6 +184,7 @@ describe("vocabulary storage", () => {
       hostname: "example.com",
       articleExcerpt: "The ephemeral phase passes quickly. Another sentence follows.",
       sentenceText: "The ephemeral phase passes quickly.",
+      sentenceHash: expect.stringMatching(/^fnv1a:/),
       sentenceIndex: 0,
       ownedReadingItemId: "or_article_example",
       ownedReadingSourceType: "article",
@@ -206,6 +225,7 @@ describe("vocabulary storage", () => {
       pageUrl: "https://example.com/article",
       hostname: "example.com",
       sentenceText: "Review this sentence.",
+      sentenceHash: expect.stringMatching(/^fnv1a:/),
       articleExcerpt: "Review this sentence. Then continue reading.",
       sentenceIndex: 1,
     })
@@ -239,8 +259,11 @@ describe("vocabulary storage", () => {
       surface: "popup_deep_read",
       pageTitle: "Example article",
       pageUrl: "https://example.com/article",
+      contentSummary: undefined,
+      articleExcerpt: undefined,
       hostname: undefined,
       sentenceText: "Continuity sentence.",
+      sentenceHash: expect.stringMatching(/^fnv1a:/),
       ownedReadingItemId: "or_article_example",
       ownedReadingSourceType: "article",
       ownedReadingTitle: "Example article",

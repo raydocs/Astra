@@ -26,6 +26,8 @@ import { fetchAstraContinuitySnapshot, revokeAstraDevice, updateAstraSyncCollect
 import { buildContinuityStatus, exportConfig, importConfig, downloadConfigFile, readConfigFile, runPhaseOneCollectionSync, type AstraContinuityRemoteSnapshot, type AstraContinuityStatus } from "@/utils/storage/config-sync"
 import { exportSiteRules, importSiteRules } from "@/utils/storage/site-rules"
 import { clearTranslationCache, getCacheStats } from "@/utils/cache/translation-cache"
+import { LEARNING_LOOP_EVENT_NAMES, type LearningLoopEventName } from "@/utils/learning-loop-events"
+import { getRecentEvents, type TelemetryEvent } from "@/utils/telemetry"
 import { isTtsSupported, listVoices, type TTSVoiceOption } from "@/utils/tts"
 import { diagnoseProvider, PROVIDER_CAPABILITIES, type ProviderDiagnostics } from "@/utils/providers/capabilities"
 import { useViewportProfile } from "@/utils/ui/useViewportProfile"
@@ -109,6 +111,65 @@ function formatDeviceHostLabel(device: {
 }): string {
   const segments = [device.browserFamily, device.platform, device.appKind, device.appVersion].filter(Boolean)
   return segments.length > 0 ? segments.join(" · ") : "Unknown client"
+}
+
+function formatRelativeTimestamp(timestamp: number): string {
+  const deltaMs = Date.now() - timestamp
+  if (!Number.isFinite(deltaMs) || deltaMs < 0) return t("options_learningLoopJustNow")
+
+  const minutes = Math.floor(deltaMs / 60000)
+  if (minutes <= 0) return t("options_learningLoopJustNow")
+  if (minutes === 1) return t("options_learningLoopRelativeMinute")
+  if (minutes < 60) return t("options_learningLoopRelativeMinutes", `${minutes}`)
+
+  const hours = Math.floor(minutes / 60)
+  if (hours === 1) return t("options_learningLoopRelativeHour")
+  if (hours < 24) return t("options_learningLoopRelativeHours", `${hours}`)
+
+  const days = Math.floor(hours / 24)
+  if (days === 1) return t("options_learningLoopRelativeDay")
+  return t("options_learningLoopRelativeDays", `${days}`)
+}
+
+function getLearningLoopEventLabel(event: LearningLoopEventName): string {
+  switch (event) {
+    case "deep_read_opened":
+      return t("options_learningLoopEventDeepReadOpened")
+    case "sentence_explained":
+      return t("options_learningLoopEventSentenceExplained")
+    case "sentence_saved":
+      return t("options_learningLoopEventSentenceSaved")
+    case "review_answered":
+      return t("options_learningLoopEventReviewAnswered")
+    case "returned_to_source":
+      return t("options_learningLoopEventReturnedToSource")
+    case "resumed_reading":
+      return t("options_learningLoopEventResumedReading")
+  }
+}
+
+function getLearningLoopEventSummary(event: TelemetryEvent): string | null {
+  if (event.type !== "feature_usage" || event.data.feature !== "learning_loop") {
+    return null
+  }
+
+  const name = typeof event.data.event === "string"
+    ? event.data.event as LearningLoopEventName
+    : null
+  if (!name || !LEARNING_LOOP_EVENT_NAMES.includes(name)) {
+    return null
+  }
+
+  const location = [event.data.hostname, event.data.pageTitle, event.data.pageUrl]
+    .find((value): value is string => typeof value === "string" && value.trim().length > 0)
+  const source = typeof event.data.source === "string" && event.data.source.trim().length > 0
+    ? event.data.source.trim()
+    : null
+
+  const parts = [getLearningLoopEventLabel(name)]
+  if (location) parts.push(location)
+  if (source) parts.push(source)
+  return parts.join(" · ")
 }
 
 // --- Styles ---
@@ -1356,6 +1417,8 @@ function VocabularySection() {
   }
 
   const [cacheInfo, setCacheInfo] = useState<string>("Loading...")
+  const [learningLoopSummary, setLearningLoopSummary] = useState<string>(t("options_learningLoopLoading"))
+  const [learningLoopEvents, setLearningLoopEvents] = useState<Array<{ id: string, summary: string, relativeTime: string }>>([])
 
   const refreshCacheInfo = async () => {
     try {
@@ -1377,8 +1440,56 @@ function VocabularySection() {
     }
   }
 
+  const refreshLearningLoopInfo = async () => {
+    try {
+      const events = await getRecentEvents(50)
+      const learningLoopEvents = events
+        .filter((event) => event.type === "feature_usage" && event.data.feature === "learning_loop")
+
+      if (learningLoopEvents.length === 0) {
+        setLearningLoopSummary(t("options_learningLoopEmpty"))
+        setLearningLoopEvents([])
+        return
+      }
+
+      const counts = new Map<LearningLoopEventName, number>()
+      for (const name of LEARNING_LOOP_EVENT_NAMES) {
+        counts.set(name, 0)
+      }
+
+      for (const event of learningLoopEvents) {
+        const name = typeof event.data.event === "string"
+          ? event.data.event as LearningLoopEventName
+          : null
+        if (name && counts.has(name)) {
+          counts.set(name, (counts.get(name) ?? 0) + 1)
+        }
+      }
+
+      const activeCounts = LEARNING_LOOP_EVENT_NAMES
+        .map((name) => {
+          const count = counts.get(name) ?? 0
+          return count > 0 ? `${getLearningLoopEventLabel(name)} ${count}` : null
+        })
+        .filter((value): value is string => Boolean(value))
+
+      setLearningLoopSummary(activeCounts.join(" · ") || t("options_learningLoopEmpty"))
+      setLearningLoopEvents(learningLoopEvents
+        .slice(0, 5)
+        .map((event) => ({
+          id: event.id,
+          summary: getLearningLoopEventSummary(event) ?? t("options_learningLoopUnknownEvent"),
+          relativeTime: formatRelativeTimestamp(event.timestamp),
+        })))
+    } catch {
+      setLearningLoopSummary(t("options_learningLoopUnavailable"))
+      setLearningLoopEvents([])
+    }
+  }
+
   useEffect(() => {
     void refreshCacheInfo()
+    void refreshLearningLoopInfo()
   }, [])
 
   const clearCache = async () => {
@@ -1415,6 +1526,35 @@ function VocabularySection() {
         <button type="button" style={btnDanger} onClick={() => void clearCache()}>
           Clear cache
         </button>
+      </div>
+
+      <div style={cardStyle}>
+        <div style={{ marginBottom: 12 }}>
+          <strong>{t("options_learningLoopTitle")}</strong>
+          <div style={hintStyle}>{t("options_learningLoopHint")}</div>
+          <div style={{ ...hintStyle, marginTop: 4 }}>{learningLoopSummary}</div>
+        </div>
+
+        {learningLoopEvents.length > 0 ? (
+          <div style={{ display: "grid", gap: 8 }}>
+            {learningLoopEvents.map((event) => (
+              <div
+                key={event.id}
+                style={{
+                  border: "1px solid #e2e8f0",
+                  borderRadius: 8,
+                  padding: "10px 12px",
+                  background: "#f8fafc",
+                }}
+              >
+                <div style={{ fontSize: 13, color: "#0f172a", fontWeight: 500 }}>{event.summary}</div>
+                <div style={{ ...hintStyle, marginTop: 4 }}>{event.relativeTime}</div>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <div style={{ ...hintStyle, marginTop: 4 }}>{learningLoopSummary}</div>
+        )}
       </div>
     </div>
   )

@@ -1,4 +1,4 @@
-import type { LanguageLevel, TranslationMode } from "@/types/config"
+import type { ExplainMode, LanguageLevel, TranslationMode } from "@/types/config"
 import { t } from "@/utils/i18n"
 import { labelStyle, inputStyle } from "./styles"
 
@@ -17,18 +17,22 @@ export interface SimpleControlsProps {
   targetLang: string
   translationMode: "bilingual" | "translation-only"
   languageLevel: LanguageLevel
+  explainMode: ExplainMode
   onTargetLangChange: (lang: string) => void
   onModeChange: (mode: "bilingual" | "translation-only") => void
   onLanguageLevelChange: (level: LanguageLevel) => void
+  onExplainModeChange: (mode: ExplainMode) => void
 }
 
 export default function SimpleControls({
   targetLang,
   translationMode,
   languageLevel,
+  explainMode,
   onTargetLangChange,
   onModeChange,
   onLanguageLevelChange,
+  onExplainModeChange,
 }: SimpleControlsProps) {
   return (
     <div style={{ marginBottom: 12 }}>
@@ -62,6 +66,17 @@ export default function SimpleControls({
         <option value="beginner">{t("label_beginner")}</option>
         <option value="intermediate">{t("label_intermediate")}</option>
         <option value="advanced">{t("label_advanced")}</option>
+      </select>
+
+      <label style={{ ...labelStyle, marginTop: 8 }}>{t("label_explainMode")}</label>
+      <select
+        value={explainMode}
+        onChange={(e) => onExplainModeChange(e.target.value as ExplainMode)}
+        style={inputStyle}
+      >
+        <option value="beginner">{t("label_explainModeBeginner")}</option>
+        <option value="exam">{t("label_explainModeExam")}</option>
+        <option value="deep">{t("label_explainModeDeep")}</option>
       </select>
     </div>
   )

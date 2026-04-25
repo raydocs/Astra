@@ -82,9 +82,9 @@ function SourceDistribution({ bySource }: { bySource: Partial<Record<RequestSour
             key={source}
             style={{
               flex: count,
-              background: source === "page-translation" ? "#6366f1"
-                : source === "selection" ? "#2563eb"
-                  : source === "hover" ? "#0ea5e9"
+              background: source === "page-translation" ? "#ea580c"
+                : source === "selection" ? "#f97316"
+                  : source === "hover" ? "#fb923c"
                     : "#94a3b8",
             }}
             title={`${getSourceLabel(source)}: ${count} (${Math.round((count / total) * 100)}%)`}

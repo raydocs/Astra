@@ -173,6 +173,12 @@
   "popup_review": {
     "message": "Review"
   },
+  "learningSavedTitle": {
+    "message": "Saved to your learning queue"
+  },
+  "learningSavedHint": {
+    "message": "Open vocabulary or jump into review to keep this phrase active."
+  },
   "popup_studyTitle": {
     "message": "Study Hub"
   },
@@ -199,6 +205,257 @@
   },
   "popup_readArticle": {
     "message": "Read article"
+  },
+  "popup_deepReadTitle": {
+    "message": "Deep read this page"
+  },
+  "popup_deepReadHint": {
+    "message": "Turn the current page into a guided study flow with sentence explain, save, and replay actions."
+  },
+  "popup_deepReadAction": {
+    "message": "Start deep read"
+  },
+  "popup_deepReadPageFallbackTitle": {
+    "message": "Astra Deep Read"
+  },
+  "popup_deepReadSentenceProgress": {
+    "message": "Sentence $1 / $2",
+    "placeholders": {
+      "1": { "content": "$1" },
+      "2": { "content": "$2" }
+    }
+  },
+  "popup_deepReadSavedCount": {
+    "message": "$1 saved",
+    "placeholders": {
+      "1": { "content": "$1" }
+    }
+  },
+  "popup_deepReadQueueTitle": {
+    "message": "Study queue"
+  },
+  "popup_deepReadSentenceNumber": {
+    "message": "Sentence $1",
+    "placeholders": {
+      "1": { "content": "$1" }
+    }
+  },
+  "popup_deepReadNextStepTitle": {
+    "message": "Next step"
+  },
+  "popup_deepReadNextStepHeadline": {
+    "message": "Keep this page in your learning loop."
+  },
+  "popup_deepReadNextStepHint": {
+    "message": "Jump straight into vocabulary management or clear the review queue while this article is still fresh."
+  },
+  "popup_deepReadAutoplay": {
+    "message": "Autoplay next"
+  },
+  "popup_deepReadStopAutoplay": {
+    "message": "Stop autoplay"
+  },
+  "popup_deepReadEmptyHistoryTitle": {
+    "message": "No active study page right now"
+  },
+  "popup_deepReadEmptyHistoryHint": {
+    "message": "Astra cannot pull live study context from the current tab yet. Reopen your latest reading page and then try deep read again."
+  },
+  "popup_deepReadOpenLastPage": {
+    "message": "Open last reading page"
+  },
+  "popup_studyTodayStatsInfoAction": {
+    "message": "How it resets"
+  },
+  "popup_studyTodayStatsResetBoundary": {
+    "message": "These counts follow your local calendar day and reset at local midnight on this device, not at UTC midnight."
+  },
+  "vocabulary_title": {
+    "message": "Astra Vocabulary"
+  },
+  "vocabulary_contextShowMore": {
+    "message": "Show full context"
+  },
+  "vocabulary_contextShowLess": {
+    "message": "Show less"
+  },
+  "vocabulary_countBadge": {
+    "message": "$1 $2",
+    "placeholders": {
+      "1": { "content": "$1" },
+      "2": { "content": "$2" }
+    }
+  },
+  "vocabulary_countWordSingular": {
+    "message": "word"
+  },
+  "vocabulary_countWordPlural": {
+    "message": "words"
+  },
+  "vocabulary_tabList": {
+    "message": "Word List"
+  },
+  "vocabulary_tabReview": {
+    "message": "Review"
+  },
+  "vocabulary_tabReviewWithCount": {
+    "message": "Review ($1)",
+    "placeholders": {
+      "1": { "content": "$1" }
+    }
+  },
+  "vocabulary_tabReading": {
+    "message": "Reading"
+  },
+  "vocabulary_learningDeskTitle": {
+    "message": "Today learning desk"
+  },
+  "vocabulary_statDueReview": {
+    "message": "Due review"
+  },
+  "vocabulary_statInProgress": {
+    "message": "In progress"
+  },
+  "vocabulary_statSavedWords": {
+    "message": "Saved words"
+  },
+  "vocabulary_actionStartReviewWithCount": {
+    "message": "Start review ($1)",
+    "placeholders": {
+      "1": { "content": "$1" }
+    }
+  },
+  "vocabulary_actionOpenReview": {
+    "message": "Open review"
+  },
+  "vocabulary_actionOpenReadingQueue": {
+    "message": "Open reading queue"
+  },
+  "vocabulary_actionBrowseSaved": {
+    "message": "Browse saved vocabulary"
+  },
+  "vocabulary_continueReadingTitle": {
+    "message": "Continue where you left off"
+  },
+  "vocabulary_actionResumeReading": {
+    "message": "Resume reading"
+  },
+  "vocabulary_searchPlaceholder": {
+    "message": "Search words, translations, notes, tags, or source (title, URL, excerpt)..."
+  },
+  "vocabulary_sortLabel": {
+    "message": "Sort:"
+  },
+  "vocabulary_sortNewest": {
+    "message": "Newest first"
+  },
+  "vocabulary_sortAlpha": {
+    "message": "A-Z"
+  },
+  "vocabulary_exportCsv": {
+    "message": "Export CSV"
+  },
+  "vocabulary_exportAnkiTsv": {
+    "message": "Export Anki TSV"
+  },
+  "vocabulary_emptySearch": {
+    "message": "No words match your search."
+  },
+  "vocabulary_emptyDefault": {
+    "message": "No vocabulary saved yet. Use the Save button when translating to add words here."
+  },
+  "vocabulary_sourceContextTitle": {
+    "message": "Source context"
+  },
+  "vocabulary_sourceHostLabel": {
+    "message": "Host:"
+  },
+  "vocabulary_sourceUrlLabel": {
+    "message": "URL:"
+  },
+  "vocabulary_sourceFileLabel": {
+    "message": "File:"
+  },
+  "vocabulary_sourceSentenceLabel": {
+    "message": "Sentence:"
+  },
+  "vocabulary_sourceExcerptLabel": {
+    "message": "Excerpt:"
+  },
+  "vocabulary_sourceSummaryLabel": {
+    "message": "Summary:"
+  },
+  "vocabulary_readingAssetTitle": {
+    "message": "Reading asset"
+  },
+  "vocabulary_actionResumeReadingAsset": {
+    "message": "Resume reading asset"
+  },
+  "vocabulary_actionOpenDeepRead": {
+    "message": "Open in deep read"
+  },
+  "vocabulary_actionStopListening": {
+    "message": "Stop listening"
+  },
+  "vocabulary_actionListenSentence": {
+    "message": "Listen to sentence"
+  },
+  "vocabulary_actionListenWord": {
+    "message": "Listen to word"
+  },
+  "vocabulary_noteLabel": {
+    "message": "Note"
+  },
+  "vocabulary_notePlaceholder": {
+    "message": "Add note..."
+  },
+  "vocabulary_tagsLabel": {
+    "message": "Tags"
+  },
+  "vocabulary_tagsPlaceholder": {
+    "message": "Add tags (comma-separated)..."
+  },
+  "vocabulary_deleteConfirm": {
+    "message": "Confirm"
+  },
+  "vocabulary_deleteCancel": {
+    "message": "Cancel"
+  },
+  "vocabulary_deleteAction": {
+    "message": "Delete"
+  },
+  "vocabulary_readingIntro": {
+    "message": "Revisit reading items from one queue. Articles and remote PDFs resume directly; local PDF / EPUB / subtitle files reopen the right reader and ask for the same file again."
+  },
+  "vocabulary_viewLabel": {
+    "message": "View:"
+  },
+  "vocabulary_readingSortOpened": {
+    "message": "Opened"
+  },
+  "vocabulary_readingSortTitle": {
+    "message": "Title A-Z"
+  },
+  "vocabulary_readingEmptyRecent": {
+    "message": "No reading items yet. Translate a page in the browser to populate history."
+  },
+  "vocabulary_readingEmptySaved": {
+    "message": "Nothing marked as saved. Open Recent and mark an item as saved."
+  },
+  "vocabulary_readingEmptyInProgress": {
+    "message": "Nothing in progress. Mark a page as in progress from Recent or Saved."
+  },
+  "label_explainMode": {
+    "message": "Explain mode"
+  },
+  "label_explainModeBeginner": {
+    "message": "Beginner coach"
+  },
+  "label_explainModeExam": {
+    "message": "Exam coach"
+  },
+  "label_explainModeDeep": {
+    "message": "Deep reading"
   },
   "popup_usageTitle": {
     "message": "Usage & routing"
@@ -551,6 +808,55 @@
   "review_hideFullContext": {
     "message": "Show less"
   },
+  "review_emptyCaughtUpTitle": {
+    "message": "All caught up!"
+  },
+  "review_emptyCaughtUpHint": {
+    "message": "No cards due for review. Check back later."
+  },
+  "review_sessionCompleteTitle": {
+    "message": "Session Complete"
+  },
+  "review_summaryCardsReviewed": {
+    "message": "Cards reviewed"
+  },
+  "review_summaryCorrect": {
+    "message": "Correct (promoted)"
+  },
+  "review_summaryIncorrect": {
+    "message": "Incorrect (demoted)"
+  },
+  "review_actionReviewAgain": {
+    "message": "Review again"
+  },
+  "review_cardProgress": {
+    "message": "Card $1 of $2",
+    "placeholders": {
+      "1": { "content": "$1" },
+      "2": { "content": "$2" }
+    }
+  },
+  "review_boxLabel": {
+    "message": "Box $1",
+    "placeholders": {
+      "1": { "content": "$1" }
+    }
+  },
+  "review_flipHint": {
+    "message": "Click or press Space to reveal"
+  },
+  "review_answerDontKnow": {
+    "message": "Don't know"
+  },
+  "review_answerKnowIt": {
+    "message": "Know it"
+  },
+  "review_keyboardHintFront": {
+    "message": "Space = flip"
+  },
+  "review_keyboardHintBack": {
+    "message": "← = don't know · → = know it"
+  },
   "popup_studyTodayStatsTitle": {
     "message": "Today's learning counts"
   },
@@ -832,6 +1138,63 @@
   },
   "options_backupHint": {
     "message": "Export your settings, vocabulary and reading history to a JSON file, or import a previously exported backup."
+  },
+  "options_learningLoopTitle": {
+    "message": "Learning loop activity"
+  },
+  "options_learningLoopHint": {
+    "message": "Local-only diagnostics for the popup → Deep Read → vocabulary/review funnel on this device."
+  },
+  "options_learningLoopLoading": {
+    "message": "Loading learning loop activity..."
+  },
+  "options_learningLoopEmpty": {
+    "message": "No learning loop events yet on this device."
+  },
+  "options_learningLoopUnavailable": {
+    "message": "Learning loop diagnostics unavailable"
+  },
+  "options_learningLoopUnknownEvent": {
+    "message": "Unknown learning loop event"
+  },
+  "options_learningLoopEventDeepReadOpened": {
+    "message": "Deep Read opened"
+  },
+  "options_learningLoopEventSentenceExplained": {
+    "message": "Sentence explained"
+  },
+  "options_learningLoopEventSentenceSaved": {
+    "message": "Sentence saved"
+  },
+  "options_learningLoopEventReviewAnswered": {
+    "message": "Review answered"
+  },
+  "options_learningLoopEventReturnedToSource": {
+    "message": "Returned to source"
+  },
+  "options_learningLoopEventResumedReading": {
+    "message": "Resumed reading"
+  },
+  "options_learningLoopJustNow": {
+    "message": "just now"
+  },
+  "options_learningLoopRelativeMinute": {
+    "message": "1 minute ago"
+  },
+  "options_learningLoopRelativeMinutes": {
+    "message": "$1 minutes ago"
+  },
+  "options_learningLoopRelativeHour": {
+    "message": "1 hour ago"
+  },
+  "options_learningLoopRelativeHours": {
+    "message": "$1 hours ago"
+  },
+  "options_learningLoopRelativeDay": {
+    "message": "1 day ago"
+  },
+  "options_learningLoopRelativeDays": {
+    "message": "$1 days ago"
   },
   "fileType_markdown": {
     "message": "Markdown"

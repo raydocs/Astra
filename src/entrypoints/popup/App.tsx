@@ -1,8 +1,10 @@
 import { useEffect, useMemo, useRef, useState } from "react"
 import { browser } from "#imports"
 import { t } from "@/utils/i18n"
+import { recordLearningLoopEvent } from "@/utils/learning-loop-events"
 import type {
   AstraConfig,
+  ExplainMode,
   SiteConfig,
   TranslationMode,
 } from "@/types/config"
@@ -26,6 +28,7 @@ import {
   resolveSiteTranslationSettings,
 } from "@/types/config"
 import { getReadingHistory, type ReadingHistoryEntry } from "@/utils/storage/reading-history"
+import { saveDeepReadSession } from "@/utils/storage/deep-read-session"
 import {
   computeFingerprint,
   getPageDigest,
@@ -58,6 +61,7 @@ import {
   saveVocabularyEntry,
 } from "@/utils/storage/vocabulary"
 import { buildOwnedReadingVocabularySourceLink, upsertOwnedArticleFromUrl } from "@/utils/storage/owned-reading"
+import { buildSentenceAnchor } from "@/utils/sentence-anchor"
 import { getTranslationUsageSummary, type TranslationUsageSummary } from "@/utils/storage/translation-usage"
 import { buildContinuityStatus, type AstraContinuityRemoteSnapshot, type AstraContinuityStatus } from "@/utils/storage/config-sync"
 import { deriveStudyLoopViewModel, getStudyProgress, recordStudyEvent, type StudyLoopViewModel } from "@/utils/storage/study-progress"
@@ -235,6 +239,17 @@ function buildStudyDigestContentSummary(studyContext: PageStudyContext | null): 
     studyContext.contentSummary ?? studyContext.metaDescription ?? "",
     studyContext.articleExcerpt ? `Article excerpt:\n${studyContext.articleExcerpt}` : "",
   ].filter(Boolean).join("\n\n")
+}
+
+function buildExplainModeSystemPrompt(explainMode: ExplainMode): string | undefined {
+  switch (explainMode) {
+    case "beginner":
+      return "Explain the sentence like a patient beginner tutor. Prefer plain words, shorter sentences, and concrete meaning over abstract analysis."
+    case "exam":
+      return "Explain the sentence like an exam-prep coach. Focus on grammar structure, collocations, likely learner mistakes, and why the phrasing matters."
+    case "deep":
+      return "Explain the sentence like a deep reading coach. Focus on nuance, tone, intention, and how the wording works in context."
+  }
 }
 
 interface IosBootstrapRuntimeStatus {
@@ -787,6 +802,7 @@ export default function App() {
           ? { ...studyContext, selectionContext: targetSentence }
           : { selectionContext: targetSentence },
         task: "explain",
+        customSystemPrompt: buildExplainModeSystemPrompt(configDraft.explainMode),
       })
 
       const text = result.ok
@@ -801,6 +817,12 @@ export default function App() {
       }
 
       if (result.ok) {
+        recordLearningLoopEvent("sentence_explained", {
+          pageUrl: meta?.url,
+          sentenceIndex: targetIndex,
+          sentenceHash: buildSentenceAnchor(targetSentence, targetIndex)?.sentenceHash,
+          source: "popup_deep_read",
+        })
         await recordStudySteps(["explain"], meta)
       }
     } catch (error) {
@@ -850,11 +872,18 @@ export default function App() {
           contentSummary: studyContext?.contentSummary,
           articleExcerpt: studyContext?.articleExcerpt,
           sentenceText: targetSentence,
+          sentenceHash: buildSentenceAnchor(targetSentence, targetIndex)?.sentenceHash,
           sentenceIndex: targetIndex,
           ...buildOwnedReadingVocabularySourceLink(ownedReadingItem),
         },
         url: meta.url,
         hostname: meta.hostname,
+      })
+      recordLearningLoopEvent("sentence_saved", {
+        pageUrl: meta.url,
+        sentenceIndex: targetIndex,
+        sentenceHash: buildSentenceAnchor(targetSentence, targetIndex)?.sentenceHash,
+        source: "popup_deep_read",
       })
       await recordStudySteps(["vocab_save"], meta)
       const nextDueCount = await getDueVocabularyCount()
@@ -1033,6 +1062,7 @@ export default function App() {
           contentScope: nextDraft.contentScope,
           inputTranslation: nextDraft.inputTranslation,
           languageLevel: nextDraft.languageLevel,
+          explainMode: nextDraft.explainMode,
           privacyMode: nextDraft.privacyMode,
           provider: {
             id: nextDraft.provider.id,
@@ -1206,11 +1236,20 @@ export default function App() {
     }
   }
 
-  const translateArticle = async () => {
-    const started = await startTranslation("article")
-    if (started) {
-      await recordStudySteps(["read", "guided_read"])
+  const openDeepReadPage = () => {
+    if (studyContext) {
+      void saveDeepReadSession({
+        context: studyContext,
+        selectedSentenceIndex,
+      })
+      recordLearningLoopEvent("deep_read_opened", {
+        source: "popup",
+        pageUrl: studyContext.pageUrl,
+        sentenceIndex: selectedSentenceIndex,
+        sentenceHash: buildSentenceAnchor(studySentences[selectedSentenceIndex] ?? "", selectedSentenceIndex)?.sentenceHash,
+      })
     }
+    void browser.tabs.create({ url: browser.runtime.getURL("/deep-read.html" as "/popup.html") })
   }
 
   const removeTranslation = async () => {
@@ -1501,10 +1540,21 @@ export default function App() {
   const shouldShowSignIn = !isAuthenticatedSession
 
   return (
-    <div style={{ width: "100%", maxWidth: 400, minWidth: 280, padding: 16, fontFamily: "system-ui, sans-serif", boxSizing: "border-box" }}>
+    <div style={{
+      width: "100%",
+      maxWidth: 400,
+      minWidth: 280,
+      padding: 16,
+      fontFamily: "system-ui, sans-serif",
+      boxSizing: "border-box",
+      background: "linear-gradient(180deg, #fff7ed 0%, #fffaf3 42%, #f8fafc 100%)",
+      border: "1px solid #fed7aa",
+      borderRadius: 14,
+      color: "#0f172a",
+    }}>
       {/* Header */}
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
-        <h2 style={{ margin: 0, fontSize: 18, display: "flex", alignItems: "center", gap: 8 }}>
+        <h2 style={{ margin: 0, fontSize: 18, display: "flex", alignItems: "center", gap: 8, color: "#7c2d12" }}>
           Astra
         </h2>
         <button
@@ -1515,7 +1565,7 @@ export default function App() {
             border: "none",
             fontSize: 18,
             cursor: "pointer",
-            color: "#64748b",
+            color: "#9a3412",
             padding: 4,
           }}
           title="Settings"
@@ -1561,192 +1611,19 @@ export default function App() {
         </button>
       )}
 
-      <div style={{ marginTop: 8 }}>
-        <button
-          type="button"
-          onClick={() => { void handleCreateVideoNoteFromCurrentTab() }}
-          style={{
-            ...btnSecondary,
-            width: "100%",
-            padding: "8px 10px",
-            fontSize: 13,
-            fontWeight: 600,
-            ...(canCreateVideoNote ? {} : btnDisabled),
-          }}
-          disabled={!canCreateVideoNote}
-        >
-          {videoNoteBusy ? "Creating video note…" : "Create video note from current tab"}
-        </button>
-        {lastVideoNoteJobId && (
-          <button
-            type="button"
-            onClick={handleOpenLastVideoNote}
-            style={{
-              ...btnSecondary,
-              width: "100%",
-              marginTop: 6,
-              padding: "8px 10px",
-              fontSize: 12,
-            }}
-          >
-            Open last video note
-          </button>
-        )}
-        <div style={{ fontSize: 11, color: "#64748b", marginTop: 4 }}>
-          {isSupportedVideoTab
-            ? "Supported video tab detected."
-            : "Open a YouTube or Bilibili tab to enable video-note creation."}
-        </div>
-        {videoNoteStatusMessage && (
-          <div style={{ ...warningStyle, marginTop: 6 }}>
-            {videoNoteStatusMessage}
-          </div>
-        )}
-      </div>
-
-      {/* Status + Quota section */}
-      <div style={{
-        marginTop: 12,
-        background: "#f8fafc",
-        border: "1px solid #e2e8f0",
-        borderRadius: 8,
-        padding: 10,
-      }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12, color: "#334155" }}>
-          <span style={{
-            display: "inline-block",
-            width: 8,
-            height: 8,
-            borderRadius: "50%",
-            background: isAuthenticatedSession ? "#22c55e" : continuityStatus?.device.ready ? "#6366f1" : "#94a3b8",
-          }} />
-          <span>
-            {sessionStatusLabel}
-            {" · "}
-            {planLabel}
-          </span>
-        </div>
-        <QuotaBar quota={quotaInfo} />
-        {wordsTranslated > 0 && (
-          <div style={{ fontSize: 11, color: "#94a3b8", marginTop: 4 }}>
-            {t("popup_wordsTranslatedToday", wordsTranslated.toLocaleString())}
-          </div>
-        )}
-        <div style={{ fontSize: 11, color: "#64748b", marginTop: 4, lineHeight: 1.45 }}>
-          {accountSourceNote}
-        </div>
-        <div style={{ fontSize: 11, color: "#64748b", marginTop: 6, lineHeight: 1.45 }}>
-          <div>
-            iOS bridge: {iosBootstrapStatus.bridgeAvailable ? "available" : "unavailable"}
-            {iosBootstrapStatus.status?.lastBootstrapAt
-              ? ` · Last bootstrap ${formatContinuityTimestamp(iosBootstrapStatus.status.lastBootstrapAt)}`
-              : " · No bootstrap yet"}
-          </div>
-          <div>
-            Launch path: popup/onboarding → extension bridge → astra-shell://bootstrap → host app handoff
-          </div>
-          {iosBootstrapStatus.status?.lastSessionId && (
-            <div>
-              Last iOS session: {iosBootstrapStatus.status.lastSessionId}
-            </div>
-          )}
-          {iosBootstrapStatus.history.length > 0 && (
-            <div>
-              Recent bridge events: {iosBootstrapStatus.history.length}
-            </div>
-          )}
-          <div style={{ display: "flex", gap: 6, marginTop: 6 }}>
-            <button
-              type="button"
-              onClick={() => { void handleOpenInAstraApp() }}
-              style={{
-                ...btnSecondary,
-                fontSize: 11,
-                padding: "4px 8px",
-                ...(iosBootstrapStatus.bridgeAvailable ? {} : btnDisabled),
-              }}
-              disabled={!iosBootstrapStatus.bridgeAvailable}
-            >
-              Open in Astra App
-            </button>
-            <button
-              type="button"
-              onClick={() => { void handleReplayLatestBridgeEvent() }}
-              style={{
-                ...btnSecondary,
-                fontSize: 11,
-                padding: "4px 8px",
-                ...((!iosBootstrapStatus.bridgeAvailable || iosBootstrapStatus.history.length === 0) ? btnDisabled : {}),
-              }}
-              disabled={!iosBootstrapStatus.bridgeAvailable || iosBootstrapStatus.history.length === 0}
-            >
-              Replay last handoff
-            </button>
-          </div>
-          {iosBridgeActionMessage && (
-            <div>
-              {iosBridgeActionMessage}
-            </div>
-          )}
-          {iosBootstrapStatus.history.slice(0, 3).map((event) => (
-            <div key={event.sessionId}>
-              · {event.sessionId} ({event.source}) {formatContinuityTimestamp(event.issuedAt)}
-            </div>
-          ))}
-        </div>
-        {continuityStatus && (
-          <div style={{ fontSize: 11, color: "#64748b", marginTop: 6, lineHeight: 1.45 }}>
-            <div>
-              Device: {deviceIdentity?.label ?? "Preparing device identity"}
-            </div>
-            {isAuthenticatedSession && (
-              continuityStatus.remote.available
-                ? (
-                    <>
-                      <div>
-                        Astra continuity · {continuityStatus.remote.deviceCount} device{continuityStatus.remote.deviceCount === 1 ? "" : "s"} · {continuityStatus.remote.activeDeviceCount} active
-                      </div>
-                      {remoteCurrentDevice && (
-                        <div>
-                          Current device: {remoteCurrentDevice.status} · Last seen {formatContinuityTimestamp(remoteCurrentDevice.lastSeenAt)} · Last sync {formatContinuityTimestamp(remoteCurrentDevice.lastSyncAt)}
-                        </div>
-                      )}
-                      {remoteConfigCollection && (
-                        <div>
-                          Config bootstrap: {remoteConfigCollection.enabled ? "enabled" : "disabled"} · Cursor {remoteConfigCollection.bootstrapCursor ?? "none"}
-                          {remoteConfigCollection.hasPull ? ` · Latest pull ${remoteConfigCollection.deltaCount} delta${remoteConfigCollection.deltaCount === 1 ? "" : "s"}` : ""}
-                        </div>
-                      )}
-                    </>
-                  )
-                : continuityStatus.remote.error
-                  ? (
-                      <div>
-                        Continuity check: {continuityStatus.remote.error}
-                      </div>
-                    )
-                  : null
-            )}
-            {remoteReadingHistoryCollection && (
-              <div>
-                Reading history sync: {remoteReadingHistoryCollection.enabled ? "enabled" : "off"} · {remoteReadingHistoryCollection.enabled ? `Cursor ${remoteReadingHistoryCollection.bootstrapCursor ?? "none"}` : "Optional"}
-              </div>
-            )}
-            {remoteStudyProgressCollection && (
-              <div>
-                Study progress sync: {remoteStudyProgressCollection.enabled ? "enabled" : "off"} · {remoteStudyProgressCollection.enabled ? `Cursor ${remoteStudyProgressCollection.bootstrapCursor ?? "none"}` : "Optional"} · Daily stats stay local
-              </div>
-            )}
-            <div>
-              Config continuity ready · Optional collections available in Settings
-            </div>
-            {localOnlyLabel && (
-              <div>
-                Local only: {localOnlyLabel}
-              </div>
-            )}
-          </div>
-        )}
+      <div style={{ marginTop: 8, display: "flex", alignItems: "center", gap: 6, fontSize: 12, color: "#7c2d12" }}>
+        <span style={{
+          display: "inline-block",
+          width: 8,
+          height: 8,
+          borderRadius: "50%",
+          background: isAuthenticatedSession ? "#16a34a" : continuityStatus?.device.ready ? "#ea580c" : "#94a3b8",
+        }} />
+        <span>
+          {sessionStatusLabel}
+          {" · "}
+          {planLabel}
+        </span>
       </div>
 
       {/* Translation Status Card (shown when active) */}
@@ -1777,10 +1654,14 @@ export default function App() {
           targetLang={configDraft.targetLang}
           translationMode={configDraft.presentation.mode}
           languageLevel={configDraft.languageLevel}
+          explainMode={configDraft.explainMode}
           onTargetLangChange={handleTargetLangChange}
           onModeChange={handleModeChange}
           onLanguageLevelChange={(level) => {
             handleConfigChange({ languageLevel: level })
+          }}
+          onExplainModeChange={(mode) => {
+            handleConfigChange({ explainMode: mode })
           }}
         />
       </div>
@@ -1815,35 +1696,216 @@ export default function App() {
         onOpenReview={openReviewPage}
         onOpenVocabulary={openVocabularyPage}
         onReadArticle={() => {
-          void translateArticle()
+          openDeepReadPage()
         }}
         onExplainSentence={(sentenceIndex) => {
           void handleExplainSentence(sentenceIndex)
         }}
       />
 
-      <UsageInsightsCard summary={usageSummary} />
+      <details style={{ marginTop: 12 }}>
+        <summary style={{ cursor: "pointer", fontSize: 13, color: "#9a3412", fontWeight: 700 }}>
+          More tools & diagnostics
+        </summary>
 
-      {activeSiteKey && (
-        <div style={{ marginTop: 12 }}>
-          <SiteSettingsSection
-            activeSiteKey={activeSiteKey}
-            rawSiteRule={configDraft.sites[activeSiteKey]}
-            globalConfig={{
-              targetLang: configDraft.targetLang,
-              hoverTrigger: configDraft.hoverTrigger,
-              presentation: configDraft.presentation,
-              contentScope: configDraft.contentScope,
+        <div style={{ marginTop: 8 }}>
+          <button
+            type="button"
+            onClick={() => { void handleCreateVideoNoteFromCurrentTab() }}
+            style={{
+              ...btnSecondary,
+              width: "100%",
+              padding: "8px 10px",
+              fontSize: 13,
+              fontWeight: 600,
+              ...(canCreateVideoNote ? {} : btnDisabled),
             }}
-            onSiteRuleChange={handleSiteRuleChange}
-          />
+            disabled={!canCreateVideoNote}
+          >
+            {videoNoteBusy ? "Creating video note…" : "Create video note from current tab"}
+          </button>
+          {lastVideoNoteJobId && (
+            <button
+              type="button"
+              onClick={handleOpenLastVideoNote}
+              style={{
+                ...btnSecondary,
+                width: "100%",
+                marginTop: 6,
+                padding: "8px 10px",
+                fontSize: 12,
+              }}
+            >
+              Open last video note
+            </button>
+          )}
+          <div style={{ fontSize: 11, color: "#64748b", marginTop: 4 }}>
+            {isSupportedVideoTab
+              ? "Supported video tab detected."
+              : "Open a YouTube or Bilibili tab to enable video-note creation."}
+          </div>
+          {videoNoteStatusMessage && (
+            <div style={{ ...warningStyle, marginTop: 6 }}>
+              {videoNoteStatusMessage}
+            </div>
+          )}
         </div>
-      )}
+
+        <div style={{
+          marginTop: 10,
+          background: "#fffaf3",
+          border: "1px solid #fed7aa",
+          borderRadius: 8,
+          padding: 10,
+        }}>
+          <QuotaBar quota={quotaInfo} />
+          {wordsTranslated > 0 && (
+            <div style={{ fontSize: 11, color: "#94a3b8", marginTop: 4 }}>
+              {t("popup_wordsTranslatedToday", wordsTranslated.toLocaleString())}
+            </div>
+          )}
+          <div style={{ fontSize: 11, color: "#64748b", marginTop: 4, lineHeight: 1.45 }}>
+            {accountSourceNote}
+          </div>
+          <div style={{ fontSize: 11, color: "#64748b", marginTop: 6, lineHeight: 1.45 }}>
+            <div>
+              iOS bridge: {iosBootstrapStatus.bridgeAvailable ? "available" : "unavailable"}
+              {iosBootstrapStatus.status?.lastBootstrapAt
+                ? ` · Last bootstrap ${formatContinuityTimestamp(iosBootstrapStatus.status.lastBootstrapAt)}`
+                : " · No bootstrap yet"}
+            </div>
+            <div>
+              Launch path: popup/onboarding → extension bridge → astra-shell://bootstrap → host app handoff
+            </div>
+            {iosBootstrapStatus.status?.lastSessionId && (
+              <div>
+                Last iOS session: {iosBootstrapStatus.status.lastSessionId}
+              </div>
+            )}
+            {iosBootstrapStatus.history.length > 0 && (
+              <div>
+                Recent bridge events: {iosBootstrapStatus.history.length}
+              </div>
+            )}
+            <div style={{ display: "flex", gap: 6, marginTop: 6 }}>
+              <button
+                type="button"
+                onClick={() => { void handleOpenInAstraApp() }}
+                style={{
+                  ...btnSecondary,
+                  fontSize: 11,
+                  padding: "4px 8px",
+                  ...(iosBootstrapStatus.bridgeAvailable ? {} : btnDisabled),
+                }}
+                disabled={!iosBootstrapStatus.bridgeAvailable}
+              >
+                Open in Astra App
+              </button>
+              <button
+                type="button"
+                onClick={() => { void handleReplayLatestBridgeEvent() }}
+                style={{
+                  ...btnSecondary,
+                  fontSize: 11,
+                  padding: "4px 8px",
+                  ...((!iosBootstrapStatus.bridgeAvailable || iosBootstrapStatus.history.length === 0) ? btnDisabled : {}),
+                }}
+                disabled={!iosBootstrapStatus.bridgeAvailable || iosBootstrapStatus.history.length === 0}
+              >
+                Replay last handoff
+              </button>
+            </div>
+            {iosBridgeActionMessage && (
+              <div>
+                {iosBridgeActionMessage}
+              </div>
+            )}
+            {iosBootstrapStatus.history.slice(0, 3).map((event) => (
+              <div key={event.sessionId}>
+                · {event.sessionId} ({event.source}) {formatContinuityTimestamp(event.issuedAt)}
+              </div>
+            ))}
+          </div>
+          {continuityStatus && (
+            <div style={{ fontSize: 11, color: "#64748b", marginTop: 6, lineHeight: 1.45 }}>
+              <div>
+                Device: {deviceIdentity?.label ?? "Preparing device identity"}
+              </div>
+              {isAuthenticatedSession && (
+                continuityStatus.remote.available
+                  ? (
+                      <>
+                        <div>
+                          Astra continuity · {continuityStatus.remote.deviceCount} device{continuityStatus.remote.deviceCount === 1 ? "" : "s"} · {continuityStatus.remote.activeDeviceCount} active
+                        </div>
+                        {remoteCurrentDevice && (
+                          <div>
+                            Current device: {remoteCurrentDevice.status} · Last seen {formatContinuityTimestamp(remoteCurrentDevice.lastSeenAt)} · Last sync {formatContinuityTimestamp(remoteCurrentDevice.lastSyncAt)}
+                          </div>
+                        )}
+                        {remoteConfigCollection && (
+                          <div>
+                            Config bootstrap: {remoteConfigCollection.enabled ? "enabled" : "disabled"} · Cursor {remoteConfigCollection.bootstrapCursor ?? "none"}
+                            {remoteConfigCollection.hasPull ? ` · Latest pull ${remoteConfigCollection.deltaCount} delta${remoteConfigCollection.deltaCount === 1 ? "" : "s"}` : ""}
+                          </div>
+                        )}
+                      </>
+                    )
+                  : continuityStatus.remote.error
+                    ? (
+                        <div>
+                          Continuity check: {continuityStatus.remote.error}
+                        </div>
+                      )
+                    : null
+              )}
+              {remoteReadingHistoryCollection && (
+                <div>
+                  Reading history sync: {remoteReadingHistoryCollection.enabled ? "enabled" : "off"} · {remoteReadingHistoryCollection.enabled ? `Cursor ${remoteReadingHistoryCollection.bootstrapCursor ?? "none"}` : "Optional"}
+                </div>
+              )}
+              {remoteStudyProgressCollection && (
+                <div>
+                  Study progress sync: {remoteStudyProgressCollection.enabled ? "enabled" : "off"} · {remoteStudyProgressCollection.enabled ? `Cursor ${remoteStudyProgressCollection.bootstrapCursor ?? "none"}` : "Optional"} · Daily stats stay local
+                </div>
+              )}
+              <div>
+                Config continuity ready · Optional collections available in Settings
+              </div>
+              {localOnlyLabel && (
+                <div>
+                  Local only: {localOnlyLabel}
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+
+        <div style={{ marginTop: 12 }}>
+          <UsageInsightsCard summary={usageSummary} />
+        </div>
+
+        {activeSiteKey && (
+          <div style={{ marginTop: 12 }}>
+            <SiteSettingsSection
+              activeSiteKey={activeSiteKey}
+              rawSiteRule={configDraft.sites[activeSiteKey]}
+              globalConfig={{
+                targetLang: configDraft.targetLang,
+                hoverTrigger: configDraft.hoverTrigger,
+                presentation: configDraft.presentation,
+                contentScope: configDraft.contentScope,
+              }}
+              onSiteRuleChange={handleSiteRuleChange}
+            />
+          </div>
+        )}
+      </details>
 
       {/* Auth section (simplified) */}
       {shouldShowSignIn && (
         <details style={{ marginTop: 4, marginBottom: 8 }}>
-          <summary style={{ cursor: "pointer", fontSize: 13, color: "#6366f1" }}>
+          <summary style={{ cursor: "pointer", fontSize: 13, color: "#c2410c" }}>
             {t("popup_signInToAstra")}
           </summary>
           <div style={{ marginTop: 8 }}>
@@ -1891,7 +1953,7 @@ export default function App() {
             style={{
               background: "none",
               border: "none",
-              color: "#6366f1",
+              color: "#c2410c",
               fontSize: 11,
               cursor: "pointer",
               textDecoration: "underline",
@@ -1921,26 +1983,26 @@ export default function App() {
         <button
           type="button"
           onClick={() => void browser.tabs.create({ url: browser.runtime.getURL("/options.html" as "/popup.html") })}
-          style={{ background: "none", border: "none", color: "#6366f1", fontSize: 11, cursor: "pointer", textDecoration: "underline" }}
+          style={{ background: "none", border: "none", color: "#c2410c", fontSize: 11, cursor: "pointer", textDecoration: "underline" }}
         >
           {t("popup_settings")}
         </button>
         <button
           type="button"
           onClick={openVocabularyPage}
-          style={{ background: "none", border: "none", color: "#6366f1", fontSize: 11, cursor: "pointer", textDecoration: "underline" }}
+          style={{ background: "none", border: "none", color: "#c2410c", fontSize: 11, cursor: "pointer", textDecoration: "underline" }}
         >
           {t("popup_vocabulary")}
         </button>
         <button
           type="button"
           onClick={openReviewPage}
-          style={{ background: "none", border: "none", color: "#6366f1", fontSize: 11, cursor: "pointer", textDecoration: "underline" }}
+          style={{ background: "none", border: "none", color: "#c2410c", fontSize: 11, cursor: "pointer", textDecoration: "underline" }}
         >
           {t("popup_review")}
         </button>
       </div>
-      <div style={{ fontSize: 11, color: "#94a3b8", textAlign: "center", marginTop: 4 }}>
+      <div style={{ fontSize: 11, color: "#b45309", textAlign: "center", marginTop: 4 }}>
         Astra v0.1.0
       </div>
     </div>

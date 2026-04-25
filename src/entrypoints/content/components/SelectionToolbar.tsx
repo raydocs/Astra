@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from "react"
 import { createRoot } from "react-dom/client"
+import { browser } from "#imports"
 import { ErrorBoundary } from "@/components/ErrorBoundary"
 import { t } from "@/utils/i18n"
 import { readConfig } from "@/utils/storage/config"
@@ -13,7 +14,9 @@ import {
   setInteractionSuppressionReason,
 } from "../interaction-coordination"
 import { runActionById } from "../inline-actions"
+import { markSessionSave } from "../learning-state"
 import { isTtsSupported, speak, speakWithHighlight, stopSpeaking } from "@/utils/tts"
+import { AstraIdentityStrip } from "./AstraIdentityStrip"
 import {
   generateGrammarGuide,
   generateWordAnnotation,
@@ -28,7 +31,14 @@ interface ToolbarPosition {
 }
 
 const BRAND_COLOR = "#6366f1"
+const PRIMARY_BUTTON_HOVER_COLOR = "#4f46e5"
+const PRIMARY_BUTTON_ACTIVE_COLOR = "#4338ca"
 const HOST_ID = "astra-selection-toolbar-host"
+const PRIMARY_ACTION_IDS = new Set(["translate", "explain"])
+
+function isPrimaryLearningAction(actionId: string): boolean {
+  return PRIMARY_ACTION_IDS.has(actionId)
+}
 
 const isCoarsePointer = typeof window !== "undefined"
   && window.matchMedia?.("(pointer: coarse)")?.matches === true
@@ -47,13 +57,19 @@ const styles = {
     fontSize: isCoarsePointer ? "15px" : "14px",
     lineHeight: "1.5",
   }),
-  buttonBar: {
-    display: "flex",
-    gap: isCoarsePointer ? "4px" : "2px",
+  shellCard: {
     background: "#fff",
     borderRadius: isCoarsePointer ? "10px" : "8px",
     boxShadow: "0 2px 12px rgba(0,0,0,0.15)",
-    padding: isCoarsePointer ? "6px" : "4px",
+    padding: isCoarsePointer ? "8px" : "6px",
+    display: "flex",
+    flexDirection: "column",
+    gap: isCoarsePointer ? "6px" : "4px",
+    minWidth: 180,
+  } as React.CSSProperties,
+  buttonBar: {
+    display: "flex",
+    gap: isCoarsePointer ? "4px" : "2px",
     flexWrap: "wrap",
   } as React.CSSProperties,
   button: {
@@ -72,6 +88,18 @@ const styles = {
     background: `${BRAND_COLOR}14`,
     color: BRAND_COLOR,
   } as React.CSSProperties,
+  primaryButton: {
+    background: BRAND_COLOR,
+    color: "#fff",
+    fontWeight: 600,
+  } as React.CSSProperties,
+  primaryButtonHover: {
+    background: PRIMARY_BUTTON_HOVER_COLOR,
+  } as React.CSSProperties,
+  primaryButtonActive: {
+    background: PRIMARY_BUTTON_ACTIVE_COLOR,
+    boxShadow: "0 0 0 1px rgba(255,255,255,0.18) inset",
+  } as React.CSSProperties,
   resultPanel: {
     marginTop: "6px",
     background: "#fff",
@@ -84,6 +112,19 @@ const styles = {
     lineHeight: "1.6",
     borderLeft: `3px solid ${BRAND_COLOR}`,
     wordBreak: "break-word",
+  } as React.CSSProperties,
+  saveCtaButton: {
+    border: "none",
+    background: "#dcfce7",
+    color: "#166534",
+    borderRadius: "6px",
+    padding: "8px 12px",
+    fontSize: "13px",
+    fontWeight: 600,
+    cursor: "pointer",
+    width: "100%",
+    textAlign: "center",
+    marginTop: "10px",
   } as React.CSSProperties,
   dots: {
     color: "#94a3b8",
@@ -136,6 +177,8 @@ function SelectionToolbarApp() {
   const [grammarResult, setGrammarResult] = useState<GrammarGuide | null>(null)
   const [wordAnnotation, setWordAnnotation] = useState<WordAnnotation | null>(null)
   const [grammarLoading, setGrammarLoading] = useState(false)
+  const [dueCount, setDueCount] = useState<number | null>(null)
+  const [targetLang, setTargetLang] = useState<string | null>(null)
 
   const toolbarRef = useRef<HTMLDivElement>(null)
   const skipNextMouseUp = useRef(false)
@@ -153,8 +196,10 @@ function SelectionToolbarApp() {
     configSyncVersionRef.current = requestVersion
     const config = await readConfig()
     if (requestVersion !== configSyncVersionRef.current) return null
+    const resolved = resolveSiteTranslationSettings(config, window.location.hostname)
     setActions(getEnabledActions({ customActions: config.customActions }))
     setTtsEnabled(config.tts.enabled && isTtsSupported(config.tts.engine))
+    setTargetLang(resolved.targetLang)
     return config
   }, [])
 
@@ -164,6 +209,7 @@ function SelectionToolbarApp() {
     setGrammarResult(null)
     setWordAnnotation(null)
     setGrammarLoading(false)
+    setDueCount(null)
   }, [])
 
   const dismiss = useCallback(() => {
@@ -183,6 +229,7 @@ function SelectionToolbarApp() {
     setSelectedText("")
     setSelectionContext(undefined)
     selectionContextElementRef.current = null
+    setTargetLang(null)
   }, [resetInlineResults])
 
   useEffect(() => {
@@ -376,6 +423,7 @@ function SelectionToolbarApp() {
     try {
       const { config, targetLang, enabled } = await resolveConfig()
       if (requestVersion !== selectionVersionRef.current) return
+      setTargetLang(targetLang)
       if (!enabled) {
         setActionResult({ actionId: action.id, text: "⚠ Astra is disabled on this site." })
         return
@@ -469,6 +517,27 @@ function SelectionToolbarApp() {
       note: actionResult?.actionId === "explain" ? actionResult.text : undefined,
     })
     setSaved(true)
+
+    let nextDueCount: number | null = null
+    try {
+      const [{ getDueVocabularyCount }] = await Promise.all([
+        import("@/utils/storage/vocabulary"),
+      ])
+      nextDueCount = await getDueVocabularyCount()
+    } catch {
+      nextDueCount = null
+    }
+
+    setDueCount(nextDueCount)
+    markSessionSave("selection_toolbar", nextDueCount)
+  }
+
+  const openVocabulary = () => {
+    void browser.tabs.create({ url: browser.runtime.getURL("/vocabulary.html") })
+  }
+
+  const openReview = () => {
+    void browser.tabs.create({ url: browser.runtime.getURL("/vocabulary.html?tab=review") })
   }
 
   const handleGrammar = async () => {
@@ -518,6 +587,15 @@ function SelectionToolbarApp() {
     }
   }
 
+  const hasActionError = Boolean(actionResult?.text.startsWith("⚠"))
+  const hasResultPanelSaveCta = Boolean(
+    actionResult
+      && !hasActionError
+      && (actionResult.actionId === "translate" || actionResult.actionId === "explain"),
+  )
+  const showInlineSaveCta = hasResultPanelSaveCta && !saved
+  const showSaveInBar = !hasResultPanelSaveCta || saved
+
   if (!visible) return null
 
   return (
@@ -526,28 +604,45 @@ function SelectionToolbarApp() {
       style={styles.toolbar(position)}
       onMouseDown={(event) => event.stopPropagation()}
     >
-      <div style={styles.buttonBar}>
-        {actions.map((action) => (
-          <button
-            type="button"
-            key={action.id}
-            style={{
-              ...styles.button,
-              ...(hoveredBtn === action.id ? styles.buttonHover : {}),
-            }}
-            onMouseEnter={() => setHoveredBtn(action.id)}
-            onMouseLeave={() => setHoveredBtn(null)}
-            onClick={(event) => {
-              event.stopPropagation()
-              skipNextMouseUp.current = true
-              void handleAction(action)
-            }}
-          >
-            {action.id === "translate" ? t("actionTranslate")
-              : action.id === "explain" ? t("actionExplain")
-              : action.labelZh}
-          </button>
-        ))}
+      <div style={styles.shellCard} data-testid="selection-toolbar-shell">
+        <AstraIdentityStrip targetLang={targetLang} />
+        <div style={styles.buttonBar}>
+          {actions.map((action) => {
+            const isPrimary = isPrimaryLearningAction(action.id)
+            const isActivePrimary = isPrimary && runningAction === action.id
+            const isSelectedPrimary = isPrimary && actionResult?.actionId === action.id
+
+            return (
+              <button
+                type="button"
+                key={action.id}
+                data-testid={`selection-action-${action.id}`}
+                data-action-variant={isPrimary ? "primary" : "utility"}
+                data-action-state={isPrimary
+                  ? (isActivePrimary ? "active" : isSelectedPrimary ? "selected" : "idle")
+                  : "idle"}
+                style={{
+                  ...styles.button,
+                  ...(isPrimary ? styles.primaryButton : {}),
+                  ...(!isPrimary && hoveredBtn === action.id ? styles.buttonHover : {}),
+                  ...(isPrimary && hoveredBtn === action.id ? styles.primaryButtonHover : {}),
+                  ...(isPrimary && (isActivePrimary || isSelectedPrimary) ? styles.primaryButtonActive : {}),
+                  ...(isActivePrimary ? { cursor: "progress" } : {}),
+                }}
+                onMouseEnter={() => setHoveredBtn(action.id)}
+                onMouseLeave={() => setHoveredBtn(null)}
+                onClick={(event) => {
+                  event.stopPropagation()
+                  skipNextMouseUp.current = true
+                  void handleAction(action)
+                }}
+              >
+                {action.id === "translate" ? t("actionTranslate")
+                  : action.id === "explain" ? t("actionExplain")
+                  : action.labelZh}
+              </button>
+            )
+          })}
         <button
           type="button"
           style={{
@@ -599,52 +694,108 @@ function SelectionToolbarApp() {
         >
           {shared ? t("actionShared") : t("actionShare")}
         </button>
-        <button
-          type="button"
-          style={{
-            ...styles.button,
-            ...(hoveredBtn === "save" ? styles.buttonHover : {}),
-            ...(saved ? { color: "#10b981" } : {}),
-          }}
-          onMouseEnter={() => setHoveredBtn("save")}
-          onMouseLeave={() => setHoveredBtn(null)}
-          onClick={(event) => {
-            event.stopPropagation()
-            skipNextMouseUp.current = true
-            void handleSave()
-          }}
-        >
-          {saved ? t("actionSaved") : t("actionSave")}
-        </button>
-        {ttsEnabled && (
+        {showSaveInBar && (
           <button
             type="button"
             style={{
               ...styles.button,
-              ...(hoveredBtn === "speak" ? styles.buttonHover : {}),
+              ...(hoveredBtn === "save" ? styles.buttonHover : {}),
+              ...(saved ? { color: "#10b981" } : {}),
             }}
-            onMouseEnter={() => setHoveredBtn("speak")}
+            onMouseEnter={() => setHoveredBtn("save")}
             onMouseLeave={() => setHoveredBtn(null)}
             onClick={(event) => {
               event.stopPropagation()
               skipNextMouseUp.current = true
-              void handleSpeak()
+              void handleSave()
             }}
           >
-            {speaking ? t("actionStop") : t("actionSpeak")}
+            {saved ? t("actionSaved") : t("actionSave")}
           </button>
         )}
+          {ttsEnabled && (
+            <button
+              type="button"
+              style={{
+                ...styles.button,
+                ...(hoveredBtn === "speak" ? styles.buttonHover : {}),
+              }}
+              onMouseEnter={() => setHoveredBtn("speak")}
+              onMouseLeave={() => setHoveredBtn(null)}
+              onClick={(event) => {
+                event.stopPropagation()
+                skipNextMouseUp.current = true
+                void handleSpeak()
+              }}
+            >
+              {speaking ? t("actionStop") : t("actionSpeak")}
+            </button>
+          )}
+        </div>
       </div>
 
-      {(runningAction || actionResult) && (
+      {(runningAction || actionResult || saved) && (
         <div style={{
           ...styles.resultPanel,
-          borderLeftColor: actionResult?.actionId === "explain" ? "#8b5cf6" : BRAND_COLOR,
+          borderLeftColor: saved ? "#10b981" : actionResult?.actionId === "explain" ? "#8b5cf6" : BRAND_COLOR,
+          background: saved ? "#f0fdf4" : "#fff",
         }}>
           {runningAction ? (
             <span style={styles.dots}>⋯</span>
-          ) : (
-            actionResult?.text
+          ) : actionResult?.text ? (
+            <div>{actionResult.text}</div>
+          ) : null}
+
+          {showInlineSaveCta && (
+            <button
+              type="button"
+              data-testid="selection-result-save-cta"
+              style={styles.saveCtaButton}
+              onClick={(event) => {
+                event.stopPropagation()
+                skipNextMouseUp.current = true
+                void handleSave()
+              }}
+            >
+              📚 {t("actionSave")}
+            </button>
+          )}
+
+          {saved && (
+            <div style={{
+              marginTop: actionResult?.text ? 10 : 0,
+              paddingTop: actionResult?.text ? 8 : 0,
+              borderTop: actionResult?.text ? "1px solid rgba(167, 243, 208, 0.65)" : undefined,
+            }}>
+              <div style={{ fontWeight: 700, color: "#065f46", marginBottom: 4 }}>
+                {t("learningSavedTitle")}
+              </div>
+              <div style={{ color: "#047857", marginBottom: 8 }}>
+                {t("learningSavedHint")}
+              </div>
+              <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                <button
+                  type="button"
+                  style={{ ...styles.button, background: "#dcfce7", color: "#166534", padding: "6px 10px" }}
+                  onClick={(event) => {
+                    event.stopPropagation()
+                    openVocabulary()
+                  }}
+                >
+                  {t("popup_vocabulary")}
+                </button>
+                <button
+                  type="button"
+                  style={{ ...styles.button, background: "#dcfce7", color: "#166534", padding: "6px 10px" }}
+                  onClick={(event) => {
+                    event.stopPropagation()
+                    openReview()
+                  }}
+                >
+                  {dueCount && dueCount > 0 ? `${t("popup_review")} (${dueCount})` : t("popup_review")}
+                </button>
+              </div>
+            </div>
           )}
         </div>
       )}

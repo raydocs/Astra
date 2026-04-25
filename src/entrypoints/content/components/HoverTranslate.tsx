@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react"
 import { createRoot } from "react-dom/client"
+import { browser } from "#imports"
 import { ErrorBoundary } from "@/components/ErrorBoundary"
 import { t } from "@/utils/i18n"
 
@@ -8,7 +9,7 @@ import { copyTextToClipboard } from "@/utils/dom/clipboard"
 import { hasInjectedTranslation } from "@/utils/dom/inject"
 import { findClosestTextBlock, findContentRoot } from "@/utils/dom/traversal"
 import { readConfig } from "@/utils/storage/config"
-import { saveVocabularyEntry } from "@/utils/storage/vocabulary"
+import { getDueVocabularyCount, hasVocabularyEntryByText, saveVocabularyEntry } from "@/utils/storage/vocabulary"
 
 import {
   getInteractionSuppressionState,
@@ -16,6 +17,8 @@ import {
   subscribeToInteractionSuppression,
 } from "../interaction-coordination"
 import { runInlineAction } from "../inline-actions"
+import { markSessionSave } from "../learning-state"
+import { AstraIdentityStrip } from "./AstraIdentityStrip"
 
 type OverlayStatus = "hidden" | "pending" | "success" | "error"
 type ExplanationStatus = "idle" | "pending" | "success" | "error"
@@ -103,6 +106,9 @@ function HoverTranslateApp() {
   const COOLDOWN_MS = 3000
 
   const [saveStatus, setSaveStatus] = useState<SaveStatus>("idle")
+  const [dueCount, setDueCount] = useState<number | null>(null)
+  const [existingSaved, setExistingSaved] = useState(false)
+  const savedLookupSeq = useRef(0)
 
   overlayVisibleRef.current = overlay.visible
 
@@ -120,7 +126,10 @@ function HoverTranslateApp() {
       currentSourceText.current = ""
       requestSeq.current += 1
       explainRequestSeq.current += 1
+      savedLookupSeq.current += 1
       setSaveStatus("idle")
+      setDueCount(null)
+      setExistingSaved(false)
       setOverlay((current) => ({
         ...current,
         visible: false,
@@ -134,12 +143,62 @@ function HoverTranslateApp() {
       }))
     }
 
+    const checkVocabularySavedState = (sourceText: string, requestId: number, targetElement: HTMLElement) => {
+      const lookupId = savedLookupSeq.current + 1
+      savedLookupSeq.current = lookupId
+
+      void (async () => {
+        let alreadySaved = false
+        try {
+          alreadySaved = await hasVocabularyEntryByText(sourceText)
+        } catch {
+          return
+        }
+
+        if (
+          requestSeq.current !== requestId
+          || currentTarget.current !== targetElement
+          || savedLookupSeq.current !== lookupId
+        ) {
+          return
+        }
+
+        setExistingSaved(alreadySaved)
+        if (!alreadySaved) {
+          setDueCount(null)
+          return
+        }
+
+        try {
+          const nextDueCount = await getDueVocabularyCount()
+          if (
+            requestSeq.current !== requestId
+            || currentTarget.current !== targetElement
+            || savedLookupSeq.current !== lookupId
+          ) {
+            return
+          }
+          setDueCount(nextDueCount)
+        } catch {
+          if (
+            requestSeq.current !== requestId
+            || currentTarget.current !== targetElement
+            || savedLookupSeq.current !== lookupId
+          ) {
+            return
+          }
+          setDueCount(null)
+        }
+      })()
+    }
+
     const showCachedOverlay = (
       rect: DOMRect,
       targetLang: string,
       cached: HoverCacheEntry,
       theme: HoverOverlayState["theme"],
       mode: HoverOverlayState["mode"],
+      targetElement: HTMLElement,
       triggerMode: HoverOverlayState["triggerMode"] = "alt",
     ) => {
       setOverlay({
@@ -157,6 +216,7 @@ function HoverTranslateApp() {
         explanationError: null,
         showExplanation: false,
       })
+      checkVocabularySavedState(cached.sourceText, requestSeq.current, targetElement)
     }
 
     const handleKeyDown = (event: KeyboardEvent) => {
@@ -246,6 +306,7 @@ function HoverTranslateApp() {
               cached,
               resolved.presentation.theme,
               resolved.presentation.mode,
+              block.element,
               triggerMode,
             )
             return
@@ -260,6 +321,9 @@ function HoverTranslateApp() {
 
           const nextRequest = requestSeq.current + 1
           requestSeq.current = nextRequest
+          savedLookupSeq.current += 1
+          setExistingSaved(false)
+          setDueCount(null)
           setOverlay({
             visible: true,
             ...getOverlayPosition(rect),
@@ -331,6 +395,7 @@ function HoverTranslateApp() {
             explanationError: null,
             showExplanation: false,
           })
+          checkVocabularySavedState(block.text, nextRequest, block.element)
         })()
       }, HOVER_DELAY_MS)
     }
@@ -472,9 +537,28 @@ function HoverTranslateApp() {
         hostname: window.location.hostname,
       })
       setSaveStatus("saved")
+
+      let nextDueCount: number | null = null
+      try {
+        nextDueCount = await getDueVocabularyCount()
+      } catch {
+        nextDueCount = null
+      }
+
+      setExistingSaved(true)
+      setDueCount(nextDueCount)
+      markSessionSave("hover_translate", nextDueCount)
     } catch {
       setSaveStatus("idle")
     }
+  }
+
+  const openVocabulary = () => {
+    void browser.tabs.create({ url: browser.runtime.getURL("/vocabulary.html") })
+  }
+
+  const openReview = () => {
+    void browser.tabs.create({ url: browser.runtime.getURL("/vocabulary.html?tab=review") })
   }
 
   if (!overlay.visible) return null
@@ -489,7 +573,7 @@ function HoverTranslateApp() {
     color: overlay.mode === "translation-only" ? "#0f172a" : "#334155",
     borderRadius: 10,
     boxShadow: "0 10px 25px rgba(15, 23, 42, 0.18)",
-    padding: "10px 12px",
+    padding: "8px 12px 10px",
     maxHeight: "60vh",
     overflowY: "auto",
     lineHeight: 1.55,
@@ -513,12 +597,54 @@ function HoverTranslateApp() {
     cursor: "pointer",
   }
 
+  const primaryActionButtonStyle: React.CSSProperties = {
+    ...actionButtonStyle,
+    background: "#6366f1",
+    color: "#fff",
+  }
+
+  const compactSavedRowStyle: React.CSSProperties = {
+    marginTop: 8,
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 8,
+  }
+
+  const compactSavedBadgeStyle: React.CSSProperties = {
+    color: "#166534",
+    background: "#dcfce7",
+    borderRadius: 999,
+    padding: "4px 8px",
+    fontSize: 11,
+    fontWeight: 700,
+    lineHeight: 1,
+  }
+
+  const saveCtaButtonStyle: React.CSSProperties = {
+    border: "none",
+    background: "#dcfce7",
+    color: "#166534",
+    borderRadius: 6,
+    padding: "7px 10px",
+    fontSize: 12,
+    fontWeight: 700,
+    cursor: "pointer",
+    width: "100%",
+    marginTop: 8,
+    textAlign: "center",
+  }
+
+  const savedActionButtonStyle: React.CSSProperties = {
+    ...actionButtonStyle,
+    background: "#dcfce7",
+    color: "#166534",
+  }
+
   return (
     <div style={panelStyle}>
-      <div style={{ fontSize: 11, color: "#64748b", marginBottom: 4 }}>
-        {overlay.triggerMode === "always" ? t("label_hover") : t("label_altHover")}
-      </div>
-      {overlay.status === "pending" && <span style={{ color: "#94a3b8" }}>⋯</span>}
+      <AstraIdentityStrip targetLang={overlay.targetLang} />
+      {overlay.status === "pending" && <span style={{ color: "#94a3b8", marginTop: 4, display: "inline-block" }}>⋯</span>}
       {overlay.status === "error" && <span style={{ color: "#b45309" }}>⚠ {overlay.error}</span>}
       {overlay.status === "success" && (
         <>
@@ -527,22 +653,48 @@ function HoverTranslateApp() {
             <button type="button" style={actionButtonStyle} onClick={() => void handleCopy()}>
               {t("actionCopy")}
             </button>
-            <button type="button" style={actionButtonStyle} onClick={() => void handleExplain()}>
+            <button
+              type="button"
+              data-testid="hover-explain-button"
+              style={{
+                ...primaryActionButtonStyle,
+                ...(overlay.explanationStatus === "pending" ? { opacity: 0.75, cursor: "progress" } : {}),
+              }}
+              onClick={() => void handleExplain()}
+            >
               {overlay.explanationStatus === "pending"
                 ? t("actionExplaining")
                 : overlay.showExplanation
                   ? t("actionHideExplanation")
                   : t("actionExplain")}
             </button>
+          </div>
+          {saveStatus !== "saved" && !existingSaved && (
             <button
               type="button"
-              style={actionButtonStyle}
+              data-testid="hover-result-save-cta"
+              style={{
+                ...saveCtaButtonStyle,
+                ...(saveStatus === "saving" ? { opacity: 0.7, cursor: "default" } : {}),
+              }}
               onClick={() => void handleSave()}
               disabled={saveStatus === "saving"}
             >
-              {saveStatus === "saved" ? t("actionSaved") : saveStatus === "saving" ? t("actionSaving") : t("actionSave")}
+              {saveStatus === "saving" ? t("actionSaving") : `📚 ${t("actionSave")}`}
             </button>
-          </div>
+          )}
+          {saveStatus !== "saved" && existingSaved && (
+            <div style={compactSavedRowStyle} data-testid="hover-existing-saved-row">
+              <span style={compactSavedBadgeStyle}>✓ 已保存</span>
+              <button
+                type="button"
+                style={savedActionButtonStyle}
+                onClick={() => openReview()}
+              >
+                {dueCount && dueCount > 0 ? `${t("popup_review")} (${dueCount})` : t("popup_review")}
+              </button>
+            </div>
+          )}
           {overlay.showExplanation && (
             <div
               style={{
@@ -559,6 +711,30 @@ function HoverTranslateApp() {
                 <span style={{ color: "#b45309" }}>⚠ {overlay.explanationError}</span>
               )}
               {overlay.explanationStatus === "success" && overlay.explanation}
+            </div>
+          )}
+          {saveStatus === "saved" && (
+            <div
+              style={{
+                marginTop: 8,
+                paddingTop: 8,
+                borderTop: "1px solid rgba(167, 243, 208, 0.65)",
+              }}
+            >
+              <div style={{ fontSize: 12, fontWeight: 700, color: "#065f46", marginBottom: 2 }}>
+                {t("learningSavedTitle")}
+              </div>
+              <div style={{ fontSize: 11, color: "#047857", marginBottom: 8 }}>
+                {t("learningSavedHint")}
+              </div>
+              <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                <button type="button" style={savedActionButtonStyle} onClick={() => openVocabulary()}>
+                  {t("popup_vocabulary")}
+                </button>
+                <button type="button" style={savedActionButtonStyle} onClick={() => openReview()}>
+                  {dueCount && dueCount > 0 ? `${t("popup_review")} (${dueCount})` : t("popup_review")}
+                </button>
+              </div>
             </div>
           )}
         </>

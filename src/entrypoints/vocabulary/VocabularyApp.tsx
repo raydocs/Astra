@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react"
 import { browser } from "#imports"
 import type { VocabularyEntry } from "@/utils/storage/vocabulary"
+import { recordLearningLoopEvent } from "@/utils/learning-loop-events"
 import {
   getVocabularyEntries,
   removeVocabularyEntry,
@@ -33,6 +34,11 @@ import {
   setOwnedReadingStatus,
   syncRecentReadingHistoryToOwnedQueue,
 } from "@/utils/storage/owned-reading"
+import { isTtsSupported, speak, stopSpeaking } from "@/utils/tts"
+import { readConfig } from "@/utils/storage/config"
+import { translateTexts } from "@/utils/translate/translate"
+import type { ExplainMode } from "@/types/config"
+import { openVocabularyEntryInDeepRead } from "@/utils/deep-read-link"
 import ReviewMode from "./ReviewMode"
 import { t } from "@/utils/i18n"
 
@@ -40,6 +46,24 @@ type ActiveTab = "list" | "review" | "reading"
 type ReadingSubTab = "recent" | "saved" | "in_progress"
 type SortMode = "time" | "alpha"
 type ReadingSortMode = "opened" | "title"
+
+function buildExplainModeSystemPrompt(explainMode: ExplainMode): string | undefined {
+  switch (explainMode) {
+    case "beginner":
+      return "Explain the sentence like a patient beginner tutor. Prefer plain words, shorter sentences, and concrete meaning over abstract analysis."
+    case "exam":
+      return "Explain the sentence like an exam-prep coach. Focus on grammar structure, collocations, likely learner mistakes, and why the phrasing matters."
+    case "deep":
+      return "Explain the sentence like a deep reading coach. Focus on nuance, tone, intention, and how the wording works in context."
+  }
+}
+
+function formatMessage(template: string, ...values: Array<string | number>): string {
+  return values.reduce<string>(
+    (message, value, index) => message.replace(`$${index + 1}`, String(value)),
+    template,
+  )
+}
 
 function formatDate(ts: number): string {
   const d = new Date(ts)
@@ -182,6 +206,46 @@ function getReadingViewHint(view: OwnedReadingQueueView): string {
   }
 }
 
+function getLearningDeskHeadline(params: {
+  dueCount: number
+  inProgressCount: number
+  savedCount: number
+}): string {
+  if (params.dueCount > 0) {
+    return `You have ${params.dueCount} card${params.dueCount === 1 ? "" : "s"} ready to review.`
+  }
+  if (params.inProgressCount > 0) {
+    return `You have ${params.inProgressCount} reading item${params.inProgressCount === 1 ? "" : "s"} in progress.`
+  }
+  if (params.savedCount > 0) {
+    return `Your study queue is clear. Keep reading and save your next useful phrase.`
+  }
+  return "Start by saving vocabulary from any page, article, or reader surface."
+}
+
+function getLearningDeskHint(params: {
+  dueCount: number
+  inProgressCount: number
+}): string {
+  if (params.dueCount > 0) {
+    return "Review first to keep the loop moving, then come back to your reading queue."
+  }
+  if (params.inProgressCount > 0) {
+    return "Resume an active reading item and explain or save one more sentence."
+  }
+  return "Use Astra while reading and this space will turn into your daily study desk."
+}
+
+function formatLocalDayLabel(date: string): string {
+  const parsed = new Date(`${date}T00:00:00`)
+  if (Number.isNaN(parsed.getTime())) return date
+  return parsed.toLocaleDateString(undefined, {
+    year: "numeric",
+    month: "short",
+    day: "numeric",
+  })
+}
+
 export default function VocabularyApp() {
   const [activeTab, setActiveTab] = useState<ActiveTab>(getInitialTab)
   const [readingSubTab, setReadingSubTab] = useState<ReadingSubTab>("recent")
@@ -203,6 +267,10 @@ export default function VocabularyApp() {
   const [dailyVocabSaved, setDailyVocabSaved] = useState(0)
   const [dailyVocabReviewed, setDailyVocabReviewed] = useState(0)
   const [dailyStatsDate, setDailyStatsDate] = useState("")
+  const [dailyStatsInfoOpen, setDailyStatsInfoOpen] = useState(false)
+  const [speakingEntryId, setSpeakingEntryId] = useState<string | null>(null)
+  const [explainingEntryId, setExplainingEntryId] = useState<string | null>(null)
+  const [expandedContextEntryIds, setExpandedContextEntryIds] = useState<Set<string>>(() => new Set())
 
   const loadEntries = async () => {
     const [data, due, progress, ownedItems] = await Promise.all([
@@ -260,6 +328,12 @@ export default function VocabularyApp() {
     }
     void loadEntries()
   }, [activeTab])
+
+  useEffect(() => {
+    return () => {
+      stopSpeaking()
+    }
+  }, [])
 
   const handleDelete = async (id: string) => {
     await removeVocabularyEntry(id)
@@ -328,6 +402,10 @@ export default function VocabularyApp() {
     in_progress: countOwnedReadingItemsByView(readingItems, "in_progress"),
   }
 
+  const featuredReadingItem = [...filterOwnedReadingItemsByView(readingItems, "in_progress")]
+    .sort((a, b) => b.openedAt - a.openedAt)[0] ?? [...filterOwnedReadingItemsByView(readingItems, "recent")]
+      .sort((a, b) => b.openedAt - a.openedAt)[0] ?? null
+
   const readingFiltered = [...filterOwnedReadingItemsByView(readingItems, readingSubTab)]
     .sort((a, b) => {
       if (readingSortMode === "title") {
@@ -341,12 +419,29 @@ export default function VocabularyApp() {
     || dailySentencesExplained > 0
     || dailyVocabSaved > 0
     || dailyVocabReviewed > 0
+  const dailyStatsLabel = dailyStatsDate ? formatLocalDayLabel(dailyStatsDate) : ""
+
+  const learningDeskHeadline = getLearningDeskHeadline({
+    dueCount,
+    inProgressCount: readingCounts.in_progress,
+    savedCount: entries.length,
+  })
+  const learningDeskHint = getLearningDeskHint({
+    dueCount,
+    inProgressCount: readingCounts.in_progress,
+  })
 
   const openReadingItem = async (item: OwnedReadingItem) => {
     const target = buildOwnedReadingResumeTarget(item)
     if (!target) return
 
     await markOwnedReadingOpened(item.id)
+    recordLearningLoopEvent("resumed_reading", {
+      ownedReadingItemId: item.id,
+      pageUrl: target.url,
+      sourceType: item.sourceType,
+      source: "vocabulary",
+    })
     void browser.tabs.create({ url: target.url })
     void loadReadingQueue()
   }
@@ -359,6 +454,80 @@ export default function VocabularyApp() {
   const handleRemoveReading = async (id: string) => {
     await removeOwnedReadingItem(id)
     void loadReadingQueue()
+  }
+
+  const handleSpeakEntry = async (entry: VocabularyEntry) => {
+    if (speakingEntryId === entry.id) {
+      stopSpeaking()
+      setSpeakingEntryId(null)
+      return
+    }
+
+    const config = await readConfig()
+    const enabled = config.tts.enabled && isTtsSupported(config.tts.engine)
+    if (!enabled) return
+
+    const sourceSentence = entry.sourceContext?.sentenceText?.trim()
+    const text = sourceSentence || entry.text.trim()
+    if (!text) return
+
+    stopSpeaking()
+    const started = speak(text, {
+      engine: config.tts.engine,
+      voiceName: config.tts.voiceName,
+      rate: config.tts.rate,
+      pitch: config.tts.pitch,
+      lang: config.targetLang,
+      onEnd: () => setSpeakingEntryId(null),
+      onError: () => setSpeakingEntryId(null),
+    })
+
+    setSpeakingEntryId(started ? entry.id : null)
+  }
+
+  const handleExplainEntry = async (entry: VocabularyEntry) => {
+    const text = entry.sourceContext?.sentenceText?.trim() || entry.context?.trim() || entry.text.trim()
+    if (!text || explainingEntryId) return
+
+    const config = await readConfig()
+    setExplainingEntryId(entry.id)
+    try {
+      const result = await translateTexts({
+        texts: [text],
+        targetLang: config.targetLang,
+        context: {
+          pageTitle: entry.sourceContext?.pageTitle,
+          pageUrl: entry.sourceContext?.pageUrl ?? entry.url,
+          hostname: entry.sourceContext?.hostname ?? entry.hostname,
+          contentSummary: entry.sourceContext?.contentSummary,
+          selectionContext: text,
+        },
+        task: "explain",
+        customSystemPrompt: buildExplainModeSystemPrompt(config.explainMode),
+      })
+
+      if (!result.ok) return
+
+      const explanation = result.translations[0]?.trim()
+      if (!explanation) return
+
+      await updateVocabularyEntry(entry.id, { explanation })
+      setEntries((current) => current.map((item) => item.id === entry.id ? { ...item, explanation } : item))
+    } finally {
+      setExplainingEntryId(null)
+    }
+  }
+
+  const toggleExpandedContext = (entryId: string) => {
+    setExpandedContextEntryIds((current) => {
+      const next = new Set(current)
+      if (next.has(entryId)) {
+        next.delete(entryId)
+      } else {
+        next.add(entryId)
+      }
+      return next
+    })
   }
 
   const containerStyle: React.CSSProperties = {
@@ -435,6 +604,17 @@ export default function VocabularyApp() {
     padding: "5px 12px",
     fontSize: 12,
     fontWeight: 600,
+    cursor: "pointer",
+  }
+
+  const learningActionButtonStyle: React.CSSProperties = {
+    border: "1px solid #bfdbfe",
+    background: "#eff6ff",
+    color: "#1d4ed8",
+    borderRadius: 8,
+    padding: "6px 10px",
+    fontSize: 12,
+    fontWeight: 700,
     cursor: "pointer",
   }
 
@@ -527,6 +707,25 @@ export default function VocabularyApp() {
     marginBottom: 20,
   }
 
+  const learningDeskCardStyle: React.CSSProperties = {
+    marginBottom: 18,
+    padding: "16px 18px",
+    background: "linear-gradient(135deg, #eff6ff 0%, #f8fafc 55%, #ecfeff 100%)",
+    border: "1px solid #bfdbfe",
+    borderRadius: 14,
+  }
+
+  const learningDeskActionStyle: React.CSSProperties = {
+    border: "1px solid #bfdbfe",
+    background: "#ffffffcc",
+    color: "#1d4ed8",
+    borderRadius: 8,
+    padding: "7px 12px",
+    fontSize: 12,
+    fontWeight: 700,
+    cursor: "pointer",
+  }
+
   const showListLoading = activeTab !== "reading" && loading
   const showReadingLoading = activeTab === "reading" && readingLoading
   if (showListLoading || showReadingLoading) {
@@ -541,20 +740,20 @@ export default function VocabularyApp() {
     <div style={containerStyle}>
       <div style={headerStyle}>
         <h1 style={titleStyle}>
-          Astra Vocabulary
+          {t("vocabulary_title")}
         </h1>
-        <span style={countBadgeStyle}>{entries.length} {entries.length === 1 ? "word" : "words"}</span>
+        <span style={countBadgeStyle}>{formatMessage(t("vocabulary_countBadge"), entries.length, entries.length === 1 ? t("vocabulary_countWordSingular") : t("vocabulary_countWordPlural"))}</span>
       </div>
 
       <div style={tabBarStyle}>
         <button type="button" style={tabStyle(activeTab === "list")} onClick={() => setActiveTab("list")}>
-          Word List
+          {t("vocabulary_tabList")}
         </button>
         <button type="button" style={tabStyle(activeTab === "review")} onClick={() => setActiveTab("review")}>
-          Review {dueCount > 0 ? `(${dueCount})` : ""}
+          {dueCount > 0 ? formatMessage(t("vocabulary_tabReviewWithCount"), dueCount) : t("vocabulary_tabReview")}
         </button>
         <button type="button" style={tabStyle(activeTab === "reading")} onClick={() => setActiveTab("reading")}>
-          Reading
+          {t("vocabulary_tabReading")}
         </button>
       </div>
 
@@ -562,6 +761,62 @@ export default function VocabularyApp() {
 
       {activeTab === "list" && (
         <>
+          <div style={learningDeskCardStyle}>
+            <div style={{ fontSize: 12, fontWeight: 800, letterSpacing: 0.4, textTransform: "uppercase", color: "#1d4ed8", marginBottom: 6 }}>
+              {t("vocabulary_learningDeskTitle")}
+            </div>
+            <div style={{ fontSize: 18, lineHeight: 1.35, fontWeight: 700, color: "#0f172a", marginBottom: 6 }}>
+              {learningDeskHeadline}
+            </div>
+            <div style={{ fontSize: 13, color: "#475569", marginBottom: 12 }}>
+              {learningDeskHint}
+            </div>
+            <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginBottom: 12 }}>
+              <div style={{ background: "#fff", border: "1px solid #dbeafe", borderRadius: 10, padding: "10px 12px", minWidth: 120 }}>
+                <div style={{ fontSize: 11, fontWeight: 700, color: "#64748b", marginBottom: 4 }}>Due review</div>
+                <div style={{ fontSize: 11, fontWeight: 700, color: "#64748b", marginBottom: 4 }}>{t("vocabulary_statDueReview")}</div>
+                <div style={{ fontSize: 22, fontWeight: 800, color: dueCount > 0 ? "#b45309" : "#0f172a" }}>{dueCount}</div>
+              </div>
+              <div style={{ background: "#fff", border: "1px solid #dbeafe", borderRadius: 10, padding: "10px 12px", minWidth: 120 }}>
+                <div style={{ fontSize: 11, fontWeight: 700, color: "#64748b", marginBottom: 4 }}>{t("vocabulary_statInProgress")}</div>
+                <div style={{ fontSize: 22, fontWeight: 800, color: "#0f172a" }}>{readingCounts.in_progress}</div>
+              </div>
+              <div style={{ background: "#fff", border: "1px solid #dbeafe", borderRadius: 10, padding: "10px 12px", minWidth: 120 }}>
+                <div style={{ fontSize: 11, fontWeight: 700, color: "#64748b", marginBottom: 4 }}>{t("vocabulary_statSavedWords")}</div>
+                <div style={{ fontSize: 22, fontWeight: 800, color: "#0f172a" }}>{entries.length}</div>
+              </div>
+            </div>
+            <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+              <button type="button" style={learningDeskActionStyle} onClick={() => setActiveTab("review")}>
+                {dueCount > 0 ? formatMessage(t("vocabulary_actionStartReviewWithCount"), dueCount) : t("vocabulary_actionOpenReview")}
+              </button>
+              <button type="button" style={learningDeskActionStyle} onClick={() => setActiveTab("reading")}>
+                {t("vocabulary_actionOpenReadingQueue")}
+              </button>
+              <button type="button" style={learningDeskActionStyle} onClick={() => setActiveTab("list")}>
+                {t("vocabulary_actionBrowseSaved")}
+              </button>
+            </div>
+            {featuredReadingItem && (
+              <div style={{ marginTop: 12, padding: "10px 12px", background: "#ffffffcc", border: "1px solid #dbeafe", borderRadius: 10 }}>
+                <div style={{ fontSize: 11, fontWeight: 700, color: "#64748b", marginBottom: 4 }}>{t("vocabulary_continueReadingTitle")}</div>
+                <div style={{ fontSize: 13, fontWeight: 700, color: "#0f172a", marginBottom: 4 }}>
+                  {featuredReadingItem.title}
+                </div>
+                <div style={{ fontSize: 12, color: "#64748b", marginBottom: 8 }}>
+                  {describeOwnedReadingResumeBehavior(featuredReadingItem)}
+                </div>
+                <button
+                  type="button"
+                  style={learningDeskActionStyle}
+                  onClick={() => void openReadingItem(featuredReadingItem)}
+                >
+                  {t("vocabulary_actionResumeReading")}
+                </button>
+              </div>
+            )}
+          </div>
+
           {hasDailyProgress && (
             <div
               style={{
@@ -573,12 +828,36 @@ export default function VocabularyApp() {
               }}
               aria-label={t("review_todayProgressAria")}
             >
-              <div style={{ fontSize: 12, fontWeight: 700, color: "#475569", marginBottom: 8 }}>
-                {t("popup_studyTodayStatsTitle")}
+              <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8, flexWrap: "wrap" }}>
+                <div style={{ fontSize: 12, fontWeight: 700, color: "#475569" }}>
+                  {t("popup_studyTodayStatsTitle")}
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setDailyStatsInfoOpen((current) => !current)}
+                  aria-expanded={dailyStatsInfoOpen}
+                  style={{
+                    border: "1px solid #cbd5e1",
+                    background: "#ffffff",
+                    color: "#475569",
+                    borderRadius: 999,
+                    padding: "2px 8px",
+                    fontSize: 11,
+                    fontWeight: 700,
+                    cursor: "pointer",
+                  }}
+                >
+                  {t("popup_studyTodayStatsInfoAction")}
+                </button>
               </div>
               <div style={{ fontSize: 11, color: "#94a3b8", marginBottom: 8 }}>
-                {t("popup_studyTodayStatsHint", dailyStatsDate)}
+                {t("popup_studyTodayStatsHint", dailyStatsLabel || dailyStatsDate)}
               </div>
+              {dailyStatsInfoOpen && (
+                <div style={{ fontSize: 11, color: "#64748b", lineHeight: 1.6, marginBottom: 8 }}>
+                  {t("popup_studyTodayStatsResetBoundary")}
+                </div>
+              )}
               <div style={{ display: "flex", flexWrap: "wrap", gap: "8px 14px", fontSize: 12, color: "#64748b" }}>
                 <span>{t("popup_studyStatPages", dailyPagesStudied.toString())}</span>
                 <span>{t("popup_studyStatExplained", dailySentencesExplained.toString())}</span>
@@ -590,7 +869,7 @@ export default function VocabularyApp() {
           <div style={{ marginBottom: 12 }}>
             <input
               type="text"
-              placeholder="Search words, translations, notes, tags, or source (title, URL, excerpt)..."
+              placeholder={t("vocabulary_searchPlaceholder")}
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               style={searchInputStyle}
@@ -598,20 +877,20 @@ export default function VocabularyApp() {
           </div>
 
           <div style={toolbarStyle}>
-            <span style={{ fontSize: 12, color: "#64748b", marginRight: 4 }}>Sort:</span>
+            <span style={{ fontSize: 12, color: "#64748b", marginRight: 4 }}>{t("vocabulary_sortLabel")}</span>
             <button
               type="button"
               style={sortButtonStyle(sortMode === "time")}
               onClick={() => setSortMode("time")}
             >
-              Newest first
+              {t("vocabulary_sortNewest")}
             </button>
             <button
               type="button"
               style={sortButtonStyle(sortMode === "alpha")}
               onClick={() => setSortMode("alpha")}
             >
-              A-Z
+              {t("vocabulary_sortAlpha")}
             </button>
             <div style={{ flex: 1 }} />
             <button
@@ -620,7 +899,7 @@ export default function VocabularyApp() {
               onClick={() => exportCSV(sorted)}
               disabled={sorted.length === 0}
             >
-              Export CSV
+              {t("vocabulary_exportCsv")}
             </button>
             <button
               type="button"
@@ -628,7 +907,7 @@ export default function VocabularyApp() {
               onClick={() => exportAnkiTSV(sorted)}
               disabled={sorted.length === 0}
             >
-              Export Anki TSV
+              {t("vocabulary_exportAnkiTsv")}
             </button>
           </div>
 
@@ -660,8 +939,8 @@ export default function VocabularyApp() {
           {sorted.length === 0 && (
             <div style={emptyStyle}>
               {search
-                ? "No words match your search."
-                : "No vocabulary saved yet. Use the Save button when translating to add words here."}
+                ? t("vocabulary_emptySearch")
+                : t("vocabulary_emptyDefault")}
             </div>
           )}
 
@@ -672,6 +951,12 @@ export default function VocabularyApp() {
                 const linkedReadingItem = matchOwnedReadingItemForVocabularyEntry(linkedOwnedReadingItems, entry)
                 const linkedReadingResumeTarget = linkedReadingItem ? buildOwnedReadingResumeTarget(linkedReadingItem) : null
                 const linkedReadingProgress = linkedReadingItem ? describeOwnedReadingProgress(linkedReadingItem) : null
+                const isContextExpanded = expandedContextEntryIds.has(entry.id)
+                const snippet = sourceDisplay.snippet
+                const snippetLong = snippet.length > 200
+                const visibleSnippet = snippetLong && !isContextExpanded
+                  ? `${snippet.slice(0, 200)}...`
+                  : snippet
 
                 return (
                   <>
@@ -697,10 +982,30 @@ export default function VocabularyApp() {
                 )}
                 {sourceDisplay.snippet && (
                   <div style={contextStyle}>
-                    {sourceDisplay.snippet.length > 200
-                      ? `${sourceDisplay.snippet.slice(0, 200)}...`
-                      : sourceDisplay.snippet}
+                    {visibleSnippet}
                   </div>
+                )}
+                {snippetLong && (
+                  <button
+                    type="button"
+                    onClick={(event) => {
+                      event.stopPropagation()
+                      toggleExpandedContext(entry.id)
+                    }}
+                    style={{
+                      border: "none",
+                      background: "none",
+                      color: "#2563eb",
+                      borderRadius: 0,
+                      padding: 0,
+                      marginBottom: 6,
+                      fontSize: 12,
+                      fontWeight: 700,
+                      cursor: "pointer",
+                    }}
+                  >
+                    {isContextExpanded ? t("vocabulary_contextShowLess") : t("vocabulary_contextShowMore")}
+                  </button>
                 )}
                 {entry.note && expandedId !== entry.id && (
                   <div style={{ fontSize: 12, color: "#64748b", marginBottom: 4 }}>
@@ -741,7 +1046,7 @@ export default function VocabularyApp() {
                       }}
                     >
                       <div style={{ fontSize: 12, fontWeight: 700, color: "#334155", marginBottom: 6 }}>
-                        Source context
+                        {t("vocabulary_sourceContextTitle")}
                       </div>
                       {sourceDisplay.sourceContext?.pageTitle && (
                         <div style={{ fontSize: 12, color: "#334155", fontWeight: 600, marginBottom: 4 }}>
@@ -750,27 +1055,27 @@ export default function VocabularyApp() {
                       )}
                       {sourceDisplay.hostname && (
                         <div style={{ fontSize: 11, color: "#64748b", marginBottom: 4 }}>
-                          Host: {sourceDisplay.hostname}
+                          {t("vocabulary_sourceHostLabel")} {sourceDisplay.hostname}
                         </div>
                       )}
                       {sourceDisplay.pageUrl && (
                         <div style={{ fontSize: 11, color: "#64748b", marginBottom: 4, wordBreak: "break-all" }}>
-                          {/^https?:\/\//i.test(sourceDisplay.pageUrl) ? "URL" : "File"}: {sourceDisplay.pageUrl}
+                          {/^https?:\/\//i.test(sourceDisplay.pageUrl) ? t("vocabulary_sourceUrlLabel") : t("vocabulary_sourceFileLabel")} {sourceDisplay.pageUrl}
                         </div>
                       )}
                       {sourceDisplay.sourceContext?.sentenceText && (
                         <div style={{ fontSize: 12, color: "#475569", lineHeight: 1.5, marginBottom: 4 }}>
-                          Sentence: {sourceDisplay.sourceContext.sentenceText}
+                          {t("vocabulary_sourceSentenceLabel")} {sourceDisplay.sourceContext.sentenceText}
                         </div>
                       )}
                       {sourceDisplay.articleExcerpt && (
                         <div style={{ fontSize: 12, color: "#64748b", lineHeight: 1.5, whiteSpace: "pre-wrap", marginBottom: 4 }}>
-                          Excerpt: {sourceDisplay.articleExcerpt}
+                          {t("vocabulary_sourceExcerptLabel")} {sourceDisplay.articleExcerpt}
                         </div>
                       )}
                       {sourceDisplay.contentSummary && (
                         <div style={{ fontSize: 12, color: "#64748b", lineHeight: 1.5, whiteSpace: "pre-wrap" }}>
-                          Summary: {sourceDisplay.contentSummary}
+                          {t("vocabulary_sourceSummaryLabel")} {sourceDisplay.contentSummary}
                         </div>
                       )}
                     </div>
@@ -786,7 +1091,7 @@ export default function VocabularyApp() {
                       }}
                     >
                       <div style={{ fontSize: 12, fontWeight: 700, color: "#334155", marginBottom: 4 }}>
-                        Reading asset
+                        {t("vocabulary_readingAssetTitle")}
                       </div>
                       <div style={{ fontSize: 12, color: "#334155", fontWeight: 600, marginBottom: 4 }}>
                         {linkedReadingItem.title} · {getOwnedReadingSourceTypeLabel(linkedReadingItem.sourceType)}
@@ -808,14 +1113,53 @@ export default function VocabularyApp() {
                             void openReadingItem(linkedReadingItem)
                           }}
                         >
-                          Resume reading asset
+                          {t("vocabulary_actionResumeReadingAsset")}
                         </button>
                       )}
                     </div>
                   )}
+                  <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 10 }}>
+                    {entry.sourceContext?.surface === "popup_deep_read" && (
+                      <button
+                        type="button"
+                        data-testid={`vocab-open-deep-read-${entry.id}`}
+                        style={learningActionButtonStyle}
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          void openVocabularyEntryInDeepRead(entry)
+                        }}
+                      >
+                        {t("vocabulary_actionOpenDeepRead")}
+                      </button>
+                    )}
+                    <button
+                      type="button"
+                      data-testid={`vocab-explain-entry-${entry.id}`}
+                      style={learningActionButtonStyle}
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        void handleExplainEntry(entry)
+                      }}
+                    >
+                      {explainingEntryId === entry.id ? t("actionExplaining") : t("actionExplain")}
+                    </button>
+                    <button
+                      type="button"
+                      data-testid={`vocab-speak-entry-${entry.id}`}
+                      style={learningActionButtonStyle}
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        void handleSpeakEntry(entry)
+                      }}
+                    >
+                      {speakingEntryId === entry.id
+                        ? t("vocabulary_actionStopListening")
+                        : (entry.sourceContext?.sentenceText ? t("vocabulary_actionListenSentence") : t("vocabulary_actionListenWord"))}
+                    </button>
+                  </div>
                   <div style={{ marginBottom: 8 }}>
                     <label style={{ fontSize: 12, fontWeight: 600, color: "#475569", display: "block", marginBottom: 4 }}>
-                      Note
+                      {t("vocabulary_noteLabel")}
                     </label>
                     <textarea
                       style={{
@@ -830,7 +1174,7 @@ export default function VocabularyApp() {
                         boxSizing: "border-box",
                         outline: "none",
                       }}
-                      placeholder="Add note..."
+                      placeholder={t("vocabulary_notePlaceholder")}
                       defaultValue={entry.note ?? ""}
                       maxLength={1000}
                       onBlur={(e) => void handleNoteChange(entry.id, e.target.value)}
@@ -838,7 +1182,7 @@ export default function VocabularyApp() {
                   </div>
                   <div>
                     <label style={{ fontSize: 12, fontWeight: 600, color: "#475569", display: "block", marginBottom: 4 }}>
-                      Tags
+                      {t("vocabulary_tagsLabel")}
                     </label>
                     <input
                       type="text"
@@ -852,7 +1196,7 @@ export default function VocabularyApp() {
                         boxSizing: "border-box",
                         outline: "none",
                       }}
-                      placeholder="Add tags (comma-separated)..."
+                      placeholder={t("vocabulary_tagsPlaceholder")}
                       defaultValue={(entry.tags ?? []).join(", ")}
                       onBlur={(e) => void handleTagsChange(entry.id, e.target.value)}
                     />
@@ -897,10 +1241,14 @@ export default function VocabularyApp() {
                               }}
                               onClick={(e) => {
                                 e.stopPropagation()
+                                recordLearningLoopEvent("returned_to_source", {
+                                  pageUrl: sourcePageUrl,
+                                  source: "vocabulary",
+                                })
                                 void browser.tabs.create({ url: sourcePageUrl })
                               }}
                             >
-                              Open source page
+                              {t("review_openSourcePage")}
                             </button>
                           </>
                         )}
@@ -918,14 +1266,14 @@ export default function VocabularyApp() {
                         style={confirmBtnStyle}
                         onClick={() => void handleDelete(entry.id)}
                       >
-                        Confirm
+                        {t("vocabulary_deleteConfirm")}
                       </button>
                       <button
                         type="button"
                         style={{ ...deleteBtnStyle, color: "#64748b", background: "rgba(100,116,139,0.08)" }}
                         onClick={() => setConfirmDeleteId(null)}
                       >
-                        Cancel
+                        {t("vocabulary_deleteCancel")}
                       </button>
                     </>
                   ) : (
@@ -934,7 +1282,7 @@ export default function VocabularyApp() {
                       style={deleteBtnStyle}
                       onClick={() => setConfirmDeleteId(entry.id)}
                     >
-                      Delete
+                      {t("vocabulary_deleteAction")}
                     </button>
                   )}
                 </div>
@@ -950,13 +1298,13 @@ export default function VocabularyApp() {
       {activeTab === "reading" && (
         <>
           <p style={{ fontSize: 13, color: "#64748b", marginTop: 0, marginBottom: 8 }}>
-            Revisit reading items from one queue. Articles and remote PDFs resume directly; local PDF / EPUB / subtitle files reopen the right reader and ask for the same file again.
+            {t("vocabulary_readingIntro")}
           </p>
           <p style={{ fontSize: 12, color: "#94a3b8", marginTop: 0, marginBottom: 16 }}>
             {getReadingViewHint(readingSubTab)}
           </p>
           <div style={{ ...toolbarStyle, marginBottom: 12 }}>
-            <span style={{ fontSize: 12, color: "#64748b", marginRight: 4 }}>View:</span>
+            <span style={{ fontSize: 12, color: "#64748b", marginRight: 4 }}>{t("vocabulary_viewLabel")}</span>
             <button
               type="button"
               data-testid="reading-view-recent"
@@ -982,14 +1330,14 @@ export default function VocabularyApp() {
               {getReadingViewLabel("in_progress")} ({readingCounts.in_progress})
             </button>
             <div style={{ flex: 1 }} />
-            <span style={{ fontSize: 12, color: "#64748b", marginRight: 4 }}>Sort:</span>
+            <span style={{ fontSize: 12, color: "#64748b", marginRight: 4 }}>{t("vocabulary_sortLabel")}</span>
             <button
               type="button"
               data-testid="reading-sort-opened"
               style={sortButtonStyle(readingSortMode === "opened")}
               onClick={() => setReadingSortMode("opened")}
             >
-              Opened
+              {t("vocabulary_readingSortOpened")}
             </button>
             <button
               type="button"
@@ -997,17 +1345,17 @@ export default function VocabularyApp() {
               style={sortButtonStyle(readingSortMode === "title")}
               onClick={() => setReadingSortMode("title")}
             >
-              Title A–Z
+              {t("vocabulary_readingSortTitle")}
             </button>
           </div>
 
           {readingFiltered.length === 0 ? (
             <div style={emptyStyle}>
               {readingSubTab === "recent"
-                ? "No reading items yet. Translate a page in the browser to populate history."
+                ? t("vocabulary_readingEmptyRecent")
                 : readingSubTab === "saved"
-                  ? "Nothing marked as saved. Open Recent and mark an item as saved."
-                  : "Nothing in progress. Mark a page as in progress from Recent or Saved."}
+                  ? t("vocabulary_readingEmptySaved")
+                  : t("vocabulary_readingEmptyInProgress")}
             </div>
           ) : (
             readingFiltered.map((item) => {

@@ -4,9 +4,15 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 const {
   readConfigMock,
   translateTextsMock,
+  saveVocabularyEntryMock,
+  getDueVocabularyCountMock,
+  markSessionSaveMock,
 } = vi.hoisted(() => ({
   readConfigMock: vi.fn(),
   translateTextsMock: vi.fn(),
+  saveVocabularyEntryMock: vi.fn(),
+  getDueVocabularyCountMock: vi.fn(),
+  markSessionSaveMock: vi.fn(),
 }))
 
 vi.mock("@/utils/storage/config", () => ({
@@ -15,6 +21,15 @@ vi.mock("@/utils/storage/config", () => ({
 
 vi.mock("@/utils/translate/translate", () => ({
   translateTexts: translateTextsMock,
+}))
+
+vi.mock("@/utils/storage/vocabulary", () => ({
+  saveVocabularyEntry: saveVocabularyEntryMock,
+  getDueVocabularyCount: getDueVocabularyCountMock,
+}))
+
+vi.mock("../learning-state", () => ({
+  markSessionSave: markSessionSaveMock,
 }))
 
 vi.mock("@/utils/reading/assist", () => ({
@@ -34,6 +49,7 @@ vi.mock("@/utils/reading/assist", () => ({
 }))
 
 import { DEFAULT_ASTRA_CONFIG } from "@/types/config"
+import { t } from "@/utils/i18n"
 import * as tts from "@/utils/tts"
 import {
   getInteractionSuppressionState,
@@ -73,6 +89,8 @@ describe("SelectionToolbar interaction suppression", () => {
 
     readConfigMock.mockResolvedValue(DEFAULT_ASTRA_CONFIG)
     translateTextsMock.mockResolvedValue({ ok: true, translations: ["你好"] })
+    saveVocabularyEntryMock.mockResolvedValue(undefined)
+    getDueVocabularyCountMock.mockResolvedValue(0)
 
     await act(async () => {
       mountSelectionToolbar()
@@ -278,6 +296,45 @@ describe("SelectionToolbar interaction suppression", () => {
     )
   })
 
+  it("shows primary action variants and active/selected state transitions", async () => {
+    const target = document.getElementById("target") as HTMLElement
+
+    await triggerDocumentMouseDown(target)
+    setSelection("Hello world")
+    await triggerDocumentMouseUp(target)
+
+    const host = document.getElementById(HOST_ID)!
+    const shadow = host.shadowRoot!
+    const translateBtn = shadow.querySelector("[data-testid='selection-action-translate']") as HTMLButtonElement | null
+    const explainBtn = shadow.querySelector("[data-testid='selection-action-explain']") as HTMLButtonElement | null
+    const copyBtn = Array.from(shadow.querySelectorAll("button")).find((btn) => btn.textContent === "复制") as HTMLButtonElement | undefined
+
+    expect(translateBtn?.dataset.actionVariant).toBe("primary")
+    expect(explainBtn?.dataset.actionVariant).toBe("primary")
+    expect(copyBtn?.style.background).toBe("transparent")
+
+    let resolveExplain!: (value: { ok: true; translations: string[] }) => void
+    translateTextsMock.mockImplementationOnce(() => new Promise((resolve) => {
+      resolveExplain = resolve
+    }))
+
+    await act(async () => {
+      explainBtn?.click()
+      await Promise.resolve()
+    })
+
+    expect(explainBtn?.dataset.actionState).toBe("active")
+
+    await act(async () => {
+      resolveExplain({ ok: true, translations: ["This is a greeting in English."] })
+      await Promise.resolve()
+      await Promise.resolve()
+    })
+
+    expect(explainBtn?.dataset.actionState).toBe("selected")
+    expect(translateBtn?.dataset.actionState).toBe("idle")
+  })
+
   it("calls translate task via runInlineAction when translate button is clicked", async () => {
     const target = document.getElementById("target") as HTMLElement
 
@@ -309,6 +366,68 @@ describe("SelectionToolbar interaction suppression", () => {
         texts: ["Hello world"],
       }),
     )
+  })
+
+  it("shows inline save CTA after translation and hides the top-bar save button", async () => {
+    const target = document.getElementById("target") as HTMLElement
+
+    await triggerDocumentMouseDown(target)
+    setSelection("Hello world")
+    await triggerDocumentMouseUp(target)
+
+    const host = document.getElementById(HOST_ID)!
+    const shadow = host.shadowRoot!
+    const translateBtn = Array.from(shadow.querySelectorAll("button")).find((btn) => btn.textContent === "翻译")
+
+    expect(translateBtn).toBeDefined()
+
+    translateTextsMock.mockResolvedValueOnce({
+      ok: true,
+      translations: ["你好世界"],
+    })
+
+    await act(async () => {
+      translateBtn!.click()
+      await Promise.resolve()
+      await Promise.resolve()
+    })
+
+    const inlineSaveCta = shadow.querySelector("[data-testid='selection-result-save-cta']") as HTMLButtonElement | null
+    expect(inlineSaveCta).toBeTruthy()
+    expect(inlineSaveCta?.textContent).toContain(t("actionSave"))
+
+    const exactSaveButtons = Array.from(shadow.querySelectorAll("button")).filter((btn) => btn.textContent === t("actionSave"))
+    expect(exactSaveButtons).toHaveLength(0)
+  })
+
+  it("publishes learning session save state when inline CTA save succeeds", async () => {
+    const target = document.getElementById("target") as HTMLElement
+
+    await triggerDocumentMouseDown(target)
+    setSelection("Hello world")
+    await triggerDocumentMouseUp(target)
+
+    const host = document.getElementById(HOST_ID)!
+    const shadow = host.shadowRoot!
+    const translateBtn = Array.from(shadow.querySelectorAll("button")).find((btn) => btn.textContent === "翻译")
+
+    await act(async () => {
+      translateBtn!.click()
+      await Promise.resolve()
+      await Promise.resolve()
+    })
+
+    const inlineSaveCta = shadow.querySelector("[data-testid='selection-result-save-cta']") as HTMLButtonElement | null
+    expect(inlineSaveCta).toBeTruthy()
+
+    await act(async () => {
+      inlineSaveCta!.click()
+      await Promise.resolve()
+      await Promise.resolve()
+    })
+
+    expect(saveVocabularyEntryMock).toHaveBeenCalledTimes(1)
+    expect(markSessionSaveMock).toHaveBeenCalledWith("selection_toolbar", 0)
   })
 
   it("ignores stale explain results after the user makes a new selection", async () => {
@@ -348,7 +467,7 @@ describe("SelectionToolbar interaction suppression", () => {
     expect(shadow.textContent).not.toContain("Old explanation")
   })
 
-  it("renders all default-enabled action buttons", async () => {
+  it("renders identity strip and default-enabled action buttons", async () => {
     const target = document.getElementById("target") as HTMLElement
 
     await triggerDocumentMouseDown(target)
@@ -358,6 +477,16 @@ describe("SelectionToolbar interaction suppression", () => {
 
     const host = document.getElementById(HOST_ID)!
     const shadow = host.shadowRoot!
+
+    const shell = shadow.querySelector("[data-testid='selection-toolbar-shell']")
+    expect(shell).toBeTruthy()
+
+    const identityStrip = shadow.querySelector("[data-testid='astra-identity-strip']") as HTMLDivElement | null
+    expect(identityStrip?.textContent).toContain("Astra")
+
+    const targetLangPill = shadow.querySelector("[data-testid='astra-identity-strip-target-lang']") as HTMLSpanElement | null
+    expect(targetLangPill?.textContent).toBe("中文")
+
     const buttons = shadow.querySelectorAll("button")
     const buttonTexts = Array.from(buttons).map((btn) => btn.textContent)
 

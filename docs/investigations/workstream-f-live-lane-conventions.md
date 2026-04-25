@@ -1,6 +1,6 @@
 # Workstream F Live Lane Conventions (Month 1 Baseline)
 
-_Last updated: 2026-04-14 (learning-loop revisit scenario)_
+_Last updated: 2026-04-15 (learning-loop treated as a first-class live-browser gate)_
 
 This document defines the canonical lane naming used by release-proof checks.
 
@@ -10,10 +10,10 @@ This document defines the canonical lane naming used by release-proof checks.
 |---|---|---|---|
 | `source-core` | Browser-backed source-contract proof for core extraction/runtime behaviors | `pnpm bench:live:lane:source-core` | Yes (`CI / live-browser`) |
 | `extension-core` | Extension-loaded smoke proof for bootstrap/owned surfaces | `pnpm bench:live:lane:extension-core` | Yes (`CI / live-browser`) |
-| `release-proof` | Aggregate required release-proof gate | `pnpm bench:live:lane:release-proof` | Indirectly (runs both required lanes) |
+| `release-proof` | Aggregate required release-proof gate | `pnpm bench:live:lane:release-proof` | Indirectly (runs source-core + extension-core); learning-loop is separately required in `CI / live-browser` |
 | `hover-selection` | Optional browser-backed UX proof for hover + selection explain | `pnpm bench:live:lane:hover-selection` | No (manual/dispatch workflow) |
 | `popup-proof` | Optional standalone browser-backed popup deep-read proof | `pnpm bench:live:lane:popup-proof` | No |
-| `learning-loop` | Optional browser-backed popup → vocabulary → **reading revisit** proof | `pnpm bench:live:lane:learning-loop` | No |
+| `learning-loop` | Browser-backed popup → Deep Read → vocabulary/review → **reading revisit** proof | `pnpm bench:live:lane:learning-loop` | Yes (`CI / live-browser`) |
 
 Compatibility aliases remain available:
 
@@ -55,7 +55,9 @@ Compatibility aliases remain available:
 ## Month 1 gate policy decisions
 
 - `hover-selection` remains **optional** for Month 1. The repo now has credible browser-backed proof, but the lane is still a combined UX lane rather than a dedicated required CI gate with separate ownership semantics.
-- `popup-proof` and `learning-loop` remain **optional** for Month 1. They are credible evidence for popup deep-read and downstream learning continuity, but they are not part of the Month 1 required release-proof gate.
+- `popup-proof` remains **optional** as a standalone lane. Its proof is also exercised through `learning-loop` in CI.
+- `learning-loop` now has first-class required status in the `CI / live-browser` workflow. Treat failures as release-facing until explicitly downgraded in the flaky inventory / closeout docs.
+- Canonical artifact guidance for this lane is the same as other live-browser gates: local runs write `bench-live-results/<run-id>/`; CI uploads the `live-bench-results` artifact bundle.
 
 ## Notes
 

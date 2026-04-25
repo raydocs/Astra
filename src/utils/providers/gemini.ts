@@ -27,6 +27,7 @@ export async function translateWithGemini(
     task = "translate",
     customSystemPrompt,
     languageLevel,
+    explainMode,
     placeholderFormat,
   } = options
 
@@ -40,6 +41,7 @@ export async function translateWithGemini(
     task,
     customSystemPrompt,
     languageLevel,
+    explainMode,
     placeholderFormat,
   })
 

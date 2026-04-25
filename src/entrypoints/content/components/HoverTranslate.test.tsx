@@ -10,6 +10,10 @@ const {
   getDocumentTranslationContextMock,
   buildInlineTranslationContextMock,
   copyTextToClipboardMock,
+  saveVocabularyEntryMock,
+  getDueVocabularyCountMock,
+  hasVocabularyEntryByTextMock,
+  markSessionSaveMock,
 } = vi.hoisted(() => ({
   readConfigMock: vi.fn(),
   translateTextsMock: vi.fn(),
@@ -19,6 +23,10 @@ const {
   getDocumentTranslationContextMock: vi.fn(),
   buildInlineTranslationContextMock: vi.fn(),
   copyTextToClipboardMock: vi.fn(),
+  saveVocabularyEntryMock: vi.fn(),
+  getDueVocabularyCountMock: vi.fn(),
+  hasVocabularyEntryByTextMock: vi.fn(),
+  markSessionSaveMock: vi.fn(),
 }))
 
 vi.mock("@/utils/storage/config", () => ({
@@ -40,6 +48,16 @@ vi.mock("@/utils/dom/inject", () => ({
 
 vi.mock("@/utils/dom/clipboard", () => ({
   copyTextToClipboard: copyTextToClipboardMock,
+}))
+
+vi.mock("@/utils/storage/vocabulary", () => ({
+  saveVocabularyEntry: saveVocabularyEntryMock,
+  getDueVocabularyCount: getDueVocabularyCountMock,
+  hasVocabularyEntryByText: hasVocabularyEntryByTextMock,
+}))
+
+vi.mock("../learning-state", () => ({
+  markSessionSave: markSessionSaveMock,
 }))
 
 vi.mock("../translation-context", () => ({
@@ -111,6 +129,9 @@ describe("HoverTranslate", () => {
     readConfigMock.mockResolvedValue(createConfig())
     translateTextsMock.mockResolvedValue({ ok: true, translations: ["你好，世界"] })
     copyTextToClipboardMock.mockResolvedValue(undefined)
+    saveVocabularyEntryMock.mockResolvedValue(undefined)
+    getDueVocabularyCountMock.mockResolvedValue(0)
+    hasVocabularyEntryByTextMock.mockResolvedValue(false)
     findContentRootMock.mockReturnValue(document.body)
     findClosestTextBlockMock.mockImplementation(() => ({ element: target, text: "Hello world" }))
     hasInjectedTranslationMock.mockReturnValue(false)
@@ -160,6 +181,13 @@ describe("HoverTranslate", () => {
         selectionContext: "Hello world",
       },
     })
+
+    const identityStrip = getHost().shadowRoot?.querySelector("[data-testid='astra-identity-strip']") as HTMLDivElement | null
+    expect(identityStrip?.textContent).toContain("Astra")
+    const targetLangPill = getHost().shadowRoot?.querySelector("[data-testid='astra-identity-strip-target-lang']") as HTMLSpanElement | null
+    expect(targetLangPill?.textContent).toBe("中文")
+    expect(getHost().shadowRoot?.textContent ?? "").not.toContain(t("label_altHover"))
+    expect(getHost().shadowRoot?.textContent ?? "").not.toContain(t("label_hover"))
   })
 
   it("suppresses hover translation when hoverTrigger is disabled", async () => {
@@ -226,6 +254,95 @@ describe("HoverTranslate", () => {
     expect(copyTextToClipboardMock).toHaveBeenCalledWith("你好，世界")
   })
 
+  it("uses a filled primary style for the hover explain action", async () => {
+    const target = document.getElementById("target") as HTMLElement
+    const handleMouseMove = listeners.mousemove as ((event: MouseEvent) => void) | undefined
+    const event = new MouseEvent("mousemove", { altKey: true })
+    Object.defineProperty(event, "target", { value: target })
+
+    await act(async () => {
+      handleMouseMove?.(event)
+      await vi.advanceTimersByTimeAsync(300)
+      await Promise.resolve()
+    })
+
+    const explainButton = getHost().shadowRoot?.querySelector("[data-testid='hover-explain-button']") as HTMLButtonElement | null
+    expect(explainButton).toBeTruthy()
+    expect(explainButton?.style.background).toContain("99, 102, 241")
+    expect(explainButton?.style.color).toContain("255, 255, 255")
+  })
+
+  it("shows inline save CTA in success state and removes utility-row save button", async () => {
+    const target = document.getElementById("target") as HTMLElement
+    const handleMouseMove = listeners.mousemove as ((event: MouseEvent) => void) | undefined
+    const event = new MouseEvent("mousemove", { altKey: true })
+    Object.defineProperty(event, "target", { value: target })
+
+    await act(async () => {
+      handleMouseMove?.(event)
+      await vi.advanceTimersByTimeAsync(300)
+      await Promise.resolve()
+    })
+
+    const inlineSaveCta = getHost().shadowRoot?.querySelector("[data-testid='hover-result-save-cta']") as HTMLButtonElement | null
+    expect(inlineSaveCta).toBeTruthy()
+    expect(inlineSaveCta?.textContent).toContain(t("actionSave"))
+
+    const exactSaveButtons = getButtons().filter((button) => button.textContent === t("actionSave"))
+    expect(exactSaveButtons).toHaveLength(0)
+  })
+
+  it("shows compact saved-state treatment with review action when source text is already saved", async () => {
+    hasVocabularyEntryByTextMock.mockResolvedValue(true)
+    getDueVocabularyCountMock.mockResolvedValue(3)
+
+    const target = document.getElementById("target") as HTMLElement
+    const handleMouseMove = listeners.mousemove as ((event: MouseEvent) => void) | undefined
+    const event = new MouseEvent("mousemove", { altKey: true })
+    Object.defineProperty(event, "target", { value: target })
+
+    await act(async () => {
+      handleMouseMove?.(event)
+      await vi.advanceTimersByTimeAsync(300)
+      await Promise.resolve()
+      await Promise.resolve()
+    })
+
+    expect(hasVocabularyEntryByTextMock).toHaveBeenCalledWith("Hello world")
+
+    const existingSavedRow = getHost().shadowRoot?.querySelector("[data-testid='hover-existing-saved-row']") as HTMLDivElement | null
+    expect(existingSavedRow?.textContent).toContain("已保存")
+
+    const inlineSaveCta = getHost().shadowRoot?.querySelector("[data-testid='hover-result-save-cta']")
+    expect(inlineSaveCta).toBeNull()
+    expect(existingSavedRow?.textContent).toContain(`${t("popup_review")} (3)`)
+  })
+
+  it("publishes learning session save state when hover save succeeds", async () => {
+    const target = document.getElementById("target") as HTMLElement
+    const handleMouseMove = listeners.mousemove as ((event: MouseEvent) => void) | undefined
+    const event = new MouseEvent("mousemove", { altKey: true })
+    Object.defineProperty(event, "target", { value: target })
+
+    await act(async () => {
+      handleMouseMove?.(event)
+      await vi.advanceTimersByTimeAsync(300)
+      await Promise.resolve()
+    })
+
+    const inlineSaveCta = getHost().shadowRoot?.querySelector("[data-testid='hover-result-save-cta']") as HTMLButtonElement | null
+    expect(inlineSaveCta).toBeTruthy()
+
+    await act(async () => {
+      inlineSaveCta?.dispatchEvent(new MouseEvent("click", { bubbles: true, composed: true }))
+      await Promise.resolve()
+      await Promise.resolve()
+    })
+
+    expect(saveVocabularyEntryMock).toHaveBeenCalledTimes(1)
+    expect(markSessionSaveMock).toHaveBeenCalledWith("hover_translate", 0)
+  })
+
   it("keeps the hover card interactive when the pointer moves onto it", async () => {
     translateTextsMock
       .mockResolvedValueOnce({ ok: true, translations: ["你好，世界"] })
@@ -283,8 +400,10 @@ describe("HoverTranslate", () => {
     })
 
     expect(translateTextsMock).toHaveBeenCalledTimes(1)
-    expect(getHost().shadowRoot?.textContent ?? "").toContain(t("label_hover"))
+    expect(getHost().shadowRoot?.textContent ?? "").not.toContain(t("label_hover"))
     expect(getHost().shadowRoot?.textContent ?? "").not.toContain(t("label_altHover"))
+    const identityStrip = getHost().shadowRoot?.querySelector("[data-testid='astra-identity-strip']") as HTMLDivElement | null
+    expect(identityStrip?.textContent).toContain("Astra")
   })
 
   it("deduplicates concurrent hover requests for the same element", async () => {

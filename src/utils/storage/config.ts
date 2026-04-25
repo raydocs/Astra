@@ -159,6 +159,9 @@ export async function saveConfig(input: AstraConfigInput): Promise<AstraConfig> 
     ...(parsedInput.languageLevel !== undefined
       ? { languageLevel: parsedInput.languageLevel }
       : {}),
+    ...(parsedInput.explainMode !== undefined
+      ? { explainMode: parsedInput.explainMode }
+      : {}),
     ...(parsedInput.privacyMode !== undefined
       ? { privacyMode: parsedInput.privacyMode }
       : {}),

@@ -747,7 +747,7 @@ describe("popup App", () => {
     expect(container.textContent).toContain("复习这篇页面里至少一张已保存卡片，闭合本页的学习回路。")
   })
 
-  it("starts article-mode translation from the study hub", async () => {
+  it("opens the standalone deep-read page from the study hub", async () => {
     await flushApp()
 
     const readArticleButton = getButtons().find((button) => button.textContent === "阅读文章")
@@ -759,11 +759,8 @@ describe("popup App", () => {
       await Promise.resolve()
     })
 
-    expect(startActiveTabTranslationMock).toHaveBeenCalledWith({
-      targetLang: "zh-CN",
-      translationMode: "bilingual",
-      translationTheme: "default",
-      contentScope: "article",
+    expect(browserMock.tabs.create).toHaveBeenCalledWith({
+      url: "/deep-read.html",
     })
   })
 
@@ -986,7 +983,7 @@ describe("popup App", () => {
     expect(container.textContent).toContain(t("popup_studySentenceDeck"))
   })
 
-  it("records read progress when starting guided article reading", async () => {
+  it("opens deep read instead of starting guided article translation from the popup button", async () => {
     const readArticleButton = getButtons().find((button) => button.textContent === t("popup_readArticle"))
     expect(readArticleButton).toBeDefined()
 
@@ -997,17 +994,9 @@ describe("popup App", () => {
       await Promise.resolve()
     })
 
-    expect(startActiveTabTranslationMock).toHaveBeenCalledWith(expect.objectContaining({
-      contentScope: "article",
-    }))
-    expect(recordStudyEventMock).toHaveBeenNthCalledWith(1, expect.objectContaining({
-      url: "https://example.com/article",
-      step: "read",
-    }))
-    expect(recordStudyEventMock).toHaveBeenNthCalledWith(2, expect.objectContaining({
-      url: "https://example.com/article",
-      step: "guided_read",
-    }))
+    expect(browserMock.tabs.create).toHaveBeenCalledWith({
+      url: "/deep-read.html",
+    })
   })
 
   it("explains a sentence from the article excerpt inside the popup", async () => {

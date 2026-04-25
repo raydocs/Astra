@@ -7,6 +7,10 @@ const {
   removeVocabularyEntryMock,
   getDueVocabularyCountMock,
   updateVocabularyEntryMock,
+  readConfigMock,
+  speakMock,
+  stopSpeakingMock,
+  isTtsSupportedMock,
   getReadingHistoryEntryMock,
   getPageStudyProgressMock,
   getStudyProgressMock,
@@ -15,11 +19,16 @@ const {
   markOwnedReadingOpenedMock,
   setOwnedReadingStatusMock,
   removeOwnedReadingItemMock,
+  openVocabularyEntryInDeepReadMock,
 } = vi.hoisted(() => ({
   getVocabularyEntriesMock: vi.fn(),
   removeVocabularyEntryMock: vi.fn(),
   getDueVocabularyCountMock: vi.fn(),
   updateVocabularyEntryMock: vi.fn(),
+  readConfigMock: vi.fn(),
+  speakMock: vi.fn(),
+  stopSpeakingMock: vi.fn(),
+  isTtsSupportedMock: vi.fn(),
   getReadingHistoryEntryMock: vi.fn(),
   getPageStudyProgressMock: vi.fn(),
   getStudyProgressMock: vi.fn(),
@@ -28,6 +37,7 @@ const {
   markOwnedReadingOpenedMock: vi.fn(),
   setOwnedReadingStatusMock: vi.fn(),
   removeOwnedReadingItemMock: vi.fn(),
+  openVocabularyEntryInDeepReadMock: vi.fn(),
 }))
 
 vi.mock("@/utils/storage/vocabulary", () => ({
@@ -35,6 +45,96 @@ vi.mock("@/utils/storage/vocabulary", () => ({
   removeVocabularyEntry: removeVocabularyEntryMock,
   getDueVocabularyCount: getDueVocabularyCountMock,
   updateVocabularyEntry: updateVocabularyEntryMock,
+}))
+
+vi.mock("@/utils/storage/config", () => ({
+  readConfig: readConfigMock,
+}))
+
+vi.mock("@/utils/tts", () => ({
+  speak: speakMock,
+  stopSpeaking: stopSpeakingMock,
+  isTtsSupported: isTtsSupportedMock,
+}))
+
+vi.mock("@/utils/i18n", () => ({
+  t: (key: string, substitutions?: string | string[]) => {
+    const subs = Array.isArray(substitutions) ? substitutions : substitutions ? [substitutions] : []
+    const messages: Record<string, string> = {
+      vocabulary_title: "Astra Vocabulary",
+      vocabulary_countBadge: `${subs[0] ?? "$1"} ${subs[1] ?? "$2"}`,
+      vocabulary_countWordSingular: "word",
+      vocabulary_countWordPlural: "words",
+      vocabulary_tabList: "Word List",
+      vocabulary_tabReview: "Review",
+      vocabulary_tabReviewWithCount: `Review (${subs[0] ?? "$1"})`,
+      vocabulary_tabReading: "Reading",
+      vocabulary_learningDeskTitle: "Today learning desk",
+      vocabulary_statDueReview: "Due review",
+      vocabulary_statInProgress: "In progress",
+      vocabulary_statSavedWords: "Saved words",
+      vocabulary_actionStartReviewWithCount: `Start review (${subs[0] ?? "$1"})`,
+      vocabulary_actionOpenReview: "Open review",
+      vocabulary_actionOpenReadingQueue: "Open reading queue",
+      vocabulary_actionBrowseSaved: "Browse saved vocabulary",
+      vocabulary_continueReadingTitle: "Continue where you left off",
+      vocabulary_actionResumeReading: "Resume reading",
+      vocabulary_searchPlaceholder: "Search words, translations, notes, tags, or source (title, URL, excerpt)...",
+      vocabulary_sortLabel: "Sort:",
+      vocabulary_sortNewest: "Newest first",
+      vocabulary_sortAlpha: "A-Z",
+      vocabulary_exportCsv: "Export CSV",
+      vocabulary_exportAnkiTsv: "Export Anki TSV",
+      vocabulary_emptySearch: "No words match your search.",
+      vocabulary_emptyDefault: "No vocabulary saved yet. Use the Save button when translating to add words here.",
+      vocabulary_sourceContextTitle: "Source context",
+      vocabulary_sourceHostLabel: "Host:",
+      vocabulary_sourceUrlLabel: "URL:",
+      vocabulary_sourceFileLabel: "File:",
+      vocabulary_sourceSentenceLabel: "Sentence:",
+      vocabulary_sourceExcerptLabel: "Excerpt:",
+      vocabulary_sourceSummaryLabel: "Summary:",
+      vocabulary_readingAssetTitle: "Reading asset",
+      vocabulary_actionResumeReadingAsset: "Resume reading asset",
+      vocabulary_actionOpenDeepRead: "Open in deep read",
+      vocabulary_actionStopListening: "Stop listening",
+      vocabulary_actionListenSentence: "Listen to sentence",
+      vocabulary_actionListenWord: "Listen to word",
+      vocabulary_noteLabel: "Note",
+      vocabulary_notePlaceholder: "Add note...",
+      vocabulary_tagsLabel: "Tags",
+      vocabulary_tagsPlaceholder: "Add tags (comma-separated)...",
+      vocabulary_deleteConfirm: "Confirm",
+      vocabulary_deleteCancel: "Cancel",
+      vocabulary_deleteAction: "Delete",
+      vocabulary_readingIntro: "Revisit reading items from one queue. Articles and remote PDFs resume directly; local PDF / EPUB / subtitle files reopen the right reader and ask for the same file again.",
+      vocabulary_viewLabel: "View:",
+      vocabulary_readingSortOpened: "Opened",
+      vocabulary_readingSortTitle: "Title A-Z",
+      vocabulary_readingEmptyRecent: "No reading items yet. Translate a page in the browser to populate history.",
+      vocabulary_readingEmptySaved: "Nothing marked as saved. Open Recent and mark an item as saved.",
+      vocabulary_readingEmptyInProgress: "Nothing in progress. Mark a page as in progress from Recent or Saved.",
+      review_todayProgressAria: "Today's study progress summary",
+      popup_studyTodayStatsTitle: "Today's learning counts",
+      popup_studyTodayStatsHint: `Local calendar day: ${subs[0] ?? "$1"}. Counters reset when the date changes.`,
+      popup_studyTodayStatsInfoAction: "How it resets",
+      popup_studyTodayStatsResetBoundary: "These counts follow your local calendar day and reset at local midnight on this device, not at UTC midnight.",
+      popup_studyStatPages: `${subs[0] ?? "$1"} pages`,
+      popup_studyStatExplained: `${subs[0] ?? "$1"} explained`,
+      popup_studyStatSaved: `${subs[0] ?? "$1"} saved`,
+      popup_studyStatReviewed: `${subs[0] ?? "$1"} reviewed`,
+      vocabulary_contextShowMore: "Show full context",
+      vocabulary_contextShowLess: "Show less",
+      actionExplain: "Explain",
+      actionExplaining: "Explaining…",
+      review_openSourcePage: "Open source page",
+    }
+    return messages[key] ?? key
+  },
+}))
+
+vi.mock("@/utils/deep-read-link", () => ({
+  openVocabularyEntryInDeepRead: openVocabularyEntryInDeepReadMock,
 }))
 
 vi.mock("@/utils/storage/owned-reading", () => {
@@ -181,6 +281,18 @@ describe("VocabularyApp", () => {
   beforeEach(async () => {
     vi.clearAllMocks()
     window.history.replaceState({}, "", "/vocabulary.html")
+    readConfigMock.mockResolvedValue({
+      targetLang: "zh-CN",
+      tts: {
+        enabled: true,
+        engine: "browser",
+        voiceName: "Test Voice",
+        rate: 1,
+        pitch: 1,
+      },
+    })
+    isTtsSupportedMock.mockReturnValue(true)
+    speakMock.mockReturnValue(true)
 
     getVocabularyEntriesMock.mockResolvedValue([{
       id: "entry-1",
@@ -297,6 +409,25 @@ describe("VocabularyApp", () => {
     container.remove()
   })
 
+  async function rerenderApp() {
+    await act(async () => {
+      root.unmount()
+      await Promise.resolve()
+    })
+    container.remove()
+
+    container = document.createElement("div")
+    document.body.appendChild(container)
+    root = ReactDOM.createRoot(container)
+
+    await act(async () => {
+      root.render(<VocabularyApp />)
+      await Promise.resolve()
+      await Promise.resolve()
+      await Promise.resolve()
+    })
+  }
+
   it("renders popup deep-read source context in the vocabulary list", async () => {
     expect(container.textContent).toContain("Popup deep-read")
     expect(container.textContent).toContain("Example article")
@@ -360,6 +491,55 @@ describe("VocabularyApp", () => {
     })
   })
 
+  it("speaks the saved study sentence directly from the vocabulary card", async () => {
+    const sourceBadge = Array.from(container.querySelectorAll("div")).find((node) => node.textContent?.trim() === "Popup deep-read") as HTMLDivElement
+
+    await act(async () => {
+      sourceBadge.click()
+      await Promise.resolve()
+    })
+
+    const speakButton = container.querySelector('[data-testid="vocab-speak-entry-entry-1"]') as HTMLButtonElement
+    expect(speakButton).toBeTruthy()
+    expect(speakButton.textContent).toContain("Listen to sentence")
+
+    await act(async () => {
+      speakButton.click()
+      await Promise.resolve()
+      await Promise.resolve()
+    })
+
+    expect(speakMock).toHaveBeenCalledWith("The ephemeral phase passes quickly.", expect.objectContaining({
+      lang: "zh-CN",
+    }))
+  })
+
+  it("opens the saved popup deep-read sentence back into deep read", async () => {
+    const sourceBadge = Array.from(container.querySelectorAll("div")).find((node) => node.textContent?.trim() === "Popup deep-read") as HTMLDivElement
+
+    await act(async () => {
+      sourceBadge.click()
+      await Promise.resolve()
+    })
+
+    const deepReadButton = container.querySelector('[data-testid="vocab-open-deep-read-entry-1"]') as HTMLButtonElement
+    expect(deepReadButton).toBeTruthy()
+    expect(deepReadButton.textContent).toContain("Open in deep read")
+
+    await act(async () => {
+      deepReadButton.click()
+      await Promise.resolve()
+    })
+
+    expect(openVocabularyEntryInDeepReadMock).toHaveBeenCalledWith(expect.objectContaining({
+      id: "entry-1",
+      sourceContext: expect.objectContaining({
+        surface: "popup_deep_read",
+        sentenceIndex: 0,
+      }),
+    }))
+  })
+
   it("filters list by source page title", async () => {
     const input = container.querySelector("input[type=\"text\"]") as HTMLInputElement
     expect(input).toBeTruthy()
@@ -374,6 +554,73 @@ describe("VocabularyApp", () => {
     })
 
     expect(container.textContent).toContain("ephemeral")
+  })
+
+  it("can expand long saved context instead of forcing the 200 character preview", async () => {
+    getVocabularyEntriesMock.mockResolvedValueOnce([{
+      id: "entry-long",
+      text: "contextual",
+      explanation: "Long context entry",
+      context: "Short context",
+      url: "https://example.com/long",
+      hostname: "example.com",
+      savedAt: 1100,
+      srsBox: 1,
+      nextReviewAt: 1000,
+      reviewCount: 0,
+      lastReviewedAt: null,
+      sourceContext: {
+        surface: "popup_deep_read",
+        pageTitle: "Long article",
+        pageUrl: "https://example.com/long",
+        hostname: "example.com",
+        articleExcerpt: `${"A very long context sentence that keeps going to test the preview limit. ".repeat(12)}tail`,
+        sentenceText: `${"A very long sentence preview that keeps going to test the preview limit. ".repeat(6)}tail`,
+        sentenceIndex: 0,
+      },
+    }])
+
+    await rerenderApp()
+
+    expect(container.textContent).toContain("Show full context")
+    expect(container.textContent).toContain("...")
+
+    const expandButton = Array.from(container.querySelectorAll("button")).find((button) => button.textContent === "Show full context") as HTMLButtonElement
+    expect(expandButton).toBeTruthy()
+
+    await act(async () => {
+      expandButton.click()
+      await Promise.resolve()
+    })
+
+    expect(container.textContent).toContain("Show less")
+    expect(container.textContent).toContain("tail")
+  })
+
+  it("explains the daily stats reset boundary from the learning desk", async () => {
+    getStudyProgressMock.mockResolvedValueOnce({
+      pages: [],
+      dailyStats: {
+        date: "2026-04-14",
+        pagesStudied: 1,
+        sentencesExplained: 2,
+        vocabSaved: 3,
+        vocabReviewed: 4,
+      },
+    })
+
+    await rerenderApp()
+
+    const infoButton = Array.from(container.querySelectorAll("button")).find((button) => button.textContent === "How it resets") as HTMLButtonElement
+    expect(infoButton).toBeTruthy()
+
+    await act(async () => {
+      infoButton.click()
+      await Promise.resolve()
+    })
+
+    expect(container.textContent).toContain("Local calendar day")
+    expect(container.textContent).toContain("local midnight on this device")
   })
 
   it("loads reading queue when Reading tab is selected", async () => {

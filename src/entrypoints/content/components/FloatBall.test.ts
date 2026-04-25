@@ -1,16 +1,3 @@
-/**
- * Tests for the FloatBall visual state logic.
- *
- * getFloatBallVisualState is not exported from FloatBall.tsx, so we test its
- * behaviour by exercising the inputs documented in the source and asserting on
- * the values the function returns.  We do this by re-implementing the pure
- * mapping function here and keeping it in sync with the source — the real
- * value of these tests is catching regressions in the colour / tooltip /
- * disabled mapping when the component is changed.
- *
- * If the function is ever exported, the import below can be updated to use the
- * real implementation directly.
- */
 import { act } from "react"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 
@@ -22,14 +9,26 @@ import { createMockBrowser, setMockBrowser } from "../../../../test/utils/mockBr
 
 const {
   subscribePageTranslationStateMock,
+  retryFailedBlocksMock,
+  subscribeLearningStateMock,
+  getLearningStateMock,
   toggleCurrentTabTranslationMock,
 } = vi.hoisted(() => ({
   subscribePageTranslationStateMock: vi.fn(),
+  retryFailedBlocksMock: vi.fn(),
+  subscribeLearningStateMock: vi.fn(),
+  getLearningStateMock: vi.fn(),
   toggleCurrentTabTranslationMock: vi.fn(),
 }))
 
 vi.mock("../page-translate", () => ({
   subscribePageTranslationState: subscribePageTranslationStateMock,
+  retryFailedBlocks: retryFailedBlocksMock,
+}))
+
+vi.mock("../learning-state", () => ({
+  subscribeLearningState: subscribeLearningStateMock,
+  getLearningState: getLearningStateMock,
 }))
 
 vi.mock("@/utils/extension/messages", () => ({
@@ -38,58 +37,13 @@ vi.mock("@/utils/extension/messages", () => ({
 
 import { mountFloatBall } from "./FloatBall"
 
-// ---------------------------------------------------------------------------
-// Local mirror of getFloatBallVisualState
-// Keep this in sync with FloatBall.tsx — the test will fail (intentionally)
-// if the colours or copy change without updating both places.
-// ---------------------------------------------------------------------------
-
-const COLOR_IDLE = "#6366f1"
-const COLOR_ACTIVE = "#16c79a"
-const COLOR_BUSY = "#8b5cf6"
-const COLOR_ERROR = "#f59e0b"
-
-interface FloatBallVisual {
-  color: string
-  tooltip: string
-  disabled: boolean
+const idleLearningState = {
+  savesThisSession: 0,
+  hasSavedThisSession: false,
+  lastSavedSurface: null,
+  lastSavedAt: null,
+  lastDueCount: null,
 }
-
-function getFloatBallVisualState(snapshot: TranslationSnapshot): FloatBallVisual {
-  if (snapshot.phase === "starting" || snapshot.phase === "stopping") {
-    return {
-      color: COLOR_BUSY,
-      tooltip: snapshot.phase === "starting" ? "正在准备翻译…" : "正在移除翻译…",
-      disabled: true,
-    }
-  }
-
-  if (snapshot.phase === "running") {
-    return {
-      color: COLOR_ACTIVE,
-      tooltip: `翻译中 ${snapshot.progress.translatedBlocks}/${snapshot.progress.totalBlocks}`,
-      disabled: false,
-    }
-  }
-
-  if (snapshot.lastError) {
-    return {
-      color: COLOR_ERROR,
-      tooltip: `翻译失败：${snapshot.lastError.message}`,
-      disabled: false,
-    }
-  }
-
-  return {
-    color: COLOR_IDLE,
-    tooltip: "翻译此页",
-    disabled: false,
-  }
-}
-
-// ---------------------------------------------------------------------------
-// Helper
-// ---------------------------------------------------------------------------
 
 function snap(overrides: Partial<TranslationSnapshot> = {}): TranslationSnapshot {
   return {
@@ -111,13 +65,33 @@ function getMountedButton(): HTMLDivElement {
   return button
 }
 
-describe("FloatBall mounting", () => {
+function createPointerEvent(type: "pointerdown" | "pointerup", clientY: number): Event {
+  const event = new Event(type, { bubbles: true, cancelable: true })
+  Object.defineProperties(event, {
+    clientY: { value: clientY },
+    pointerId: { value: 1 },
+  })
+  return event
+}
+
+describe("FloatBall", () => {
   beforeEach(() => {
+    vi.useFakeTimers()
     vi.clearAllMocks()
     document.getElementById("astra-float-ball-host")?.remove()
     setMockBrowser(createMockBrowser({ astra_float_ball_y: 420 }))
-    subscribePageTranslationStateMock.mockImplementation(() => () => {})
+
+    subscribePageTranslationStateMock.mockImplementation((listener: (snapshot: TranslationSnapshot) => void) => {
+      listener(snap({ phase: "idle" }))
+      return () => {}
+    })
+    subscribeLearningStateMock.mockImplementation((listener: (snapshot: typeof idleLearningState) => void) => {
+      listener(idleLearningState)
+      return () => {}
+    })
+    getLearningStateMock.mockReturnValue(idleLearningState)
     toggleCurrentTabTranslationMock.mockResolvedValue(undefined)
+
     vi.stubGlobal("PointerEvent", Event)
     Object.defineProperty(HTMLElement.prototype, "setPointerCapture", {
       configurable: true,
@@ -128,10 +102,11 @@ describe("FloatBall mounting", () => {
   afterEach(() => {
     document.getElementById("astra-float-ball-host")?.remove()
     vi.restoreAllMocks()
+    vi.useRealTimers()
     vi.unstubAllGlobals()
   })
 
-  it("persists the loaded Y position on click without reverting to the default", async () => {
+  it("toggles translation on click in default idle mode", async () => {
     await act(async () => {
       mountFloatBall()
       await Promise.resolve()
@@ -139,152 +114,183 @@ describe("FloatBall mounting", () => {
     })
 
     const button = getMountedButton()
+
+    await act(async () => {
+      button.dispatchEvent(createPointerEvent("pointerdown", 420))
+      await Promise.resolve()
+    })
+
+    await act(async () => {
+      button.dispatchEvent(createPointerEvent("pointerup", 420))
+      await Promise.resolve()
+    })
+
+    expect(toggleCurrentTabTranslationMock).toHaveBeenCalledTimes(1)
+  })
+
+  it("opens review instead of toggling when learning state has session saves", async () => {
+    let learningListener: ((snapshot: typeof idleLearningState) => void) | null = null
+    subscribeLearningStateMock.mockImplementation((listener: (snapshot: typeof idleLearningState) => void) => {
+      learningListener = listener
+      listener(idleLearningState)
+      return () => {}
+    })
+
+    await act(async () => {
+      mountFloatBall()
+      await Promise.resolve()
+      await Promise.resolve()
+    })
+
+    await act(async () => {
+      learningListener?.({
+        savesThisSession: 2,
+        hasSavedThisSession: true,
+        lastSavedSurface: "selection_toolbar",
+        lastSavedAt: Date.now(),
+        lastDueCount: 7,
+      })
+      await Promise.resolve()
+    })
+
+    const button = getMountedButton()
+    await act(async () => {
+      button.dispatchEvent(createPointerEvent("pointerdown", 420))
+      await Promise.resolve()
+    })
+
+    await act(async () => {
+      button.dispatchEvent(createPointerEvent("pointerup", 420))
+      await Promise.resolve()
+    })
+
     const browser = (globalThis as unknown as { __ASTRA_TEST_BROWSER__: ReturnType<typeof createMockBrowser> })
       .__ASTRA_TEST_BROWSER__
 
-    const pointerDown = new Event("pointerdown", { bubbles: true, cancelable: true })
-    Object.defineProperties(pointerDown, {
-      clientY: { value: 420 },
-      pointerId: { value: 1 },
+    expect(browser.tabs.create).toHaveBeenCalledWith({
+      url: "/vocabulary.html?tab=review",
     })
-    const pointerUp = new Event("pointerup", { bubbles: true, cancelable: true })
-    Object.defineProperties(pointerUp, {
-      clientY: { value: 420 },
-      pointerId: { value: 1 },
+    expect(toggleCurrentTabTranslationMock).not.toHaveBeenCalled()
+    expect(button.title).toContain("7")
+    expect(button.textContent).toContain("7")
+  })
+
+  it("keeps translation-state tooltip precedence over learning-state cues", async () => {
+    let translationListener: ((snapshot: TranslationSnapshot) => void) | null = null
+    let learningListener: ((snapshot: typeof idleLearningState) => void) | null = null
+
+    subscribePageTranslationStateMock.mockImplementation((listener: (snapshot: TranslationSnapshot) => void) => {
+      translationListener = listener
+      listener(snap({ phase: "idle" }))
+      return () => {}
+    })
+    subscribeLearningStateMock.mockImplementation((listener: (snapshot: typeof idleLearningState) => void) => {
+      learningListener = listener
+      listener(idleLearningState)
+      return () => {}
     })
 
     await act(async () => {
-      button.dispatchEvent(pointerDown)
+      mountFloatBall()
+      await Promise.resolve()
       await Promise.resolve()
     })
 
     await act(async () => {
-      button.dispatchEvent(pointerUp)
+      learningListener?.({
+        savesThisSession: 3,
+        hasSavedThisSession: true,
+        lastSavedSurface: "hover_translate",
+        lastSavedAt: Date.now(),
+        lastDueCount: 9,
+      })
+      translationListener?.(snap({
+        phase: "running",
+        progress: {
+          totalBlocks: 10,
+          translatedBlocks: 4,
+          queuedBlocks: 0,
+          inFlightBlocks: 0,
+          failedBlocks: 0,
+        },
+      }))
       await Promise.resolve()
     })
 
-    expect(browser.storage.local.set).toHaveBeenCalledWith({ astra_float_ball_y: 420 })
-    expect(toggleCurrentTabTranslationMock).toHaveBeenCalledTimes(1)
-  })
-})
-
-// ---------------------------------------------------------------------------
-// Idle state
-// ---------------------------------------------------------------------------
-
-describe("getFloatBallVisualState — idle", () => {
-  it("uses idle colour when phase is idle and there is no error", () => {
-    const visual = getFloatBallVisualState(snap({ phase: "idle" }))
-
-    expect(visual.color).toBe(COLOR_IDLE)
-    expect(visual.tooltip).toBe("翻译此页")
-    expect(visual.disabled).toBe(false)
-  })
-})
-
-// ---------------------------------------------------------------------------
-// Starting state
-// ---------------------------------------------------------------------------
-
-describe("getFloatBallVisualState — starting", () => {
-  it("uses busy colour and disables the button while starting", () => {
-    const visual = getFloatBallVisualState(snap({ phase: "starting" }))
-
-    expect(visual.color).toBe(COLOR_BUSY)
-    expect(visual.tooltip).toBe("正在准备翻译…")
-    expect(visual.disabled).toBe(true)
-  })
-})
-
-// ---------------------------------------------------------------------------
-// Stopping state
-// ---------------------------------------------------------------------------
-
-describe("getFloatBallVisualState — stopping", () => {
-  it("uses busy colour and disables the button while stopping", () => {
-    const visual = getFloatBallVisualState(snap({ phase: "stopping" }))
-
-    expect(visual.color).toBe(COLOR_BUSY)
-    expect(visual.tooltip).toBe("正在移除翻译…")
-    expect(visual.disabled).toBe(true)
-  })
-})
-
-// ---------------------------------------------------------------------------
-// Running state
-// ---------------------------------------------------------------------------
-
-describe("getFloatBallVisualState — running", () => {
-  it("uses active colour and shows progress in the tooltip", () => {
-    const visual = getFloatBallVisualState(snap({
-      phase: "running",
-      progress: {
-        totalBlocks: 20,
-        translatedBlocks: 7,
-        queuedBlocks: 5,
-        inFlightBlocks: 3,
-        failedBlocks: 0,
-      },
-    }))
-
-    expect(visual.color).toBe(COLOR_ACTIVE)
-    expect(visual.tooltip).toBe("翻译中 7/20")
-    expect(visual.disabled).toBe(false)
+    const button = getMountedButton()
+    expect(button.title).toContain("Translated: 4/10")
+    expect(button.title).not.toContain("9")
   })
 
-  it("shows 0/0 progress when no blocks have been counted yet", () => {
-    const visual = getFloatBallVisualState(snap({ phase: "running" }))
+  it("adds a brief learning pulse after a fresh save event", async () => {
+    let learningListener: ((snapshot: typeof idleLearningState) => void) | null = null
+    subscribeLearningStateMock.mockImplementation((listener: (snapshot: typeof idleLearningState) => void) => {
+      learningListener = listener
+      listener(idleLearningState)
+      return () => {}
+    })
 
-    expect(visual.tooltip).toBe("翻译中 0/0")
+    await act(async () => {
+      mountFloatBall()
+      await Promise.resolve()
+      await Promise.resolve()
+    })
+
+    await act(async () => {
+      learningListener?.({
+        savesThisSession: 1,
+        hasSavedThisSession: true,
+        lastSavedSurface: "selection_toolbar",
+        lastSavedAt: Date.now(),
+        lastDueCount: 2,
+      })
+      await Promise.resolve()
+    })
+
+    const button = getMountedButton()
+    expect(button.style.animation).toContain("astra-floatball-learning-pulse")
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1300)
+      await Promise.resolve()
+    })
+
+    expect(button.style.animation).toBe("")
   })
 
-  it("running phase takes precedence over a stale lastError", () => {
-    // If somehow we are running but also have a lastError set, the running
-    // branch should win (the error branch is checked after running).
-    const visual = getFloatBallVisualState(snap({
-      phase: "running",
-      lastError: { code: "UNKNOWN", message: "prior error" },
-    }))
+  it("retries failed blocks when translation reports failures", async () => {
+    subscribePageTranslationStateMock.mockImplementation((listener: (snapshot: TranslationSnapshot) => void) => {
+      listener(snap({
+        phase: "running",
+        progress: {
+          totalBlocks: 5,
+          translatedBlocks: 3,
+          queuedBlocks: 0,
+          inFlightBlocks: 0,
+          failedBlocks: 2,
+        },
+      }))
+      return () => {}
+    })
 
-    expect(visual.color).toBe(COLOR_ACTIVE)
-    expect(visual.disabled).toBe(false)
-  })
-})
+    await act(async () => {
+      mountFloatBall()
+      await Promise.resolve()
+      await Promise.resolve()
+    })
 
-// ---------------------------------------------------------------------------
-// Error state
-// ---------------------------------------------------------------------------
+    const button = getMountedButton()
+    await act(async () => {
+      button.dispatchEvent(createPointerEvent("pointerdown", 420))
+      await Promise.resolve()
+    })
 
-describe("getFloatBallVisualState — error", () => {
-  it("uses error colour when lastError is set and phase is idle", () => {
-    const visual = getFloatBallVisualState(snap({
-      phase: "idle",
-      lastError: { code: "CONFIG_MISSING", message: "API key missing" },
-    }))
+    await act(async () => {
+      button.dispatchEvent(createPointerEvent("pointerup", 420))
+      await Promise.resolve()
+    })
 
-    expect(visual.color).toBe(COLOR_ERROR)
-    expect(visual.tooltip).toBe("翻译失败：API key missing")
-    expect(visual.disabled).toBe(false)
-  })
-
-  it("includes the full error message in the tooltip", () => {
-    const message = "Network request timed out after 30 s"
-    const visual = getFloatBallVisualState(snap({
-      phase: "idle",
-      lastError: { code: "PROVIDER_REQUEST_FAILED", message },
-    }))
-
-    expect(visual.tooltip).toContain(message)
-  })
-
-  it("busy (starting) phase takes precedence over lastError", () => {
-    // starting/stopping are checked before the lastError branch
-    const visual = getFloatBallVisualState(snap({
-      phase: "starting",
-      lastError: { code: "UNKNOWN", message: "old error" },
-    }))
-
-    expect(visual.color).toBe(COLOR_BUSY)
-    expect(visual.disabled).toBe(true)
+    expect(retryFailedBlocksMock).toHaveBeenCalledTimes(1)
+    expect(toggleCurrentTabTranslationMock).not.toHaveBeenCalled()
   })
 })

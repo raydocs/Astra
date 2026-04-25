@@ -83,8 +83,7 @@ jobs:
       - name: Run required live lane (extension-core)
         run: xvfb-run -a pnpm bench:live:lane:extension-core
 
-      - name: Run optional learning-loop lane (non-blocking)
-        continue-on-error: true
+      - name: Run live lane (learning-loop)
         env:
           CI: "true"
         run: xvfb-run -a pnpm bench:live:lane:learning-loop
@@ -95,7 +94,7 @@ jobs:
           echo "## Required live release-proof lanes" >> $GITHUB_STEP_SUMMARY
           echo "- source-core: bench-live/page-translation-article-basic-source-bilingual, bench-live/article-extraction-proof, bench-live/dynamic-content-append" >> $GITHUB_STEP_SUMMARY
           echo "- extension-core: bench-live/site-automation-autostart, bench-live/onboarding-smoke, bench-live/vocabulary-srs-smoke" >> $GITHUB_STEP_SUMMARY
-          echo "- optional learning-loop: popup-proof + vocabulary-srs-smoke + learning-loop-revisit-smoke — [m1-bf-01-popup-learning-loop-replay-2026-04-14.md](https://github.com/${GITHUB_REPOSITORY}/blob/${GITHUB_SHA}/docs/investigations/m1-bf-01-popup-learning-loop-replay-2026-04-14.md)" >> $GITHUB_STEP_SUMMARY
+          echo "- learning-loop: popup-proof + vocabulary-srs-smoke + learning-loop-revisit-smoke — [m1-bf-01-popup-learning-loop-replay-2026-04-14.md](https://github.com/${GITHUB_REPOSITORY}/blob/${GITHUB_SHA}/docs/investigations/m1-bf-01-popup-learning-loop-replay-2026-04-14.md)" >> $GITHUB_STEP_SUMMARY
           if [ -f bench-live-results/latest.result.md ]; then
             echo "" >> $GITHUB_STEP_SUMMARY
             echo "### Last scenario result (latest.result.md)" >> $GITHUB_STEP_SUMMARY

@@ -90,7 +90,7 @@ export default function GlobalSettingsSection({
 
   return (
     <details open style={{ marginBottom: 12 }}>
-      <summary style={{ cursor: "pointer", fontSize: 13, color: "#6366f1" }}>
+      <summary style={{ cursor: "pointer", fontSize: 13, color: "#c2410c" }}>
         ⚙ {t("settingsTitle")}
       </summary>
       <div style={{ marginTop: 8 }}>

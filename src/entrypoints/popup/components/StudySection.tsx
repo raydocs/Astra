@@ -60,9 +60,20 @@ const cardStyle: React.CSSProperties = {
 }
 
 const actionButtonStyle: React.CSSProperties = {
-  border: "1px solid #dbeafe",
-  background: "#eff6ff",
-  color: "#2563eb",
+  border: "1px solid #fdba74",
+  background: "#fff7ed",
+  color: "#c2410c",
+  borderRadius: 8,
+  padding: "6px 10px",
+  fontSize: 12,
+  fontWeight: 600,
+  cursor: "pointer",
+}
+
+const secondaryActionButtonStyle: React.CSSProperties = {
+  border: "1px solid #cbd5e1",
+  background: "#f8fafc",
+  color: "#475569",
   borderRadius: 8,
   padding: "6px 10px",
   fontSize: 12,
@@ -108,7 +119,7 @@ function StudyProgressBar({ completionPercent, completedSteps }: {
                 flex: 1,
                 height: 4,
                 borderRadius: 2,
-                background: done ? "#6366f1" : "#e2e8f0",
+                background: done ? "#ea580c" : "#e2e8f0",
                 transition: "background 0.2s",
               }}
               title={`${getStepLabel(step)}${done ? t("popup_studyStepDone") : ""}`}
@@ -144,15 +155,15 @@ function CurrentPageProgressCard({ studyLoop }: { studyLoop: StudyLoopViewModel 
       style={{
         marginTop: 10,
         padding: "10px 12px",
-        background: "#f8fafc",
-        border: "1px solid #dbeafe",
+        background: "#fff7ed",
+        border: "1px solid #fed7aa",
         borderRadius: 10,
       }}
     >
-      <div style={{ fontSize: 12, fontWeight: 700, color: "#1e3a8a", marginBottom: 4 }}>
+      <div style={{ fontSize: 12, fontWeight: 700, color: "#9a3412", marginBottom: 4 }}>
         {t("popup_studyCurrentPageProgressTitle")}
       </div>
-      <div style={{ fontSize: 10, color: "#64748b", marginBottom: 8 }}>
+      <div style={{ fontSize: 10, color: "#7c2d12", marginBottom: 8 }}>
         {t("popup_studyCurrentPageProgressHint")}
       </div>
       <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
@@ -211,8 +222,8 @@ function NextStepBanner({ nextStep, onReadArticle, onExplainSentence, onOpenVoca
     <div style={{
       marginTop: 8,
       padding: "8px 10px",
-      background: "#eff6ff",
-      border: "1px solid #bfdbfe",
+      background: "#fff7ed",
+      border: "1px solid #fdba74",
       borderRadius: 8,
       display: "flex",
       justifyContent: "space-between",
@@ -220,10 +231,10 @@ function NextStepBanner({ nextStep, onReadArticle, onExplainSentence, onOpenVoca
     }}
     >
       <div style={{ minWidth: 0 }}>
-        <div style={{ fontSize: 12, color: "#1e40af", fontWeight: 600 }}>
+        <div style={{ fontSize: 12, color: "#9a3412", fontWeight: 600 }}>
           {t("popup_studyNext")} {getStepLabel(nextStep)}
         </div>
-        <div style={{ fontSize: 11, color: "#1d4ed8", marginTop: 2, lineHeight: 1.4 }}>
+        <div style={{ fontSize: 11, color: "#c2410c", marginTop: 2, lineHeight: 1.4 }}>
           {getNextStepHint(nextStep)}
         </div>
       </div>
@@ -302,6 +313,58 @@ export default function StudySection({
           {t("popup_studyDueCount", String(dueCount))}
         </div>
       </div>
+
+      {canReadArticle && (
+        <div
+          style={{
+            marginTop: 10,
+            padding: "12px",
+            background: "linear-gradient(145deg, #fff7ed 0%, #ffedd5 100%)",
+            border: "1px solid #fb923c",
+            borderRadius: 12,
+            boxShadow: "0 8px 20px rgba(194, 65, 12, 0.12)",
+          }}
+        >
+          <div style={{
+            display: "inline-flex",
+            alignItems: "center",
+            fontSize: 10,
+            fontWeight: 700,
+            color: "#9a3412",
+            background: "#fff",
+            border: "1px solid #fdba74",
+            borderRadius: 999,
+            padding: "2px 8px",
+            marginBottom: 8,
+          }}
+          >
+            {t("popup_studyNext")}
+          </div>
+          <div style={{ fontSize: 13, fontWeight: 800, color: "#7c2d12", marginBottom: 4 }}>
+            {t("popup_deepReadTitle")}
+          </div>
+          <div style={{ fontSize: 11, color: "#9a3412", lineHeight: 1.45, marginBottom: 10 }}>
+            {t("popup_deepReadHint")}
+          </div>
+          <button
+            type="button"
+            style={{
+              border: "1px solid #c2410c",
+              background: "#ea580c",
+              color: "#fff",
+              borderRadius: 8,
+              padding: "8px 12px",
+              fontSize: 12,
+              fontWeight: 700,
+              cursor: "pointer",
+              width: "100%",
+            }}
+            onClick={onReadArticle}
+          >
+            {t("popup_deepReadAction")}
+          </button>
+        </div>
+      )}
 
       <div style={{ marginTop: 10, fontSize: 12, color: "#334155", lineHeight: 1.55 }}>
         {summary || t("popup_studySummaryEmpty")}
@@ -397,8 +460,8 @@ export default function StudySection({
                   key={card.id}
                   style={{
                     padding: "8px 10px",
-                    background: card.selected ? "#eff6ff" : "#fff",
-                    border: card.selected ? "1px solid #60a5fa" : "1px solid #dbeafe",
+                    background: card.selected ? "#fff7ed" : "#fff",
+                    border: card.selected ? "1px solid #fb923c" : "1px solid #fed7aa",
                     borderRadius: 8,
                     cursor: sentenceActionLocked ? "default" : "pointer",
                   }}
@@ -462,11 +525,11 @@ export default function StudySection({
                     <div style={{
                       marginTop: 8,
                       padding: "8px 10px",
-                      background: "#eff6ff",
-                      border: "1px solid #bfdbfe",
+                      background: "#fff7ed",
+                      border: "1px solid #fdba74",
                       borderRadius: 8,
                       fontSize: 12,
-                      color: "#1e3a8a",
+                      color: "#7c2d12",
                       lineHeight: 1.55,
                       whiteSpace: "pre-wrap",
                     }}>
@@ -528,11 +591,11 @@ export default function StudySection({
         <div style={{
           marginTop: 10,
           padding: "8px 10px",
-          background: "#f0f9ff",
-          border: "1px solid #bae6fd",
+          background: "#fff7ed",
+          border: "1px solid #fdba74",
           borderRadius: 8,
           fontSize: 12,
-          color: "#0369a1",
+          color: "#9a3412",
         }}>
           {t("popup_digestGenerating")}
         </div>
@@ -738,21 +801,10 @@ export default function StudySection({
       )}
 
       <div style={{ display: "flex", gap: 8, marginTop: 12, flexWrap: "wrap" }}>
-        <button
-          type="button"
-          style={{
-            ...actionButtonStyle,
-            ...(canReadArticle ? {} : { opacity: 0.55, cursor: "not-allowed" }),
-          }}
-          onClick={onReadArticle}
-          disabled={!canReadArticle}
-        >
-          {t("popup_readArticle")}
-        </button>
-        <button type="button" style={actionButtonStyle} onClick={onOpenReview}>
+        <button type="button" style={secondaryActionButtonStyle} onClick={onOpenReview}>
           {dueCount > 0 ? `${t("popup_review")} (${dueCount})` : t("popup_review")}
         </button>
-        <button type="button" style={actionButtonStyle} onClick={onOpenVocabulary}>
+        <button type="button" style={secondaryActionButtonStyle} onClick={onOpenVocabulary}>
           {t("popup_vocabulary")}
         </button>
       </div>
@@ -791,10 +843,10 @@ export default function StudySection({
               marginTop: 8,
               padding: "8px 10px",
               background: "#fff",
-              border: "1px solid #dbeafe",
+              border: "1px solid #fed7aa",
               borderRadius: 8,
               fontSize: 12,
-              color: "#1e3a8a",
+              color: "#7c2d12",
               lineHeight: 1.55,
               whiteSpace: "pre-wrap",
             }}>

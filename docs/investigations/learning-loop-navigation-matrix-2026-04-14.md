@@ -61,12 +61,12 @@ The smoke now requires both:
 1. the revisit row summary to render the expected source/progress fields, and
 2. **Open** to launch the saved article URL in a new tab.
 
-## Fresh replay artifact (2026-04-14)
+## Fresh replay artifact (2026-04-15)
 
 Green rerun after the revisit v1 hardening work:
 
-- popup proof: `bench-live-results/live-20260414T105144-ub96nh/`
-- vocabulary smoke: `bench-live-results/live-20260414T105149-vaksxe/`
-- revisit smoke: `bench-live-results/live-20260414T105152-9boxuy/`
+- popup proof: `bench-live-results/live-20260415T104021-y8rb0n/`
+- vocabulary smoke: `bench-live-results/live-20260415T104027-zap15i/`
+- revisit smoke: `bench-live-results/live-20260415T104030-y9lm8o/`
 
 The revisit smoke artifact includes the Reading-tab screenshot and snapshot proving that the row showed page identity, translated-count context, ordered study steps, the next-step hint, and that **Open** launched the fixture article URL.

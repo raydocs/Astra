@@ -108,6 +108,14 @@ export async function getVocabularyCount(): Promise<number> {
   return entries.length
 }
 
+export async function hasVocabularyEntryByText(text: string): Promise<boolean> {
+  const normalizedText = text.trim().toLowerCase()
+  if (!normalizedText) return false
+
+  const entries = await readEntries()
+  return entries.some((entry) => entry.text.trim().toLowerCase() === normalizedText)
+}
+
 /** Update a single vocabulary entry by id with a partial patch. */
 export async function updateVocabularyEntry(
   id: string,

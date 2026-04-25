@@ -28,6 +28,12 @@ const LEVEL_OPTIONS = [
   { value: "advanced", label: "Advanced", description: "Detailed analysis with nuanced explanations" },
 ]
 
+const EXPLAIN_MODE_OPTIONS = [
+  { value: "beginner", label: "Beginner coach", description: "Plain-language explanations and easier wording" },
+  { value: "exam", label: "Exam coach", description: "Grammar, collocations, and test-oriented breakdowns" },
+  { value: "deep", label: "Deep reading", description: "Nuance, tone, and why the sentence works this way" },
+]
+
 const BRAND_COLOR = "#6366f1"
 const TOTAL_STEPS = 4
 
@@ -266,17 +272,21 @@ function StepLanguage({
   sourceLang,
   targetLang,
   languageLevel,
+  explainMode,
   onSourceChange,
   onTargetChange,
   onLevelChange,
+  onExplainModeChange,
   onNext,
 }: {
   sourceLang: string
   targetLang: string
   languageLevel: string
+  explainMode: string
   onSourceChange: (lang: string) => void
   onTargetChange: (lang: string) => void
   onLevelChange: (level: string) => void
+  onExplainModeChange: (mode: string) => void
   onNext: () => void
 }) {
   return (
@@ -338,6 +348,33 @@ function StepLanguage({
             >
               <span style={{ fontSize: 14, fontWeight: 600, color: "#1e293b" }}>{level.label}</span>
               <span style={{ fontSize: 12, color: "#64748b", marginTop: 2 }}>{level.description}</span>
+            </button>
+          ))}
+        </div>
+      </div>
+
+      <div style={{ marginBottom: 28 }}>
+        <label style={labelTextStyle}>How should Astra explain sentences?</label>
+        <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+          {EXPLAIN_MODE_OPTIONS.map((mode) => (
+            <button
+              key={mode.value}
+              type="button"
+              onClick={() => onExplainModeChange(mode.value)}
+              style={{
+                display: "flex",
+                flexDirection: "column",
+                alignItems: "flex-start",
+                padding: "12px 16px",
+                border: explainMode === mode.value ? `2px solid ${BRAND_COLOR}` : "1px solid #e2e8f0",
+                borderRadius: 10,
+                background: explainMode === mode.value ? "#eff6ff" : "#fff",
+                cursor: "pointer",
+                textAlign: "left",
+              }}
+            >
+              <span style={{ fontSize: 14, fontWeight: 600, color: "#1e293b" }}>{mode.label}</span>
+              <span style={{ fontSize: 12, color: "#64748b", marginTop: 2 }}>{mode.description}</span>
             </button>
           ))}
         </div>
@@ -467,6 +504,7 @@ export default function OnboardingApp() {
   const [sourceLang, setSourceLang] = useState("en")
   const [targetLang, setTargetLang] = useState("zh-CN")
   const [languageLevel, setLanguageLevel] = useState("intermediate")
+  const [explainMode, setExplainMode] = useState("deep")
   const [completing, setCompleting] = useState(false)
   const [iosBootstrapStatus, setIosBootstrapStatus] = useState<{
     bridgeAvailable: boolean
@@ -524,6 +562,7 @@ export default function OnboardingApp() {
       await saveConfig({
         targetLang,
         languageLevel: languageLevel as "beginner" | "intermediate" | "advanced",
+        explainMode: explainMode as "beginner" | "exam" | "deep",
       })
       await browser.storage.local.set({ "astra.onboarding.completed": true })
 
@@ -634,9 +673,11 @@ export default function OnboardingApp() {
               sourceLang={sourceLang}
               targetLang={targetLang}
               languageLevel={languageLevel}
+              explainMode={explainMode}
               onSourceChange={setSourceLang}
               onTargetChange={setTargetLang}
               onLevelChange={setLanguageLevel}
+              onExplainModeChange={setExplainMode}
               onNext={() => setStep(2)}
             />
           )}

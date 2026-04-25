@@ -1,4 +1,4 @@
-import type { QuotaInfo } from "@/utils/astra/quota"
+import type { QuotaInfo } from "@/utils/astra/quota-types"
 import { t } from "@/utils/i18n"
 
 function formatTokenCount(n: number): string {

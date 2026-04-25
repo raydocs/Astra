@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react"
 import { browser } from "#imports"
 import type { VocabularyEntry } from "@/utils/storage/vocabulary"
+import { recordLearningLoopEvent } from "@/utils/learning-loop-events"
 import { updateVocabularyEntry, getVocabularyEntries } from "@/utils/storage/vocabulary"
 import { applyReview, getDueCards, getBoxDistribution } from "@/utils/srs/leitner"
 import type { SrsFields, BoxDistribution } from "@/utils/srs/leitner"
@@ -16,6 +17,7 @@ import {
   markOwnedReadingOpened,
   matchOwnedReadingItemForVocabularyEntry,
 } from "@/utils/storage/owned-reading"
+import { openVocabularyEntryInDeepRead } from "@/utils/deep-read-link"
 import { t } from "@/utils/i18n"
 import ReviewStats from "./ReviewStats"
 
@@ -77,6 +79,16 @@ function getReviewStudyLoopUrl(entry?: VocabularyEntry | null): string | undefin
   return entry?.sourceContext?.studyProgressRecordId ?? entry?.url
 }
 
+function formatLocalDayLabel(date: string): string {
+  const parsed = new Date(`${date}T00:00:00`)
+  if (Number.isNaN(parsed.getTime())) return date
+  return parsed.toLocaleDateString(undefined, {
+    year: "numeric",
+    month: "short",
+    day: "numeric",
+  })
+}
+
 export default function ReviewMode() {
   const [dueCards, setDueCards] = useState<VocabularyEntry[]>([])
   const [currentIndex, setCurrentIndex] = useState(0)
@@ -88,6 +100,8 @@ export default function ReviewMode() {
   const [dailySentencesExplained, setDailySentencesExplained] = useState(0)
   const [dailyVocabSaved, setDailyVocabSaved] = useState(0)
   const [dailyVocabReviewed, setDailyVocabReviewed] = useState(0)
+  const [dailyStatsDate, setDailyStatsDate] = useState("")
+  const [dailyStatsInfoOpen, setDailyStatsInfoOpen] = useState(false)
   const [snippetExpanded, setSnippetExpanded] = useState(false)
   const [studyLoop, setStudyLoop] = useState<StudyLoopViewModel | null>(null)
   const [ownedReadingItems, setOwnedReadingItems] = useState<OwnedReadingItem[]>([])
@@ -105,6 +119,7 @@ export default function ReviewMode() {
     setPhase(due.length > 0 ? "showing-front" : "session-complete")
     setSummary({ total: 0, correct: 0, incorrect: 0 })
     const progress = await getStudyProgress()
+    setDailyStatsDate(progress.dailyStats.date)
     setDailyPagesStudied(progress.dailyStats.pagesStudied)
     setDailySentencesExplained(progress.dailyStats.sentencesExplained)
     setDailyVocabSaved(progress.dailyStats.vocabSaved)
@@ -135,6 +150,11 @@ export default function ReviewMode() {
 
     const studyEvent = buildVocabularyReviewStudyEvent(currentCard)
     if (studyEvent) {
+      recordLearningLoopEvent("review_answered", {
+        pageUrl: studyEvent.url,
+        correct,
+        source: "review",
+      })
       await recordStudyEvent(studyEvent).catch(() => undefined)
     }
 
@@ -150,6 +170,7 @@ export default function ReviewMode() {
       const entries = await getVocabularyEntries()
       setDistribution(getBoxDistribution(entries))
       const progress = await getStudyProgress()
+      setDailyStatsDate(progress.dailyStats.date)
       setDailyPagesStudied(progress.dailyStats.pagesStudied)
       setDailySentencesExplained(progress.dailyStats.sentencesExplained)
       setDailyVocabSaved(progress.dailyStats.vocabSaved)
@@ -158,6 +179,7 @@ export default function ReviewMode() {
       setPhase("session-complete")
     } else {
       const progress = await getStudyProgress()
+      setDailyStatsDate(progress.dailyStats.date)
       setDailyPagesStudied(progress.dailyStats.pagesStudied)
       setDailySentencesExplained(progress.dailyStats.sentencesExplained)
       setDailyVocabSaved(progress.dailyStats.vocabSaved)
@@ -222,10 +244,17 @@ export default function ReviewMode() {
     || dailySentencesExplained > 0
     || dailyVocabSaved > 0
     || dailyVocabReviewed > 0
+  const dailyStatsLabel = dailyStatsDate ? formatLocalDayLabel(dailyStatsDate) : ""
 
   const handleResumeLinkedReading = async () => {
     if (!linkedReadingItem || !linkedReadingResumeTarget) return
     await markOwnedReadingOpened(linkedReadingItem.id)
+    recordLearningLoopEvent("resumed_reading", {
+      ownedReadingItemId: linkedReadingItem.id,
+      pageUrl: linkedReadingResumeTarget.url,
+      sourceType: linkedReadingItem.sourceType,
+      source: "review",
+    })
     void browser.tabs.create({ url: linkedReadingResumeTarget.url })
   }
 
@@ -235,7 +264,25 @@ export default function ReviewMode() {
 
       {hasDailyProgress && (
         <div style={dailyProgressStyle} aria-label={t("review_todayProgressAria")}>
-          <div style={dailyProgressTitleStyle}>{t("review_todayProgressTitle")}</div>
+          <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8, flexWrap: "wrap" }}>
+            <div style={dailyProgressTitleStyle}>{t("review_todayProgressTitle")}</div>
+            <button
+              type="button"
+              onClick={() => setDailyStatsInfoOpen((current) => !current)}
+              aria-expanded={dailyStatsInfoOpen}
+              style={dailyStatsInfoButtonStyle}
+            >
+              {t("popup_studyTodayStatsInfoAction")}
+            </button>
+          </div>
+          <div style={{ fontSize: 11, color: "#94a3b8", marginBottom: 8 }}>
+            {t("popup_studyTodayStatsHint", dailyStatsLabel || dailyStatsDate)}
+          </div>
+          {dailyStatsInfoOpen && (
+            <div style={{ fontSize: 11, color: "#64748b", lineHeight: 1.6, marginBottom: 8 }}>
+              {t("popup_studyTodayStatsResetBoundary")}
+            </div>
+          )}
           <div style={dailyProgressRowStyle}>
             <span>{t("popup_studyStatPages", dailyPagesStudied.toString())}</span>
             <span>{t("popup_studyStatExplained", dailySentencesExplained.toString())}</span>
@@ -247,26 +294,26 @@ export default function ReviewMode() {
 
       {phase === "session-complete" && summary.total === 0 && (
         <div style={emptyStateStyle}>
-          <div style={{ fontSize: 18, marginBottom: 8 }}>All caught up!</div>
-          <div>No cards due for review. Check back later.</div>
+          <div style={{ fontSize: 18, marginBottom: 8 }}>{t("review_emptyCaughtUpTitle")}</div>
+          <div>{t("review_emptyCaughtUpHint")}</div>
         </div>
       )}
 
       {phase === "session-complete" && summary.total > 0 && (
         <div style={summaryCardStyle}>
           <div style={{ fontSize: 18, fontWeight: 700, marginBottom: 12, color: "#0f172a" }}>
-            Session Complete
+            {t("review_sessionCompleteTitle")}
           </div>
           <div style={summaryRowStyle}>
-            <span>Cards reviewed</span>
+            <span>{t("review_summaryCardsReviewed")}</span>
             <strong>{summary.total}</strong>
           </div>
           <div style={summaryRowStyle}>
-            <span style={{ color: "#22c55e" }}>Correct (promoted)</span>
+            <span style={{ color: "#22c55e" }}>{t("review_summaryCorrect")}</span>
             <strong style={{ color: "#22c55e" }}>{summary.correct}</strong>
           </div>
           <div style={summaryRowStyle}>
-            <span style={{ color: "#ef4444" }}>Incorrect (demoted)</span>
+            <span style={{ color: "#ef4444" }}>{t("review_summaryIncorrect")}</span>
             <strong style={{ color: "#ef4444" }}>{summary.incorrect}</strong>
           </div>
           <button
@@ -274,7 +321,7 @@ export default function ReviewMode() {
             style={restartButtonStyle}
             onClick={() => void loadDueCards()}
           >
-            Review again
+            {t("review_actionReviewAgain")}
           </button>
         </div>
       )}
@@ -282,9 +329,9 @@ export default function ReviewMode() {
       {phase !== "session-complete" && currentCard && (
         <>
           <div style={progressTextStyle}>
-            Card {currentIndex + 1} of {dueCards.length}
+            {t("review_cardProgress", [`${currentIndex + 1}`, `${dueCards.length}`])}
             <span style={{ marginLeft: 8, fontSize: 11, color: "#94a3b8" }}>
-              Box {currentCard.srsBox ?? 1}
+              {t("review_boxLabel", `${currentCard.srsBox ?? 1}`)}
             </span>
           </div>
 
@@ -348,7 +395,7 @@ export default function ReviewMode() {
                 {linkedReadingItem && (
                   <div style={{ ...contextTextStyle, marginTop: 8, background: "rgba(99, 102, 241, 0.05)", border: "1px solid rgba(99, 102, 241, 0.15)", borderRadius: 10, padding: "10px 12px" }}>
                     <div style={{ fontSize: 12, color: "#334155", fontWeight: 700, marginBottom: 4 }}>
-                      Reading asset
+                      {t("vocabulary_readingAssetTitle")}
                     </div>
                     <div style={{ fontSize: 12, color: "#334155", fontWeight: 600, marginBottom: 4 }}>
                       {linkedReadingItem.title} · {getOwnedReadingSourceTypeLabel(linkedReadingItem.sourceType)}
@@ -377,30 +424,49 @@ export default function ReviewMode() {
                           cursor: "pointer",
                         }}
                       >
-                        Resume reading asset
+                        {t("vocabulary_actionResumeReadingAsset")}
                       </button>
                     )}
                   </div>
+                )}
+                {currentCard.sourceContext?.surface === "popup_deep_read" && (
+                  <button
+                    type="button"
+                    onClick={() => void openVocabularyEntryInDeepRead(currentCard)}
+                    style={{
+                      marginTop: 8,
+                      border: "1px solid #c7d2fe",
+                      background: "rgba(99, 102, 241, 0.08)",
+                      color: "#4338ca",
+                      borderRadius: 8,
+                      padding: "6px 12px",
+                      fontSize: 12,
+                      fontWeight: 600,
+                      cursor: "pointer",
+                    }}
+                  >
+                    {t("vocabulary_actionOpenDeepRead")}
+                  </button>
                 )}
                 {(sourceDisplay.articleExcerpt || sourceDisplay.contentSummary || sourceDisplay.hostname || sourceDisplay.pageUrl) && (
                   <div style={{ ...contextTextStyle, marginTop: 8 }}>
                     {sourceDisplay.hostname && (
                       <div style={{ fontSize: 11, color: "#94a3b8", marginBottom: 4 }}>
-                        Host: {sourceDisplay.hostname}
+                        {t("vocabulary_sourceHostLabel")} {sourceDisplay.hostname}
                       </div>
                     )}
                     {sourceDisplay.pageUrl && (
                       <div style={{ fontSize: 11, color: "#94a3b8", marginBottom: 4, wordBreak: "break-all" }}>
-                        {sourcePageIsWeb ? "URL" : "File"}: {sourceDisplay.pageUrl}
+                        {sourcePageIsWeb ? t("vocabulary_sourceUrlLabel") : t("vocabulary_sourceFileLabel")} {sourceDisplay.pageUrl}
                       </div>
                     )}
                     {sourceDisplay.articleExcerpt && (
                       <div style={{ marginBottom: sourceDisplay.contentSummary ? 6 : 0 }}>
-                        Excerpt: {sourceDisplay.articleExcerpt}
+                        {t("vocabulary_sourceExcerptLabel")} {sourceDisplay.articleExcerpt}
                       </div>
                     )}
                     {sourceDisplay.contentSummary && (
-                      <div>Summary: {sourceDisplay.contentSummary}</div>
+                      <div>{t("vocabulary_sourceSummaryLabel")} {sourceDisplay.contentSummary}</div>
                     )}
                   </div>
                 )}
@@ -419,7 +485,7 @@ export default function ReviewMode() {
 
             {phase === "showing-front" && (
               <div style={flipHintStyle}>
-                Click or press Space to reveal
+                {t("review_flipHint")}
               </div>
             )}
           </div>
@@ -431,22 +497,22 @@ export default function ReviewMode() {
                 style={dontKnowButtonStyle}
                 onClick={() => void handleAnswer(false)}
               >
-                Don't know
+                {t("review_answerDontKnow")}
               </button>
               <button
                 type="button"
                 style={knowItButtonStyle}
                 onClick={() => void handleAnswer(true)}
               >
-                Know it
+                {t("review_answerKnowIt")}
               </button>
             </div>
           )}
 
           <div style={keyboardHintStyle}>
             {phase === "showing-front"
-              ? "Space = flip"
-              : "\u2190 = don't know \u00B7 \u2192 = know it"}
+              ? t("review_keyboardHintFront")
+              : t("review_keyboardHintBack")}
           </div>
         </>
       )}
@@ -468,7 +534,17 @@ const dailyProgressTitleStyle: React.CSSProperties = {
   fontSize: 12,
   fontWeight: 700,
   color: "#475569",
-  marginBottom: 8,
+}
+
+const dailyStatsInfoButtonStyle: React.CSSProperties = {
+  border: "1px solid #cbd5e1",
+  background: "#ffffff",
+  color: "#475569",
+  borderRadius: 999,
+  padding: "2px 8px",
+  fontSize: 11,
+  fontWeight: 700,
+  cursor: "pointer",
 }
 
 const dailyProgressRowStyle: React.CSSProperties = {

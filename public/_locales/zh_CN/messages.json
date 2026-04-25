@@ -173,6 +173,12 @@
   "popup_review": {
     "message": "复习"
   },
+  "learningSavedTitle": {
+    "message": "已加入你的学习队列"
+  },
+  "learningSavedHint": {
+    "message": "打开词汇表或直接进入复习，让这条表达继续留在学习循环里。"
+  },
   "popup_studyTitle": {
     "message": "学习中心"
   },
@@ -199,6 +205,257 @@
   },
   "popup_readArticle": {
     "message": "阅读文章"
+  },
+  "popup_deepReadTitle": {
+    "message": "开始深读这页内容"
+  },
+  "popup_deepReadHint": {
+    "message": "把当前页面切进带有逐句解释、保存和回看动作的引导式学习流。"
+  },
+  "popup_deepReadAction": {
+    "message": "开始深读"
+  },
+  "popup_deepReadPageFallbackTitle": {
+    "message": "Astra 深读"
+  },
+  "popup_deepReadSentenceProgress": {
+    "message": "第 $1 句 / 共 $2 句",
+    "placeholders": {
+      "1": { "content": "$1" },
+      "2": { "content": "$2" }
+    }
+  },
+  "popup_deepReadSavedCount": {
+    "message": "已保存 $1 条",
+    "placeholders": {
+      "1": { "content": "$1" }
+    }
+  },
+  "popup_deepReadQueueTitle": {
+    "message": "学习队列"
+  },
+  "popup_deepReadSentenceNumber": {
+    "message": "第 $1 句",
+    "placeholders": {
+      "1": { "content": "$1" }
+    }
+  },
+  "popup_deepReadNextStepTitle": {
+    "message": "下一步"
+  },
+  "popup_deepReadNextStepHeadline": {
+    "message": "把这页内容继续留在你的学习循环里。"
+  },
+  "popup_deepReadNextStepHint": {
+    "message": "趁这篇文章还新鲜，直接进入词汇管理，或者顺手清掉待复习队列。"
+  },
+  "popup_deepReadAutoplay": {
+    "message": "连续朗读"
+  },
+  "popup_deepReadStopAutoplay": {
+    "message": "停止连续朗读"
+  },
+  "popup_deepReadEmptyHistoryTitle": {
+    "message": "当前没有可继续的学习页面"
+  },
+  "popup_deepReadEmptyHistoryHint": {
+    "message": "Astra 还没能从当前标签页拉到实时学习上下文。先重新打开你最近阅读的页面，再回来进入深读。"
+  },
+  "popup_deepReadOpenLastPage": {
+    "message": "打开最近阅读页面"
+  },
+  "popup_studyTodayStatsInfoAction": {
+    "message": "重置规则"
+  },
+  "popup_studyTodayStatsResetBoundary": {
+    "message": "这些统计按当前设备的本地自然日计算，会在本地午夜重置，不按 UTC 午夜重置。"
+  },
+  "vocabulary_title": {
+    "message": "Astra 词汇表"
+  },
+  "vocabulary_contextShowMore": {
+    "message": "展开完整上下文"
+  },
+  "vocabulary_contextShowLess": {
+    "message": "收起"
+  },
+  "vocabulary_countBadge": {
+    "message": "$1 $2",
+    "placeholders": {
+      "1": { "content": "$1" },
+      "2": { "content": "$2" }
+    }
+  },
+  "vocabulary_countWordSingular": {
+    "message": "词"
+  },
+  "vocabulary_countWordPlural": {
+    "message": "词"
+  },
+  "vocabulary_tabList": {
+    "message": "词表"
+  },
+  "vocabulary_tabReview": {
+    "message": "复习"
+  },
+  "vocabulary_tabReviewWithCount": {
+    "message": "复习（$1）",
+    "placeholders": {
+      "1": { "content": "$1" }
+    }
+  },
+  "vocabulary_tabReading": {
+    "message": "阅读"
+  },
+  "vocabulary_learningDeskTitle": {
+    "message": "今日学习台"
+  },
+  "vocabulary_statDueReview": {
+    "message": "待复习"
+  },
+  "vocabulary_statInProgress": {
+    "message": "进行中"
+  },
+  "vocabulary_statSavedWords": {
+    "message": "已保存词条"
+  },
+  "vocabulary_actionStartReviewWithCount": {
+    "message": "开始复习（$1）",
+    "placeholders": {
+      "1": { "content": "$1" }
+    }
+  },
+  "vocabulary_actionOpenReview": {
+    "message": "打开复习"
+  },
+  "vocabulary_actionOpenReadingQueue": {
+    "message": "打开阅读队列"
+  },
+  "vocabulary_actionBrowseSaved": {
+    "message": "浏览已保存词汇"
+  },
+  "vocabulary_continueReadingTitle": {
+    "message": "继续上次阅读"
+  },
+  "vocabulary_actionResumeReading": {
+    "message": "继续阅读"
+  },
+  "vocabulary_searchPlaceholder": {
+    "message": "搜索词语、翻译、笔记、标签或来源（标题、URL、摘录）..."
+  },
+  "vocabulary_sortLabel": {
+    "message": "排序："
+  },
+  "vocabulary_sortNewest": {
+    "message": "最新优先"
+  },
+  "vocabulary_sortAlpha": {
+    "message": "A-Z"
+  },
+  "vocabulary_exportCsv": {
+    "message": "导出 CSV"
+  },
+  "vocabulary_exportAnkiTsv": {
+    "message": "导出 Anki TSV"
+  },
+  "vocabulary_emptySearch": {
+    "message": "没有词条匹配当前搜索。"
+  },
+  "vocabulary_emptyDefault": {
+    "message": "还没有保存的词汇。翻译时点击保存按钮，词条就会出现在这里。"
+  },
+  "vocabulary_sourceContextTitle": {
+    "message": "来源上下文"
+  },
+  "vocabulary_sourceHostLabel": {
+    "message": "站点："
+  },
+  "vocabulary_sourceUrlLabel": {
+    "message": "URL："
+  },
+  "vocabulary_sourceFileLabel": {
+    "message": "文件："
+  },
+  "vocabulary_sourceSentenceLabel": {
+    "message": "句子："
+  },
+  "vocabulary_sourceExcerptLabel": {
+    "message": "摘录："
+  },
+  "vocabulary_sourceSummaryLabel": {
+    "message": "摘要："
+  },
+  "vocabulary_readingAssetTitle": {
+    "message": "阅读资产"
+  },
+  "vocabulary_actionResumeReadingAsset": {
+    "message": "继续阅读资产"
+  },
+  "vocabulary_actionOpenDeepRead": {
+    "message": "在深读中打开"
+  },
+  "vocabulary_actionStopListening": {
+    "message": "停止朗读"
+  },
+  "vocabulary_actionListenSentence": {
+    "message": "朗读句子"
+  },
+  "vocabulary_actionListenWord": {
+    "message": "朗读单词"
+  },
+  "vocabulary_noteLabel": {
+    "message": "笔记"
+  },
+  "vocabulary_notePlaceholder": {
+    "message": "添加笔记..."
+  },
+  "vocabulary_tagsLabel": {
+    "message": "标签"
+  },
+  "vocabulary_tagsPlaceholder": {
+    "message": "添加标签（逗号分隔）..."
+  },
+  "vocabulary_deleteConfirm": {
+    "message": "确认"
+  },
+  "vocabulary_deleteCancel": {
+    "message": "取消"
+  },
+  "vocabulary_deleteAction": {
+    "message": "删除"
+  },
+  "vocabulary_readingIntro": {
+    "message": "从一个队列里重访阅读项。文章和远程 PDF 会直接恢复；本地 PDF / EPUB / 字幕文件会打开对应阅读器，并提示重新选择同一个文件。"
+  },
+  "vocabulary_viewLabel": {
+    "message": "视图："
+  },
+  "vocabulary_readingSortOpened": {
+    "message": "按打开时间"
+  },
+  "vocabulary_readingSortTitle": {
+    "message": "标题 A-Z"
+  },
+  "vocabulary_readingEmptyRecent": {
+    "message": "还没有阅读项。先在浏览器里翻译一个页面，历史队列就会出现。"
+  },
+  "vocabulary_readingEmptySaved": {
+    "message": "还没有标记为已保存的阅读项。去最近阅读里标记一个吧。"
+  },
+  "vocabulary_readingEmptyInProgress": {
+    "message": "还没有进行中的阅读项。可以从最近阅读或已保存里标记一个。"
+  },
+  "label_explainMode": {
+    "message": "解释模式"
+  },
+  "label_explainModeBeginner": {
+    "message": "入门教练"
+  },
+  "label_explainModeExam": {
+    "message": "考试教练"
+  },
+  "label_explainModeDeep": {
+    "message": "深度理解"
   },
   "popup_usageTitle": {
     "message": "用量与路由"
@@ -551,6 +808,55 @@
   "review_hideFullContext": {
     "message": "收起"
   },
+  "review_emptyCaughtUpTitle": {
+    "message": "已经全部复习完了！"
+  },
+  "review_emptyCaughtUpHint": {
+    "message": "当前没有到期卡片，稍后再来看看。"
+  },
+  "review_sessionCompleteTitle": {
+    "message": "本轮复习完成"
+  },
+  "review_summaryCardsReviewed": {
+    "message": "已复习卡片"
+  },
+  "review_summaryCorrect": {
+    "message": "记住了（升级）"
+  },
+  "review_summaryIncorrect": {
+    "message": "没记住（降级）"
+  },
+  "review_actionReviewAgain": {
+    "message": "再复习一轮"
+  },
+  "review_cardProgress": {
+    "message": "第 $1 张 / 共 $2 张",
+    "placeholders": {
+      "1": { "content": "$1" },
+      "2": { "content": "$2" }
+    }
+  },
+  "review_boxLabel": {
+    "message": "盒子 $1",
+    "placeholders": {
+      "1": { "content": "$1" }
+    }
+  },
+  "review_flipHint": {
+    "message": "点击或按空格显示答案"
+  },
+  "review_answerDontKnow": {
+    "message": "不会"
+  },
+  "review_answerKnowIt": {
+    "message": "会了"
+  },
+  "review_keyboardHintFront": {
+    "message": "空格 = 翻面"
+  },
+  "review_keyboardHintBack": {
+    "message": "← = 不会 · → = 会了"
+  },
   "popup_studyTodayStatsTitle": {
     "message": "今日学习计数"
   },
@@ -832,6 +1138,63 @@
   },
   "options_backupHint": {
     "message": "将设置、词汇表和阅读记录导出为 JSON 文件，或导入之前导出的备份。"
+  },
+  "options_learningLoopTitle": {
+    "message": "学习闭环活动"
+  },
+  "options_learningLoopHint": {
+    "message": "仅限本设备的本地诊断，用于查看 popup → Deep Read → 词汇/复习 漏斗是否在运作。"
+  },
+  "options_learningLoopLoading": {
+    "message": "正在加载学习闭环活动..."
+  },
+  "options_learningLoopEmpty": {
+    "message": "这个设备上还没有学习闭环事件。"
+  },
+  "options_learningLoopUnavailable": {
+    "message": "学习闭环诊断不可用"
+  },
+  "options_learningLoopUnknownEvent": {
+    "message": "未知的学习闭环事件"
+  },
+  "options_learningLoopEventDeepReadOpened": {
+    "message": "已打开 Deep Read"
+  },
+  "options_learningLoopEventSentenceExplained": {
+    "message": "已解释句子"
+  },
+  "options_learningLoopEventSentenceSaved": {
+    "message": "已保存句子"
+  },
+  "options_learningLoopEventReviewAnswered": {
+    "message": "已回答复习卡"
+  },
+  "options_learningLoopEventReturnedToSource": {
+    "message": "已返回来源页"
+  },
+  "options_learningLoopEventResumedReading": {
+    "message": "已恢复阅读"
+  },
+  "options_learningLoopJustNow": {
+    "message": "刚刚"
+  },
+  "options_learningLoopRelativeMinute": {
+    "message": "1 分钟前"
+  },
+  "options_learningLoopRelativeMinutes": {
+    "message": "$1 分钟前"
+  },
+  "options_learningLoopRelativeHour": {
+    "message": "1 小时前"
+  },
+  "options_learningLoopRelativeHours": {
+    "message": "$1 小时前"
+  },
+  "options_learningLoopRelativeDay": {
+    "message": "1 天前"
+  },
+  "options_learningLoopRelativeDays": {
+    "message": "$1 天前"
   },
   "fileType_markdown": {
     "message": "Markdown"

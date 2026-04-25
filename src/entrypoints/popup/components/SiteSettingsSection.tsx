@@ -173,7 +173,7 @@ export default function SiteSettingsSection({
 
   return (
     <details open style={{ marginBottom: 12 }}>
-      <summary style={{ cursor: "pointer", fontSize: 13, color: "#6366f1" }}>
+      <summary style={{ cursor: "pointer", fontSize: 13, color: "#c2410c" }}>
         {t("popup_currentSite")}
       </summary>
       <div style={{ marginTop: 8 }}>
@@ -357,6 +357,7 @@ export default function SiteSettingsSection({
                   inputTranslation: "enabled" as const,
                   inputTranslationMode: "replace" as const,
                   languageLevel: "intermediate" as const,
+                  explainMode: "deep" as const,
                   privacyMode: false,
                   provider: { id: "openai" as const, accessToken: "", apiKey: "", model: "gpt-5.4-nano" },
                   tts: { enabled: true, engine: "browser" as const, rate: 0.9, pitch: 1.0, highlightSentences: true },

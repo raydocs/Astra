@@ -10,6 +10,7 @@ export const ContentScopeSchema = z.enum(["page", "article"])
 export const InputTranslationSchema = z.enum(["enabled", "disabled"])
 export const InputTranslationModeSchema = z.enum(["replace", "bilingual"])
 export const LanguageLevelSchema = z.enum(["beginner", "intermediate", "advanced"])
+export const ExplainModeSchema = z.enum(["beginner", "exam", "deep"])
 export const TTSEngineSchema = z.enum(["browser", "edge"])
 export const AstraSyncCollectionSchema = z.enum(["config", "vocabulary", "reading_history", "study_progress"])
 
@@ -118,6 +119,7 @@ export const AstraConfigSchema = z.object({
   inputTranslation: InputTranslationSchema.default("enabled"),
   inputTranslationMode: InputTranslationModeSchema.default("replace"),
   languageLevel: LanguageLevelSchema.default("intermediate"),
+  explainMode: ExplainModeSchema.default("deep"),
   privacyMode: z.boolean().default(false),
   provider: ProviderConfigSchema.default({
     id: "openai",
@@ -150,6 +152,7 @@ export const AstraConfigInputSchema = z.object({
   inputTranslation: InputTranslationSchema.optional(),
   inputTranslationMode: InputTranslationModeSchema.optional(),
   languageLevel: LanguageLevelSchema.optional(),
+  explainMode: ExplainModeSchema.optional(),
   privacyMode: z.boolean().optional(),
   provider: z.object({
     id: ProviderIdSchema.optional(),
@@ -183,6 +186,7 @@ export const AstraSyncedConfigSchema = z.object({
   inputTranslation: InputTranslationSchema.default("enabled"),
   inputTranslationMode: InputTranslationModeSchema.default("replace"),
   languageLevel: LanguageLevelSchema.default("intermediate"),
+  explainMode: ExplainModeSchema.default("deep"),
   privacyMode: z.boolean().default(false),
   provider: AstraSyncedProviderConfigSchema.default({
     id: "openai",
@@ -214,6 +218,7 @@ export const AstraSyncedConfigGlobalSchema = z.object({
   inputTranslation: InputTranslationSchema.default("enabled"),
   inputTranslationMode: InputTranslationModeSchema.default("replace"),
   languageLevel: LanguageLevelSchema.default("intermediate"),
+  explainMode: ExplainModeSchema.default("deep"),
   privacyMode: z.boolean().default(false),
   provider: AstraSyncedProviderConfigSchema.default({
     id: "openai",
@@ -265,6 +270,7 @@ export type ContentScope = z.infer<typeof ContentScopeSchema>
 export type InputTranslation = z.infer<typeof InputTranslationSchema>
 export type InputTranslationMode = z.infer<typeof InputTranslationModeSchema>
 export type LanguageLevel = z.infer<typeof LanguageLevelSchema>
+export type ExplainMode = z.infer<typeof ExplainModeSchema>
 export type TTSEngine = z.infer<typeof TTSEngineSchema>
 export type PresentationSettings = z.infer<typeof PresentationSettingsSchema>
 export type TTSSettings = z.infer<typeof TTSSettingsSchema>
@@ -338,6 +344,7 @@ export const DEFAULT_ASTRA_CONFIG: AstraConfig = {
   inputTranslation: "enabled" as const,
   inputTranslationMode: "replace" as const,
   languageLevel: "intermediate" as const,
+  explainMode: "deep" as const,
   privacyMode: false,
   provider: {
     id: "openai",
@@ -559,6 +566,7 @@ export function normalizeConfig(config: AstraConfig): AstraConfig {
     inputTranslation: config.inputTranslation ?? DEFAULT_ASTRA_CONFIG.inputTranslation,
     inputTranslationMode: config.inputTranslationMode ?? DEFAULT_ASTRA_CONFIG.inputTranslationMode,
     languageLevel: config.languageLevel ?? DEFAULT_ASTRA_CONFIG.languageLevel,
+    explainMode: config.explainMode ?? DEFAULT_ASTRA_CONFIG.explainMode,
     privacyMode: config.privacyMode ?? DEFAULT_ASTRA_CONFIG.privacyMode,
     provider: normalizeProviderConfig(config.provider),
     tts: normalizeTTSSettings(config.tts),
@@ -586,6 +594,7 @@ export function buildSyncSafeConfig(
     inputTranslation: normalized.inputTranslation,
     inputTranslationMode: normalized.inputTranslationMode,
     languageLevel: normalized.languageLevel,
+    explainMode: normalized.explainMode,
     privacyMode: normalized.privacyMode,
     provider: {
       id: normalized.provider.id,
@@ -623,6 +632,7 @@ export function buildSyncSafeConfigGlobal(
     inputTranslation: normalized.inputTranslation,
     inputTranslationMode: normalized.inputTranslationMode,
     languageLevel: normalized.languageLevel,
+    explainMode: normalized.explainMode,
     privacyMode: normalized.privacyMode,
     provider: {
       id: normalized.provider.id,
@@ -658,6 +668,7 @@ export function mergeSyncSafeConfig(
         ? { relayBaseURL: parsedSyncedConfig.provider.relayBaseURL }
         : {}),
     },
+    explainMode: parsedSyncedConfig.explainMode,
     tts: {
       ...normalizedCurrent.tts,
       ...parsedSyncedConfig.tts,

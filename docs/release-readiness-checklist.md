@@ -34,10 +34,11 @@ Canonical lane names are defined in `docs/investigations/workstream-f-live-lane-
 |---|---|---|---|
 | `source-core` | `pnpm bench:live:lane:source-core` | `bench-live-results/<run-id>/` | Yes |
 | `extension-core` | `pnpm bench:live:lane:extension-core` | `bench-live-results/<run-id>/` | Yes |
+| `learning-loop` | `pnpm bench:live:lane:learning-loop` | `bench-live-results/<run-id>/` | Yes |
 
 CI enforces these in `.github/workflows/ci.yml` (`live-browser` job).
 
-**Block if:** either required lane fails.
+**Block if:** any required lane fails.
 
 ## Gate 3 — Release-proof evidence clarity (required)
 
@@ -155,16 +156,16 @@ CI enforces these in `.github/workflows/ci.yml` (`live-browser` job).
   - no support-tier promotion without device-backed attachments for that bucket
 - **Evidence bundle**: `docs/investigations/support-matrix-2026-q2.md`, `ios/README.md`, `docs/ios-safari-smoke-test.md`, `docs/investigations/month-5-mobile-ios-smoke-notes-2026-04-16.md`, `docs/investigations/control-plane-surface-inventory-2026-04-15.md`, `docs/investigations/month-5-account-wording-source-of-truth-2026-04-14.md`, `docs/investigations/month-5-lifecycle-proof-2026-04-14.md`, `docs/investigations/lifecycle-operations-runbook-month5-2026-04-15.md`.
 
-## Month 2 — Learning-loop policy (2026-04-14)
+## Month 2 — Learning-loop policy (2026-04-15)
 
-- **Required gates unchanged**: `source-core` + `extension-core` only. `extension-core` already runs `bench-live/vocabulary-srs-smoke`.
-- **Fresh proof exists** for the optional chained lane: `CI=true pnpm bench:live:lane:learning-loop` reran green with popup proof `live-20260414T105144-ub96nh`, vocabulary smoke `live-20260414T105149-vaksxe`, and revisit smoke `live-20260414T105152-9boxuy`.
-- **Chained `learning-loop` lane** (`popup-proof` + `vocabulary-srs-smoke` + `learning-loop-revisit-smoke`) still remains **optional** for Month 2: credible for product narrative and regression discipline, but **not** promoted to Gate 2 until flaky ownership / CI discipline match required live lanes.
+- **Required gates now include** `learning-loop` alongside `source-core` + `extension-core`.
+- **Fresh required replay exists**: `CI=true pnpm bench:live:lane:learning-loop` reran green with popup proof `live-20260415T104021-y8rb0n`, vocabulary smoke `live-20260415T104027-zap15i`, and revisit smoke `live-20260415T104030-y9lm8o`.
+- **Chained `learning-loop` lane** (`popup-proof` + `vocabulary-srs-smoke` + `learning-loop-revisit-smoke`) is now a required live-browser gate, not an optional confidence-only lane.
 - **Month 2 status language must stay explicit**:
   - implemented: **yes**
   - proved: **yes**
-  - gate-ready as a required release lane: **no**
-  - closeout verdict: **`pass-with-carry`**
+  - gate-ready as a required release lane: **yes**
+  - closeout verdict: **`pass`**
 - **Evidence bundle**: `learning-loop-overview-2026-04-13.md`, `learning-metrics-2026-04-13.md`, `learning-loop-regression-checklist-2026-04-13.md`, `learning-loop-navigation-matrix-2026-04-14.md`, `learning-loop-claim-impact-2026-04-14.md`, `popup-deep-read-state-mapping.md`, `study-progress-counting-rules-2026-04-14.md`, `study-progress-ui-consistency-2026-04-14.md`, `month-2-closeout-2026-04-14.md`, `month-2-evidence-registry-2026-04-14.md`.
 
 ## Current Month 1 reality notes (not a pass override)
@@ -181,18 +182,19 @@ CI enforces these in `.github/workflows/ci.yml` (`live-browser` job).
 3. `pnpm test`
 4. `pnpm bench`
 5. `pnpm bench:live:lane:release-proof`
-6. Confirm CI `quality` + `live-browser` jobs are green
-7. Review Gate 4 core docs:
+6. `pnpm bench:live:lane:learning-loop`
+7. Confirm CI `quality` + `live-browser` jobs are green
+8. Review Gate 4 core docs:
    - `docs/investigations/workstream-a-live-coverage-matrix.md`
    - `docs/investigations/workstream-f-live-lane-conventions.md`
    - `docs/investigations/workstream-f-live-flaky-inventory.md`
    - `docs/investigations/support-matrix-2026-q2.md`
    - `docs/capability-matrix-v2.md`
    - `README.md`
-8. If the RC touches a conditional surface, review the matching Month 3/4/5/6 evidence bundle before approving the RC
-9. (Optional confidence boost) Run `pnpm bench:live:lane:hover-selection`
-10. (Optional confidence boost) Run `pnpm bench:live:lane:popup-proof` or `pnpm bench:live:lane:learning-loop`
-11. Only then tag the release candidate
+9. If the RC touches a conditional surface, review the matching Month 3/4/5/6 evidence bundle before approving the RC
+10. (Optional confidence boost) Run `pnpm bench:live:lane:hover-selection`
+11. (Optional confidence boost) Run `pnpm bench:live:lane:popup-proof`
+12. Only then tag the release candidate
 
 ## Escalation rule
 

@@ -7,6 +7,7 @@ const {
   saveConfigMock,
   getCacheStatsMock,
   clearTranslationCacheMock,
+  getRecentEventsMock,
   isTtsSupportedMock,
   listVoicesMock,
   exportConfigMock,
@@ -27,6 +28,7 @@ const {
   saveConfigMock: vi.fn(),
   getCacheStatsMock: vi.fn(),
   clearTranslationCacheMock: vi.fn(),
+  getRecentEventsMock: vi.fn(),
   isTtsSupportedMock: vi.fn(),
   listVoicesMock: vi.fn(),
   exportConfigMock: vi.fn(),
@@ -53,6 +55,14 @@ vi.mock("@/utils/cache/translation-cache", () => ({
   getCacheStats: getCacheStatsMock,
   clearTranslationCache: clearTranslationCacheMock,
 }))
+
+vi.mock("@/utils/telemetry", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/utils/telemetry")>()
+  return {
+    ...actual,
+    getRecentEvents: getRecentEventsMock,
+  }
+})
 
 vi.mock("@/utils/tts", () => ({
   isTtsSupported: isTtsSupportedMock,
@@ -90,6 +100,38 @@ vi.mock("@/utils/astra/account", () => ({
 
 vi.mock("#imports", () => ({
   browser: {
+    i18n: {
+      getMessage: (key: string, substitutions?: string | string[]) => {
+        const dict: Record<string, string> = {
+          options_learningLoopTitle: "Learning loop activity",
+          options_learningLoopHint: "Local-only diagnostics for the popup → Deep Read → vocabulary/review funnel on this device.",
+          options_learningLoopLoading: "Loading learning loop activity...",
+          options_learningLoopEmpty: "No learning loop events yet on this device.",
+          options_learningLoopUnavailable: "Learning loop diagnostics unavailable",
+          options_learningLoopUnknownEvent: "Unknown learning loop event",
+          options_learningLoopEventDeepReadOpened: "Deep Read opened",
+          options_learningLoopEventSentenceExplained: "Sentence explained",
+          options_learningLoopEventSentenceSaved: "Sentence saved",
+          options_learningLoopEventReviewAnswered: "Review answered",
+          options_learningLoopEventReturnedToSource: "Returned to source",
+          options_learningLoopEventResumedReading: "Resumed reading",
+          options_learningLoopJustNow: "just now",
+          options_learningLoopRelativeMinute: "1 minute ago",
+          options_learningLoopRelativeMinutes: "$1 minutes ago",
+          options_learningLoopRelativeHour: "1 hour ago",
+          options_learningLoopRelativeHours: "$1 hours ago",
+          options_learningLoopRelativeDay: "1 day ago",
+          options_learningLoopRelativeDays: "$1 days ago",
+        }
+        const template = dict[key] ?? key
+        const values = Array.isArray(substitutions)
+          ? substitutions
+          : substitutions !== undefined
+            ? [substitutions]
+            : []
+        return values.reduce((message, value, index) => message.replace(`$${index + 1}`, String(value)), template)
+      },
+    },
     runtime: {
       getManifest: () => ({ version: "0.0.1-test" }),
       getURL: (path: string) => `chrome-extension://test${path}`,
@@ -318,6 +360,7 @@ describe("OptionsApp — Sites section", () => {
       }],
     })
     clearTranslationCacheMock.mockResolvedValue(undefined)
+    getRecentEventsMock.mockResolvedValue([])
     exportConfigMock.mockResolvedValue('{"_astraBackup":true}')
     importConfigMock.mockResolvedValue(undefined)
     downloadConfigFileMock.mockImplementation(() => {})
@@ -602,6 +645,47 @@ describe("OptionsApp — Sites section", () => {
     expect(container.textContent).toContain("5 lookups")
     expect(container.textContent).toContain("60% hit rate")
     expect(container.textContent).toContain("openai/gpt-5.4-nano")
+  })
+
+  it("shows learning loop telemetry in the vocabulary section", async () => {
+    const now = Date.now()
+    getRecentEventsMock.mockResolvedValue([
+      {
+        id: "event-1",
+        type: "feature_usage",
+        timestamp: now - 2 * 60 * 1000,
+        data: {
+          feature: "learning_loop",
+          event: "sentence_saved",
+          hostname: "example.com",
+          source: "popup",
+        },
+      },
+      {
+        id: "event-2",
+        type: "feature_usage",
+        timestamp: now - 5 * 60 * 1000,
+        data: {
+          feature: "learning_loop",
+          event: "deep_read_opened",
+          pageTitle: "Astra article",
+          source: "live_context",
+        },
+      },
+    ])
+
+    await act(async () => {
+      clickButton("Vocabulary")
+      await Promise.resolve()
+      await Promise.resolve()
+    })
+
+    expect(container.textContent).toContain("Learning loop activity")
+    expect(container.textContent).toContain("Sentence saved 1")
+    expect(container.textContent).toContain("Deep Read opened 1")
+    expect(container.textContent).toContain("Sentence saved · example.com · popup")
+    expect(container.textContent).toContain("Deep Read opened · Astra article · live_context")
+    expect(container.textContent).toContain("2 minutes ago")
   })
 
   it("clears translation cache from the vocabulary section", async () => {
