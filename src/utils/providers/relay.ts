@@ -59,6 +59,8 @@ export async function translateWithRelay(
     task,
     customSystemPrompt,
     languageLevel,
+    explainMode,
+    explanationRepairInstruction,
     placeholderFormat,
   } = options
 
@@ -87,6 +89,8 @@ export async function translateWithRelay(
         ...(task ? { task } : {}),
         ...(customSystemPrompt ? { customSystemPrompt } : {}),
         ...(languageLevel ? { languageLevel } : {}),
+        ...(explainMode ? { explainMode } : {}),
+        ...(explanationRepairInstruction ? { explanationRepairInstruction } : {}),
         ...(placeholderFormat ? { placeholderFormat } : {}),
       }),
     })

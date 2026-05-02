@@ -1,6 +1,7 @@
 import { translateTexts } from "@/utils/translate/translate"
 import { runInlineAction } from "../inline-actions"
 import type { VideoNoteTranscriptCapture, VideoTranscriptSegment } from "@/types/video-notes"
+import { nativeCaptionLineRenderingRule } from "./rendering-rules"
 import type { VideoPlatformConfig } from "./types"
 
 const YOUTUBE_RENDER_TARGET_SELECTOR = ".ytp-caption-window-bottom, .ytp-caption-window-top"
@@ -697,6 +698,7 @@ export function startYouTubeHybridSubtitleSession(
 export const youtubePlatform: VideoPlatformConfig = {
   id: "youtube",
   hostnames: ["www.youtube.com", "m.youtube.com"],
+  subtitleRendering: nativeCaptionLineRenderingRule("youtube"),
   captionContainerSelector: [
     ".ytp-caption-window-container",
     ".ytp-caption-window-bottom",

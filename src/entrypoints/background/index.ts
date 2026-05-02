@@ -3,6 +3,8 @@ import { defineBackground, browser } from "#imports"
 import {
   isContentVideoNoteSourceResponse,
   isRuntimeCurrentTabCommandRequest,
+  isRuntimeLearningContinuitySyncRequest,
+  isRuntimeLearningContinuitySyncStatusRequest,
   isRuntimeSaveConfigRequest,
   isRuntimeTabCommandRequest,
   isRuntimeTranslateBatchRequest,
@@ -10,6 +12,8 @@ import {
   isRuntimeVideoNoteGetJobRequest,
   type ContentVideoNoteSourceResponse,
   type ContentCommandResponse,
+  type LearningContinuitySyncResult,
+  type LearningContinuitySyncStatus,
   type RuntimeTranslateBatchRequest,
   type RuntimeResponse,
 } from "@/types/messages"
@@ -22,7 +26,7 @@ import {
 } from "@/utils/providers/router"
 import { summarizeProviderRoute } from "@/utils/providers/routing-metadata"
 import { readConfig, saveConfig } from "@/utils/storage/config"
-import { runPhaseOneCollectionSync } from "@/utils/storage/config-sync"
+import { readPhaseOneCollectionSyncStatus, runPhaseOneCollectionSync } from "@/utils/storage/config-sync"
 import {
   cleanExpiredCache,
   getCachedTranslations,
@@ -32,8 +36,8 @@ import {
   buildTranslationCacheContext,
   isTranslationCacheable,
 } from "@/utils/cache/translation-cache-context"
-import { isOcrFeatureEnabled } from "@/utils/ocr/image-text"
 import { STUDY_PROGRESS_STORAGE_KEY } from "@/utils/storage/study-progress"
+import { DEEP_READ_SESSION_STORAGE_KEY } from "@/utils/storage/deep-read-session"
 import { buildTerminologyGlossary, getDueVocabularyCount } from "@/utils/storage/vocabulary"
 import {
   ensureAstraDeviceIdentity,
@@ -47,7 +51,7 @@ import {
   createAstraVideoNoteJob,
   fetchAstraVideoNoteJob,
 } from "@/utils/astra/video-notes"
-import { resolveManagedProviderConfig, type HoverTrigger } from "@/types/config"
+import { resolveSiteProviderConfig, type HoverTrigger } from "@/types/config"
 import { initializeTranslationUsageSession, recordTranslationUsage } from "@/utils/storage/translation-usage"
 import { trackEvent } from "@/utils/telemetry"
 import {
@@ -60,30 +64,71 @@ import {
   type IosBootstrapStatus,
 } from "@/utils/extension/ios-host-bridge"
 import { sanitizeTranslationContextForTransport } from "@/utils/privacy"
-
+import {
+  createImageTranslateHandoff,
+  IMAGE_TRANSLATE_HANDOFF_QUERY_PARAM,
+  type ImageTranslateCapturedPayload,
+} from "@/entrypoints/image-translate/handoff"
 let anonymousRegistrationPromise: Promise<void> | null = null
-let collectionSyncPromise: Promise<void> | null = null
+let collectionSyncPromise: Promise<LearningContinuitySyncResult> | null = null
 let collectionSyncQueued = false
+let collectionSyncLastReason: string | null = null
+let collectionSyncLastStartedAt: string | null = null
+let collectionSyncLastFinishedAt: string | null = null
+let collectionSyncLastResult: LearningContinuitySyncResult | null = null
+let collectionSyncLastError: string | null = null
 let iosBootstrapConsumePromise: Promise<{ opened: boolean; status: IosBootstrapStatus | null; history: IosBootstrapHistoryEvent[] } | null> | null = null
 let lastIosBootstrapStatus: IosBootstrapStatus | null = null
 let lastIosBootstrapHistory: IosBootstrapHistoryEvent[] = []
 
-function schedulePhaseOneCollectionSync(): void {
+async function buildLearningContinuitySyncStatus(): Promise<LearningContinuitySyncStatus> {
+  const local = await readPhaseOneCollectionSyncStatus()
+  return {
+    inFlight: !!collectionSyncPromise,
+    queued: collectionSyncQueued,
+    lastReason: collectionSyncLastReason,
+    lastStartedAt: collectionSyncLastStartedAt,
+    lastFinishedAt: collectionSyncLastFinishedAt,
+    lastResult: collectionSyncLastResult,
+    lastError: collectionSyncLastError,
+    ...local,
+  }
+}
+
+function commitPhaseOneCollectionSync(reason = "background"): Promise<LearningContinuitySyncResult> {
   if (collectionSyncPromise) {
     collectionSyncQueued = true
-    return
+    collectionSyncLastReason = reason
+    return collectionSyncPromise
   }
 
+  collectionSyncLastReason = reason
+  collectionSyncLastStartedAt = new Date().toISOString()
+  collectionSyncLastError = null
   collectionSyncPromise = runPhaseOneCollectionSync()
-    .then(() => {})
-    .catch(() => {})
+    .then((result) => {
+      collectionSyncLastResult = result
+      collectionSyncLastError = null
+      return result
+    })
+    .catch((error) => {
+      collectionSyncLastError = error instanceof Error ? error.message : String(error)
+      throw error
+    })
     .finally(() => {
       collectionSyncPromise = null
+      collectionSyncLastFinishedAt = new Date().toISOString()
       if (collectionSyncQueued) {
         collectionSyncQueued = false
-        schedulePhaseOneCollectionSync()
+        void commitPhaseOneCollectionSync("coalesced-learning-mutation").catch(() => {})
       }
     })
+
+  return collectionSyncPromise
+}
+
+function schedulePhaseOneCollectionSync(reason = "background"): void {
+  void commitPhaseOneCollectionSync(reason).catch(() => {})
 }
 
 async function tryAnonymousRegistration(): Promise<void> {
@@ -225,6 +270,45 @@ async function requestVideoNoteSourceFromTab(tabId: number): Promise<ContentVide
   }
 }
 
+function isCapturedImagePayload(value: unknown): value is ImageTranslateCapturedPayload {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) return false
+  const candidate = value as Partial<ImageTranslateCapturedPayload>
+  return typeof candidate.dataUrl === "string"
+    && candidate.dataUrl.startsWith("data:image/")
+    && typeof candidate.mimeType === "string"
+    && candidate.mimeType.startsWith("image/")
+    && (candidate.fileName === undefined || typeof candidate.fileName === "string")
+    && (candidate.byteLength === undefined || typeof candidate.byteLength === "number")
+}
+
+async function requestImageCaptureFromTab(
+  tabId: number | undefined,
+  imageUrl: string,
+  frameId?: number,
+): Promise<ImageTranslateCapturedPayload | undefined> {
+  if (typeof tabId !== "number") return undefined
+
+  try {
+    const response = await browser.tabs.sendMessage(
+      tabId,
+      { type: "content/capture-image", payload: { imageUrl } },
+      { frameId: typeof frameId === "number" ? frameId : 0 },
+    ) as unknown
+    if (
+      typeof response === "object"
+      && response !== null
+      && (response as { ok?: unknown }).ok === true
+      && isCapturedImagePayload((response as { capture?: unknown }).capture)
+    ) {
+      return (response as { capture: ImageTranslateCapturedPayload }).capture
+    }
+  } catch {
+    // Best-effort only; the image translate page can still try the original URL.
+  }
+
+  return undefined
+}
+
 async function handleCreateVideoNoteFromCurrentTab(
   payload: { forceRegenerate?: boolean } = {},
 ): Promise<RuntimeResponse> {
@@ -343,28 +427,31 @@ export default defineBackground({
       }
 
       if (browser.contextMenus) {
-        try {
-          browser.contextMenus.create({
-            id: "astra-translate-selection",
-            title: "Translate with Astra",
-            contexts: ["selection"],
-          })
-          browser.contextMenus.create({
-            id: "astra-open-pdf-reader",
-            title: "Open PDF in Astra Reader",
-            contexts: ["link"],
-            targetUrlPatterns: ["*://*/*.pdf", "*://*/*.PDF"],
-          })
-          if (isOcrFeatureEnabled()) {
-            browser.contextMenus.create({
-              id: "astra-translate-image",
-              title: "Translate image text with Astra",
-              contexts: ["image"],
-            })
+        const createContextMenuItem = (item: Parameters<typeof browser.contextMenus.create>[0]) => {
+          try {
+            browser.contextMenus?.create(item)
+          } catch {
+            // Individual menu IDs may already exist after an extension update.
+            // Keep registering the rest so new menu items still roll out.
           }
-        } catch {
-          // contextMenus may be unavailable in compat/mobile builds
         }
+
+        createContextMenuItem({
+          id: "astra-translate-selection",
+          title: "Translate with Astra",
+          contexts: ["selection"],
+        })
+        createContextMenuItem({
+          id: "astra-open-pdf-reader",
+          title: "Open PDF in Astra Reader",
+          contexts: ["link"],
+          targetUrlPatterns: ["*://*/*.pdf", "*://*/*.PDF"],
+        })
+        createContextMenuItem({
+          id: "astra-translate-image",
+          title: "Translate image with Astra",
+          contexts: ["image"],
+        })
       }
     })
 
@@ -385,11 +472,28 @@ export default defineBackground({
             return
           }
 
-          if (info.menuItemId === "astra-translate-image" && info.srcUrl && tab?.id) {
-            void browser.tabs.sendMessage(tab.id, {
-              type: "content/translate-image",
-              payload: { imageUrl: info.srcUrl },
-            }, { frameId: 0 })
+          if (info.menuItemId === "astra-translate-image" && info.srcUrl) {
+            const imageUrl = info.srcUrl
+            void (async () => {
+              const frameId = typeof (info as { frameId?: unknown }).frameId === "number"
+                ? (info as { frameId: number }).frameId
+                : undefined
+              const captured = await requestImageCaptureFromTab(tab?.id, imageUrl, frameId)
+              const baseHandoffInput = {
+                imageUrl,
+                ...(tab?.url ? { pageUrl: tab.url } : {}),
+                ...(tab?.title ? { pageTitle: tab.title } : {}),
+              }
+              let handoff = await createImageTranslateHandoff({
+                ...baseHandoffInput,
+                ...(captured ? { captured } : {}),
+              }).catch((error) => {
+                if (!captured) throw error
+                return createImageTranslateHandoff(baseHandoffInput)
+              })
+              const imageTranslateUrl = `${browser.runtime.getURL("/image-translate.html" as "/popup.html")}?${IMAGE_TRANSLATE_HANDOFF_QUERY_PARAM}=${encodeURIComponent(handoff.token)}`
+              await browser.tabs.create({ url: imageTranslateUrl })
+            })().catch(() => {})
             return
           }
         })
@@ -523,7 +627,7 @@ export default defineBackground({
     void refreshSrsBadge()
 
     browser.tabs.onActivated?.addListener(() => {
-      schedulePhaseOneCollectionSync()
+      schedulePhaseOneCollectionSync("tab-activated")
     })
 
     // Refresh badge when vocabulary changes and trigger best-effort collection sync.
@@ -538,10 +642,11 @@ export default defineBackground({
         "astra.vocabulary.v1" in changes
         || "astra.reading_history.v1" in changes
         || STUDY_PROGRESS_STORAGE_KEY in changes
+        || DEEP_READ_SESSION_STORAGE_KEY in changes
         || "astra.config.v1" in changes
         || "astra.auth.v1" in changes
       ) {
-        schedulePhaseOneCollectionSync()
+        schedulePhaseOneCollectionSync("storage-change")
       }
     })
 
@@ -551,7 +656,7 @@ export default defineBackground({
       if (isRuntimeTranslateBatchRequest(message)) {
         activeTranslations++
         updateBadge()
-        handleTranslate(message.payload)
+        handleTranslate(message.payload, _sender)
           .then((r) => { activeTranslations = Math.max(0, activeTranslations - 1); updateBadge(); sendResponse(r) })
           .catch((error) => {
             activeTranslations = Math.max(0, activeTranslations - 1)
@@ -727,10 +832,50 @@ export default defineBackground({
         return true
       }
 
+      if (isRuntimeLearningContinuitySyncRequest(message)) {
+        commitPhaseOneCollectionSync(message.reason ?? "learning-mutation")
+          .then(async (result) => {
+            sendResponse({
+              type: "runtime/learning-continuity-sync:success",
+              payload: {
+                result,
+                status: await buildLearningContinuitySyncStatus(),
+              },
+            } satisfies RuntimeResponse)
+          })
+          .catch(async (error) => {
+            sendResponse({
+              type: "runtime/learning-continuity-sync:error",
+              error: toTranslationError(error, "UNKNOWN"),
+              payload: {
+                status: await buildLearningContinuitySyncStatus(),
+              },
+            } satisfies RuntimeResponse)
+          })
+        return true
+      }
+
+      if (isRuntimeLearningContinuitySyncStatusRequest(message)) {
+        buildLearningContinuitySyncStatus()
+          .then((status) => {
+            sendResponse({
+              type: "runtime/learning-continuity-sync-status:success",
+              payload: { status },
+            } satisfies RuntimeResponse)
+          })
+          .catch((error) => {
+            sendResponse({
+              type: "runtime/learning-continuity-sync:error",
+              error: toTranslationError(error, "UNKNOWN"),
+            } satisfies RuntimeResponse)
+          })
+        return true
+      }
+
       if (isRuntimeSaveConfigRequest(message)) {
         saveConfig(message.payload)
           .then((config) => {
-            schedulePhaseOneCollectionSync()
+            schedulePhaseOneCollectionSync("config-save")
             sendResponse({
               type: "runtime/save-config:success",
               payload: { config },
@@ -774,8 +919,25 @@ export default defineBackground({
   },
 })
 
+function resolveHttpHostnameFromSender(sender: { url?: string; tab?: { url?: string } }): string | null {
+  const candidates = [sender.url, sender.tab?.url]
+  for (const candidate of candidates) {
+    if (!candidate) continue
+    try {
+      const url = new URL(candidate)
+      if (url.protocol === "http:" || url.protocol === "https:") {
+        return url.hostname
+      }
+    } catch {
+      // Ignore malformed sender URLs.
+    }
+  }
+  return null
+}
+
 async function handleTranslate(
   payload: RuntimeTranslateBatchRequest["payload"],
+  sender: { url?: string; tab?: { url?: string } },
 ): Promise<RuntimeResponse> {
   if (payload.texts.length === 0) {
     return {
@@ -810,14 +972,15 @@ async function handleTranslate(
 
     return baseContext && Object.keys(baseContext).length > 0 ? baseContext : undefined
   })()
-  const resolvedProvider = resolveManagedProviderConfig(config.provider, session)
+  const senderHostname = resolveHttpHostnameFromSender(sender)
+  const resolvedProvider = resolveSiteProviderConfig(config, senderHostname, session)
   const task = payload.task ?? "translate"
   const cacheContext = isTranslationCacheable(
     task,
     payload.customSystemPrompt,
     payload.placeholderFormat,
   )
-    ? buildTranslationCacheContext(config, {
+    ? buildTranslationCacheContext({ ...config, provider: resolvedProvider }, {
       sourceLang: payload.sourceLang,
       context: requestContext,
     })
@@ -862,7 +1025,11 @@ async function handleTranslate(
       task: payload.task,
       customSystemPrompt: payload.customSystemPrompt,
       placeholderFormat: payload.placeholderFormat,
-      languageLevel: config.languageLevel,
+      languageLevel: payload.languageLevel ?? config.languageLevel,
+      ...(task === "explain" ? { explainMode: payload.explainMode ?? config.explainMode } : {}),
+      ...(task === "explain" && payload.explanationRepairInstruction
+        ? { explanationRepairInstruction: payload.explanationRepairInstruction }
+        : {}),
     })
 
     if (result.translations.length !== uncachedTexts.length) {

@@ -13,12 +13,68 @@ import {
 import type { LiveScenarioDefinition, LiveScenarioExecution } from "../../evaluator"
 import { buildLiveYouTubeSubtitleEvaluation } from "../helpers/youtube-subtitle"
 
+interface LiveStressDiagnostics {
+  label: string
+  orderedLines: string[]
+}
+
 interface LiveYouTubeSubtitleRaceExecution extends LiveScenarioExecution {
   youtubeSubtitle: YouTubeSubtitleExecution
+  stressDiagnostics: LiveStressDiagnostics
 }
 
 const TARGET_LANG = "zh-CN"
 const YOUTUBE_RUNTIME_SCRIPT_URL = new URL("../helpers/youtube-subtitle-runtime.js", import.meta.url)
+const CANONICAL_YOUTUBE_PHASES = [
+  "late-window-appear",
+  "burst-duplicate-1",
+  "pause-restored",
+  "seeked-holdout-line",
+  "seeked-cache-hit",
+]
+
+function formatBoolean(value: boolean) {
+  return value ? "true" : "false"
+}
+
+function phaseRank(phase: string) {
+  const index = CANONICAL_YOUTUBE_PHASES.indexOf(phase)
+  return index === -1 ? CANONICAL_YOUTUBE_PHASES.length : index
+}
+
+function sortedUniqueCaptionSummary(values: string[]) {
+  const captions = [...new Set(values.map((value) => value.trim()).filter(Boolean))].sort()
+  return captions.length > 0 ? captions.join("|") : "none"
+}
+
+function buildYouTubeSnapshotSummary(snapshots: YouTubeSubtitleExecution["captionSnapshots"]) {
+  const lines = [...snapshots]
+    .sort((a, b) => phaseRank(a.phase) - phaseRank(b.phase) || a.phase.localeCompare(b.phase))
+    .map((snapshot) => `${snapshot.phase}:nodes=${snapshot.translationNodeCount}:state=${snapshot.stateLabel ?? "null"}`)
+
+  return lines.length > 0 ? lines.join("|") : "none"
+}
+
+function buildYouTubeSubtitleRaceDiagnostics(youtubeSubtitle: YouTubeSubtitleExecution): LiveStressDiagnostics {
+  const dedupeAligned = youtubeSubtitle.requestCount === youtubeSubtitle.uniqueCaptionTexts.length
+  const allTranslated = youtubeSubtitle.uniqueCaptionTexts.length > 0
+    && youtubeSubtitle.translatedCaptionTexts.length >= youtubeSubtitle.uniqueCaptionTexts.length
+  const captionNodesStable = youtubeSubtitle.captionSnapshots.every((snapshot) => snapshot.translationNodeCount <= 1)
+
+  return {
+    label: "LSIR deterministic youtube-subtitle-race diagnostics",
+    orderedLines: [
+      "LSIR[01] scenario=bench-live/holdout/youtube-subtitle-race",
+      "LSIR[02] target=youtube-subtitle",
+      `LSIR[03] requests=requestCount:${youtubeSubtitle.requestCount},uniqueCaptionTexts:${youtubeSubtitle.uniqueCaptionTexts.length},translatedCaptionTexts:${youtubeSubtitle.translatedCaptionTexts.length}`,
+      `LSIR[04] churn=duplicateCaptionUpdateCount:${youtubeSubtitle.duplicateCaptionUpdateCount},rapidUpdateCount:${youtubeSubtitle.rapidUpdateCount}`,
+      `LSIR[05] transitions=pauseEvents:${youtubeSubtitle.pauseEvents},seekEvents:${youtubeSubtitle.seekEvents},seekPauseStable:${formatBoolean(youtubeSubtitle.seekPauseStable)}`,
+      `LSIR[06] captions=${sortedUniqueCaptionSummary(youtubeSubtitle.uniqueCaptionTexts)}`,
+      `LSIR[07] snapshots=${buildYouTubeSnapshotSummary(youtubeSubtitle.captionSnapshots)}`,
+      `LSIR[08] verdict-signals=dedupeAligned:${formatBoolean(dedupeAligned)},allTranslated:${formatBoolean(allTranslated)},captionNodesStable:${formatBoolean(captionNodesStable)}`,
+    ],
+  }
+}
 
 function buildHoldoutFixtureHtml() {
   return buildYouTubeSubtitleFixtureHtml({
@@ -163,6 +219,8 @@ export const youtubeSubtitleRaceHoldoutScenario: LiveScenarioDefinition<LiveYouT
             payloadContext: null,
           }
 
+      const stressDiagnostics = buildYouTubeSubtitleRaceDiagnostics(youtubeSubtitle)
+
       runtime.complete("Holdout YouTube subtitle race scenario completed.")
       const snapshot = runtime.snapshot()
 
@@ -188,11 +246,25 @@ export const youtubeSubtitleRaceHoldoutScenario: LiveScenarioDefinition<LiveYouT
         startedAt: snapshot.startedAt,
         finishedAt: snapshot.finishedAt,
         youtubeSubtitle,
+        stressDiagnostics,
       }
     } catch (error) {
       if (error instanceof LiveBrowserUnavailableError) {
         runtime.skip(error.message)
         const snapshot = runtime.snapshot()
+        const youtubeSubtitle: YouTubeSubtitleExecution = {
+          requestCount: 0,
+          uniqueCaptionTexts: [],
+          translatedCaptionTexts: [],
+          duplicateCaptionUpdateCount: 0,
+          rapidUpdateCount: 0,
+          pauseEvents: 0,
+          seekEvents: 0,
+          seekPauseStable: false,
+          captionSnapshots: [],
+          payloadContext: null,
+        }
+        const stressDiagnostics = buildYouTubeSubtitleRaceDiagnostics(youtubeSubtitle)
         return {
           status: snapshot.status,
           summary:
@@ -205,18 +277,8 @@ export const youtubeSubtitleRaceHoldoutScenario: LiveScenarioDefinition<LiveYouT
           runtime: snapshot,
           startedAt: snapshot.startedAt,
           finishedAt: snapshot.finishedAt,
-          youtubeSubtitle: {
-            requestCount: 0,
-            uniqueCaptionTexts: [],
-            translatedCaptionTexts: [],
-            duplicateCaptionUpdateCount: 0,
-            rapidUpdateCount: 0,
-            pauseEvents: 0,
-            seekEvents: 0,
-            seekPauseStable: false,
-            captionSnapshots: [],
-            payloadContext: null,
-          },
+          youtubeSubtitle,
+          stressDiagnostics,
         }
       }
 

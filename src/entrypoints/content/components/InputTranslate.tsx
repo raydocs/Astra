@@ -6,9 +6,10 @@ import { readConfig, saveConfig } from "@/utils/storage/config"
 import { resolveSiteTranslationSettings } from "@/types/config"
 import { isSensitiveInput } from "@/utils/privacy"
 import { runInlineAction } from "../inline-actions"
+import { OVERLAY_STYLE_TOKENS, createOverlayStyle1TokenStyleElement } from "./overlayScale"
 
 const HOST_ID = "astra-input-translate-host"
-const BRAND_COLOR = "#6366f1"
+const BRAND_COLOR = OVERLAY_STYLE_TOKENS.brand
 const TEXT_NODE_FILTER = typeof NodeFilter !== "undefined" ? NodeFilter.SHOW_TEXT : 4
 
 type EditableKind = "input" | "textarea" | "contenteditable"
@@ -348,15 +349,15 @@ function InputTranslateApp() {
       <button
         type="button"
         data-testid="input-translate-mode"
+        className="astra-cursor-pointer"
         style={{
           background: "transparent",
-          color: mode === "bilingual" ? BRAND_COLOR : "#94a3b8",
-          border: `1px solid ${mode === "bilingual" ? BRAND_COLOR : "#cbd5e1"}`,
+          color: mode === "bilingual" ? BRAND_COLOR : OVERLAY_STYLE_TOKENS.textHint,
+          border: `1px solid ${mode === "bilingual" ? BRAND_COLOR : OVERLAY_STYLE_TOKENS.borderStrong}`,
           borderRadius: 4,
           padding: "2px 6px",
           fontSize: 10,
           fontWeight: 500,
-          cursor: "pointer",
           lineHeight: "normal",
         }}
         title={mode === "bilingual" ? t("inputTranslateModeBilingual") : t("inputTranslateModeReplace")}
@@ -366,15 +367,15 @@ function InputTranslateApp() {
       </button>
       <button
         type="button"
+        className="astra-cursor-pointer"
         style={{
-          background: overlay.error ? "#f59e0b" : BRAND_COLOR,
-          color: "#fff",
+          background: overlay.error ? OVERLAY_STYLE_TOKENS.warning : BRAND_COLOR,
+          color: OVERLAY_STYLE_TOKENS.textInverse,
           border: "none",
           borderRadius: 4,
           padding: "2px 8px",
           fontSize: 11,
           fontWeight: 600,
-          cursor: "pointer",
           opacity: overlay.translating ? 0.6 : 1,
           pointerEvents: overlay.translating ? "none" : "auto",
         }}
@@ -401,6 +402,10 @@ export function mountInputTranslate() {
   document.documentElement.appendChild(host)
 
   const shadow = host.attachShadow({ mode: "open" })
+  shadow.appendChild(createOverlayStyle1TokenStyleElement())
+  const style = document.createElement("style")
+  style.textContent = ".astra-cursor-pointer { cursor: pointer; }"
+  shadow.appendChild(style)
   const container = document.createElement("div")
   shadow.appendChild(container)
   createRoot(container).render(<ErrorBoundary><InputTranslateApp /></ErrorBoundary>)

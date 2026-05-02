@@ -19,6 +19,7 @@ const SharedSiteRulesArraySchema = z.array(SharedSiteRuleSchema)
  */
 export function exportSiteRules(config: AstraConfig): string {
   const rules: SharedSiteRule[] = Object.entries(config.sites)
+    .map(([hostname, siteConfig]) => [hostname, SiteConfigSchema.parse(siteConfig)] as const)
     .filter(([, siteConfig]) => !isDefaultSiteConfig(siteConfig))
     .map(([hostname, rule]) => ({
       hostname,
@@ -36,7 +37,7 @@ export function exportSingleSiteRule(hostname: string, config: SiteConfig): stri
   const rule: SharedSiteRule = {
     hostname,
     version: 1 as const,
-    rule: config,
+    rule: SiteConfigSchema.parse(config),
   }
 
   return JSON.stringify(rule, null, 2)

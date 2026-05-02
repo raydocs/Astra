@@ -1,6 +1,7 @@
-import { translateTexts } from "@/utils/translate/translate"
+import { translateExplanationWithQualityRetry, translateTexts } from "@/utils/translate/translate"
+import { getMatchedExplanationGlossaryTerms, type MatchedExplanationGlossaryTerm } from "@/utils/translate/explanation-quality"
 import type { TranslationTask } from "@/types/messages"
-import type { CustomAction } from "@/types/config"
+import { serializeExplanationGlossary, type CustomAction, type ExplainMode, type ExplanationGlossaryTerm, type LanguageLevel } from "@/types/config"
 import { getActionById } from "@/types/actions"
 import { buildInlineTranslationContext } from "./translation-context"
 
@@ -9,6 +10,9 @@ export interface InlineActionRequest {
   targetLang: string
   task: TranslationTask
   customSystemPrompt?: string
+  languageLevel?: LanguageLevel
+  explainMode?: ExplainMode
+  explanationGlossary?: ExplanationGlossaryTerm[]
   selectionContext?: string
   contextElement?: HTMLElement | null
 }
@@ -16,6 +20,7 @@ export interface InlineActionRequest {
 export interface InlineActionSuccess {
   ok: true
   text: string
+  matchedGlossaryTerms?: MatchedExplanationGlossaryTerm[]
 }
 
 export interface InlineActionError {
@@ -29,6 +34,9 @@ export interface RunActionByIdRequest {
   actionId: string
   text: string
   targetLang: string
+  languageLevel?: LanguageLevel
+  explainMode?: ExplainMode
+  explanationGlossary?: ExplanationGlossaryTerm[]
   selectionContext?: string
   contextElement?: HTMLElement | null
   customActions?: CustomAction[]
@@ -61,6 +69,7 @@ export async function runActionById(request: RunActionByIdRequest): Promise<Inli
       targetLang: request.targetLang,
       task: "custom",
       customSystemPrompt: renderCustomSystemPrompt(template, request),
+      explanationGlossary: request.explanationGlossary,
       selectionContext: request.selectionContext,
       contextElement: request.contextElement,
     })
@@ -70,6 +79,9 @@ export async function runActionById(request: RunActionByIdRequest): Promise<Inli
     text: request.text,
     targetLang: request.targetLang,
     task: action.task,
+    languageLevel: request.languageLevel,
+    explainMode: request.explainMode,
+    explanationGlossary: request.explanationGlossary,
     selectionContext: request.selectionContext,
     contextElement: request.contextElement,
   })
@@ -80,12 +92,43 @@ export async function runInlineAction(request: InlineActionRequest): Promise<Inl
     selectionContext: request.selectionContext,
     contextElement: request.contextElement,
   })
+  const explanationGlossary = request.task === "explain"
+    ? serializeExplanationGlossary(request.explanationGlossary)
+    : ""
+  const requestContext = explanationGlossary
+    ? { ...context, explanationGlossary }
+    : context
 
   try {
+    if (request.task === "explain") {
+      const matchedGlossaryTerms = getMatchedExplanationGlossaryTerms({
+        source: request.text,
+        glossaryTerms: request.explanationGlossary,
+      })
+      const result = await translateExplanationWithQualityRetry({
+        source: request.text,
+        targetLang: request.targetLang,
+        context: requestContext,
+        ...(request.languageLevel ? { languageLevel: request.languageLevel } : {}),
+        ...(request.explainMode ? { explainMode: request.explainMode } : {}),
+        requiredGlossaryTerms: matchedGlossaryTerms,
+      })
+
+      if (!result.ok) {
+        return { ok: false, message: result.message }
+      }
+
+      return {
+        ok: true,
+        text: result.text,
+        ...(matchedGlossaryTerms.length > 0 ? { matchedGlossaryTerms } : {}),
+      }
+    }
+
     const result = await translateTexts({
       texts: [request.text],
       targetLang: request.targetLang,
-      context,
+      context: requestContext,
       ...(request.task !== "translate" ? { task: request.task } : {}),
       ...(request.customSystemPrompt ? { customSystemPrompt: request.customSystemPrompt } : {}),
     })
@@ -94,7 +137,7 @@ export async function runInlineAction(request: InlineActionRequest): Promise<Inl
       return { ok: false, message: result.error.message }
     }
 
-    const text = result.translations[0]
+    const text = result.translations[0] ?? ""
     if (!text) {
       return { ok: false, message: "Empty response from provider." }
     }

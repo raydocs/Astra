@@ -34,6 +34,61 @@ export interface TranslationSiteSnapshot {
   alwaysTranslate: boolean
 }
 
+export interface TranslationSelectorDiagnostics {
+  configured: string[]
+  valid: string[]
+  invalid: string[]
+  matchedBlocks: number
+}
+
+export const SITE_RULE_FILTER_STAGE_ORDER = [
+  "collected-blocks",
+  "after-include-filters",
+  "after-exclude-filters",
+  "after-paragraph-filter",
+] as const
+
+export type TranslationSiteRuleFilterStageId = typeof SITE_RULE_FILTER_STAGE_ORDER[number]
+
+export interface TranslationSiteRuleFilterStageDiagnostics {
+  id: TranslationSiteRuleFilterStageId
+  count: number
+}
+
+export interface TranslationSiteRuleDiagnostics {
+  inputBlockCount: number
+  afterIncludeCount: number
+  afterExcludeCount: number
+  afterParagraphCount: number
+  filterStages?: TranslationSiteRuleFilterStageDiagnostics[]
+  selectors: TranslationSelectorDiagnostics
+  excludeSelectors: TranslationSelectorDiagnostics
+  paragraphMinLength?: number
+}
+
+export interface TranslationRuntimeDiagnostics {
+  contentScope?: string
+  effectiveContentScope?: string
+  siteRules?: TranslationSiteRuleDiagnostics
+}
+
+export type SubtitleQualitySurface = "video" | "meeting"
+
+export interface SubtitleQualitySnapshot {
+  surface: SubtitleQualitySurface
+  active: boolean
+  platform: string | null
+  pipeline: string | null
+  source: string | null
+  status: string
+  anomalies: string[]
+  translatedNodeCount: number
+  sourceTextLength: number
+  pendingRequestCount: number
+  cacheSize: number
+  capturedAt: number
+}
+
 export interface TranslationSnapshot {
   phase: TranslationPhase
   sessionId: number
@@ -42,6 +97,10 @@ export interface TranslationSnapshot {
   progress: TranslationProgressSnapshot
   presentation: PresentationSettings
   site: TranslationSiteSnapshot
+  /** Optional runtime details for user-facing explainability; older producers may omit it. */
+  diagnostics?: TranslationRuntimeDiagnostics
+  /** Optional read-only subtitle/caption health snapshot for popup QC display. */
+  subtitleQuality?: SubtitleQualitySnapshot
   /** Total number of translatable frames in the tab (set by background aggregation) */
   framesTotal?: number
   /** Number of frames currently translating (set by background aggregation) */

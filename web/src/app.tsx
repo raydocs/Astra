@@ -662,6 +662,11 @@ export function AstraWebApp() {
     return () => window.removeEventListener("hashchange", onHashChange)
   }, [])
 
+  useEffect(() => {
+    const routeLabel = NAV_ITEMS.find((item) => item.route === route)?.label ?? "Overview"
+    document.title = `${routeLabel} · Astra Web`
+  }, [route])
+
   const saveRoute = useCallback((nextRoute: AppRoute) => {
     navigate(nextRoute)
   }, [])

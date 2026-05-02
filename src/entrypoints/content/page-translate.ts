@@ -33,9 +33,12 @@ import {
   createSiteSnapshot,
   createTranslationError,
   EMPTY_TRANSLATION_PROGRESS,
+  SITE_RULE_FILTER_STAGE_ORDER,
   type TranslationError,
   type TranslationPhase,
   type TranslationProgressSnapshot,
+  type TranslationRuntimeDiagnostics,
+  type TranslationSelectorDiagnostics,
   type TranslationSnapshot,
 } from "@/types/translation"
 import {
@@ -69,6 +72,7 @@ interface TranslationSession {
   contentScope: ResolvedSiteTranslationSettings["contentScope"]
   privacyMode: boolean
   siteRules?: { selectors?: string[]; excludeSelectors?: string[]; paragraphMinLength?: number }
+  diagnostics?: TranslationRuntimeDiagnostics
   intersectionObserver: IntersectionObserver | null
   mutationObserver: MutationObserver | null
   drainPromise: Promise<void> | null
@@ -99,6 +103,32 @@ function updateSnapshot(snapshot: TranslationSnapshot): TranslationSnapshot {
   return snapshot
 }
 
+function cloneDiagnostics(diagnostics: TranslationRuntimeDiagnostics | undefined): TranslationRuntimeDiagnostics | undefined {
+  if (!diagnostics) return undefined
+
+  return {
+    ...diagnostics,
+    siteRules: diagnostics.siteRules
+      ? {
+          ...diagnostics.siteRules,
+          filterStages: diagnostics.siteRules.filterStages?.map((stage) => ({ ...stage })),
+          selectors: {
+            ...diagnostics.siteRules.selectors,
+            configured: [...diagnostics.siteRules.selectors.configured],
+            valid: [...diagnostics.siteRules.selectors.valid],
+            invalid: [...diagnostics.siteRules.selectors.invalid],
+          },
+          excludeSelectors: {
+            ...diagnostics.siteRules.excludeSelectors,
+            configured: [...diagnostics.siteRules.excludeSelectors.configured],
+            valid: [...diagnostics.siteRules.excludeSelectors.valid],
+            invalid: [...diagnostics.siteRules.excludeSelectors.invalid],
+          },
+        }
+      : undefined,
+  }
+}
+
 function publishSessionState(
   session: TranslationSession,
   phase: TranslationPhase,
@@ -113,6 +143,7 @@ function publishSessionState(
     progress: getSessionProgress(session),
     presentation: { ...session.presentation },
     site: { ...session.site },
+    diagnostics: cloneDiagnostics(session.diagnostics),
   })
 }
 
@@ -123,6 +154,7 @@ function publishIdleState(params: {
   progress?: TranslationProgressSnapshot
   presentation: TranslationSnapshot["presentation"]
   site: TranslationSnapshot["site"]
+  diagnostics?: TranslationRuntimeDiagnostics
 }): TranslationSnapshot {
   return updateSnapshot({
     phase: "idle",
@@ -132,6 +164,7 @@ function publishIdleState(params: {
     progress: params.progress ? { ...params.progress } : { ...EMPTY_TRANSLATION_PROGRESS },
     presentation: { ...params.presentation },
     site: { ...params.site },
+    diagnostics: cloneDiagnostics(params.diagnostics),
   })
 }
 
@@ -193,6 +226,7 @@ function stopSession(
       progress: error ? previous.progress : { ...EMPTY_TRANSLATION_PROGRESS },
       presentation: previous.presentation,
       site: previous.site,
+      diagnostics: error ? previous.diagnostics : undefined,
     })
   }
 
@@ -228,6 +262,7 @@ function stopSession(
     progress: options.preserveProgress ? getSessionProgress(session) : { ...EMPTY_TRANSLATION_PROGRESS },
     presentation: session.presentation,
     site: session.site,
+    diagnostics: session.diagnostics,
   })
 }
 
@@ -243,48 +278,89 @@ function enqueueBlock(session: TranslationSession, element: HTMLElement) {
   session.queue.push(element)
 }
 
-function getValidSiteRuleSelectors(selectors?: string[]): string[] {
-  if (!selectors?.length) {
-    return []
-  }
+function validateSiteRuleSelectors(selectors?: string[]): Pick<TranslationSelectorDiagnostics, "configured" | "valid" | "invalid"> {
+  const configured = selectors?.filter((selector) => selector.trim().length > 0) ?? []
+  const valid: string[] = []
+  const invalid: string[] = []
 
-  return selectors.filter((selector) => {
+  configured.forEach((selector) => {
     try {
       document.querySelector(selector)
-      return true
+      valid.push(selector)
     } catch {
-      return false
+      invalid.push(selector)
     }
   })
+
+  return { configured, valid, invalid }
+}
+
+function countMatches(blocks: TextBlock[], selectors: string[]): number {
+  if (selectors.length === 0) return 0
+  return blocks.filter((b) => selectors.some((sel) => b.element.closest(sel) !== null)).length
 }
 
 function applySiteRuleFilters(blocks: TextBlock[], siteRules: {
   selectors?: string[]
   excludeSelectors?: string[]
   paragraphMinLength?: number
-}): TextBlock[] {
+}): { filtered: TextBlock[]; diagnostics: NonNullable<TranslationRuntimeDiagnostics["siteRules"]> } {
   const paragraphMinLength = siteRules.paragraphMinLength
-  const selectors = getValidSiteRuleSelectors(siteRules.selectors)
-  const excludeSelectors = getValidSiteRuleSelectors(siteRules.excludeSelectors)
+  const selectorValidation = validateSiteRuleSelectors(siteRules.selectors)
+  const excludeSelectorValidation = validateSiteRuleSelectors(siteRules.excludeSelectors)
+  const selectors = selectorValidation.valid
+  const excludeSelectors = excludeSelectorValidation.valid
   let filtered = blocks
 
+  const selectorMatchedBlocks = countMatches(blocks, selectors)
   if (selectors.length > 0) {
     filtered = filtered.filter((b) =>
       selectors.some((sel: string) => b.element.closest(sel) !== null),
     )
   }
+  const afterIncludeCount = filtered.length
 
+  const excludeMatchedBlocks = countMatches(filtered, excludeSelectors)
   if (excludeSelectors.length > 0) {
     filtered = filtered.filter((b) =>
       !excludeSelectors.some((sel: string) => b.element.closest(sel) !== null),
     )
   }
+  const afterExcludeCount = filtered.length
 
   if (paragraphMinLength && paragraphMinLength > 0) {
     filtered = filtered.filter((b) => b.text.length >= paragraphMinLength)
   }
+  const afterParagraphCount = filtered.length
 
-  return filtered
+  return {
+    filtered,
+    diagnostics: {
+      inputBlockCount: blocks.length,
+      afterIncludeCount,
+      afterExcludeCount,
+      afterParagraphCount,
+      filterStages: SITE_RULE_FILTER_STAGE_ORDER.map((id) => ({
+        id,
+        count: id === "collected-blocks"
+          ? blocks.length
+          : id === "after-include-filters"
+            ? afterIncludeCount
+            : id === "after-exclude-filters"
+              ? afterExcludeCount
+              : afterParagraphCount,
+      })),
+      selectors: {
+        ...selectorValidation,
+        matchedBlocks: selectorMatchedBlocks,
+      },
+      excludeSelectors: {
+        ...excludeSelectorValidation,
+        matchedBlocks: excludeMatchedBlocks,
+      },
+      ...(paragraphMinLength != null ? { paragraphMinLength } : {}),
+    },
+  }
 }
 
 function prepareRegistrableBlock(block: TextBlock): RegistrableBlock {
@@ -297,7 +373,12 @@ function prepareRegistrableBlock(block: TextBlock): RegistrableBlock {
 }
 
 function registerBlocks(session: TranslationSession, blocks: TextBlock[]) {
-  const filtered = applySiteRuleFilters(blocks, session.siteRules ?? {})
+  const { filtered, diagnostics } = applySiteRuleFilters(blocks, session.siteRules ?? {})
+  session.diagnostics = {
+    contentScope: session.contentScope,
+    effectiveContentScope: session.effectiveContentScope,
+    siteRules: diagnostics,
+  }
   const prevSize = session.registry.size
   session.registry.registerBlocks(filtered.map(prepareRegistrableBlock))
   const addedCount = session.registry.size - prevSize
@@ -729,7 +810,7 @@ function buildPageContext(
 
 async function resolveStartSettings(overrides: TranslationOverrides = {}) {
   const config = await readConfig()
-  const resolved = resolveSiteTranslationSettings(config, window.location.hostname, overrides)
+  const resolved = resolveSiteTranslationSettings(config, window.location.href, overrides)
   return { config, resolved, privacyMode: config.privacyMode ?? false }
 }
 
@@ -796,6 +877,11 @@ export async function startPageTranslation(
     drainPromise: null,
     mutationScanTimer: null,
     pendingMutationRoots: new Set(),
+    diagnostics: {
+      contentScope: resolved.contentScope,
+      effectiveContentScope: plan.scope,
+      siteRules: undefined,
+    },
   }
 
   currentSession = session

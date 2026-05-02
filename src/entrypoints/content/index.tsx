@@ -15,18 +15,23 @@ import { isHoverCapable } from "@/utils/ui/useViewportProfile"
 import { translatePageSubtitles, removeTranslatedSubtitles } from "./subtitle-translate"
 import {
   captureCurrentVideoNoteSource,
+  getVideoSubtitleQualitySnapshot,
   isVideoPage,
+  isVideoSubtitleTranslationActive,
   startVideoSubtitleTranslation,
   stopVideoSubtitleTranslation,
   setupVideoNavigationHandler,
 } from "./video-platforms"
 import { detectAndShowPdfBanner } from "./pdf-detect"
 import {
+  getMeetingCaptionQualitySnapshot,
+  isMeetingCaptionTranslationActive,
   isMeetingPage,
   startMeetingCaptionTranslation,
   stopMeetingCaptionTranslation,
 } from "./meeting-captions"
 import { extractTextFromImage, isOcrFeatureEnabled } from "@/utils/ocr/image-text"
+import { IMAGE_TRANSLATION_MAX_FILE_BYTES } from "@/utils/ocr/image-translation"
 import { isTopFrame } from "./frame-context"
 import {
   isContentCommand,
@@ -48,8 +53,8 @@ import {
 import { readConfig } from "@/utils/storage/config"
 import { buildPageStudyContext } from "./translation-context"
 import {
-  hasResolvedProviderAccess,
-  resolveManagedProviderConfig,
+  hasResolvedSiteProviderAccess,
+  resolveSiteProviderConfig,
   resolveSiteTranslationSettings,
 } from "@/types/config"
 import { readAstraSession } from "@/utils/storage/auth"
@@ -166,6 +171,18 @@ export default defineContentScript({
         return true
       }
 
+      if (isCaptureImageMessage(message)) {
+        void handleCaptureImageMessage(message.payload.imageUrl)
+          .then(sendResponse)
+          .catch((error) => {
+            sendResponse({
+              ok: false,
+              error: error instanceof Error ? error.message : "Unexpected image capture error.",
+            } satisfies CaptureImageResponse)
+          })
+        return true
+      }
+
       if (isTranslateImageMessage(message)) {
         void handleTranslateImageMessage(message.payload.imageUrl)
         return false
@@ -222,7 +239,7 @@ export default defineContentScript({
     // Meeting caption auto-detect (Google Meet, Zoom) — gated by site enabled + provider access
     if (isTopFrame() && isMeetingPage()) {
       const meetingSiteSettings = resolveSiteTranslationSettings(config, window.location.hostname)
-      if (meetingSiteSettings.enabled && hasResolvedProviderAccess(config.provider, session)) {
+      if (meetingSiteSettings.enabled && hasResolvedSiteProviderAccess(config, window.location.hostname, session)) {
         void startMeetingCaptionTranslation()
       }
     }
@@ -242,6 +259,8 @@ function buildTranslationSettingsSnapshot(siteSettings: ReturnType<typeof resolv
     contentScope: siteSettings.contentScope,
     presentationMode: siteSettings.presentation.mode,
     presentationTheme: siteSettings.presentation.theme,
+    presentationFontSize: siteSettings.presentation.fontSize,
+    presentationTranslationColor: siteSettings.presentation.translationColor,
     selectors,
     excludeSelectors,
     paragraphMinLength: siteSettings.paragraphMinLength ?? null,
@@ -278,7 +297,7 @@ function buildProviderSnapshot(
   config: Awaited<ReturnType<typeof readConfig>>,
   session: Awaited<ReturnType<typeof readAstraSession>>,
 ) {
-  const provider = resolveManagedProviderConfig(config.provider, session)
+  const provider = resolveSiteProviderConfig(config, window.location.hostname, session)
   return JSON.stringify({
     id: provider.id ?? null,
     apiKey: (provider.apiKey ?? "").trim(),
@@ -297,7 +316,7 @@ async function startTranslationForCurrentSettings(
     sessionOverride !== undefined ? Promise.resolve(sessionOverride) : readAstraSession(),
   ])
 
-  if (!hasResolvedProviderAccess(config.provider, session)) {
+  if (!hasResolvedSiteProviderAccess(config, window.location.hostname, session)) {
     return false
   }
 
@@ -364,7 +383,7 @@ async function reconcileSiteAutomation(
   }
 
   const siteSettings = resolveSiteTranslationSettings(config, window.location.hostname)
-  const providerReady = hasResolvedProviderAccess(config.provider, session)
+  const providerReady = hasResolvedSiteProviderAccess(config, window.location.hostname, session)
   const currentState = getPageTranslationState()
   let activeSessionHandled = false
   const translationSettingsSnapshot = buildTranslationSettingsSnapshot(siteSettings)
@@ -449,6 +468,24 @@ async function reconcileSiteAutomation(
     }
   }
 
+  if (currentState.phase === "idle" && translationSettingsChanged && !autoTranslateSuppressedForPage) {
+    if (generation !== reconcileGeneration) {
+      return { activeSessionHandled: false }
+    }
+
+    if (isVideoPage() && isVideoSubtitleTranslationActive()) {
+      stopVideoSubtitleTranslation()
+      void startVideoSubtitleTranslation()
+      activeSessionHandled = true
+    }
+
+    if (isMeetingPage() && isMeetingCaptionTranslationActive()) {
+      stopMeetingCaptionTranslation()
+      void startMeetingCaptionTranslation()
+      activeSessionHandled = true
+    }
+  }
+
   if (siteSettings.alwaysTranslate && currentState.phase === "idle" && !autoTranslateSuppressedForPage) {
     if (generation !== reconcileGeneration) {
       return { activeSessionHandled: false }
@@ -504,7 +541,7 @@ async function handleProviderHotSwitch(
     return
   }
 
-  const providerReady = hasResolvedProviderAccess(config.provider, session)
+  const providerReady = hasResolvedSiteProviderAccess(config, window.location.hostname, session)
   if (!providerReady) {
     return
   }
@@ -572,13 +609,28 @@ function mergeIdleStateForSite(snapshot: TranslationSnapshot, hostname: string) 
   })
 }
 
+function getActiveSubtitleQualitySnapshot() {
+  try {
+    return getVideoSubtitleQualitySnapshot() ?? getMeetingCaptionQualitySnapshot()
+  } catch {
+    return null
+  }
+}
+
+function attachSubtitleQuality(snapshot: TranslationSnapshot): TranslationSnapshot {
+  const subtitleQuality = getActiveSubtitleQualitySnapshot()
+  return subtitleQuality ? { ...snapshot, subtitleQuality } : snapshot
+}
+
 async function handleContentCommand(
   message: ContentCommand,
 ): Promise<ContentCommandResponse> {
   const config = await readConfig()
   const overrides = "payload" in message ? message.payload : undefined
   const siteSettings = resolveSiteTranslationSettings(config, window.location.hostname, overrides)
-  const currentState = await mergeIdleStateForSite(getPageTranslationState(), window.location.hostname)
+  const currentState = attachSubtitleQuality(
+    await mergeIdleStateForSite(getPageTranslationState(), window.location.hostname),
+  )
 
   switch (message.type) {
     case "content/get-translation-state":
@@ -648,7 +700,7 @@ async function handleContentCommand(
 
     case "content/retry-failed":
       retryFailedBlocks()
-      return { ok: true, state: getPageTranslationState() }
+      return { ok: true, state: attachSubtitleQuality(getPageTranslationState()) }
   }
 }
 
@@ -722,10 +774,25 @@ function injectStyles() {
       padding: 2px 4px;
       border-radius: 3px;
     }
+    .astra-theme-mask .astra-translation-inner {
+      border-left: none;
+      padding-left: 0;
+      background: rgba(15, 23, 42, 0.08);
+      padding: 2px 4px;
+      border-radius: 4px;
+      filter: blur(4px);
+      opacity: 0.72;
+      transition: filter 0.18s ease, opacity 0.18s ease;
+    }
+    .astra-theme-mask:hover .astra-translation-inner,
+    .astra-theme-mask:focus-within .astra-translation-inner {
+      filter: none;
+      opacity: 1;
+    }
     .astra-translation[data-astra-collapsed] .astra-translation-inner {
       opacity: 0.2;
       text-decoration: line-through;
-      text-decoration-color: #94a3b8;
+      text-decoration-color: var(--astra-text-hint);
       cursor: pointer;
       transition: opacity 0.2s ease;
     }
@@ -734,7 +801,7 @@ function injectStyles() {
       transition: opacity 0.2s ease;
     }
     .astra-loading-dots {
-      color: #94a3b8;
+      color: var(--astra-text-hint);
       animation: astra-pulse 1.5s ease-in-out infinite;
     }
     @keyframes astra-pulse {
@@ -790,9 +857,33 @@ function buildSelectorForElement(el: HTMLElement): string | undefined {
 
 // --- Image translation overlay ---
 
+interface CapturedImagePayload {
+  dataUrl: string
+  mimeType: string
+  fileName?: string
+  byteLength?: number
+}
+
+type CaptureImageResponse =
+  | { ok: true; capture: CapturedImagePayload }
+  | { ok: false; error: string }
+
+interface CaptureImageMessage {
+  type: "content/capture-image"
+  payload: { imageUrl: string }
+}
+
 interface TranslateImageMessage {
   type: "content/translate-image"
   payload: { imageUrl: string }
+}
+
+function isCaptureImageMessage(value: unknown): value is CaptureImageMessage {
+  if (typeof value !== "object" || value === null) return false
+  const candidate = value as { type?: string; payload?: { imageUrl?: string } }
+  return candidate.type === "content/capture-image"
+    && typeof candidate.payload?.imageUrl === "string"
+    && candidate.payload.imageUrl.length > 0
 }
 
 function isTranslateImageMessage(value: unknown): value is TranslateImageMessage {
@@ -800,6 +891,140 @@ function isTranslateImageMessage(value: unknown): value is TranslateImageMessage
   const candidate = value as { type?: string; payload?: { imageUrl?: string } }
   return candidate.type === "content/translate-image"
     && typeof candidate.payload?.imageUrl === "string"
+}
+
+function findImageElementForCapture(imageUrl: string): HTMLImageElement | null {
+  const images = Array.from(document.images)
+  return images.find((image) => {
+    const candidates = [image.currentSrc, image.src, image.getAttribute("src")]
+      .filter((value): value is string => typeof value === "string" && value.length > 0)
+    return candidates.some((candidate) => {
+      if (candidate === imageUrl) return true
+      try {
+        return new URL(candidate, document.baseURI).href === imageUrl
+      } catch {
+        return false
+      }
+    })
+  }) ?? null
+}
+
+function getDataUrlMimeType(dataUrl: string): string | null {
+  const match = /^data:([^;,]+)[;,]/i.exec(dataUrl)
+  return match?.[1]?.toLowerCase() ?? null
+}
+
+function estimateDataUrlByteLength(dataUrl: string): number {
+  const commaIndex = dataUrl.indexOf(",")
+  if (commaIndex < 0) return dataUrl.length
+  const metadata = dataUrl.slice(0, commaIndex).toLowerCase()
+  const payload = dataUrl.slice(commaIndex + 1)
+  if (metadata.endsWith(";base64")) {
+    return Math.ceil(payload.replace(/=+$/g, "").length * 3 / 4)
+  }
+  try {
+    return new TextEncoder().encode(decodeURIComponent(payload)).byteLength
+  } catch {
+    return payload.length
+  }
+}
+
+function buildCapturedFileName(imageUrl: string, mimeType: string): string {
+  const extension = mimeType === "image/svg+xml"
+    ? "svg"
+    : mimeType.startsWith("image/")
+      ? mimeType.slice("image/".length).replace(/[^a-z0-9]+/gi, "") || "png"
+      : "png"
+  try {
+    const pathname = new URL(imageUrl, document.baseURI).pathname
+    const name = decodeURIComponent(pathname.split("/").filter(Boolean).at(-1) ?? "")
+    if (name) return name
+  } catch {
+    // Fall through to a stable generated name.
+  }
+  return `astra-captured-image.${extension}`
+}
+
+function blobToDataUrl(blob: Blob): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader()
+    reader.onload = () => resolve(String(reader.result ?? ""))
+    reader.onerror = () => reject(reader.error ?? new Error("Unable to encode captured image."))
+    reader.readAsDataURL(blob)
+  })
+}
+
+async function captureImageViaFetch(image: HTMLImageElement, imageUrl: string): Promise<CapturedImagePayload | null> {
+  const sourceUrl = image.currentSrc || image.src || imageUrl
+  try {
+    const response = await fetch(sourceUrl, { credentials: "include", cache: "force-cache" })
+    if (!response.ok) return null
+    const responseType = response.headers.get("content-type")?.split(";")[0]?.trim().toLowerCase()
+    if (!responseType?.startsWith("image/")) return null
+    const contentLength = Number.parseInt(response.headers.get("content-length") ?? "", 10)
+    if (Number.isFinite(contentLength) && contentLength > IMAGE_TRANSLATION_MAX_FILE_BYTES) return null
+    const blob = await response.blob()
+    if (blob.size <= 0 || blob.size > IMAGE_TRANSLATION_MAX_FILE_BYTES) return null
+    const dataUrl = await blobToDataUrl(blob)
+    return {
+      dataUrl,
+      mimeType: blob.type || responseType,
+      fileName: buildCapturedFileName(imageUrl, blob.type || responseType),
+      byteLength: blob.size,
+    }
+  } catch {
+    return null
+  }
+}
+
+function captureImageViaCanvas(image: HTMLImageElement, imageUrl: string): CapturedImagePayload {
+  const width = image.naturalWidth || image.width
+  const height = image.naturalHeight || image.height
+  if (!width || !height) {
+    throw new Error("Image is not decoded yet.")
+  }
+
+  const canvas = document.createElement("canvas")
+  canvas.width = width
+  canvas.height = height
+  const context = canvas.getContext("2d")
+  if (!context) {
+    throw new Error("Canvas capture is not available.")
+  }
+  context.drawImage(image, 0, 0, width, height)
+  const dataUrl = canvas.toDataURL("image/png")
+  const mimeType = getDataUrlMimeType(dataUrl) ?? "image/png"
+  const byteLength = estimateDataUrlByteLength(dataUrl)
+  if (byteLength <= 0 || byteLength > IMAGE_TRANSLATION_MAX_FILE_BYTES) {
+    throw new Error("Captured image is too large.")
+  }
+  return {
+    dataUrl,
+    mimeType,
+    fileName: buildCapturedFileName(imageUrl, mimeType),
+    byteLength,
+  }
+}
+
+async function handleCaptureImageMessage(imageUrl: string): Promise<CaptureImageResponse> {
+  const image = findImageElementForCapture(imageUrl)
+  if (!image) {
+    return { ok: false, error: "Could not find the clicked image in this frame." }
+  }
+
+  const fetchedCapture = await captureImageViaFetch(image, imageUrl)
+  if (fetchedCapture) {
+    return { ok: true, capture: fetchedCapture }
+  }
+
+  try {
+    return { ok: true, capture: captureImageViaCanvas(image, imageUrl) }
+  } catch (error) {
+    return {
+      ok: false,
+      error: error instanceof Error ? error.message : "Could not capture the clicked image.",
+    }
+  }
 }
 
 async function handleTranslateImageMessage(imageUrl: string): Promise<void> {

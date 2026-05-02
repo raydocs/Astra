@@ -5,15 +5,17 @@ import { ErrorBoundary } from "@/components/ErrorBoundary"
 import { t } from "@/utils/i18n"
 import { readConfig } from "@/utils/storage/config"
 import { saveVocabularyEntry } from "@/utils/storage/vocabulary"
+import { formatGlossaryEvidenceLabel } from "@/utils/storage/vocabulary-core"
 import { copyTextToClipboard } from "@/utils/dom/clipboard"
 import { copyBilingualCard } from "@/utils/dom/share-card"
-import { DEFAULT_ASTRA_CONFIG, resolveSiteTranslationSettings, type AstraConfig } from "@/types/config"
+import { DEFAULT_ASTRA_CONFIG, resolveSiteTranslationSettings, type AstraConfig, type ExplainMode, type LanguageLevel } from "@/types/config"
 import { getEnabledActions, type BuiltinAction } from "@/types/actions"
 import {
   clearInteractionSuppression,
   setInteractionSuppressionReason,
 } from "../interaction-coordination"
 import { runActionById } from "../inline-actions"
+import type { MatchedExplanationGlossaryTerm } from "@/utils/translate/explanation-quality"
 import { markSessionSave } from "../learning-state"
 import { isTtsSupported, speak, speakWithHighlight, stopSpeaking } from "@/utils/tts"
 import { AstraIdentityStrip } from "./AstraIdentityStrip"
@@ -24,15 +26,18 @@ import {
   type GrammarGuide,
   type WordAnnotation,
 } from "@/utils/reading/assist"
+import { OVERLAY_FONT_FAMILY, OVERLAY_STYLE_TOKENS, createOverlayCardStyle, createOverlayStyle1TokenStyleElement, overlayPx, overlayRem } from "./overlayScale"
+import { formatExplainProfileLabel } from "@/utils/storage/vocabulary-core"
+import { commitLearningContinuitySync } from "@/utils/extension/messages"
 
 interface ToolbarPosition {
   top: number
   left: number
 }
 
-const BRAND_COLOR = "#6366f1"
-const PRIMARY_BUTTON_HOVER_COLOR = "#4f46e5"
-const PRIMARY_BUTTON_ACTIVE_COLOR = "#4338ca"
+const BRAND_COLOR = OVERLAY_STYLE_TOKENS.brand
+const PRIMARY_BUTTON_HOVER_COLOR = OVERLAY_STYLE_TOKENS.brandHover
+const PRIMARY_BUTTON_ACTIVE_COLOR = OVERLAY_STYLE_TOKENS.brandActive
 const HOST_ID = "astra-selection-toolbar-host"
 const PRIMARY_ACTION_IDS = new Set(["translate", "explain"])
 
@@ -43,93 +48,99 @@ function isPrimaryLearningAction(actionId: string): boolean {
 const isCoarsePointer = typeof window !== "undefined"
   && window.matchMedia?.("(pointer: coarse)")?.matches === true
 
-const styles = {
-  toolbar: (pos: ToolbarPosition): React.CSSProperties => ({
-    position: "fixed",
-    top: pos.top,
-    left: pos.left,
-    zIndex: 2147483646,
-    display: "flex",
-    flexDirection: "column",
-    alignItems: "flex-start",
-    fontFamily:
-      '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif',
-    fontSize: isCoarsePointer ? "15px" : "14px",
-    lineHeight: "1.5",
-  }),
-  shellCard: {
-    background: "#fff",
-    borderRadius: isCoarsePointer ? "10px" : "8px",
-    boxShadow: "0 2px 12px rgba(0,0,0,0.15)",
-    padding: isCoarsePointer ? "8px" : "6px",
-    display: "flex",
-    flexDirection: "column",
-    gap: isCoarsePointer ? "6px" : "4px",
-    minWidth: 180,
-  } as React.CSSProperties,
-  buttonBar: {
-    display: "flex",
-    gap: isCoarsePointer ? "4px" : "2px",
-    flexWrap: "wrap",
-  } as React.CSSProperties,
-  button: {
-    border: "none",
-    background: "transparent",
-    cursor: "pointer",
-    padding: isCoarsePointer ? "8px 14px" : "4px 10px",
-    borderRadius: "6px",
-    fontSize: isCoarsePointer ? "14px" : "13px",
-    color: "#374151",
-    whiteSpace: "nowrap",
-    transition: "background 0.15s, color 0.15s",
-    minHeight: isCoarsePointer ? "40px" : undefined,
-  } as React.CSSProperties,
-  buttonHover: {
-    background: `${BRAND_COLOR}14`,
-    color: BRAND_COLOR,
-  } as React.CSSProperties,
-  primaryButton: {
-    background: BRAND_COLOR,
-    color: "#fff",
-    fontWeight: 600,
-  } as React.CSSProperties,
-  primaryButtonHover: {
-    background: PRIMARY_BUTTON_HOVER_COLOR,
-  } as React.CSSProperties,
-  primaryButtonActive: {
-    background: PRIMARY_BUTTON_ACTIVE_COLOR,
-    boxShadow: "0 0 0 1px rgba(255,255,255,0.18) inset",
-  } as React.CSSProperties,
-  resultPanel: {
-    marginTop: "6px",
-    background: "#fff",
-    borderRadius: "8px",
-    boxShadow: "0 2px 12px rgba(0,0,0,0.15)",
-    padding: "10px 14px",
-    maxWidth: "400px",
-    fontSize: "14px",
-    color: "#1f2937",
-    lineHeight: "1.6",
-    borderLeft: `3px solid ${BRAND_COLOR}`,
-    wordBreak: "break-word",
-  } as React.CSSProperties,
-  saveCtaButton: {
-    border: "none",
-    background: "#dcfce7",
-    color: "#166534",
-    borderRadius: "6px",
-    padding: "8px 12px",
-    fontSize: "13px",
-    fontWeight: 600,
-    cursor: "pointer",
-    width: "100%",
-    textAlign: "center",
-    marginTop: "10px",
-  } as React.CSSProperties,
-  dots: {
-    color: "#94a3b8",
-    animation: "astra-sel-pulse 1.5s ease-in-out infinite",
-  } as React.CSSProperties,
+function createStyles(fontScale: number) {
+  return {
+    toolbar: (pos: ToolbarPosition): React.CSSProperties => ({
+      position: "fixed",
+      top: pos.top,
+      left: pos.left,
+      zIndex: 2147483646,
+      display: "flex",
+      flexDirection: "column",
+      alignItems: "flex-start",
+      fontFamily: OVERLAY_FONT_FAMILY,
+      fontSize: overlayRem(isCoarsePointer ? 15 : 14, fontScale),
+      lineHeight: "1.5",
+    }),
+    shellCard: {
+      ...createOverlayCardStyle(fontScale),
+      padding: isCoarsePointer
+        ? `${overlayPx(8, fontScale)} ${overlayPx(8, fontScale)}`
+        : `${overlayPx(6, fontScale)} ${overlayPx(6, fontScale)}`,
+      display: "flex",
+      flexDirection: "column",
+      gap: isCoarsePointer ? overlayPx(6, fontScale) : overlayPx(4, fontScale),
+      minWidth: Number.parseFloat(overlayPx(180, fontScale)),
+    } as React.CSSProperties,
+    buttonBar: {
+      display: "flex",
+      gap: isCoarsePointer ? overlayPx(4, fontScale) : overlayPx(4, fontScale),
+      flexWrap: "wrap",
+    } as React.CSSProperties,
+    button: {
+      border: "1px solid transparent",
+      background: OVERLAY_STYLE_TOKENS.brandMuted,
+      cursor: "pointer",
+      padding: isCoarsePointer
+        ? `${overlayPx(8, fontScale)} ${overlayPx(14, fontScale)}`
+        : `${overlayPx(5, fontScale)} ${overlayPx(10, fontScale)}`,
+      borderRadius: overlayPx(8, fontScale),
+      fontSize: overlayPx(isCoarsePointer ? 14 : 13, fontScale),
+      color: OVERLAY_STYLE_TOKENS.textSecondary,
+      whiteSpace: "nowrap",
+      transition: "background 0.15s, color 0.15s, border-color 0.15s",
+      minHeight: isCoarsePointer ? overlayPx(40, fontScale) : overlayPx(30, fontScale),
+      lineHeight: 1.2,
+      fontFamily: OVERLAY_FONT_FAMILY,
+    } as React.CSSProperties,
+    buttonHover: {
+      background: OVERLAY_STYLE_TOKENS.brandMutedStrong,
+      color: BRAND_COLOR,
+      borderColor: OVERLAY_STYLE_TOKENS.brandBorderStrong,
+    } as React.CSSProperties,
+    primaryButton: {
+      background: BRAND_COLOR,
+      color: OVERLAY_STYLE_TOKENS.textInverse,
+      fontWeight: 700,
+      borderColor: OVERLAY_STYLE_TOKENS.brandBorderStrong,
+    } as React.CSSProperties,
+    primaryButtonHover: {
+      background: PRIMARY_BUTTON_HOVER_COLOR,
+    } as React.CSSProperties,
+    primaryButtonActive: {
+      background: PRIMARY_BUTTON_ACTIVE_COLOR,
+      boxShadow: `0 0 0 1px color-mix(in srgb, ${OVERLAY_STYLE_TOKENS.textInverse} 18%, transparent) inset`,
+    } as React.CSSProperties,
+    resultPanel: {
+      ...createOverlayCardStyle(fontScale),
+      marginTop: overlayPx(8, fontScale),
+      padding: `${overlayPx(10, fontScale)} ${overlayPx(14, fontScale)}`,
+      maxWidth: Number.parseFloat(overlayPx(420, fontScale)),
+      fontSize: overlayPx(14, fontScale),
+      color: OVERLAY_STYLE_TOKENS.textPrimary,
+      lineHeight: "1.6",
+      borderLeft: `${overlayPx(3, fontScale)} solid ${BRAND_COLOR}`,
+      wordBreak: "break-word",
+    } as React.CSSProperties,
+    saveCtaButton: {
+      border: `1px solid ${OVERLAY_STYLE_TOKENS.successBorder}`,
+      background: OVERLAY_STYLE_TOKENS.successBg,
+      color: OVERLAY_STYLE_TOKENS.success,
+      borderRadius: overlayPx(8, fontScale),
+      padding: `${overlayPx(8, fontScale)} ${overlayPx(12, fontScale)}`,
+      fontSize: overlayPx(13, fontScale),
+      fontWeight: 700,
+      cursor: "pointer",
+      width: "100%",
+      textAlign: "center",
+      marginTop: overlayPx(10, fontScale),
+      fontFamily: OVERLAY_FONT_FAMILY,
+    } as React.CSSProperties,
+    dots: {
+      color: OVERLAY_STYLE_TOKENS.textHint,
+      animation: "astra-sel-pulse 1.5s ease-in-out infinite",
+    } as React.CSSProperties,
+  }
 }
 
 const KEYFRAMES_CSS = `
@@ -167,7 +178,13 @@ function SelectionToolbarApp() {
   const [selectedText, setSelectedText] = useState("")
   const [selectionContext, setSelectionContext] = useState<string | undefined>(undefined)
   const [runningAction, setRunningAction] = useState<string | null>(null)
-  const [actionResult, setActionResult] = useState<{ actionId: string; text: string } | null>(null)
+  const [actionResult, setActionResult] = useState<{
+    actionId: string
+    text: string
+    languageLevel?: LanguageLevel
+    explainMode?: ExplainMode
+    matchedGlossaryTerms?: MatchedExplanationGlossaryTerm[]
+  } | null>(null)
   const [hoveredBtn, setHoveredBtn] = useState<string | null>(null)
   const [saved, setSaved] = useState(false)
   const [shared, setShared] = useState(false)
@@ -179,6 +196,7 @@ function SelectionToolbarApp() {
   const [grammarLoading, setGrammarLoading] = useState(false)
   const [dueCount, setDueCount] = useState<number | null>(null)
   const [targetLang, setTargetLang] = useState<string | null>(null)
+  const [fontScale, setFontScale] = useState(DEFAULT_ASTRA_CONFIG.presentation.fontSize)
 
   const toolbarRef = useRef<HTMLDivElement>(null)
   const skipNextMouseUp = useRef(false)
@@ -200,6 +218,7 @@ function SelectionToolbarApp() {
     setActions(getEnabledActions({ customActions: config.customActions }))
     setTtsEnabled(config.tts.enabled && isTtsSupported(config.tts.engine))
     setTargetLang(resolved.targetLang)
+    setFontScale(resolved.presentation.fontSize)
     return config
   }, [])
 
@@ -406,10 +425,20 @@ function SelectionToolbarApp() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [visible, selectedText])
 
-  const resolveConfig = async (): Promise<{ config: AstraConfig; targetLang: string; enabled: boolean }> => {
+  const resolveConfig = async (): Promise<{
+    config: AstraConfig
+    targetLang: string
+    enabled: boolean
+    fontScale: number
+  }> => {
     const config = await readConfig()
     const resolved = resolveSiteTranslationSettings(config, window.location.hostname)
-    return { config, targetLang: resolved.targetLang, enabled: resolved.enabled }
+    return {
+      config,
+      targetLang: resolved.targetLang,
+      enabled: resolved.enabled,
+      fontScale: resolved.presentation.fontSize,
+    }
   }
 
   const handleAction = async (action: BuiltinAction) => {
@@ -421,9 +450,10 @@ function SelectionToolbarApp() {
     setActionResult(null)
 
     try {
-      const { config, targetLang, enabled } = await resolveConfig()
+      const { config, targetLang, enabled, fontScale: resolvedFontScale } = await resolveConfig()
       if (requestVersion !== selectionVersionRef.current) return
       setTargetLang(targetLang)
+      setFontScale(resolvedFontScale)
       if (!enabled) {
         setActionResult({ actionId: action.id, text: "⚠ Astra is disabled on this site." })
         return
@@ -433,6 +463,9 @@ function SelectionToolbarApp() {
         actionId: action.id,
         text: requestText,
         targetLang,
+        languageLevel: config.languageLevel,
+        explainMode: config.explainMode,
+        explanationGlossary: config.explanationGlossary,
         selectionContext: requestContext,
         contextElement: selectionContextElementRef.current,
         customActions: config.customActions,
@@ -442,6 +475,13 @@ function SelectionToolbarApp() {
       setActionResult({
         actionId: action.id,
         text: result.ok ? result.text : `⚠ ${result.message}`,
+        ...(action.id === "explain" && result.ok
+          ? {
+              languageLevel: config.languageLevel,
+              explainMode: config.explainMode,
+              ...(result.matchedGlossaryTerms ? { matchedGlossaryTerms: result.matchedGlossaryTerms } : {}),
+            }
+          : {}),
       })
     } catch (error: unknown) {
       if (requestVersion !== selectionVersionRef.current) return
@@ -501,20 +541,41 @@ function SelectionToolbarApp() {
 
   const handleSave = async () => {
     if (!selectedText || saved) return
+    const successfulActionResult = actionResult && !actionResult.text.startsWith("⚠")
+      ? actionResult
+      : null
+    const translation = successfulActionResult?.actionId === "translate"
+      ? successfulActionResult.text
+      : undefined
+    const explanation = successfulActionResult?.actionId === "explain"
+      ? successfulActionResult.text
+      : undefined
+
     await saveVocabularyEntry({
       text: selectedText,
-      translation: actionResult?.actionId === "translate" ? actionResult.text : undefined,
-      explanation: actionResult?.actionId === "explain" ? actionResult.text : undefined,
+      translation,
+      explanation,
       context: selectionContext,
       sourceContext: {
         surface: "selection_toolbar",
         pageTitle: document.title?.trim() || undefined,
+        pageUrl: window.location.href,
+        hostname: window.location.hostname,
         contentSummary: selectionContext,
         sentenceText: selectedText,
+        ...(explanation
+          ? {
+              languageLevel: successfulActionResult?.languageLevel,
+              explainMode: successfulActionResult?.explainMode,
+              ...(successfulActionResult?.matchedGlossaryTerms
+                ? { matchedGlossaryTerms: successfulActionResult.matchedGlossaryTerms }
+                : {}),
+            }
+          : {}),
       },
       url: window.location.href,
       hostname: window.location.hostname,
-      note: actionResult?.actionId === "explain" ? actionResult.text : undefined,
+      note: explanation,
     })
     setSaved(true)
 
@@ -530,6 +591,7 @@ function SelectionToolbarApp() {
 
     setDueCount(nextDueCount)
     markSessionSave("selection_toolbar", nextDueCount)
+    void commitLearningContinuitySync("selection-save")
   }
 
   const openVocabulary = () => {
@@ -587,6 +649,8 @@ function SelectionToolbarApp() {
     }
   }
 
+  const styles = createStyles(fontScale)
+
   const hasActionError = Boolean(actionResult?.text.startsWith("⚠"))
   const hasResultPanelSaveCta = Boolean(
     actionResult
@@ -595,6 +659,9 @@ function SelectionToolbarApp() {
   )
   const showInlineSaveCta = hasResultPanelSaveCta && !saved
   const showSaveInBar = !hasResultPanelSaveCta || saved
+  const glossaryEvidenceLabel = actionResult?.matchedGlossaryTerms
+    ? formatGlossaryEvidenceLabel(actionResult.matchedGlossaryTerms)
+    : ""
 
   if (!visible) return null
 
@@ -605,7 +672,7 @@ function SelectionToolbarApp() {
       onMouseDown={(event) => event.stopPropagation()}
     >
       <div style={styles.shellCard} data-testid="selection-toolbar-shell">
-        <AstraIdentityStrip targetLang={targetLang} />
+        <AstraIdentityStrip targetLang={targetLang} fontScale={fontScale} />
         <div style={styles.buttonBar}>
           {actions.map((action) => {
             const isPrimary = isPrimaryLearningAction(action.id)
@@ -682,7 +749,7 @@ function SelectionToolbarApp() {
           style={{
             ...styles.button,
             ...(hoveredBtn === "share" ? styles.buttonHover : {}),
-            ...(shared ? { color: "#10b981" } : {}),
+            ...(shared ? { color: OVERLAY_STYLE_TOKENS.success } : {}),
           }}
           onMouseEnter={() => setHoveredBtn("share")}
           onMouseLeave={() => setHoveredBtn(null)}
@@ -700,7 +767,7 @@ function SelectionToolbarApp() {
             style={{
               ...styles.button,
               ...(hoveredBtn === "save" ? styles.buttonHover : {}),
-              ...(saved ? { color: "#10b981" } : {}),
+              ...(saved ? { color: OVERLAY_STYLE_TOKENS.success } : {}),
             }}
             onMouseEnter={() => setHoveredBtn("save")}
             onMouseLeave={() => setHoveredBtn(null)}
@@ -737,13 +804,31 @@ function SelectionToolbarApp() {
       {(runningAction || actionResult || saved) && (
         <div style={{
           ...styles.resultPanel,
-          borderLeftColor: saved ? "#10b981" : actionResult?.actionId === "explain" ? "#8b5cf6" : BRAND_COLOR,
-          background: saved ? "#f0fdf4" : "#fff",
+          borderLeftColor: saved ? OVERLAY_STYLE_TOKENS.success : actionResult?.actionId === "explain" ? OVERLAY_STYLE_TOKENS.brandActive : BRAND_COLOR,
+          background: saved ? OVERLAY_STYLE_TOKENS.successBg : OVERLAY_STYLE_TOKENS.surface,
         }}>
           {runningAction ? (
             <span style={styles.dots}>⋯</span>
           ) : actionResult?.text ? (
-            <div>{actionResult.text}</div>
+            <div>
+              {actionResult.actionId === "explain" && formatExplainProfileLabel(actionResult) && (
+                <div
+                  data-testid="selection-explain-profile"
+                  style={{ fontSize: overlayPx(11, fontScale), fontWeight: 700, color: OVERLAY_STYLE_TOKENS.brandActive, marginBottom: overlayPx(6, fontScale) }}
+                >
+                  {formatExplainProfileLabel(actionResult)}
+                </div>
+              )}
+              {glossaryEvidenceLabel && (
+                <div
+                  data-testid="selection-glossary-evidence"
+                  style={{ fontSize: overlayPx(11, fontScale), fontWeight: 700, color: OVERLAY_STYLE_TOKENS.success, marginBottom: overlayPx(6, fontScale) }}
+                >
+                  {glossaryEvidenceLabel}
+                </div>
+              )}
+              {actionResult.text}
+            </div>
           ) : null}
 
           {showInlineSaveCta && (
@@ -763,20 +848,26 @@ function SelectionToolbarApp() {
 
           {saved && (
             <div style={{
-              marginTop: actionResult?.text ? 10 : 0,
-              paddingTop: actionResult?.text ? 8 : 0,
-              borderTop: actionResult?.text ? "1px solid rgba(167, 243, 208, 0.65)" : undefined,
+              marginTop: actionResult?.text ? Number.parseFloat(overlayPx(10, fontScale)) : 0,
+              paddingTop: actionResult?.text ? Number.parseFloat(overlayPx(8, fontScale)) : 0,
+              borderTop: actionResult?.text ? `1px solid ${OVERLAY_STYLE_TOKENS.successBorder}` : undefined,
             }}>
-              <div style={{ fontWeight: 700, color: "#065f46", marginBottom: 4 }}>
+              <div style={{ fontWeight: 700, color: OVERLAY_STYLE_TOKENS.success, marginBottom: Number.parseFloat(overlayPx(4, fontScale)) }}>
                 {t("learningSavedTitle")}
               </div>
-              <div style={{ color: "#047857", marginBottom: 8 }}>
+              <div style={{ color: OVERLAY_STYLE_TOKENS.success, marginBottom: Number.parseFloat(overlayPx(8, fontScale)) }}>
                 {t("learningSavedHint")}
               </div>
-              <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+              <div style={{ display: "flex", gap: Number.parseFloat(overlayPx(8, fontScale)), flexWrap: "wrap" }}>
                 <button
                   type="button"
-                  style={{ ...styles.button, background: "#dcfce7", color: "#166534", padding: "6px 10px" }}
+                  style={{
+                    ...styles.button,
+                    background: OVERLAY_STYLE_TOKENS.successBg,
+                    color: OVERLAY_STYLE_TOKENS.success,
+                    borderColor: OVERLAY_STYLE_TOKENS.successBorder,
+                    padding: `${overlayPx(6, fontScale)} ${overlayPx(10, fontScale)}`,
+                  }}
                   onClick={(event) => {
                     event.stopPropagation()
                     openVocabulary()
@@ -786,7 +877,13 @@ function SelectionToolbarApp() {
                 </button>
                 <button
                   type="button"
-                  style={{ ...styles.button, background: "#dcfce7", color: "#166534", padding: "6px 10px" }}
+                  style={{
+                    ...styles.button,
+                    background: OVERLAY_STYLE_TOKENS.successBg,
+                    color: OVERLAY_STYLE_TOKENS.success,
+                    borderColor: OVERLAY_STYLE_TOKENS.successBorder,
+                    padding: `${overlayPx(6, fontScale)} ${overlayPx(10, fontScale)}`,
+                  }}
                   onClick={(event) => {
                     event.stopPropagation()
                     openReview()
@@ -801,46 +898,46 @@ function SelectionToolbarApp() {
       )}
 
       {wordAnnotation && (
-        <div style={{ ...styles.resultPanel, borderLeftColor: "#0ea5e9" }} data-testid="word-annotation-card">
-          <div style={{ display: "flex", alignItems: "baseline", gap: "8px", marginBottom: "4px" }}>
-            <strong style={{ fontSize: "16px" }}>{wordAnnotation.word}</strong>
+        <div style={{ ...styles.resultPanel, borderLeftColor: OVERLAY_STYLE_TOKENS.info }} data-testid="word-annotation-card">
+          <div style={{ display: "flex", alignItems: "baseline", gap: overlayPx(8, fontScale), marginBottom: overlayPx(4, fontScale), flexWrap: "wrap" }}>
+            <strong style={{ fontSize: overlayPx(16, fontScale) }}>{wordAnnotation.word}</strong>
             {wordAnnotation.pronunciation && (
-              <span style={{ color: "#64748b", fontSize: "13px" }}>{wordAnnotation.pronunciation}</span>
+              <span style={{ color: OVERLAY_STYLE_TOKENS.textMuted, fontSize: overlayPx(13, fontScale) }}>{wordAnnotation.pronunciation}</span>
             )}
             <span style={{
               display: "inline-block",
-              padding: "1px 6px",
-              borderRadius: "4px",
-              background: "#e0f2fe",
-              color: "#0369a1",
-              fontSize: "12px",
+              padding: `${overlayPx(1, fontScale)} ${overlayPx(6, fontScale)}`,
+              borderRadius: overlayPx(4, fontScale),
+              background: OVERLAY_STYLE_TOKENS.infoBg,
+              color: OVERLAY_STYLE_TOKENS.info,
+              fontSize: overlayPx(12, fontScale),
               fontWeight: 500,
             }}>
               {wordAnnotation.partOfSpeech}
             </span>
           </div>
-          <div style={{ marginBottom: "4px" }}>{wordAnnotation.meaning}</div>
-          <div style={{ color: "#475569", fontSize: "13px", marginBottom: "4px" }}>{wordAnnotation.shortExplanation}</div>
+          <div style={{ marginBottom: overlayPx(4, fontScale) }}>{wordAnnotation.meaning}</div>
+          <div style={{ color: OVERLAY_STYLE_TOKENS.textSecondary, fontSize: overlayPx(13, fontScale), marginBottom: overlayPx(4, fontScale) }}>{wordAnnotation.shortExplanation}</div>
           {wordAnnotation.exampleSentence && (
-            <div style={{ color: "#64748b", fontSize: "13px", fontStyle: "italic" }}>{wordAnnotation.exampleSentence}</div>
+            <div style={{ color: OVERLAY_STYLE_TOKENS.textMuted, fontSize: overlayPx(13, fontScale), fontStyle: "italic" }}>{wordAnnotation.exampleSentence}</div>
           )}
         </div>
       )}
 
       {grammarResult && (
-        <div style={{ ...styles.resultPanel, borderLeftColor: "#a855f7" }} data-testid="grammar-card">
-          <div style={{ fontWeight: 600, marginBottom: "6px" }}>{grammarResult.overview}</div>
+        <div style={{ ...styles.resultPanel, borderLeftColor: OVERLAY_STYLE_TOKENS.brandHover }} data-testid="grammar-card">
+          <div style={{ fontWeight: 600, marginBottom: overlayPx(6, fontScale) }}>{grammarResult.overview}</div>
           {grammarResult.structure.length > 0 && (
-            <ul style={{ margin: "0 0 6px 0", paddingLeft: "18px", fontSize: "13px", color: "#334155" }}>
+            <ul style={{ margin: `0 0 ${overlayPx(6, fontScale)} 0`, paddingLeft: overlayPx(18, fontScale), fontSize: overlayPx(13, fontScale), color: OVERLAY_STYLE_TOKENS.textSecondary }}>
               {grammarResult.structure.map((item, i) => (
                 <li key={i}>{item}</li>
               ))}
             </ul>
           )}
           {grammarResult.keyPatterns.length > 0 && (
-            <div style={{ marginBottom: "6px" }}>
+            <div style={{ marginBottom: overlayPx(6, fontScale) }}>
               {grammarResult.keyPatterns.map((pattern, i) => (
-                <div key={i} style={{ fontSize: "13px", color: "#475569", marginBottom: "2px" }}>
+                <div key={i} style={{ fontSize: overlayPx(13, fontScale), color: OVERLAY_STYLE_TOKENS.textSecondary, marginBottom: overlayPx(2, fontScale) }}>
                   {pattern}
                 </div>
               ))}
@@ -849,7 +946,7 @@ function SelectionToolbarApp() {
           {grammarResult.vocabularyNotes.length > 0 && (
             <div>
               {grammarResult.vocabularyNotes.map((note, i) => (
-                <div key={i} style={{ fontSize: "13px", color: "#64748b" }}>
+                <div key={i} style={{ fontSize: overlayPx(13, fontScale), color: OVERLAY_STYLE_TOKENS.textMuted }}>
                   {note}
                 </div>
               ))}
@@ -859,7 +956,7 @@ function SelectionToolbarApp() {
       )}
 
       {grammarLoading && !grammarResult && (
-        <div style={{ ...styles.resultPanel, borderLeftColor: "#a855f7" }}>
+        <div style={{ ...styles.resultPanel, borderLeftColor: OVERLAY_STYLE_TOKENS.brandHover }}>
           <span style={styles.dots}>⋯</span>
         </div>
       )}
@@ -882,6 +979,8 @@ export function mountSelectionToolbar() {
   document.body.appendChild(host)
 
   const shadow = host.attachShadow({ mode: "open" })
+
+  shadow.appendChild(createOverlayStyle1TokenStyleElement())
 
   const styleEl = document.createElement("style")
   styleEl.textContent = KEYFRAMES_CSS

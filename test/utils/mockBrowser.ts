@@ -50,6 +50,7 @@ export function createMockBrowser(initialStorage: StorageData = {}) {
   const commandBus = createListenerBus<[string]>()
   const tabActivatedBus = createListenerBus<[unknown]>()
   const storageChangedBus = createListenerBus<[StorageChangeRecord, string]>()
+  const contextMenuClickedBus = createListenerBus<[unknown, unknown]>()
 
   type MockTab = { id?: number; url?: string; lastAccessed?: number; active?: boolean }
   const tabsQuery = vi.fn((_query?: unknown) => Promise.resolve([] as MockTab[]))
@@ -70,12 +71,14 @@ export function createMockBrowser(initialStorage: StorageData = {}) {
     __emitCommand: commandBus.emit,
     __emitTabActivated: tabActivatedBus.emit,
     __emitStorageChange: storageChangedBus.emit,
+    __emitContextMenuClicked: contextMenuClickedBus.emit,
     __resetListeners: () => {
       runtimeMessageBus.clear()
       installedBus.clear()
       commandBus.clear()
       tabActivatedBus.clear()
       storageChangedBus.clear()
+      contextMenuClickedBus.clear()
     },
     storage: {
       onChanged: {
@@ -123,6 +126,13 @@ export function createMockBrowser(initialStorage: StorageData = {}) {
       onActivated: {
         addListener: tabActivatedBus.addListener,
         removeListener: tabActivatedBus.removeListener,
+      },
+    },
+    contextMenus: {
+      create: vi.fn(),
+      onClicked: {
+        addListener: contextMenuClickedBus.addListener,
+        removeListener: contextMenuClickedBus.removeListener,
       },
     },
     i18n: {

@@ -306,7 +306,7 @@ async function resolveExtensionSeedStoragePageCandidates(extensionPath?: string)
     options_page?: string
   }
 
-  const prefer = ["vocabulary.html", "onboarding.html", "options.html", "pdf-reader.html", "epub-reader.html", "subtitle-reader.html"]
+  const prefer = ["vocabulary.html", "onboarding.html", "options.html", "document-intake.html", "pdf-reader.html", "epub-reader.html", "subtitle-reader.html"]
   const candidates: string[] = []
   for (const name of prefer) {
     if (await pathExists(path.join(extensionRoot, name))) {

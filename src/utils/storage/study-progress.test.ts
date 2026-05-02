@@ -6,8 +6,11 @@ import {
   buildSyncSafeStudyPageProgress,
   buildVocabularyReviewStudyEvent,
   clearStudyProgress,
+  derivePersonalizedTeachingStrategy,
   deriveStudyLoopPageSummary,
+  deriveStudyLoopPrimerRecommendation,
   deriveStudyLoopViewModel,
+  deriveWeeklyStudyProgressRoi,
   getPageStudyProgress,
   getStudyProgress,
   orderStudySteps,
@@ -88,6 +91,173 @@ describe("study-progress", () => {
       currentCounts: { sentencesExplained: 2, vocabSaved: 1, vocabReviewed: 0 },
       nextStep: "vocab_review",
       completionPercent: 60,
+    })
+  })
+
+  it("derives deterministic progress-aware personalized teaching strategies without persisting schema fields", () => {
+    const page = {
+      url: "https://example.com/article",
+      hostname: "example.com",
+      title: "Example",
+      completedSteps: ["read", "guided_read", "explain"],
+      sentencesExplained: 2,
+      vocabSaved: 0,
+      vocabReviewed: 0,
+      startedAt: 10,
+      lastActivityAt: 20,
+    } satisfies StudyProgressStore["pages"][number]
+    const dailyStats = {
+      date: "2026-04-03",
+      pagesStudied: 1,
+      sentencesExplained: 2,
+      vocabSaved: 0,
+      vocabReviewed: 0,
+    }
+    const summary = deriveStudyLoopPageSummary(page)
+
+    expect(derivePersonalizedTeachingStrategy(page, summary, dailyStats)).toEqual({
+      id: "save_explained_sentence",
+      label: "Save the explained sentence",
+      hint: "You have explanation momentum on this page; save one useful sentence so review can reinforce it later.",
+      focusStep: "vocab_save",
+      trigger: "explained_more_than_saved",
+      progressSignature: "read>guided_read>explain|next:vocab_save|e:2|s:0|r:0|pct:60",
+      evidence: "2 explained · 0 saved",
+    })
+
+    expect(deriveStudyLoopViewModel({ pages: [page], dailyStats }, "https://example.com/article?utm=1").personalizedStrategy).toMatchObject({
+      id: "save_explained_sentence",
+      trigger: "explained_more_than_saved",
+      focusStep: "vocab_save",
+    })
+  })
+
+  it("derives weekly study ROI from active page progress without persisting new fields", () => {
+    const now = new Date("2026-04-09T12:00:00.000Z").getTime()
+    const store: StudyProgressStore = {
+      pages: [
+        {
+          url: "https://example.com/complete",
+          hostname: "example.com",
+          title: "Complete",
+          completedSteps: [...STUDY_STEPS_ORDER],
+          sentencesExplained: 4,
+          vocabSaved: 3,
+          vocabReviewed: 2,
+          startedAt: now - 30 * 60_000,
+          lastActivityAt: now - 10 * 60_000,
+        },
+        {
+          url: "https://example.com/old",
+          hostname: "example.com",
+          title: "Old",
+          completedSteps: ["read"],
+          sentencesExplained: 10,
+          vocabSaved: 10,
+          vocabReviewed: 10,
+          startedAt: now - 10 * 24 * 60 * 60_000,
+          lastActivityAt: now - 9 * 24 * 60 * 60_000,
+        },
+      ],
+      dailyStats: {
+        date: "2026-04-09",
+        pagesStudied: 1,
+        sentencesExplained: 4,
+        vocabSaved: 3,
+        vocabReviewed: 2,
+      },
+    }
+
+    expect(deriveWeeklyStudyProgressRoi(store, { now })).toEqual({
+      window: {
+        startAt: now - 7 * 24 * 60 * 60_000,
+        endAt: now,
+        days: 7,
+      },
+      activePageCount: 1,
+      completedLoopCount: 1,
+      inputMinutes: 20,
+      sentencesExplained: 4,
+      vocabSaved: 3,
+      vocabReviewed: 2,
+    })
+  })
+
+  it("derives a deterministic unique popup primer recommendation from next step and availability", () => {
+    expect(deriveStudyLoopPrimerRecommendation({
+      nextStep: "read",
+      dueCount: 3,
+      canTranslatePage: true,
+      canReadArticle: true,
+      canExplainSentence: true,
+    })).toEqual({
+      recommendedAction: "translate_page",
+      reason: "next_step_read",
+      actionableActions: ["translate_page", "open_deep_read", "explain_sentence", "open_review"],
+      actionableActionCount: 4,
+      nextStep: "read",
+    })
+
+    expect(deriveStudyLoopPrimerRecommendation({
+      nextStep: "explain",
+      dueCount: 0,
+      canTranslatePage: true,
+      canReadArticle: true,
+      canExplainSentence: true,
+    }).recommendedAction).toBe("explain_sentence")
+
+    expect(deriveStudyLoopPrimerRecommendation({
+      nextStep: "vocab_review",
+      dueCount: 1,
+      canTranslatePage: true,
+      canReadArticle: true,
+      canExplainSentence: false,
+    }).recommendedAction).toBe("open_review")
+  })
+
+  it("falls back deterministically when the next-step action is unavailable", () => {
+    expect(deriveStudyLoopPrimerRecommendation({
+      nextStep: "explain",
+      dueCount: 2,
+      canTranslatePage: false,
+      canReadArticle: false,
+      canExplainSentence: false,
+    })).toEqual({
+      recommendedAction: "open_review",
+      reason: "due_review",
+      actionableActions: ["open_review"],
+      actionableActionCount: 1,
+      nextStep: "explain",
+    })
+
+    expect(deriveStudyLoopPrimerRecommendation({
+      nextStep: null,
+      dueCount: 0,
+      canTranslatePage: false,
+      canReadArticle: true,
+      canExplainSentence: true,
+      canOpenReview: false,
+    })).toEqual({
+      recommendedAction: "open_deep_read",
+      reason: "fallback_first_available",
+      actionableActions: ["open_deep_read", "explain_sentence"],
+      actionableActionCount: 2,
+      nextStep: null,
+    })
+
+    expect(deriveStudyLoopPrimerRecommendation({
+      nextStep: "read",
+      dueCount: 0,
+      canTranslatePage: false,
+      canReadArticle: false,
+      canExplainSentence: false,
+      canOpenReview: false,
+    })).toEqual({
+      recommendedAction: null,
+      reason: "no_actionable_action",
+      actionableActions: [],
+      actionableActionCount: 0,
+      nextStep: "read",
     })
   })
 

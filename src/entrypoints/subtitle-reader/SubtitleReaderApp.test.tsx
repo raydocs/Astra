@@ -21,10 +21,12 @@ const {
   saveVocabularyEntryMock,
   upsertOwnedSubtitleFileFromImportMock,
   translateTextsMock,
+  consumeDocumentFileHandoffMock,
 } = vi.hoisted(() => ({
   saveVocabularyEntryMock: vi.fn(),
   upsertOwnedSubtitleFileFromImportMock: vi.fn(),
   translateTextsMock: vi.fn(),
+  consumeDocumentFileHandoffMock: vi.fn(),
 }))
 
 vi.mock("#imports", () => ({
@@ -49,6 +51,14 @@ vi.mock("@/utils/translate/translate", () => ({
   translateTexts: translateTextsMock,
 }))
 
+vi.mock("@/utils/reading/document-file-handoff", () => ({
+  consumeDocumentFileHandoff: consumeDocumentFileHandoffMock,
+  describeDocumentFileHandoffFailure: (reason: string, fileName?: string | null) => `handoff ${reason}: ${fileName ?? "choose the same file again"}`,
+  readDocumentFileText: (file: File) => typeof file.text === "function" ? file.text() : Promise.resolve(""),
+  DOCUMENT_FILE_HANDOFF_FAILURE_QUERY_PARAM: "handoffFailure",
+  DOCUMENT_FILE_HANDOFF_QUERY_PARAM: "handoffToken",
+}))
+
 import { SubtitleReaderApp } from "./SubtitleReaderApp"
 
 describe("SubtitleReaderApp", () => {
@@ -57,6 +67,7 @@ describe("SubtitleReaderApp", () => {
 
   beforeEach(async () => {
     vi.clearAllMocks()
+    window.history.replaceState(null, "", "/subtitle-reader.html")
     await mockBrowser.storage.local.clear()
     mockBrowser.tabs.create.mockResolvedValue(undefined)
     mockBrowser.runtime.getURL.mockImplementation((path: string) => path)
@@ -70,6 +81,7 @@ describe("SubtitleReaderApp", () => {
       ok: true,
       translations: ["Explains the subtitle row in context."],
     })
+    consumeDocumentFileHandoffMock.mockResolvedValue({ ok: false, reason: "invalid" })
     upsertOwnedSubtitleFileFromImportMock.mockResolvedValue({
       id: "or_subtitle_sample",
       sourceType: "subtitle-file",
@@ -97,6 +109,44 @@ describe("SubtitleReaderApp", () => {
       await Promise.resolve()
     })
     container.remove()
+  })
+
+  async function flushAppEffects() {
+    await Promise.resolve()
+    await Promise.resolve()
+    await new Promise((resolve) => setTimeout(resolve, 25))
+    await Promise.resolve()
+    await Promise.resolve()
+  }
+
+  async function remountAt(path: string) {
+    await act(async () => {
+      root.unmount()
+      await Promise.resolve()
+    })
+    window.history.replaceState(null, "", path)
+    root = ReactDOM.createRoot(container)
+    await act(async () => {
+      root.render(<SubtitleReaderApp />)
+      await flushAppEffects()
+    })
+  }
+
+  it("consumes a local file handoff token and parses without manual reselect", async () => {
+    const subtitleText = `WEBVTT\n\n00:00:00.000 --> 00:00:01.000\nHello Astra`
+    const file = new File([subtitleText], "handoff.vtt", { type: "text/vtt" })
+    Object.defineProperty(file, "text", {
+      configurable: true,
+      value: vi.fn(async () => subtitleText),
+    })
+    consumeDocumentFileHandoffMock.mockResolvedValueOnce({ ok: true, file, handoff: { token: "doc_1" } })
+
+    await remountAt("/subtitle-reader.html?handoffToken=doc_1&reopenHint=handoff.vtt")
+
+    expect(consumeDocumentFileHandoffMock).toHaveBeenCalledWith("doc_1", "subtitle")
+    expect(container.textContent).toContain("Opened handoff.vtt from Document Intake local handoff")
+    expect(container.textContent).toContain("Parsed 1 cues from VTT file")
+    expect(container.textContent).not.toContain("Drop SRT, VTT, ASS")
   })
 
   it("saves subtitle rows with stable owned-reading identity and exposes learning-loop handoff actions", async () => {

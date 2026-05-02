@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it } from "vitest"
 
-import { DEFAULT_ASTRA_CONFIG } from "@/types/config"
+import { DEFAULT_ASTRA_CONFIG, DEFAULT_SUBTITLE_QUALITY_CONTROLS } from "@/types/config"
 import {
   ASTRA_CONFIG_STORAGE_KEY,
   applySyncSafeConfig,
@@ -35,6 +35,8 @@ describe("config storage", () => {
       inputTranslation: "enabled",
       inputTranslationMode: "replace",
       languageLevel: "intermediate",
+      explainMode: "deep",
+      explanationGlossary: [],
       privacyMode: false,
       provider: {
         id: "openai",
@@ -55,6 +57,11 @@ describe("config storage", () => {
         theme: "default",
         fontSize: 0.92,
         translationColor: "#64748b",
+      },
+      subtitleQualityControls: {
+        ...DEFAULT_SUBTITLE_QUALITY_CONTROLS,
+        popupPollIntervalMs: 1500,
+        freshnessThresholdMs: 5000,
       },
       sites: {},
       customActions: [],
@@ -150,6 +157,33 @@ describe("config storage", () => {
     expect(config.inputTranslation).toBe("disabled")
     expect(config.privacyMode).toBe(true)
     expect(browser.__storage[ASTRA_CONFIG_STORAGE_KEY]).toEqual(config)
+  })
+
+  it("persists local subtitle QC popup controls without adding them to sync-safe snapshots", async () => {
+    const config = await saveConfig({
+      subtitleQualityControls: {
+        popupPollIntervalMs: 2500,
+        freshnessThresholdMs: 9000,
+        adaptivePresetAutoSwitchEnabled: true,
+        adaptivePresetCooldownMs: 45_000,
+        adaptivePresetManualOverrideLocked: true,
+        adaptivePresetLastAppliedAt: 123_000,
+        adaptivePresetName: "live",
+      },
+    })
+    const syncSafeConfig = await readSyncSafeConfig()
+
+    expect(config.subtitleQualityControls).toEqual({
+      ...DEFAULT_SUBTITLE_QUALITY_CONTROLS,
+      popupPollIntervalMs: 2500,
+      freshnessThresholdMs: 9000,
+      adaptivePresetAutoSwitchEnabled: true,
+      adaptivePresetCooldownMs: 45_000,
+      adaptivePresetManualOverrideLocked: true,
+      adaptivePresetLastAppliedAt: 123_000,
+      adaptivePresetName: "live",
+    })
+    expect(syncSafeConfig).not.toHaveProperty("subtitleQualityControls")
   })
 
   it("persists TTS settings and normalizes blank voice names", async () => {
@@ -289,6 +323,24 @@ describe("config storage", () => {
     expect(config.sites["example.com"]?.contentScope).toBe("article")
   })
 
+  it("persists site-level provider and model overrides without secrets", async () => {
+    const config = await saveConfig({
+      sites: {
+        "example.com": {
+          provider: {
+            id: "gemini",
+            model: "gemini-3.1-pro",
+          },
+        },
+      },
+    })
+
+    expect(config.sites["example.com"]?.provider).toEqual({
+      id: "gemini",
+      model: "gemini-3.1-pro",
+    })
+  })
+
   it("prunes site contentScope when it matches default", async () => {
     const config = await saveConfig({
       sites: {
@@ -344,6 +396,7 @@ describe("config storage", () => {
       inputTranslationMode: "replace",
       languageLevel: "advanced",
       explainMode: "deep",
+      explanationGlossary: [],
       privacyMode: true,
       provider: {
         id: "gemini",

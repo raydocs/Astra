@@ -78,14 +78,21 @@ export default function ReviewStats({ distribution, dueCount }: ReviewStatsProps
   return (
     <div style={containerStyle}>
       <div style={summaryStyle}>
-        <span><strong style={{ color: "#d97706" }}>{dueCount}</strong> due today</span>
+        <span><strong className="astra-tabular" style={{ color: "#d97706" }}>{dueCount}</strong> due today</span>
         <span style={{ color: "#cbd5e1" }}>|</span>
-        <span><strong style={{ color: "#10b981" }}>{mastered}</strong> mastered</span>
+        <span><strong className="astra-tabular" style={{ color: "#10b981" }}>{mastered}</strong> mastered</span>
         <span style={{ color: "#cbd5e1" }}>|</span>
-        <span><strong style={{ color: "#0f172a" }}>{total}</strong> total</span>
+        <span><strong className="astra-tabular" style={{ color: "#0f172a" }}>{total}</strong> total</span>
       </div>
 
-      <div style={barContainerStyle}>
+      <div
+        style={barContainerStyle}
+        role="progressbar"
+        aria-valuemin={0}
+        aria-valuemax={total}
+        aria-valuenow={mastered}
+        aria-label={`${mastered} of ${total} vocabulary items mastered`}
+      >
         {total > 0 && boxes.map((box) =>
           box.count > 0 ? (
             <div
@@ -106,7 +113,7 @@ export default function ReviewStats({ distribution, dueCount }: ReviewStatsProps
         {boxes.map((box) => (
           <span key={box.key}>
             <span style={legendDotStyle(box.color)} />
-            {box.label} ({box.count})
+            {box.label} (<span className="astra-tabular">{box.count}</span>)
           </span>
         ))}
       </div>
