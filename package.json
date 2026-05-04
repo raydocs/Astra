@@ -79,9 +79,9 @@
     "test:web": "vitest run web/src"
   },
   "dependencies": {
-    "@ai-sdk/google": "^3.0.63",
-    "@ai-sdk/openai": "^3.0.52",
-    "ai": "^6.0.159",
+    "@ai-sdk/google": "^3.0.67",
+    "@ai-sdk/openai": "^3.0.58",
+    "ai": "^6.0.174",
     "dexie": "^4.4.2",
     "epubjs": "^0.3.93",
     "jsdom": "^29.0.2",
