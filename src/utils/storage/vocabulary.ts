@@ -10,16 +10,112 @@ import {
   applyVocabularySyncMutations,
   buildSyncSafeVocabularyEntry,
   ensureSrsFields,
+  isVocabularyEntryFromStudyUrl,
   mergeVocabularySourceContext,
   normalizeVocabularySourceContext,
+  normalizeVocabularyStudyUrl,
+  getVocabularyStudyUrlCandidates,
   sanitizeVocabularyUrl,
   type SyncedVocabularyEntry,
   type VocabularyEntry,
   type VocabularySyncMutationLike,
 } from "./vocabulary-core"
+import type { OwnedReadingThemePackPackagePayload } from "./owned-reading"
 
 export const VOCABULARY_STORAGE_KEY = "astra.vocabulary.v1"
 const MAX_ENTRIES = 2000
+const WEEKLY_VOCABULARY_ROI_DEFAULT_DAYS = 7
+const DAY_MS = 24 * 60 * 60 * 1000
+
+export interface WeeklyVocabularyRoiWindow {
+  startAt: number
+  endAt: number
+  days: number
+}
+
+export interface WeeklyVocabularyRoiOptions {
+  now?: number
+  days?: number
+  windowStartAt?: number
+  windowEndAt?: number
+  masteryBox?: number
+}
+
+export interface WeeklyVocabularyRoiSummary {
+  window: WeeklyVocabularyRoiWindow
+  savedCount: number
+  reviewedCount: number
+  masteredCount: number
+  reviewHitCount: number
+  reviewAttemptCount: number
+  reviewHitRate: number | null
+}
+
+export interface VocabularyThemePackImportResult {
+  importedCount: number
+  skippedCount: number
+}
+
+export interface VocabularyThemePackImportPreviewConflict {
+  id: string
+  text: string
+  reason: "id" | "text-url"
+}
+
+export interface VocabularyThemePackImportPreview {
+  totalCount: number
+  importedCount: number
+  skippedCount: number
+  conflicts: VocabularyThemePackImportPreviewConflict[]
+  rollback: {
+    removeCount: number
+  }
+}
+
+function deriveWeeklyVocabularyRoiWindow(options: WeeklyVocabularyRoiOptions = {}): WeeklyVocabularyRoiWindow {
+  const endAt = options.windowEndAt ?? options.now ?? Date.now()
+  const days = Math.max(1, Math.floor(options.days ?? WEEKLY_VOCABULARY_ROI_DEFAULT_DAYS))
+  return {
+    startAt: options.windowStartAt ?? (endAt - (days * DAY_MS)),
+    endAt,
+    days,
+  }
+}
+
+function isTimestampInWeeklyVocabularyRoiWindow(value: number | null | undefined, window: WeeklyVocabularyRoiWindow): boolean {
+  return typeof value === "number" && Number.isFinite(value) && value >= window.startAt && value <= window.endAt
+}
+
+function isVocabularyEntryMastered(entry: VocabularyEntry, masteryBox: number): boolean {
+  return (entry.srsBox ?? 1) >= masteryBox
+}
+
+export function deriveWeeklyVocabularyRoi(
+  entries: VocabularyEntry[],
+  options: WeeklyVocabularyRoiOptions = {},
+): WeeklyVocabularyRoiSummary {
+  const window = deriveWeeklyVocabularyRoiWindow(options)
+  const masteryBox = options.masteryBox ?? 4
+  const savedThisWeek = entries.filter((entry) => isTimestampInWeeklyVocabularyRoiWindow(entry.savedAt, window))
+  const reviewedThisWeek = entries.filter((entry) => isTimestampInWeeklyVocabularyRoiWindow(entry.lastReviewedAt, window))
+  const masteredThisWeek = entries.filter((entry) => {
+    if (!isVocabularyEntryMastered(entry, masteryBox)) return false
+    return isTimestampInWeeklyVocabularyRoiWindow(entry.savedAt, window)
+      || isTimestampInWeeklyVocabularyRoiWindow(entry.lastReviewedAt, window)
+  })
+  const reviewHitCount = reviewedThisWeek.filter((entry) => (entry.srsBox ?? 1) > 1).length
+  const reviewAttemptCount = reviewedThisWeek.length
+
+  return {
+    window,
+    savedCount: savedThisWeek.length,
+    reviewedCount: reviewedThisWeek.length,
+    masteredCount: masteredThisWeek.length,
+    reviewHitCount,
+    reviewAttemptCount,
+    reviewHitRate: reviewAttemptCount > 0 ? Math.round((reviewHitCount / reviewAttemptCount) * 100) : null,
+  }
+}
 
 function generateId(): string {
   return `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
@@ -40,6 +136,102 @@ async function writeEntries(entries: VocabularyEntry[]): Promise<void> {
 
 export async function replaceVocabularyEntries(entries: VocabularyEntry[]): Promise<void> {
   await writeEntries(entries.map(ensureSrsFields))
+}
+
+function buildVocabularyImportKey(entry: Pick<VocabularyEntry, "text" | "url">): string {
+  return `${entry.text.trim().toLowerCase()}\u0000${normalizeVocabularyStudyUrl(entry.url)}`
+}
+
+function extractVocabularyEntriesFromThemePackPayload(
+  payload: OwnedReadingThemePackPackagePayload,
+): VocabularyEntry[] {
+  const ownedReadingAssetIds = new Set(
+    payload.ownedReading.themePacks.flatMap((pack) => pack.assets.map((asset) => asset.id)),
+  )
+  return payload.vocabularyEntries
+    .map((entry) => ensureSrsFields(VocabularyEntrySchema.parse(entry)))
+    .filter((entry) => {
+      const linkedItemId = entry.sourceContext?.ownedReadingItemId?.trim()
+      return Boolean(linkedItemId && ownedReadingAssetIds.has(linkedItemId))
+    })
+}
+
+function buildVocabularyThemePackImportPreview(
+  entries: readonly VocabularyEntry[],
+  incomingEntries: readonly VocabularyEntry[],
+): VocabularyThemePackImportPreview {
+  const existingIds = new Set(entries.map((entry) => entry.id))
+  const existingKeys = new Set(entries.map((entry) => buildVocabularyImportKey(entry)))
+  const conflicts: VocabularyThemePackImportPreviewConflict[] = []
+  let importedCount = 0
+  let skippedCount = 0
+
+  for (const incoming of incomingEntries) {
+    const key = buildVocabularyImportKey(incoming)
+    if (existingIds.has(incoming.id)) {
+      skippedCount += 1
+      conflicts.push({ id: incoming.id, text: incoming.text, reason: "id" })
+      continue
+    }
+    if (existingKeys.has(key)) {
+      skippedCount += 1
+      conflicts.push({ id: incoming.id, text: incoming.text, reason: "text-url" })
+      continue
+    }
+    importedCount += 1
+    existingIds.add(incoming.id)
+    existingKeys.add(key)
+  }
+
+  return {
+    totalCount: incomingEntries.length,
+    importedCount,
+    skippedCount,
+    conflicts,
+    rollback: {
+      removeCount: importedCount,
+    },
+  }
+}
+
+export async function previewVocabularyEntriesFromThemePackPayload(
+  payload: OwnedReadingThemePackPackagePayload,
+): Promise<VocabularyThemePackImportPreview> {
+  const incomingEntries = extractVocabularyEntriesFromThemePackPayload(payload)
+  const entries = await readEntries()
+  return buildVocabularyThemePackImportPreview(entries, incomingEntries)
+}
+
+export async function importVocabularyEntriesFromThemePackPayload(
+  payload: OwnedReadingThemePackPackagePayload,
+): Promise<VocabularyThemePackImportResult> {
+  const incomingEntries = extractVocabularyEntriesFromThemePackPayload(payload)
+
+  const entries = await readEntries()
+  const existingIds = new Set(entries.map((entry) => entry.id))
+  const existingKeys = new Set(entries.map((entry) => buildVocabularyImportKey(entry)))
+  const additions: VocabularyEntry[] = []
+  let skippedCount = 0
+
+  for (const incoming of incomingEntries) {
+    const key = buildVocabularyImportKey(incoming)
+    if (existingIds.has(incoming.id) || existingKeys.has(key)) {
+      skippedCount += 1
+      continue
+    }
+    additions.push(incoming)
+    existingIds.add(incoming.id)
+    existingKeys.add(key)
+  }
+
+  if (additions.length > 0) {
+    await writeEntries([...additions, ...entries])
+  }
+
+  return {
+    importedCount: additions.length,
+    skippedCount,
+  }
 }
 
 export async function saveVocabularyEntry(entry: Omit<VocabularyEntry, "id" | "savedAt">): Promise<VocabularyEntry> {
@@ -264,6 +456,9 @@ export {
   applyVocabularySyncMutations,
   buildSyncSafeVocabularyEntry,
   ensureSrsFields,
+  getVocabularyStudyUrlCandidates,
+  isVocabularyEntryFromStudyUrl,
+  normalizeVocabularyStudyUrl,
   sanitizeVocabularyUrl,
 }
 export type {

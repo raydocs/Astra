@@ -1,13 +1,17 @@
 import { beforeEach, describe, expect, it } from "vitest"
 
 import { createMockBrowser, setMockBrowser } from "../../../test/utils/mockBrowser"
+import type { OwnedReadingThemePackPackagePayload } from "./owned-reading"
 import {
   applyVocabularySyncMutations,
   buildSyncSafeVocabularyEntry,
   buildTerminologyGlossary,
+  deriveWeeklyVocabularyRoi,
   getVocabularyCount,
   getVocabularyEntries,
   hasVocabularyEntryByText,
+  importVocabularyEntriesFromThemePackPayload,
+  previewVocabularyEntriesFromThemePackPayload,
   listGlossaryEntriesForHostname,
   removeVocabularyEntry,
   saveVocabularyEntry,
@@ -112,6 +116,53 @@ describe("vocabulary storage", () => {
     expect(await hasVocabularyEntryByText("goodbye world")).toBe(false)
   })
 
+  it("derives weekly vocabulary ROI from saved and reviewed SRS entries", () => {
+    const now = new Date("2026-04-09T12:00:00.000Z").getTime()
+    const entries = [
+      {
+        id: "mastered-this-week",
+        text: "retained",
+        savedAt: now - 2 * 24 * 60 * 60_000,
+        srsBox: 4,
+        nextReviewAt: now + 2 * 24 * 60 * 60_000,
+        reviewCount: 3,
+        lastReviewedAt: now - 60_000,
+      },
+      {
+        id: "missed-review",
+        text: "retry",
+        savedAt: now - 3 * 24 * 60 * 60_000,
+        srsBox: 1,
+        nextReviewAt: now + 24 * 60 * 60_000,
+        reviewCount: 1,
+        lastReviewedAt: now - 2 * 60_000,
+      },
+      {
+        id: "old-mastered",
+        text: "old",
+        savedAt: now - 10 * 24 * 60 * 60_000,
+        srsBox: 5,
+        nextReviewAt: now + 10 * 24 * 60 * 60_000,
+        reviewCount: 5,
+        lastReviewedAt: now - 9 * 24 * 60 * 60_000,
+      },
+    ]
+
+    expect(deriveWeeklyVocabularyRoi(entries, { now })).toEqual({
+      window: {
+        startAt: now - 7 * 24 * 60 * 60_000,
+        endAt: now,
+        days: 7,
+      },
+      savedCount: 2,
+      reviewedCount: 2,
+      masteredCount: 1,
+      reviewHitCount: 1,
+      reviewAttemptCount: 2,
+      reviewHitRate: 50,
+    })
+  })
+
   it("builds a sync-safe vocabulary entry without SRS fields and with sanitized urls", async () => {
     const entry = await saveVocabularyEntry({
       text: "router",
@@ -122,6 +173,92 @@ describe("vocabulary storage", () => {
     const synced = buildSyncSafeVocabularyEntry(entry)
     expect(synced).not.toHaveProperty("srsBox")
     expect(synced.url).toBe("https://example.com/page")
+  })
+
+  it("imports verified theme-pack vocabulary entries into existing local storage only", async () => {
+    await saveVocabularyEntry({
+      text: "existing",
+      url: "https://example.com/article",
+      translation: "已存在",
+    })
+
+    const payload: OwnedReadingThemePackPackagePayload = {
+      schema: "astra-owned-reading-theme-pack-payload.v3",
+      generatedAt: "2026-04-29T00:00:00.000Z",
+      ownedReading: {
+        schema: "astra-owned-reading-theme-packs.v1",
+        generatedAt: "2026-04-29T00:00:00.000Z",
+        assetCount: 1,
+        themePackCount: 1,
+        themePacks: [{
+          id: "theme_article-example-com",
+          themeKey: "article:example.com",
+          title: "Articles from example.com",
+          assetCount: 1,
+          assets: [{
+            id: "or_article_example",
+            sourceType: "article",
+            sourceTypeLabel: "Article",
+            title: "Example article",
+            status: "saved",
+            openedAt: 100,
+            updatedAt: 100,
+            sourceUrl: "https://example.com/article",
+            localUri: null,
+            readingHistoryRecordId: "https://example.com/article",
+            studyProgressRecordId: "https://example.com/article",
+          }],
+        }],
+      },
+      vocabularyEntries: [
+        {
+          id: "entry-new",
+          text: "assetized",
+          translation: "资产化",
+          url: "https://example.com/article",
+          hostname: "example.com",
+          savedAt: 200,
+          sourceContext: {
+            surface: "popup_deep_read",
+            pageTitle: "Example article",
+            pageUrl: "https://example.com/article",
+            hostname: "example.com",
+            ownedReadingItemId: "or_article_example",
+            ownedReadingSourceType: "article",
+            ownedReadingTitle: "Example article",
+          },
+        },
+        {
+          id: "entry-unlinked",
+          text: "outside",
+          savedAt: 300,
+        },
+      ],
+    }
+
+    const preview = await previewVocabularyEntriesFromThemePackPayload(payload)
+    const first = await importVocabularyEntriesFromThemePackPayload(payload)
+    const conflictPreview = await previewVocabularyEntriesFromThemePackPayload(payload)
+    const second = await importVocabularyEntriesFromThemePackPayload(payload)
+
+    expect(preview).toEqual({
+      totalCount: 1,
+      importedCount: 1,
+      skippedCount: 0,
+      conflicts: [],
+      rollback: { removeCount: 1 },
+    })
+    expect(first).toEqual({ importedCount: 1, skippedCount: 0 })
+    expect(conflictPreview).toEqual({
+      totalCount: 1,
+      importedCount: 0,
+      skippedCount: 1,
+      conflicts: [{ id: "entry-new", text: "assetized", reason: "id" }],
+      rollback: { removeCount: 0 },
+    })
+    expect(second).toEqual({ importedCount: 0, skippedCount: 1 })
+    expect((await getVocabularyEntries()).map((entry) => entry.id)).toContain("entry-new")
+    expect((await getVocabularyEntries()).map((entry) => entry.id)).not.toContain("entry-unlinked")
   })
 
   it("round-trips subtitle_reader source context metadata", async () => {
@@ -169,6 +306,8 @@ describe("vocabulary storage", () => {
         articleExcerpt: "The ephemeral phase passes quickly. Another sentence follows.",
         sentenceText: "The ephemeral phase passes quickly.",
         sentenceIndex: 0,
+        languageLevel: "beginner",
+        explainMode: "exam",
         ownedReadingItemId: "or_article_example",
         ownedReadingSourceType: "article",
         ownedReadingTitle: "Example article",
@@ -186,6 +325,8 @@ describe("vocabulary storage", () => {
       sentenceText: "The ephemeral phase passes quickly.",
       sentenceHash: expect.stringMatching(/^fnv1a:/),
       sentenceIndex: 0,
+      languageLevel: "beginner",
+      explainMode: "exam",
       ownedReadingItemId: "or_article_example",
       ownedReadingSourceType: "article",
       ownedReadingTitle: "Example article",

@@ -21,6 +21,32 @@ vi.mock("@/utils/storage/config", () => ({
 
 vi.mock("@/utils/translate/translate", () => ({
   translateTexts: translateTextsMock,
+  translateExplanationWithQualityRetry: async (request: {
+    source: string
+    requiredGlossaryTerms?: Array<{ sourceTerm: string; preferredTerm: string; enabled?: boolean }>
+    [key: string]: unknown
+  }) => {
+    const {
+      buildExplanationRepairInstruction,
+      validateExplanationQuality,
+    } = await import("@/utils/translate/explanation-quality")
+    const { source, requiredGlossaryTerms = [], ...translateRequest } = request
+    const baseRequest = { ...translateRequest, texts: [source], task: "explain" }
+    const firstResult = await translateTextsMock(baseRequest)
+    if (!firstResult.ok) return { ok: false, message: firstResult.error.message, retried: false }
+    const firstText = firstResult.translations[0] ?? ""
+    const firstQuality = validateExplanationQuality({ source, explanation: firstText, requiredGlossaryTerms })
+    if (firstQuality.ok) return { ok: true, text: firstText, retried: false }
+    const retryResult = await translateTextsMock({
+      ...baseRequest,
+      explanationRepairInstruction: buildExplanationRepairInstruction(firstQuality),
+    })
+    if (!retryResult.ok) return { ok: false, message: retryResult.error.message, retried: true, quality: firstQuality }
+    const retryText = retryResult.translations[0] ?? ""
+    const retryQuality = validateExplanationQuality({ source, explanation: retryText, requiredGlossaryTerms })
+    if (!retryQuality.ok) return { ok: false, message: retryQuality.message, retried: true, quality: retryQuality }
+    return { ok: true, text: retryText, retried: true }
+  },
 }))
 
 vi.mock("@/utils/storage/vocabulary", () => ({
@@ -261,6 +287,11 @@ describe("SelectionToolbar interaction suppression", () => {
   })
 
   it("calls explain task when explain button is clicked", async () => {
+    readConfigMock.mockResolvedValue({
+      ...DEFAULT_ASTRA_CONFIG,
+      languageLevel: "beginner",
+      explainMode: "exam",
+    })
     const target = document.getElementById("target") as HTMLElement
 
     // Show toolbar via selection
@@ -292,8 +323,248 @@ describe("SelectionToolbar interaction suppression", () => {
       expect.objectContaining({
         task: "explain",
         texts: ["Hello world"],
+        languageLevel: "beginner",
+        explainMode: "exam",
       }),
     )
+    expect(shadow.querySelector('[data-testid="selection-explain-profile"]')?.textContent).toBe("Explain profile: Exam · Beginner")
+
+    const saveCta = shadow.querySelector('[data-testid="selection-result-save-cta"]') as HTMLButtonElement | null
+    await act(async () => {
+      saveCta!.click()
+      await Promise.resolve()
+      await Promise.resolve()
+    })
+
+    expect(saveVocabularyEntryMock).toHaveBeenCalledWith(expect.objectContaining({
+      sourceContext: expect.objectContaining({
+        surface: "selection_toolbar",
+        sentenceText: "Hello world",
+        languageLevel: "beginner",
+        explainMode: "exam",
+      }),
+    }))
+  })
+
+  it("passes configured explanation glossary through selection explain requests", async () => {
+    readConfigMock.mockResolvedValue({
+      ...DEFAULT_ASTRA_CONFIG,
+      explanationGlossary: [{ sourceTerm: "Astra", preferredTerm: "阿斯特拉", enabled: true }],
+    })
+    const target = document.getElementById("target") as HTMLElement
+
+    await triggerDocumentMouseDown(target)
+    setSelection("Astra improves reading")
+    await triggerDocumentMouseUp(target)
+
+    const host = document.getElementById(HOST_ID)!
+    const shadow = host.shadowRoot!
+    const explainBtn = shadow.querySelector("[data-testid='selection-action-explain']") as HTMLButtonElement | null
+
+    translateTextsMock.mockResolvedValueOnce({
+      ok: true,
+      translations: ["阿斯特拉 is the product name; this explains that it improves reading."],
+    })
+
+    await act(async () => {
+      explainBtn?.click()
+      await Promise.resolve()
+      await Promise.resolve()
+    })
+
+    expect(translateTextsMock).toHaveBeenCalledWith(expect.objectContaining({
+      task: "explain",
+      texts: ["Astra improves reading"],
+      context: expect.objectContaining({
+        explanationGlossary: "Astra => 阿斯特拉",
+      }),
+    }))
+    expect(shadow.textContent).toContain("阿斯特拉 is the product name")
+    expect(shadow.querySelector('[data-testid="selection-glossary-evidence"]')?.textContent).toBe("Glossary applied: Astra → 阿斯特拉")
+
+    const saveCta = shadow.querySelector('[data-testid="selection-result-save-cta"]') as HTMLButtonElement | null
+    await act(async () => {
+      saveCta?.click()
+      await Promise.resolve()
+      await Promise.resolve()
+    })
+
+    expect(saveVocabularyEntryMock).toHaveBeenCalledWith(expect.objectContaining({
+      sourceContext: expect.objectContaining({
+        matchedGlossaryTerms: [{ sourceTerm: "Astra", preferredTerm: "阿斯特拉" }],
+      }),
+    }))
+  })
+
+  it("retries selection explanations missing required glossary terms before rendering success", async () => {
+    readConfigMock.mockResolvedValue({
+      ...DEFAULT_ASTRA_CONFIG,
+      languageLevel: "beginner",
+      explainMode: "exam",
+      explanationGlossary: [{ sourceTerm: "Astra", preferredTerm: "阿斯特拉", enabled: true }],
+    })
+    const target = document.getElementById("target") as HTMLElement
+
+    await triggerDocumentMouseDown(target)
+    setSelection("Astra improves reading")
+    await triggerDocumentMouseUp(target)
+
+    const host = document.getElementById(HOST_ID)!
+    const shadow = host.shadowRoot!
+    const explainBtn = shadow.querySelector("[data-testid='selection-action-explain']") as HTMLButtonElement | null
+
+    translateTextsMock
+      .mockResolvedValueOnce({ ok: true, translations: ["This explains that the product improves reading."] })
+      .mockResolvedValueOnce({ ok: true, translations: ["阿斯特拉 is the product name; this explains that it improves reading."] })
+
+    await act(async () => {
+      explainBtn?.click()
+      await Promise.resolve()
+      await Promise.resolve()
+    })
+
+    expect(translateTextsMock).toHaveBeenCalledTimes(2)
+    expect(translateTextsMock).toHaveBeenNthCalledWith(2, expect.objectContaining({
+      task: "explain",
+      texts: ["Astra improves reading"],
+      languageLevel: "beginner",
+      explainMode: "exam",
+      context: expect.objectContaining({
+        explanationGlossary: "Astra => 阿斯特拉",
+      }),
+      explanationRepairInstruction: expect.stringContaining("include every matched preferred term exactly"),
+    }))
+    expect(shadow.textContent).toContain("阿斯特拉 is the product name")
+    expect(shadow.querySelector('[data-testid="selection-result-save-cta"]')).toBeTruthy()
+  })
+
+  it("rejects selection explanations missing required glossary terms after the recovery retry", async () => {
+    readConfigMock.mockResolvedValue({
+      ...DEFAULT_ASTRA_CONFIG,
+      explanationGlossary: [{ sourceTerm: "Astra", preferredTerm: "阿斯特拉", enabled: true }],
+    })
+    const target = document.getElementById("target") as HTMLElement
+
+    await triggerDocumentMouseDown(target)
+    setSelection("Astra improves reading")
+    await triggerDocumentMouseUp(target)
+
+    const host = document.getElementById(HOST_ID)!
+    const shadow = host.shadowRoot!
+    const explainBtn = shadow.querySelector("[data-testid='selection-action-explain']") as HTMLButtonElement | null
+
+    translateTextsMock
+      .mockResolvedValueOnce({
+        ok: true,
+        translations: ["This explains that the product improves reading."],
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        translations: ["Still missing the required term."],
+      })
+
+    await act(async () => {
+      explainBtn?.click()
+      await Promise.resolve()
+      await Promise.resolve()
+    })
+
+    expect(shadow.textContent).toContain("⚠ Explanation output omitted required glossary term \"阿斯特拉\" for source term \"Astra\". Please retry.")
+    expect(shadow.querySelector('[data-testid="selection-result-save-cta"]')).toBeNull()
+  })
+
+  it("rejects source-echo selection explanations before they become saveable explanations", async () => {
+    const target = document.getElementById("target") as HTMLElement
+
+    await triggerDocumentMouseDown(target)
+    setSelection("Hello world")
+    await triggerDocumentMouseUp(target)
+
+    const host = document.getElementById(HOST_ID)!
+    const shadow = host.shadowRoot!
+    const explainBtn = shadow.querySelector("[data-testid='selection-action-explain']") as HTMLButtonElement | null
+
+    translateTextsMock
+      .mockResolvedValueOnce({
+        ok: true,
+        translations: ["Hello world"],
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        translations: ["Hello world"],
+      })
+
+    await act(async () => {
+      explainBtn?.click()
+      await Promise.resolve()
+      await Promise.resolve()
+    })
+
+    expect(shadow.textContent).toContain("⚠ Explanation output echoed the source text. Please retry.")
+    expect(shadow.querySelector('[data-testid="selection-explain-profile"]')).toBeNull()
+    expect(shadow.querySelector('[data-testid="selection-result-save-cta"]')).toBeNull()
+
+    saveVocabularyEntryMock.mockClear()
+    const saveBtn = Array.from(shadow.querySelectorAll("button")).find((btn) => btn.textContent === t("actionSave"))
+    await act(async () => {
+      saveBtn?.click()
+      await Promise.resolve()
+      await Promise.resolve()
+    })
+
+    const [savedEntry] = saveVocabularyEntryMock.mock.calls.at(-1) ?? []
+    expect(savedEntry).toBeDefined()
+    expect(savedEntry.explanation).toBeUndefined()
+    expect(savedEntry.note).toBeUndefined()
+    expect(savedEntry.sourceContext).not.toHaveProperty("languageLevel")
+    expect(savedEntry.sourceContext).not.toHaveProperty("explainMode")
+  })
+
+  it("rejects repetitive selection explanations before they become saveable explanations", async () => {
+    const target = document.getElementById("target") as HTMLElement
+
+    await triggerDocumentMouseDown(target)
+    setSelection("Although the tone is calm, the announcement matters.")
+    await triggerDocumentMouseUp(target)
+
+    const host = document.getElementById(HOST_ID)!
+    const shadow = host.shadowRoot!
+    const explainBtn = shadow.querySelector("[data-testid='selection-action-explain']") as HTMLButtonElement | null
+
+    translateTextsMock
+      .mockResolvedValueOnce({
+        ok: true,
+        translations: ["It explains that the announcement matters. It explains that the announcement matters. It explains that the announcement matters."],
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        translations: ["It explains that the announcement matters. It explains that the announcement matters. It explains that the announcement matters."],
+      })
+
+    await act(async () => {
+      explainBtn?.click()
+      await Promise.resolve()
+      await Promise.resolve()
+    })
+
+    expect(shadow.textContent).toContain("⚠ Explanation output repeated itself in a loop. Please retry.")
+    expect(shadow.querySelector('[data-testid="selection-explain-profile"]')).toBeNull()
+    expect(shadow.querySelector('[data-testid="selection-result-save-cta"]')).toBeNull()
+
+    saveVocabularyEntryMock.mockClear()
+    const saveBtn = Array.from(shadow.querySelectorAll("button")).find((btn) => btn.textContent === t("actionSave"))
+    await act(async () => {
+      saveBtn?.click()
+      await Promise.resolve()
+      await Promise.resolve()
+    })
+
+    const [savedEntry] = saveVocabularyEntryMock.mock.calls.at(-1) ?? []
+    expect(savedEntry).toBeDefined()
+    expect(savedEntry.explanation).toBeUndefined()
+    expect(savedEntry.note).toBeUndefined()
+    expect(savedEntry.sourceContext).not.toHaveProperty("languageLevel")
+    expect(savedEntry.sourceContext).not.toHaveProperty("explainMode")
   })
 
   it("shows primary action variants and active/selected state transitions", async () => {
@@ -311,7 +582,7 @@ describe("SelectionToolbar interaction suppression", () => {
 
     expect(translateBtn?.dataset.actionVariant).toBe("primary")
     expect(explainBtn?.dataset.actionVariant).toBe("primary")
-    expect(copyBtn?.style.background).toBe("transparent")
+    expect(copyBtn?.style.background).toContain("--astra-style-accent-muted")
 
     let resolveExplain!: (value: { ok: true; translations: string[] }) => void
     translateTextsMock.mockImplementationOnce(() => new Promise((resolve) => {
@@ -493,6 +764,32 @@ describe("SelectionToolbar interaction suppression", () => {
     expect(buttonTexts).toContain("翻译")
     expect(buttonTexts).toContain("解释")
     expect(buttonTexts).toContain("复制")
+  })
+
+  it("applies resolved font scaling to toolbar typography and controls", async () => {
+    readConfigMock.mockResolvedValue({
+      ...DEFAULT_ASTRA_CONFIG,
+      presentation: {
+        ...DEFAULT_ASTRA_CONFIG.presentation,
+        fontSize: 1.2,
+      },
+    })
+
+    const target = document.getElementById("target") as HTMLElement
+
+    await triggerDocumentMouseDown(target)
+    setSelection("Hello world")
+    await triggerDocumentMouseUp(target)
+
+    const host = document.getElementById(HOST_ID)!
+    const shadow = host.shadowRoot!
+
+    const shell = shadow.querySelector("[data-testid='selection-toolbar-shell']") as HTMLDivElement | null
+    const toolbarRoot = shell?.parentElement as HTMLDivElement | null
+    const translateButton = shadow.querySelector("[data-testid='selection-action-translate']") as HTMLButtonElement | null
+
+    expect(toolbarRoot?.style.fontSize).toBe("1.05rem")
+    expect(translateButton?.style.fontSize).toBe("15.6px")
   })
 
   it("hides the speak button when TTS is disabled in config", async () => {

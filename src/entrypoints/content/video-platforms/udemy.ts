@@ -1,9 +1,11 @@
+import { courseOverlayRenderingRule } from "./rendering-rules"
 import type { VideoPlatformConfig } from "./types"
 
 export const udemyPlatform: VideoPlatformConfig = {
   id: "udemy",
   hostnames: ["www.udemy.com"],
   preferTextTracks: true,
+  subtitleRendering: courseOverlayRenderingRule("udemy"),
   // Udemy uses a dedicated captions display container for course videos
   captionContainerSelector: [
     ".captions-display--captions-container",

@@ -7,16 +7,19 @@ import { retryFailedBlocks, subscribePageTranslationState } from "../page-transl
 import { toggleCurrentTabTranslation } from "@/utils/extension/messages"
 import { IDLE_TRANSLATION_SNAPSHOT } from "@/types/translation"
 import { getLearningState, subscribeLearningState, type LearningStateSnapshot } from "../learning-state"
+import { readConfig } from "@/utils/storage/config"
+import { resolveSiteTranslationSettings } from "@/types/config"
+import { OVERLAY_FONT_FAMILY, OVERLAY_STYLE_TOKENS, createOverlayStyle1TokenStyleElement, overlayPx } from "./overlayScale"
 
 const STORAGE_KEY = "astra_float_ball_y"
 const DEFAULT_Y = 300
 const BALL_SIZE = 44
 
-const COLOR_IDLE = "#6366f1"
-const COLOR_ACTIVE = "#16c79a"
-const COLOR_BUSY = "#8b5cf6"
-const COLOR_ERROR = "#f59e0b"
-const COLOR_LEARNING = "#10b981"
+const COLOR_IDLE = OVERLAY_STYLE_TOKENS.brand
+const COLOR_ACTIVE = OVERLAY_STYLE_TOKENS.success
+const COLOR_BUSY = OVERLAY_STYLE_TOKENS.brandActive
+const COLOR_ERROR = OVERLAY_STYLE_TOKENS.warning
+const COLOR_LEARNING = OVERLAY_STYLE_TOKENS.success
 const SAVE_PULSE_MS = 1200
 
 function getFloatBallVisualState(
@@ -93,6 +96,7 @@ function FloatBallButton() {
   const [dragging, setDragging] = useState(false)
   const [hovered, setHovered] = useState(false)
   const [learningPulseActive, setLearningPulseActive] = useState(false)
+  const [fontScale, setFontScale] = useState(0.92)
   const dragRef = useRef<{ startY: number; startPosY: number } | null>(null)
   const movedRef = useRef(false)
   const posYRef = useRef(posY)
@@ -118,6 +122,31 @@ function FloatBallButton() {
 
   useEffect(() => {
     return subscribeLearningState(setLearningState)
+  }, [])
+
+  useEffect(() => {
+    const syncFontScale = async () => {
+      try {
+        const config = await readConfig()
+        const resolved = resolveSiteTranslationSettings(config, window.location.hostname)
+        setFontScale(resolved.presentation.fontSize)
+      } catch {
+        setFontScale(0.92)
+      }
+    }
+
+    void syncFontScale()
+
+    const onStorageChange = (
+      _changes: Record<string, unknown>,
+      areaName: string,
+    ) => {
+      if (areaName !== "local") return
+      void syncFontScale()
+    }
+
+    browser.storage.onChanged.addListener(onStorageChange)
+    return () => browser.storage.onChanged.removeListener(onStorageChange)
   }, [])
 
   useEffect(() => {
@@ -229,8 +258,8 @@ function FloatBallButton() {
         background: visual.color,
         borderRadius: "50% 0 0 50%",
         boxShadow: showLearningPulse
-          ? `0 0 0 8px ${COLOR_LEARNING}24, 0 2px 16px ${visual.color}99`
-          : `0 2px 12px ${visual.color}80`,
+          ? `0 0 0 8px color-mix(in srgb, ${COLOR_LEARNING} 14%, transparent), 0 2px 16px color-mix(in srgb, ${visual.color} 60%, transparent)`
+          : `0 2px 12px color-mix(in srgb, ${visual.color} 50%, transparent)`,
         transition: dragging ? "none" : "background 0.25s, box-shadow 0.25s, top 0.15s",
         animation: showLearningPulse ? "astra-floatball-learning-pulse 0.8s ease-out" : undefined,
         transform: hovered && !dragging ? "scale(1.1)" : "scale(1)",
@@ -245,15 +274,15 @@ function FloatBallButton() {
             right: BALL_SIZE + 8,
             top: "50%",
             transform: "translateY(-50%)",
-            background: "rgba(0,0,0,0.78)",
-            color: "#fff",
-            fontSize: "12px",
-            padding: "4px 10px",
-            borderRadius: "6px",
+            background: OVERLAY_STYLE_TOKENS.tooltipBg,
+            color: OVERLAY_STYLE_TOKENS.textInverse,
+            fontSize: overlayPx(12, fontScale),
+            padding: `${overlayPx(4, fontScale)} ${overlayPx(10, fontScale)}`,
+            borderRadius: overlayPx(8, fontScale),
             whiteSpace: "nowrap",
             pointerEvents: "none",
             lineHeight: "1.4",
-            fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif",
+            fontFamily: OVERLAY_FONT_FAMILY,
             maxWidth: 260,
             overflow: "hidden",
             textOverflow: "ellipsis",
@@ -265,12 +294,12 @@ function FloatBallButton() {
       {visual.progressText ? (
         <span
           style={{
-            color: "#fff",
-            fontSize: "11px",
+            color: OVERLAY_STYLE_TOKENS.textInverse,
+            fontSize: overlayPx(11, fontScale),
             fontWeight: "bold",
             lineHeight: 1,
             pointerEvents: "none",
-            fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif",
+            fontFamily: OVERLAY_FONT_FAMILY,
           }}
         >
           {visual.progressText}
@@ -285,7 +314,7 @@ function FloatBallButton() {
         >
           <path
             d="M12 2 L14.5 9 L22 9.5 L16 14.5 L18 22 L12 17.5 L6 22 L8 14.5 L2 9.5 L9.5 9 Z"
-            fill="#fff"
+            fill={OVERLAY_STYLE_TOKENS.textInverse}
           />
         </svg>
       )}
@@ -300,6 +329,8 @@ export function mountFloatBall() {
   const host = document.createElement("div")
   host.id = "astra-float-ball-host"
   const shadow = host.attachShadow({ mode: "open" })
+
+  shadow.appendChild(createOverlayStyle1TokenStyleElement())
 
   const resetStyle = document.createElement("style")
   resetStyle.textContent = `

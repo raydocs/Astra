@@ -2,11 +2,17 @@ import { describe, expect, it } from "vitest"
 
 import {
   DEFAULT_ASTRA_CONFIG,
+  DEFAULT_SUBTITLE_QUALITY_CONTROLS,
   applyConfigSyncMutations,
   buildConfigSyncRecordMap,
   hasResolvedProviderAccess,
+  hasResolvedSiteProviderAccess,
+  normalizeConfig,
+  parseExplanationGlossaryText,
   resolveManagedProviderConfig,
+  resolveSiteProviderConfig,
   resolveSiteTranslationSettings,
+  serializeExplanationGlossary,
   type AstraConfig,
 } from "./config"
 import type { AstraSession } from "./auth"
@@ -44,6 +50,50 @@ describe("config sync records", () => {
     expect(records["custom_action:glossary"]).toMatchObject({
       kind: "custom_action",
       action: expect.objectContaining({ id: "glossary" }),
+    })
+  })
+
+  it("keeps subtitle QC popup controls local-only during config sync", () => {
+    const localConfig: AstraConfig = {
+      ...DEFAULT_ASTRA_CONFIG,
+      subtitleQualityControls: {
+        ...DEFAULT_SUBTITLE_QUALITY_CONTROLS,
+        popupPollIntervalMs: 2500,
+        freshnessThresholdMs: 8000,
+        adaptivePresetAutoSwitchEnabled: true,
+        adaptivePresetCooldownMs: 45_000,
+        adaptivePresetManualOverrideLocked: true,
+        adaptivePresetLastAppliedAt: 123_000,
+        adaptivePresetName: "live",
+      },
+    }
+    const records = buildConfigSyncRecordMap(localConfig)
+    const localGlobal = records.global
+    expect(localGlobal).toMatchObject({ kind: "global" })
+    if (localGlobal.kind !== "global") throw new Error("Expected global sync record")
+    expect(localGlobal.config).not.toHaveProperty("subtitleQualityControls")
+
+    const remoteGlobal = buildConfigSyncRecordMap({
+      ...DEFAULT_ASTRA_CONFIG,
+      targetLang: "ja",
+    }).global
+    if (remoteGlobal.kind !== "global") throw new Error("Expected global sync record")
+    const nextConfig = applyConfigSyncMutations(localConfig, [{
+      recordId: "global",
+      operation: "upsert",
+      payload: remoteGlobal,
+    }])
+
+    expect(nextConfig.targetLang).toBe("ja")
+    expect(nextConfig.subtitleQualityControls).toEqual({
+      ...DEFAULT_SUBTITLE_QUALITY_CONTROLS,
+      popupPollIntervalMs: 2500,
+      freshnessThresholdMs: 8000,
+      adaptivePresetAutoSwitchEnabled: true,
+      adaptivePresetCooldownMs: 45_000,
+      adaptivePresetManualOverrideLocked: true,
+      adaptivePresetLastAppliedAt: 123_000,
+      adaptivePresetName: "live",
     })
   })
 
@@ -126,6 +176,35 @@ describe("config sync records", () => {
     expect(nextConfig.tts.voiceName).toBe("Samantha")
     expect(nextConfig.sites["example.com"]?.selectors).toEqual(["article"])
     expect(nextConfig.customActions).toEqual([])
+  })
+})
+
+describe("explanation glossary config", () => {
+  it("normalizes explanation glossary entries, drops incomplete rows, and dedupes source terms", () => {
+    const normalized = normalizeConfig({
+      ...DEFAULT_ASTRA_CONFIG,
+      explanationGlossary: [
+        { sourceTerm: " Astra ", preferredTerm: " 阿斯特拉 ", enabled: true },
+        { sourceTerm: "astra", preferredTerm: "重复", enabled: true },
+        { sourceTerm: "router", preferredTerm: "路由器", enabled: false },
+        { sourceTerm: "empty", preferredTerm: "  ", enabled: true },
+      ],
+    })
+
+    expect(normalized.explanationGlossary).toEqual([
+      { sourceTerm: "Astra", preferredTerm: "阿斯特拉", enabled: true },
+      { sourceTerm: "router", preferredTerm: "路由器", enabled: false },
+    ])
+  })
+
+  it("parses and serializes the popup explanation glossary text format", () => {
+    const parsed = parseExplanationGlossaryText("Astra => 阿斯特拉\nrouter = 路由器\ninvalid")
+
+    expect(parsed).toEqual([
+      { sourceTerm: "Astra", preferredTerm: "阿斯特拉", enabled: true },
+      { sourceTerm: "router", preferredTerm: "路由器", enabled: true },
+    ])
+    expect(serializeExplanationGlossary(parsed)).toBe("Astra => 阿斯特拉\nrouter => 路由器")
   })
 })
 
@@ -282,11 +361,366 @@ describe("resolveSiteTranslationSettings", () => {
     expect(resolved.contentScope).toBe("article")
   })
 
+  it("accepts and resolves mask as a translation theme", () => {
+    const normalized = normalizeConfig({
+      ...DEFAULT_ASTRA_CONFIG,
+      presentation: {
+        ...DEFAULT_ASTRA_CONFIG.presentation,
+        theme: "mask",
+      },
+    })
+
+    expect(normalized.presentation.theme).toBe("mask")
+    expect(resolveSiteTranslationSettings(normalized, "example.com").presentation.theme).toBe("mask")
+
+    const siteConfig: AstraConfig = {
+      ...DEFAULT_ASTRA_CONFIG,
+      sites: {
+        "example.com": {
+          enabled: true,
+          alwaysTranslate: false,
+          presentation: {
+            theme: "mask",
+          },
+        },
+      },
+    }
+
+    expect(resolveSiteTranslationSettings(siteConfig, "example.com").presentation.theme).toBe("mask")
+
+    const overrideConfig: AstraConfig = {
+      ...DEFAULT_ASTRA_CONFIG,
+      sites: {
+        "example.com": {
+          enabled: true,
+          alwaysTranslate: false,
+          presentation: {
+            theme: "highlight",
+          },
+        },
+      },
+    }
+
+    expect(resolveSiteTranslationSettings(overrideConfig, "example.com", { translationTheme: "mask" }).presentation.theme).toBe("mask")
+  })
+
+  it("falls back from www hostnames to apex site rules for site translation settings", () => {
+    const config: AstraConfig = {
+      ...DEFAULT_ASTRA_CONFIG,
+      sites: {
+        "example.com": {
+          enabled: true,
+          alwaysTranslate: false,
+          selectors: ["article"],
+          excludeSelectors: [".ad", "nav"],
+          paragraphMinLength: 80,
+          presentation: {
+            mode: "translation-only",
+            theme: "highlight",
+            fontSize: 1.1,
+            translationColor: "#111827",
+          },
+        },
+      },
+    }
+
+    const resolved = resolveSiteTranslationSettings(config, "https://www.example.com/read")
+
+    expect(resolved.hostname).toBe("www.example.com")
+    expect(resolved.selectors).toEqual(["article"])
+    expect(resolved.excludeSelectors).toEqual([".ad", "nav"])
+    expect(resolved.paragraphMinLength).toBe(80)
+    expect(resolved.presentation).toMatchObject({
+      mode: "translation-only",
+      theme: "highlight",
+      fontSize: 1.1,
+      translationColor: "#111827",
+    })
+  })
+
+  it("prefers exact www hostname site rules over apex fallback rules", () => {
+    const config: AstraConfig = {
+      ...DEFAULT_ASTRA_CONFIG,
+      sites: {
+        "example.com": {
+          enabled: true,
+          alwaysTranslate: false,
+          selectors: ["article"],
+          excludeSelectors: [".ad"],
+          paragraphMinLength: 80,
+          presentation: {
+            mode: "translation-only",
+            theme: "highlight",
+            fontSize: 1.1,
+            translationColor: "#111827",
+          },
+        },
+        "www.example.com": {
+          enabled: true,
+          alwaysTranslate: false,
+          selectors: ["main"],
+          excludeSelectors: [".sponsored"],
+          paragraphMinLength: 120,
+          presentation: {
+            mode: "bilingual",
+            theme: "underline",
+            fontSize: 1.2,
+            translationColor: "#2563eb",
+          },
+        },
+      },
+    }
+
+    const resolved = resolveSiteTranslationSettings(config, "www.example.com")
+
+    expect(resolved.selectors).toEqual(["main"])
+    expect(resolved.excludeSelectors).toEqual([".sponsored"])
+    expect(resolved.paragraphMinLength).toBe(120)
+    expect(resolved.presentation).toMatchObject({
+      mode: "bilingual",
+      theme: "underline",
+      fontSize: 1.2,
+      translationColor: "#2563eb",
+    })
+  })
+
+  it("keeps hostname-only site rules enabled without path patterns", () => {
+    const config: AstraConfig = {
+      ...DEFAULT_ASTRA_CONFIG,
+      sites: {
+        "example.com": {
+          enabled: true,
+          alwaysTranslate: false,
+          targetLang: "ja",
+        },
+      },
+    }
+
+    const resolved = resolveSiteTranslationSettings(config, "https://example.com/blog/intro?utm=1#top")
+
+    expect(resolved.enabled).toBe(true)
+    expect(resolved.targetLang).toBe("ja")
+  })
+
+  it("uses include path patterns to allow only matching paths", () => {
+    const config: AstraConfig = {
+      ...DEFAULT_ASTRA_CONFIG,
+      sites: {
+        "example.com": {
+          enabled: true,
+          alwaysTranslate: false,
+          includePathPatterns: ["/docs/*"],
+        },
+      },
+    }
+
+    expect(resolveSiteTranslationSettings(config, "https://example.com/docs/intro").enabled).toBe(true)
+    expect(resolveSiteTranslationSettings(config, "https://example.com/blog/intro").enabled).toBe(false)
+  })
+
+  it("uses exclude path patterns to block matching paths", () => {
+    const config: AstraConfig = {
+      ...DEFAULT_ASTRA_CONFIG,
+      sites: {
+        "example.com": {
+          enabled: true,
+          alwaysTranslate: false,
+          excludePathPatterns: ["/admin/*"],
+        },
+      },
+    }
+
+    expect(resolveSiteTranslationSettings(config, "https://example.com/home").enabled).toBe(true)
+    expect(resolveSiteTranslationSettings(config, "https://example.com/admin/users").enabled).toBe(false)
+  })
+
+  it("lets exclude path patterns win over include path patterns", () => {
+    const config: AstraConfig = {
+      ...DEFAULT_ASTRA_CONFIG,
+      sites: {
+        "example.com": {
+          enabled: true,
+          alwaysTranslate: false,
+          includePathPatterns: ["/docs/*"],
+          excludePathPatterns: ["/docs/private/*"],
+        },
+      },
+    }
+
+    expect(resolveSiteTranslationSettings(config, "https://example.com/docs/intro").enabled).toBe(true)
+    expect(resolveSiteTranslationSettings(config, "https://example.com/docs/private/a").enabled).toBe(false)
+  })
+
+  it("preserves www fallback determinism with path gating", () => {
+    const config: AstraConfig = {
+      ...DEFAULT_ASTRA_CONFIG,
+      sites: {
+        "example.com": {
+          enabled: true,
+          alwaysTranslate: false,
+          includePathPatterns: ["/docs/*"],
+        },
+      },
+    }
+
+    const included = resolveSiteTranslationSettings(config, "https://www.example.com/docs/intro")
+    const excluded = resolveSiteTranslationSettings(config, "https://www.example.com/blog/intro")
+
+    expect(included.hostname).toBe("www.example.com")
+    expect(included.enabled).toBe(true)
+    expect(excluded.hostname).toBe("www.example.com")
+    expect(excluded.enabled).toBe(false)
+  })
+
   it("injects the Astra session token into the resolved provider config", () => {
     const provider = resolveManagedProviderConfig(DEFAULT_ASTRA_CONFIG.provider, session)
 
     expect(provider.accessToken).toBe("astra-session")
     expect(provider.relayBaseURL).toBe("https://astra.example/v1")
     expect(hasResolvedProviderAccess(DEFAULT_ASTRA_CONFIG.provider, session)).toBe(true)
+  })
+
+  it("keeps provider routing unchanged when a site has no provider override", () => {
+    const config: AstraConfig = {
+      ...DEFAULT_ASTRA_CONFIG,
+      provider: {
+        ...DEFAULT_ASTRA_CONFIG.provider,
+        apiKey: "sk-openai",
+        model: "gpt-5.4-mini",
+      },
+      sites: {
+        "example.com": {
+          enabled: true,
+          alwaysTranslate: false,
+          targetLang: "ja",
+        },
+      },
+    }
+
+    expect(resolveSiteProviderConfig(config, "https://example.com/article", null)).toEqual(config.provider)
+  })
+
+  it("applies site provider/model overrides while inheriting managed relay credentials", () => {
+    const config: AstraConfig = {
+      ...DEFAULT_ASTRA_CONFIG,
+      provider: {
+        ...DEFAULT_ASTRA_CONFIG.provider,
+        apiKey: "sk-openai",
+        model: "gpt-5.4-mini",
+      },
+      sites: {
+        "example.com": {
+          enabled: true,
+          alwaysTranslate: false,
+          provider: {
+            id: "gemini",
+            model: "gemini-3.1-pro",
+          },
+        },
+      },
+    }
+
+    const provider = resolveSiteProviderConfig(config, "example.com", session)
+
+    expect(provider).toEqual({
+      id: "gemini",
+      apiKey: "",
+      accessToken: "astra-session",
+      relayBaseURL: "https://astra.example/v1",
+      model: "gemini-3.1-pro",
+    })
+    expect(hasResolvedSiteProviderAccess(config, "example.com", session)).toBe(true)
+  })
+
+  it("falls back from www hostnames to apex provider overrides", () => {
+    const config: AstraConfig = {
+      ...DEFAULT_ASTRA_CONFIG,
+      provider: {
+        ...DEFAULT_ASTRA_CONFIG.provider,
+        apiKey: "sk-openai",
+        model: "gpt-5.4-mini",
+      },
+      sites: {
+        "example.com": {
+          enabled: true,
+          alwaysTranslate: false,
+          provider: {
+            id: "gemini",
+            model: "gemini-3.1-pro",
+          },
+        },
+      },
+    }
+
+    const provider = resolveSiteProviderConfig(config, "https://www.example.com/read", session)
+
+    expect(provider).toEqual({
+      id: "gemini",
+      apiKey: "",
+      accessToken: "astra-session",
+      relayBaseURL: "https://astra.example/v1",
+      model: "gemini-3.1-pro",
+    })
+  })
+
+  it("prefers exact www provider overrides over apex provider overrides", () => {
+    const config: AstraConfig = {
+      ...DEFAULT_ASTRA_CONFIG,
+      provider: {
+        ...DEFAULT_ASTRA_CONFIG.provider,
+        apiKey: "sk-openai",
+        model: "gpt-5.4-mini",
+      },
+      sites: {
+        "example.com": {
+          enabled: true,
+          alwaysTranslate: false,
+          provider: {
+            id: "gemini",
+            model: "gemini-3.1-pro",
+          },
+        },
+        "www.example.com": {
+          enabled: true,
+          alwaysTranslate: false,
+          provider: {
+            model: "gpt-5.4-www",
+          },
+        },
+      },
+    }
+
+    const provider = resolveSiteProviderConfig(config, "www.example.com", null)
+
+    expect(provider).toEqual({
+      id: "openai",
+      apiKey: "sk-openai",
+      accessToken: "",
+      model: "gpt-5.4-www",
+    })
+  })
+
+  it("does not send a global direct key to a different site provider without relay access", () => {
+    const config: AstraConfig = {
+      ...DEFAULT_ASTRA_CONFIG,
+      provider: {
+        ...DEFAULT_ASTRA_CONFIG.provider,
+        apiKey: "sk-openai",
+      },
+      sites: {
+        "example.com": {
+          enabled: true,
+          alwaysTranslate: false,
+          provider: { id: "gemini" },
+        },
+      },
+    }
+
+    const provider = resolveSiteProviderConfig(config, "example.com", null)
+
+    expect(provider.id).toBe("gemini")
+    expect(provider.apiKey).toBe("")
+    expect(provider.model).toBe("gemini-3.1-flash-lite-preview")
+    expect(hasResolvedSiteProviderAccess(config, "example.com", null)).toBe(false)
   })
 })

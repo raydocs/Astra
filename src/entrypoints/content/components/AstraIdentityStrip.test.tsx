@@ -53,4 +53,17 @@ describe("AstraIdentityStrip", () => {
     const withoutTargetPill = container.querySelector("[data-testid='astra-identity-strip-target-lang']")
     expect(withoutTargetPill).toBeNull()
   })
+
+  it("scales strip sizing with fontScale", async () => {
+    await act(async () => {
+      root.render(<AstraIdentityStrip targetLang="zh-CN" fontScale={1.25} />)
+      await Promise.resolve()
+    })
+
+    const strip = container.querySelector("[data-testid='astra-identity-strip']") as HTMLDivElement | null
+    const targetLangPill = container.querySelector("[data-testid='astra-identity-strip-target-lang']") as HTMLSpanElement | null
+
+    expect(strip?.style.minHeight).toBe("30px")
+    expect(targetLangPill?.style.fontSize).toBe("13.75px")
+  })
 })

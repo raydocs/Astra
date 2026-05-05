@@ -10,7 +10,17 @@
 
 import { useState, useCallback, useEffect, useRef } from "react"
 import { upsertOwnedPdfFromFileName, upsertOwnedPdfFromRemoteUrl } from "@/utils/storage/owned-reading"
-import { extractPdfPages, type PdfPage } from "./pdf-extractor"
+import { classifyPdfTranslationQuality, type TranslationQualitySummary } from "@/utils/ocr/image-translation"
+import { summarizeTranslationPathMarkers, type TranslationPathSummary } from "@/utils/providers/routing-metadata"
+import {
+  consumeDocumentFileHandoff,
+  describeDocumentFileHandoffFailure,
+  DOCUMENT_FILE_HANDOFF_FAILURE_QUERY_PARAM,
+  DOCUMENT_FILE_HANDOFF_QUERY_PARAM,
+  readDocumentFileBytes,
+  type DocumentFileHandoffFailureReason,
+} from "@/utils/reading/document-file-handoff"
+import { extractPdfPages, type PdfPage, type PdfTextBlock } from "./pdf-extractor"
 import { translatePdfPage, type TranslatedBlock } from "./pdf-translator"
 
 type ReaderPhase = "idle" | "loading" | "translating" | "done" | "error"
@@ -18,7 +28,77 @@ type ReaderPhase = "idle" | "loading" | "translating" | "done" | "error"
 interface PageState {
   page: PdfPage
   translations: TranslatedBlock[]
+  pathSummary?: TranslationPathSummary
   phase: "pending" | "translating" | "done" | "error"
+}
+
+function coerceHandoffFailureReason(value: string | null): DocumentFileHandoffFailureReason | null {
+  if (value === "invalid" || value === "missing" || value === "expired" || value === "oversize" || value === "corrupt" || value === "storage_error") {
+    return value
+  }
+  return null
+}
+
+const PDF_TRANSLATABLE_TEXT_MIN_LENGTH = 5
+
+function isTranslatablePdfBlock(block: PdfTextBlock): boolean {
+  return block.text.length >= PDF_TRANSLATABLE_TEXT_MIN_LENGTH
+}
+
+function qualityTierAccent(summary: TranslationQualitySummary): { border: string, background: string, color: string } {
+  if (summary.tier === "tier_1") return { border: "#bbf7d0", background: "#f0fdf4", color: "#166534" }
+  if (summary.tier === "tier_2") return { border: "#c7d2fe", background: "#eef2ff", color: "#3730a3" }
+  return { border: "#fed7aa", background: "#fff7ed", color: "#9a3412" }
+}
+
+function QualityTierCard({ summary }: { summary: TranslationQualitySummary }) {
+  const accent = qualityTierAccent(summary)
+  return (
+    <section
+      data-testid="pdf-reader-quality-tier-card"
+      data-quality-tier={summary.tier}
+      role="status"
+      style={{
+        marginBottom: 12,
+        padding: "10px 12px",
+        fontSize: 13,
+        color: accent.color,
+        background: accent.background,
+        borderRadius: 10,
+        border: `1px solid ${accent.border}`,
+        lineHeight: 1.45,
+      }}
+    >
+      <div style={{ fontSize: 11, fontWeight: 900, textTransform: "uppercase", letterSpacing: 0.4 }}>Quality Tier v1 · {summary.label}</div>
+      <strong>{summary.headline}</strong>
+      <div style={{ marginTop: 4 }}>{summary.details.join(" · ")}</div>
+    </section>
+  )
+}
+
+function PathMarkerCard({ summary }: { summary: TranslationPathSummary }) {
+  return (
+    <section
+      data-testid="pdf-reader-path-marker-card"
+      data-path-marker-version={summary.version}
+      data-path-marker-kinds={summary.kinds.join(" ")}
+      role="status"
+      style={{
+        marginBottom: 12,
+        padding: "10px 12px",
+        fontSize: 13,
+        color: "#075985",
+        background: "#f0f9ff",
+        borderRadius: 10,
+        border: "1px solid #bae6fd",
+        lineHeight: 1.45,
+      }}
+    >
+      <div style={{ fontSize: 11, fontWeight: 900, textTransform: "uppercase", letterSpacing: 0.4 }}>Path used · Dual Path Marker v1</div>
+      <strong>{summary.label}</strong>
+      <div style={{ marginTop: 4 }}>{summary.details.join(" · ")}</div>
+    </section>
+  )
 }
 
 export function PdfReaderApp() {
@@ -28,13 +108,54 @@ export function PdfReaderApp() {
   const [fileName, setFileName] = useState<string>("")
   const [progress, setProgress] = useState({ current: 0, total: 0 })
   const [reopenBanner, setReopenBanner] = useState<string | null>(null)
-  const fileInputRef = useRef<HTMLInputElement>(null)
   const loadGenRef = useRef(0)
-  // Check for URL parameter on mount
+  const beginLoadGeneration = useCallback(() => {
+    loadGenRef.current += 1
+    return loadGenRef.current
+  }, [])
+  const isCurrentLoad = useCallback((generation: number) => loadGenRef.current === generation, [])
+  const qualitySummary = (phase === "translating" || phase === "done")
+    ? classifyPdfTranslationQuality(pages.map((pageState) => {
+        const translatableBlockIndexes = new Set(
+          pageState.page.blocks.flatMap((block, index) => isTranslatablePdfBlock(block) ? [index] : []),
+        )
+        return {
+          blockCount: translatableBlockIndexes.size,
+          translatedCount: pageState.translations.filter((translation) => (
+            translatableBlockIndexes.has(translation.sourceIndex)
+            && translation.translation.trim().length > 0
+          )).length,
+          phase: pageState.phase,
+        }
+      }))
+    : null
+  const pathSummary = (phase === "translating" || phase === "done")
+    ? summarizeTranslationPathMarkers(pages.flatMap((pageState) => pageState.pathSummary?.markers ?? []))
+    : undefined
+  // Check for URL parameter or local-file handoff on mount
   useEffect(() => {
     const params = new URLSearchParams(window.location.search)
     const hint = params.get("reopenHint")
-    if (hint) {
+    const handoffToken = params.get(DOCUMENT_FILE_HANDOFF_QUERY_PARAM)
+    const handoffFailure = coerceHandoffFailureReason(params.get(DOCUMENT_FILE_HANDOFF_FAILURE_QUERY_PARAM))
+
+    if (handoffToken) {
+      const handoffGeneration = beginLoadGeneration()
+      void consumeDocumentFileHandoff(handoffToken, "pdf").then((result) => {
+        if (!isCurrentLoad(handoffGeneration)) return
+        if (result.ok) {
+          setReopenBanner(`Opened ${result.file.name} from Document Intake local handoff. File bytes stayed on this device and were not synced.`)
+          void loadFile(result.file, handoffGeneration)
+          return
+        }
+        setReopenBanner(describeDocumentFileHandoffFailure(result.reason, hint))
+      })
+      return
+    }
+
+    if (handoffFailure) {
+      setReopenBanner(describeDocumentFileHandoffFailure(handoffFailure, hint))
+    } else if (hint) {
       setReopenBanner(decodeURIComponent(hint))
     }
     const pdfUrl = params.get("url")
@@ -44,9 +165,11 @@ export function PdfReaderApp() {
   }, [])
 
   const loadPdfFromUrl = async (url: string) => {
+    const generation = beginLoadGeneration()
     try {
       const parsed = new URL(url)
       if (parsed.protocol !== "https:" && parsed.protocol !== "http:") {
+        if (!isCurrentLoad(generation)) return
         setPhase("error")
         setError("Only http and https PDF URLs are supported.")
         return
@@ -55,9 +178,12 @@ export function PdfReaderApp() {
       const displayName = url.split("/").pop() ?? "document.pdf"
       setFileName(displayName)
       const response = await fetch(url)
+      if (!isCurrentLoad(generation)) return
       const arrayBuffer = await response.arrayBuffer()
-      await processPdf(new Uint8Array(arrayBuffer), { remoteUrl: url, displayName })
+      if (!isCurrentLoad(generation)) return
+      await processPdf(new Uint8Array(arrayBuffer), { remoteUrl: url, displayName }, generation)
     } catch (err) {
+      if (!isCurrentLoad(generation)) return
       setPhase("error")
       setError(err instanceof Error ? err.message : "Failed to load PDF")
     }
@@ -65,6 +191,7 @@ export function PdfReaderApp() {
 
   const handleFileDrop = useCallback((event: React.DragEvent) => {
     event.preventDefault()
+    event.stopPropagation()
     const file = event.dataTransfer.files[0]
     if (file?.type === "application/pdf") {
       void loadFile(file)
@@ -76,22 +203,28 @@ export function PdfReaderApp() {
     if (file) void loadFile(file)
   }, [])
 
-  const loadFile = async (file: File) => {
-    setPhase("loading")
-    setFileName(file.name)
-    const arrayBuffer = await file.arrayBuffer()
-    await processPdf(new Uint8Array(arrayBuffer), { localFileName: file.name })
+  const loadFile = async (file: File, generation = beginLoadGeneration()) => {
+    try {
+      setPhase("loading")
+      setFileName(file.name)
+      const bytes = await readDocumentFileBytes(file)
+      if (!isCurrentLoad(generation)) return
+      await processPdf(bytes, { localFileName: file.name }, generation)
+    } catch (err) {
+      if (!isCurrentLoad(generation)) return
+      setPhase("error")
+      setError(err instanceof Error ? err.message : "Failed to load PDF")
+    }
   }
 
   const processPdf = async (
     data: Uint8Array,
     source: { remoteUrl: string; displayName: string } | { localFileName: string },
+    generation: number,
   ) => {
     try {
-      loadGenRef.current += 1
-      const gen = loadGenRef.current
-
       const pdfPages = await extractPdfPages(data)
+      if (!isCurrentLoad(generation)) return
       const pageStates: PageState[] = pdfPages.map((page: PdfPage) => ({
         page,
         translations: [],
@@ -118,18 +251,27 @@ export function PdfReaderApp() {
 
       // Translate pages sequentially (abort if a new PDF is loaded)
       for (let i = 0; i < pdfPages.length; i++) {
-        if (loadGenRef.current !== gen) return
+        if (!isCurrentLoad(generation)) return
         setProgress({ current: i + 1, total: pdfPages.length })
 
         try {
-          const translations = await translatePdfPage(pdfPages[i])
+          const translationResult = await translatePdfPage(pdfPages[i])
+          if (!isCurrentLoad(generation)) return
           setPages((prev) => {
+            if (!isCurrentLoad(generation)) return prev
             const next = [...prev]
-            next[i] = { ...next[i], translations, phase: "done" }
+            next[i] = {
+              ...next[i],
+              translations: translationResult.translations,
+              pathSummary: translationResult.pathSummary,
+              phase: "done",
+            }
             return next
           })
         } catch {
+          if (!isCurrentLoad(generation)) return
           setPages((prev) => {
+            if (!isCurrentLoad(generation)) return prev
             const next = [...prev]
             next[i] = { ...next[i], phase: "error" }
             return next
@@ -137,20 +279,22 @@ export function PdfReaderApp() {
         }
       }
 
+      if (!isCurrentLoad(generation)) return
       setPhase("done")
     } catch (err) {
+      if (!isCurrentLoad(generation)) return
       setPhase("error")
       setError(err instanceof Error ? err.message : "Failed to parse PDF")
     }
   }
 
   return (
-    <div style={containerStyle}>
+    <div className="astra-container astra-container--wide" style={containerStyle} onDragOver={(e) => e.preventDefault()} onDrop={handleFileDrop}>
       <header style={headerStyle}>
-        <h1 style={{ margin: 0, fontSize: 18, color: "#6366f1" }}>Astra PDF Reader</h1>
+        <h1 style={{ margin: 0, fontSize: 18, color: "var(--astra-brand)" }}>Astra PDF Reader</h1>
         {fileName && <span style={{ fontSize: 13, color: "#64748b" }}>{fileName}</span>}
         {phase === "translating" && (
-          <span style={{ fontSize: 12, color: "#6366f1" }}>
+          <span style={{ fontSize: 12, color: "var(--astra-brand)" }}>
             Translating page {progress.current}/{progress.total}...
           </span>
         )}
@@ -173,28 +317,36 @@ export function PdfReaderApp() {
         </div>
       )}
 
+      {qualitySummary && <QualityTierCard summary={qualitySummary} />}
+      {pathSummary && <PathMarkerCard summary={pathSummary} />}
+
       {phase === "idle" && (
-        <div
-          style={dropZoneStyle}
+        <label
+          htmlFor="astra-pdf-reader-file-input"
+          className="astra-drop-zone-cursor astra-reader-drop-zone"
           onDragOver={(e) => e.preventDefault()}
           onDrop={handleFileDrop}
-          onClick={() => fileInputRef.current?.click()}
         >
           <input
-            ref={fileInputRef}
+            id="astra-pdf-reader-file-input"
             type="file"
             accept=".pdf"
             onChange={handleFileSelect}
             style={{ display: "none" }}
           />
-          <div style={{ fontSize: 48, marginBottom: 16 }}>PDF</div>
-          <div style={{ fontSize: 16, color: "#334155" }}>
-            Drop a PDF file here or click to select
+          <div className="astra-reader-drop-zone__content">
+            <div className="astra-reader-drop-zone__icon" aria-hidden="true">PDF</div>
+            <div className="astra-reader-drop-zone__eyebrow">Bilingual document reader</div>
+            <div className="astra-reader-drop-zone__title">Drop a PDF file here</div>
+            <div className="astra-reader-drop-zone__description">
+              or click to select. Astra will extract text, translate each page, and show bilingual content side by side.
+            </div>
+            <div className="astra-reader-drop-zone__chips" aria-label="Supported file type">
+              <span className="astra-reader-drop-zone__chip">PDF</span>
+              <span className="astra-reader-drop-zone__chip">Local file</span>
+            </div>
           </div>
-          <div style={{ fontSize: 13, color: "#94a3b8", marginTop: 8 }}>
-            Astra will extract text, translate it, and display bilingual content
-          </div>
-        </div>
+        </label>
       )}
 
       {phase === "error" && (
@@ -204,7 +356,7 @@ export function PdfReaderApp() {
       )}
 
       {phase === "loading" && (
-        <div style={{ padding: 24, textAlign: "center", color: "#6366f1" }}>
+        <div style={{ padding: 24, textAlign: "center", color: "var(--astra-brand)" }}>
           Loading PDF...
         </div>
       )}
@@ -244,7 +396,6 @@ export function PdfReaderApp() {
 
 const containerStyle: React.CSSProperties = {
   fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif',
-  maxWidth: 800,
   margin: "0 auto",
   padding: 16,
 }
@@ -254,17 +405,8 @@ const headerStyle: React.CSSProperties = {
   alignItems: "center",
   gap: 12,
   padding: "12px 0",
-  borderBottom: "1px solid #e2e8f0",
+  borderBottom: "1px solid var(--astra-border)",
   marginBottom: 16,
-}
-
-const dropZoneStyle: React.CSSProperties = {
-  border: "2px dashed #cbd5e1",
-  borderRadius: 12,
-  padding: "64px 24px",
-  textAlign: "center",
-  cursor: "pointer",
-  transition: "border-color 0.2s",
 }
 
 const pagesContainerStyle: React.CSSProperties = {
@@ -274,14 +416,14 @@ const pagesContainerStyle: React.CSSProperties = {
 }
 
 const pageStyle: React.CSSProperties = {
-  border: "1px solid #e2e8f0",
-  borderRadius: 8,
-  padding: 16,
+  border: "1px solid var(--astra-border)",
+  borderRadius: "var(--astra-radius-md)",
+  padding: "var(--astra-space-4)",
 }
 
 const pageHeaderStyle: React.CSSProperties = {
   fontSize: 12,
-  color: "#94a3b8",
+  color: "var(--astra-text-decorative)",
   marginBottom: 12,
   fontWeight: 600,
 }
@@ -299,16 +441,16 @@ const sourceTextStyle: React.CSSProperties = {
 }
 
 const translationTextStyle: React.CSSProperties = {
-  fontSize: 13,
+  fontSize: "var(--astra-text-sm)",
   lineHeight: 1.6,
-  color: "#6366f1",
+  color: "var(--astra-brand)",
   marginTop: 4,
   paddingLeft: 8,
-  borderLeft: "2px solid #6366f1",
+  borderLeft: "2px solid var(--astra-brand)",
 }
 
 const loadingStyle: React.CSSProperties = {
   fontSize: 13,
-  color: "#94a3b8",
+  color: "var(--astra-text-hint)",
   marginTop: 4,
 }

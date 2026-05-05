@@ -46,6 +46,28 @@ describe("site-rules", () => {
       const json = exportSiteRules(config)
       expect(JSON.parse(json)).toEqual([])
     })
+
+    it("exports site provider/model overrides but strips unexpected secret fields", () => {
+      const config = createConfig({
+        "example.com": {
+          enabled: true,
+          alwaysTranslate: false,
+          provider: {
+            id: "gemini",
+            model: "gemini-3.1-pro",
+            apiKey: "sk-should-not-export",
+          } as unknown as SiteConfig["provider"],
+        },
+      })
+
+      const parsed = JSON.parse(exportSiteRules(config))
+
+      expect(parsed[0].rule.provider).toEqual({
+        id: "gemini",
+        model: "gemini-3.1-pro",
+      })
+      expect(JSON.stringify(parsed)).not.toContain("sk-should-not-export")
+    })
   })
 
   describe("exportSingleSiteRule", () => {
@@ -147,6 +169,7 @@ describe("site-rules", () => {
       const original = createConfig({
         "site-a.com": CUSTOM_RULE,
         "site-b.com": { enabled: false, alwaysTranslate: false, contentScope: "article" },
+        "site-c.com": { enabled: true, alwaysTranslate: false, provider: { id: "gemini", model: "gemini-3.1-pro" } },
       })
 
       const exported = exportSiteRules(original)
@@ -154,6 +177,7 @@ describe("site-rules", () => {
 
       expect(imported.sites["site-a.com"]).toEqual(CUSTOM_RULE)
       expect(imported.sites["site-b.com"]?.contentScope).toBe("article")
+      expect(imported.sites["site-c.com"]?.provider).toEqual({ id: "gemini", model: "gemini-3.1-pro" })
     })
   })
 })

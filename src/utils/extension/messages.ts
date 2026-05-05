@@ -5,7 +5,9 @@ import type {
   ContentCommandResponse,
   ContentStudyContextResponse,
   ContentTranslationOverrides,
+  LearningContinuitySyncStatus,
   RuntimeSaveConfigErrorResponse,
+  RuntimeTranslateBatchSuccessResponse,
   TranslationPlaceholderFormat,
   TranslationRequestContext,
   TranslationTask,
@@ -14,6 +16,8 @@ import type { AstraConfig, AstraConfigInput } from "@/types/config"
 import {
   isContentCommandResponse,
   isContentStudyContextResponse,
+  isRuntimeLearningContinuitySyncResponse,
+  isRuntimeLearningContinuitySyncStatusResponse,
   isRuntimeSaveConfigResponse,
   isRuntimeTranslateResponse,
 } from "@/types/messages"
@@ -23,10 +27,19 @@ import {
   type TranslationError,
   type TranslationSnapshot,
 } from "@/types/translation"
+import type { ExplainMode, LanguageLevel } from "@/types/config"
 
 export type TranslationBatchRequestResult =
-  | { ok: true; translations: string[] }
+  | {
+      ok: true
+      translations: string[]
+      metadata?: RuntimeTranslateBatchSuccessResponse["payload"]["metadata"]
+    }
   | { ok: false; error: TranslationError }
+
+export type LearningContinuitySyncCommitResult =
+  | { ok: true; status: LearningContinuitySyncStatus }
+  | { ok: false; error: TranslationError; status?: LearningContinuitySyncStatus }
 
 function mapContentMessagingError(error: unknown): TranslationError {
   const message = error instanceof Error ? error.message : String(error)
@@ -166,6 +179,9 @@ export async function requestTranslationBatch(payload: {
   task?: TranslationTask
   customSystemPrompt?: string
   placeholderFormat?: TranslationPlaceholderFormat
+  languageLevel?: LanguageLevel
+  explainMode?: ExplainMode
+  explanationRepairInstruction?: string
 }): Promise<TranslationBatchRequestResult> {
   try {
     const response = await browser.runtime.sendMessage({
@@ -187,9 +203,62 @@ export async function requestTranslationBatch(payload: {
       return { ok: false, error: response.error }
     }
 
-    return { ok: true, translations: response.payload.translations }
+    return {
+      ok: true,
+      translations: response.payload.translations,
+      ...(response.payload.metadata ? { metadata: response.payload.metadata } : {}),
+    }
   } catch (error) {
     return { ok: false, error: mapRuntimeMessagingError(error) }
+  }
+}
+
+export async function commitLearningContinuitySync(reason: string): Promise<LearningContinuitySyncCommitResult> {
+  try {
+    const response = await browser.runtime.sendMessage({
+      type: "runtime/learning-continuity-sync",
+      reason,
+    }) as unknown
+
+    if (!isRuntimeLearningContinuitySyncResponse(response)) {
+      return {
+        ok: false,
+        error: createTranslationError(
+          "INVALID_RESPONSE",
+          "Received an invalid learning continuity sync response.",
+        ),
+      }
+    }
+
+    if (response.type === "runtime/learning-continuity-sync:error") {
+      return { ok: false, error: response.error, status: response.payload?.status }
+    }
+
+    return { ok: true, status: response.payload.status }
+  } catch (error) {
+    return { ok: false, error: mapRuntimeConfigMessagingError(error) }
+  }
+}
+
+export async function getLearningContinuitySyncStatus(): Promise<LearningContinuitySyncCommitResult> {
+  try {
+    const response = await browser.runtime.sendMessage({
+      type: "runtime/learning-continuity-sync-status",
+    }) as unknown
+
+    if (!isRuntimeLearningContinuitySyncStatusResponse(response)) {
+      return {
+        ok: false,
+        error: createTranslationError(
+          "INVALID_RESPONSE",
+          "Received an invalid learning continuity sync status response.",
+        ),
+      }
+    }
+
+    return { ok: true, status: response.payload.status }
+  } catch (error) {
+    return { ok: false, error: mapRuntimeConfigMessagingError(error) }
   }
 }
 

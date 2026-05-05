@@ -304,7 +304,10 @@ export async function runPdfReaderHarness(options: {
   const pdfBytes = await loadPdfReaderFixtureBytes(fixture.name)
   const pages = await extractPdfPages(pdfBytes)
   const translatedPages = await Promise.all(pages.map(async (page) => await translatePdfPage(page)))
-  const renderedPages = buildPdfReaderPagesFromExtractedPages(pages, translatedPages)
+  const renderedPages = buildPdfReaderPagesFromExtractedPages(
+    pages,
+    translatedPages.map((page) => page.translations),
+  )
   const renderedHtml = renderPdfReaderSkeletonHtml({
     fileName: fixture.fileName,
     pages: renderedPages,

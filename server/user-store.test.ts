@@ -676,6 +676,8 @@ describe("file user store", () => {
           inputTranslation: "enabled",
           inputTranslationMode: "replace",
           languageLevel: "intermediate",
+          explainMode: "deep",
+          explanationGlossary: [],
           privacyMode: false,
           provider: {
             id: "openai",
@@ -999,6 +1001,8 @@ describe("file user store", () => {
           inputTranslation: "enabled",
           inputTranslationMode: "replace",
           languageLevel: "intermediate",
+          explainMode: "deep",
+          explanationGlossary: [],
           privacyMode: false,
           provider: {
             id: "openai",

@@ -1,5 +1,15 @@
-import { useEffect, useState } from "react"
+import { useEffect, useRef, useState } from "react"
 import { browser } from "#imports"
+import {
+  buildLearningLoopAccountContinuityPopupSignInUrl,
+  DEFAULT_LEARNING_LOOP_COPY_VARIANT,
+  getLearningLoopCopyVariant,
+  LEARNING_LOOP_COMMERCIAL_SURFACE_COPY,
+  LEARNING_LOOP_COPY,
+  LEARNING_LOOP_DIFFERENTIATION_COPY,
+  recordLearningLoopEvent,
+  type LearningLoopCopyVariant,
+} from "@/utils/learning-loop-events"
 import { saveConfig } from "@/utils/storage/config"
 
 const SOURCE_LANGUAGES = [
@@ -34,7 +44,7 @@ const EXPLAIN_MODE_OPTIONS = [
   { value: "deep", label: "Deep reading", description: "Nuance, tone, and why the sentence works this way" },
 ]
 
-const BRAND_COLOR = "#6366f1"
+const BRAND_COLOR = "var(--astra-brand)"
 const TOTAL_STEPS = 4
 
 const containerStyle: React.CSSProperties = {
@@ -42,8 +52,8 @@ const containerStyle: React.CSSProperties = {
   display: "flex",
   alignItems: "center",
   justifyContent: "center",
-  fontFamily: "system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif",
-  background: "linear-gradient(135deg, #f8fafc 0%, #eef2ff 100%)",
+  fontFamily: "var(--astra-font)",
+  background: "linear-gradient(135deg, var(--astra-bg-primary) 0%, var(--astra-brand-muted) 100%)",
   margin: 0,
   padding: 24,
   boxSizing: "border-box",
@@ -52,9 +62,9 @@ const containerStyle: React.CSSProperties = {
 const cardStyle: React.CSSProperties = {
   width: "100%",
   maxWidth: 500,
-  background: "#ffffff",
+  background: "var(--astra-bg-card)",
   borderRadius: 16,
-  boxShadow: "0 4px 24px rgba(0, 0, 0, 0.08), 0 1px 4px rgba(0, 0, 0, 0.04)",
+  boxShadow: "var(--astra-shadow-lg)",
   padding: "48px 40px",
   boxSizing: "border-box",
 }
@@ -69,7 +79,7 @@ const dotContainerStyle: React.CSSProperties = {
 const titleStyle: React.CSSProperties = {
   fontSize: 28,
   fontWeight: 700,
-  color: "#1e293b",
+  color: "var(--astra-text-primary)",
   textAlign: "center",
   margin: "0 0 8px 0",
   lineHeight: 1.3,
@@ -77,55 +87,26 @@ const titleStyle: React.CSSProperties = {
 
 const taglineStyle: React.CSSProperties = {
   fontSize: 16,
-  color: "#64748b",
+  color: "var(--astra-text-muted)",
   textAlign: "center",
   margin: "0 0 32px 0",
   lineHeight: 1.5,
 }
 
-const primaryButtonStyle: React.CSSProperties = {
-  display: "block",
-  width: "100%",
-  padding: "14px 24px",
-  fontSize: 16,
-  fontWeight: 600,
-  color: "#ffffff",
-  background: BRAND_COLOR,
-  border: "none",
-  borderRadius: 10,
-  cursor: "pointer",
-  transition: "background 0.15s ease, transform 0.1s ease",
-  outline: "none",
-}
+// primaryButtonStyle — now using className="astra-btn-primary"
 
 const labelTextStyle: React.CSSProperties = {
   display: "block",
   fontSize: 14,
   fontWeight: 600,
-  color: "#334155",
+  color: "var(--astra-text-secondary)",
   marginBottom: 8,
 }
 
-const selectStyle: React.CSSProperties = {
-  display: "block",
-  width: "100%",
-  padding: "12px 14px",
-  fontSize: 15,
-  color: "#1e293b",
-  background: "#f8fafc",
-  border: "1px solid #e2e8f0",
-  borderRadius: 8,
-  outline: "none",
-  appearance: "none",
-  cursor: "pointer",
-  boxSizing: "border-box",
-  backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath d='M2 4l4 4 4-4' fill='none' stroke='%2394a3b8' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E")`,
-  backgroundRepeat: "no-repeat",
-  backgroundPosition: "right 14px center",
-}
+// selectStyle removed — now using className="astra-input"
 
 const summaryBoxStyle: React.CSSProperties = {
-  background: "#f0f0ff",
+  background: "var(--astra-brand-muted)",
   borderRadius: 10,
   padding: "20px 24px",
   marginBottom: 24,
@@ -215,6 +196,10 @@ function formatStatusTime(value: string | null): string {
   return parsed.toLocaleString()
 }
 
+function buildPopupSignInDeepLinkUrl(): string {
+  return buildLearningLoopAccountContinuityPopupSignInUrl((path) => browser.runtime.getURL(path as "/popup.html"))
+}
+
 function StepDots({ current }: { current: number }) {
   return (
     <div style={dotContainerStyle}>
@@ -225,7 +210,7 @@ function StepDots({ current }: { current: number }) {
             width: i === current ? 24 : 8,
             height: 8,
             borderRadius: 4,
-            background: i === current ? BRAND_COLOR : "#e2e8f0",
+            background: i === current ? BRAND_COLOR : "var(--astra-border)",
             transition: "all 0.25s ease",
           }}
         />
@@ -242,13 +227,13 @@ function StepWelcome({ onNext }: { onNext: () => void }) {
           width: 64,
           height: 64,
           borderRadius: 16,
-          background: `linear-gradient(135deg, ${BRAND_COLOR}, #818cf8)`,
+          background: `linear-gradient(135deg, ${BRAND_COLOR}, var(--astra-brand-hover))`,
           display: "flex",
           alignItems: "center",
           justifyContent: "center",
           margin: "0 auto 24px auto",
           fontSize: 28,
-          color: "#ffffff",
+          color: "var(--astra-text-on-brand)",
           fontWeight: 800,
           letterSpacing: -1,
         }}
@@ -256,11 +241,12 @@ function StepWelcome({ onNext }: { onNext: () => void }) {
         A
       </div>
       <h1 style={titleStyle}>Astra — AI Language Learning</h1>
-      <p style={taglineStyle}>Translate any webpage. Learn as you browse.</p>
+      <p style={taglineStyle}>Not just a translator: turn real webpages into sentence explanations, saved vocabulary, and spaced review.</p>
       <button
         type="button"
         onClick={onNext}
-        style={primaryButtonStyle}
+        className="astra-btn-primary"
+        style={{ display: "block", width: "100%", padding: "14px 24px", fontSize: 16 }}
       >
         Get Started
       </button>
@@ -293,16 +279,17 @@ function StepLanguage({
     <div>
       <h1 style={{ ...titleStyle, fontSize: 24, marginBottom: 4 }}>Choose Your Languages</h1>
       <p style={{ ...taglineStyle, marginBottom: 28 }}>
-        Tell us what you're learning and we'll set things up.
+        Tell us what you're learning so Astra can package each page into the right practice loop.
       </p>
 
       <div style={{ marginBottom: 20 }}>
-        <label style={labelTextStyle}>What language are you learning?</label>
+        <label htmlFor="onboarding-source-language" style={labelTextStyle}>What language are you learning?</label>
         <select
+          id="onboarding-source-language"
           value={sourceLang}
           onChange={(e) => onSourceChange(e.target.value)}
-          style={selectStyle}
-        >
+          className="astra-input"
+          >
           {SOURCE_LANGUAGES.map((lang) => (
             <option key={lang.value} value={lang.value}>
               {lang.label}
@@ -312,11 +299,12 @@ function StepLanguage({
       </div>
 
       <div style={{ marginBottom: 20 }}>
-        <label style={labelTextStyle}>I want translations in:</label>
+        <label htmlFor="onboarding-target-language" style={labelTextStyle}>I want translations in:</label>
         <select
+          id="onboarding-target-language"
           value={targetLang}
           onChange={(e) => onTargetChange(e.target.value)}
-          style={selectStyle}
+          className="astra-input"
         >
           {TARGET_LANGUAGES.map((lang) => (
             <option key={lang.value} value={lang.value}>
@@ -327,54 +315,36 @@ function StepLanguage({
       </div>
 
       <div style={{ marginBottom: 28 }}>
-        <label style={labelTextStyle}>Your language level:</label>
-        <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+        <div id="onboarding-language-level-label" style={labelTextStyle}>Your language level:</div>
+        <div role="group" aria-labelledby="onboarding-language-level-label" style={{ display: "flex", flexDirection: "column", gap: 8 }}>
           {LEVEL_OPTIONS.map((level) => (
             <button
               key={level.value}
               type="button"
               onClick={() => onLevelChange(level.value)}
-              style={{
-                display: "flex",
-                flexDirection: "column",
-                alignItems: "flex-start",
-                padding: "12px 16px",
-                border: languageLevel === level.value ? `2px solid ${BRAND_COLOR}` : "1px solid #e2e8f0",
-                borderRadius: 10,
-                background: languageLevel === level.value ? "#eff6ff" : "#fff",
-                cursor: "pointer",
-                textAlign: "left",
-              }}
+              className="astra-option-card"
+              aria-pressed={languageLevel === level.value}
             >
-              <span style={{ fontSize: 14, fontWeight: 600, color: "#1e293b" }}>{level.label}</span>
-              <span style={{ fontSize: 12, color: "#64748b", marginTop: 2 }}>{level.description}</span>
+              <span style={{ fontSize: 14, fontWeight: 600, color: "var(--astra-text-primary)" }}>{level.label}</span>
+              <span style={{ fontSize: 12, color: "var(--astra-text-muted)", marginTop: 2 }}>{level.description}</span>
             </button>
           ))}
         </div>
       </div>
 
       <div style={{ marginBottom: 28 }}>
-        <label style={labelTextStyle}>How should Astra explain sentences?</label>
-        <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+        <div id="onboarding-explain-mode-label" style={labelTextStyle}>How should Astra explain sentences?</div>
+        <div role="group" aria-labelledby="onboarding-explain-mode-label" style={{ display: "flex", flexDirection: "column", gap: 8 }}>
           {EXPLAIN_MODE_OPTIONS.map((mode) => (
             <button
               key={mode.value}
               type="button"
               onClick={() => onExplainModeChange(mode.value)}
-              style={{
-                display: "flex",
-                flexDirection: "column",
-                alignItems: "flex-start",
-                padding: "12px 16px",
-                border: explainMode === mode.value ? `2px solid ${BRAND_COLOR}` : "1px solid #e2e8f0",
-                borderRadius: 10,
-                background: explainMode === mode.value ? "#eff6ff" : "#fff",
-                cursor: "pointer",
-                textAlign: "left",
-              }}
+              className="astra-option-card"
+              aria-pressed={explainMode === mode.value}
             >
-              <span style={{ fontSize: 14, fontWeight: 600, color: "#1e293b" }}>{mode.label}</span>
-              <span style={{ fontSize: 12, color: "#64748b", marginTop: 2 }}>{mode.description}</span>
+              <span style={{ fontSize: 14, fontWeight: 600, color: "var(--astra-text-primary)" }}>{mode.label}</span>
+              <span style={{ fontSize: 12, color: "var(--astra-text-muted)", marginTop: 2 }}>{mode.description}</span>
             </button>
           ))}
         </div>
@@ -383,7 +353,8 @@ function StepLanguage({
       <button
         type="button"
         onClick={onNext}
-        style={primaryButtonStyle}
+        className="astra-btn-primary"
+        style={{ display: "block", width: "100%", padding: "14px 24px", fontSize: 16 }}
       >
         Continue
       </button>
@@ -391,20 +362,70 @@ function StepLanguage({
   )
 }
 
-function StepFeatures({ onNext }: { onNext: () => void }) {
+function StepFeatures({
+  copyVariant,
+  onContinue,
+}: {
+  copyVariant: LearningLoopCopyVariant
+  onContinue: () => void
+}) {
+  const copy = LEARNING_LOOP_COPY[copyVariant].onboarding
   const features = [
-    { icon: "Tr", title: "Translate any page", desc: "Click the Astra icon or press Alt+A to translate" },
-    { icon: "Ex", title: "Explain sentences", desc: "Select text and click Explain for grammar breakdowns" },
-    { icon: "Sv", title: "Save vocabulary", desc: "Build your personal glossary as you read" },
-    { icon: "Rv", title: "Review & learn", desc: "Spaced repetition flashcards for saved words" },
+    { icon: "Tr", title: "Translate with study context", desc: "Create bilingual context without losing the original page" },
+    { icon: "Ex", title: "Explain why sentences work", desc: "Get learner-focused grammar, nuance, and usage breakdowns" },
+    { icon: "Sv", title: "Save real-page vocabulary", desc: "Keep useful words attached to the sentence where you found them" },
+    { icon: "Rv", title: "Return through review", desc: "Spaced repetition brings saved sentences back when they matter" },
   ]
 
   return (
     <div>
       <h1 style={{ ...titleStyle, fontSize: 24, marginBottom: 4 }}>How Astra Works</h1>
       <p style={{ ...taglineStyle, marginBottom: 24 }}>
-        Your AI-powered reading companion.
+        A reading-to-review workflow for learners who want progress, not one-off lookup.
       </p>
+
+      <div
+        data-testid="onboarding-closure-loop-copy"
+        data-copy-variant={copyVariant}
+        style={{
+          background: "var(--astra-popup-bg-soft)",
+          border: "1px solid var(--astra-popup-border-warm)",
+          borderRadius: 12,
+          padding: "14px 16px",
+          marginBottom: 16,
+        }}
+      >
+        <div style={{ fontSize: 13, fontWeight: 800, color: "var(--astra-popup-text-warm-strong)", textTransform: "uppercase", letterSpacing: "0.04em" }}>
+          {copy.eyebrow}
+        </div>
+        <div style={{ fontSize: 14, fontWeight: 700, color: "var(--astra-text-primary)", marginTop: 4 }}>
+          {copy.title}
+        </div>
+        <div style={{ fontSize: 12, color: "var(--astra-text-muted)", marginTop: 6, lineHeight: 1.5 }}>
+          {copy.description}
+        </div>
+      </div>
+
+      <div
+        data-testid="onboarding-differentiation-comparison-copy"
+        style={{
+          background: "var(--astra-bg-elevated)",
+          border: "1px solid var(--astra-border)",
+          borderRadius: 12,
+          padding: "12px 14px",
+          marginBottom: 16,
+        }}
+      >
+        <div style={{ fontSize: 11, fontWeight: 800, color: BRAND_COLOR, textTransform: "uppercase", letterSpacing: "0.04em" }}>
+          {LEARNING_LOOP_DIFFERENTIATION_COPY.eyebrow}
+        </div>
+        <div style={{ fontSize: 13, fontWeight: 700, color: "var(--astra-text-primary)", marginTop: 4 }}>
+          {LEARNING_LOOP_DIFFERENTIATION_COPY.title}
+        </div>
+        <div style={{ fontSize: 12, color: "var(--astra-text-muted)", marginTop: 6, lineHeight: 1.5 }}>
+          {LEARNING_LOOP_DIFFERENTIATION_COPY.genericTranslator} {LEARNING_LOOP_DIFFERENTIATION_COPY.genericReader} {LEARNING_LOOP_DIFFERENTIATION_COPY.astra}
+        </div>
+      </div>
 
       <div style={{ display: "flex", flexDirection: "column", gap: 12, marginBottom: 28 }}>
         {features.map((f) => (
@@ -415,16 +436,16 @@ function StepFeatures({ onNext }: { onNext: () => void }) {
               gap: 14,
               alignItems: "center",
               padding: "12px 16px",
-              background: "#f8fafc",
+              background: "var(--astra-bg-primary)",
               borderRadius: 10,
-              border: "1px solid #e2e8f0",
+              border: "1px solid var(--astra-border)",
             }}
           >
             <div style={{
               width: 40,
               height: 40,
               borderRadius: 10,
-              background: `${BRAND_COLOR}14`,
+              background: "var(--astra-brand-muted)",
               display: "flex",
               alignItems: "center",
               justifyContent: "center",
@@ -437,14 +458,14 @@ function StepFeatures({ onNext }: { onNext: () => void }) {
               {f.icon}
             </div>
             <div>
-              <div style={{ fontSize: 14, fontWeight: 600, color: "#1e293b" }}>{f.title}</div>
-              <div style={{ fontSize: 12, color: "#64748b", marginTop: 2 }}>{f.desc}</div>
+              <div style={{ fontSize: 14, fontWeight: 600, color: "var(--astra-text-primary)" }}>{f.title}</div>
+              <div style={{ fontSize: 12, color: "var(--astra-text-muted)", marginTop: 2 }}>{f.desc}</div>
             </div>
           </div>
         ))}
       </div>
 
-      <button type="button" onClick={onNext} style={primaryButtonStyle}>
+      <button type="button" onClick={onContinue} className="astra-btn-primary" style={{ display: "block", width: "100%", padding: "14px 24px", fontSize: 16 }}>
         Continue
       </button>
     </div>
@@ -453,32 +474,140 @@ function StepFeatures({ onNext }: { onNext: () => void }) {
 
 function StepReady({
   targetLang,
+  copyVariant,
   onComplete,
   completing,
 }: {
   targetLang: string
+  copyVariant: LearningLoopCopyVariant
   onComplete: () => void
   completing: boolean
 }) {
   const targetLabel =
     TARGET_LANGUAGES.find((l) => l.value === targetLang)?.label ?? targetLang
+  const copy = LEARNING_LOOP_COPY[copyVariant].onboarding
+  const packageCopy = LEARNING_LOOP_COMMERCIAL_SURFACE_COPY.onboardingPackageCard
+  const firstWinCopy = LEARNING_LOOP_COMMERCIAL_SURFACE_COPY.firstWinActivation
+  const accountContinuityCopy = LEARNING_LOOP_COMMERCIAL_SURFACE_COPY.accountContinuity
+
+  const openAccountContinuitySignIn = () => {
+    void browser.tabs.create({ url: buildPopupSignInDeepLinkUrl() })
+  }
 
   return (
     <div>
       <h1 style={{ ...titleStyle, fontSize: 24, marginBottom: 4 }}>You're All Set!</h1>
       <p style={{ ...taglineStyle, marginBottom: 24 }}>
-        Everything is configured and ready to go.
+        Your first real-page learning loop is ready.
       </p>
 
       <div style={summaryBoxStyle}>
-        <div style={{ fontSize: 15, color: "#334155", lineHeight: 1.6 }}>
-          Astra will translate web pages to <strong style={{ color: BRAND_COLOR }}>{targetLabel}</strong>.
+        <div style={{ fontSize: 15, color: "var(--astra-text-secondary)", lineHeight: 1.6 }}>
+          Astra will turn web pages into bilingual study context and reviewable cards in <strong style={{ color: BRAND_COLOR }}>{targetLabel}</strong>.
         </div>
-        <div style={{ fontSize: 13, color: "#64748b", marginTop: 8, lineHeight: 1.5 }}>
-          You get free daily translations. No API key needed.
+        <div style={{ fontSize: 12, color: "var(--astra-text-muted)", marginTop: 8, lineHeight: 1.5 }}>
+          {copy.readyNote}
         </div>
-        <div style={{ fontSize: 12, color: "#64748b", marginTop: 8, lineHeight: 1.5 }}>
-          On iOS Safari, use Open in Astra App for bridge handoff when you want to verify host launch/open flow.
+        <div
+          data-testid="onboarding-commercial-package-copy"
+          style={{
+            marginTop: 12,
+            padding: "10px 12px",
+            background: "var(--astra-bg-primary)",
+            border: "1px solid var(--astra-border)",
+            borderRadius: 10,
+            textAlign: "left",
+          }}
+        >
+          <div style={{ fontSize: 11, fontWeight: 800, color: "var(--astra-popup-text-warm-strong)", textTransform: "uppercase", letterSpacing: "0.04em" }}>
+            {packageCopy.eyebrow}
+          </div>
+          <div style={{ fontSize: 13, fontWeight: 700, color: "var(--astra-text-primary)", marginTop: 4 }}>
+            {packageCopy.title}
+          </div>
+          <div style={{ fontSize: 12, color: "var(--astra-text-muted)", marginTop: 6, lineHeight: 1.5 }}>
+            {packageCopy.description}
+          </div>
+          <ul style={{ margin: "8px 0 0", paddingLeft: 16, color: "var(--astra-text-muted)", fontSize: 11, lineHeight: 1.45 }}>
+            {packageCopy.steps.map((step) => (
+              <li key={step}>{step}</li>
+            ))}
+          </ul>
+          <div style={{ fontSize: 11, color: "var(--astra-text-muted)", marginTop: 8, lineHeight: 1.45 }}>
+            {packageCopy.control}
+          </div>
+          <div style={{ fontSize: 10, color: "var(--astra-text-muted)", marginTop: 6, lineHeight: 1.45 }}>
+            {packageCopy.boundary}
+          </div>
+        </div>
+        <div
+          data-testid="onboarding-first-win-activation-copy"
+          style={{
+            marginTop: 12,
+            padding: "10px 12px",
+            borderRadius: 10,
+            background: "var(--astra-info-bg)",
+            border: "1px solid var(--astra-info-border)",
+            color: "var(--astra-info)",
+            lineHeight: 1.45,
+          }}
+        >
+          <div style={{ fontSize: 11, fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.04em" }}>
+            {firstWinCopy.eyebrow}
+          </div>
+          <div style={{ fontSize: 13, fontWeight: 800, marginTop: 4 }}>
+            {firstWinCopy.title}
+          </div>
+          <div style={{ fontSize: 12, marginTop: 4 }}>
+            {firstWinCopy.summary}
+          </div>
+        </div>
+        <div
+          data-testid="onboarding-account-continuity-copy"
+          style={{
+            marginTop: 12,
+            padding: "10px 12px",
+            borderRadius: 10,
+            background: "var(--astra-bg-elevated)",
+            border: "1px solid var(--astra-border-strong)",
+            color: "var(--astra-text-secondary)",
+            lineHeight: 1.45,
+            textAlign: "left",
+          }}
+        >
+          <div style={{ fontSize: 11, fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.04em", color: "var(--astra-text-muted)" }}>
+            {accountContinuityCopy.eyebrow}
+          </div>
+          <div style={{ fontSize: 13, fontWeight: 800, marginTop: 4, color: "var(--astra-text-primary)" }}>
+            {accountContinuityCopy.title}
+          </div>
+          <div style={{ fontSize: 12, marginTop: 4 }}>
+            {accountContinuityCopy.summary}
+          </div>
+          <div style={{ fontSize: 11, color: "var(--astra-text-muted)", marginTop: 6 }}>
+            {accountContinuityCopy.bullets[2]}
+          </div>
+          <div style={{ fontSize: 10, color: "var(--astra-text-hint)", marginTop: 6 }}>
+            {accountContinuityCopy.boundary}
+          </div>
+          <div
+            data-testid="onboarding-account-continuity-next-action-copy"
+            style={{ fontSize: 11, color: "var(--astra-text-secondary)", marginTop: 8, fontWeight: 700 }}
+          >
+            {accountContinuityCopy.nextAction}
+          </div>
+          <button
+            type="button"
+            data-testid="onboarding-account-continuity-sign-in-cta"
+            onClick={openAccountContinuitySignIn}
+            className="astra-btn-primary"
+            style={{ display: "block", width: "100%", marginTop: 8, padding: "8px 12px", fontSize: 12 }}
+          >
+            {accountContinuityCopy.cta}
+          </button>
+          <div style={{ fontSize: 10, color: "var(--astra-text-hint)", marginTop: 6 }}>
+            {accountContinuityCopy.ctaHelper}
+          </div>
         </div>
       </div>
 
@@ -486,12 +615,8 @@ function StepReady({
         type="button"
         onClick={onComplete}
         disabled={completing}
-        style={{
-          ...primaryButtonStyle,
-          ...(completing
-            ? { opacity: 0.6, cursor: "not-allowed" }
-            : {}),
-        }}
+        className="astra-btn-primary"
+        style={{ display: "block", width: "100%", padding: "14px 24px", fontSize: 16 }}
       >
         {completing ? "Setting up..." : "Start Using Astra"}
       </button>
@@ -505,17 +630,38 @@ export default function OnboardingApp() {
   const [targetLang, setTargetLang] = useState("zh-CN")
   const [languageLevel, setLanguageLevel] = useState("intermediate")
   const [explainMode, setExplainMode] = useState("deep")
+  const [learningLoopCopyVariant, setLearningLoopCopyVariantState] = useState<LearningLoopCopyVariant>(DEFAULT_LEARNING_LOOP_COPY_VARIANT)
   const [completing, setCompleting] = useState(false)
+  const closureViewTrackedRef = useRef(false)
   const [iosBootstrapStatus, setIosBootstrapStatus] = useState<{
     bridgeAvailable: boolean
     status: IosBootstrapRuntimeStatus | null
     history: IosBootstrapHistoryEvent[]
   }>({ bridgeAvailable: false, status: null, history: [] })
   const [iosBridgeActionMessage, setIosBridgeActionMessage] = useState("")
+  const showIosBootstrapDiagnostics = iosBootstrapStatus.bridgeAvailable
+    || iosBootstrapStatus.history.length > 0
+    || Boolean(iosBootstrapStatus.status?.lastBootstrapAt)
+    || Boolean(iosBootstrapStatus.status?.lastSessionId)
+    || Boolean(iosBridgeActionMessage)
 
   useEffect(() => {
     void fetchIosBootstrapRuntimeStatus().then(setIosBootstrapStatus)
   }, [])
+
+  useEffect(() => {
+    void getLearningLoopCopyVariant().then(setLearningLoopCopyVariantState)
+  }, [])
+
+  useEffect(() => {
+    if (step !== 2 || closureViewTrackedRef.current) return
+    closureViewTrackedRef.current = true
+    recordLearningLoopEvent("onboarding_closure_viewed", {
+      source: "onboarding",
+      variant: learningLoopCopyVariant,
+      step: "features",
+    })
+  }, [learningLoopCopyVariant, step])
 
   const handleOpenInAstraApp = async () => {
     setIosBridgeActionMessage("")
@@ -556,6 +702,16 @@ export default function OnboardingApp() {
       : "No replayable bridge event yet.")
   }
 
+  const handleFeaturesContinue = () => {
+    recordLearningLoopEvent("onboarding_closure_cta_clicked", {
+      source: "onboarding",
+      variant: learningLoopCopyVariant,
+      action: "continue",
+      step: "features",
+    })
+    setStep(3)
+  }
+
   const handleComplete = async () => {
     setCompleting(true)
     try {
@@ -565,6 +721,13 @@ export default function OnboardingApp() {
         explainMode: explainMode as "beginner" | "exam" | "deep",
       })
       await browser.storage.local.set({ "astra.onboarding.completed": true })
+      recordLearningLoopEvent("onboarding_completed", {
+        source: "onboarding",
+        variant: learningLoopCopyVariant,
+        targetLang,
+        languageLevel,
+        explainMode,
+      })
 
       // Bootstrap Astra managed session so the popup doesn't show "Not connected".
       // If the background isn't ready yet, that's OK — the popup will retry on next open.
@@ -597,74 +760,63 @@ export default function OnboardingApp() {
       <div style={cardStyle}>
         <StepDots current={step} />
 
-        <div
-          style={{
-            fontSize: 12,
-            color: "#64748b",
-            textAlign: "left",
-            marginBottom: 20,
-            lineHeight: 1.45,
-            background: "#f8fafc",
-            border: "1px solid #e2e8f0",
-            borderRadius: 10,
-            padding: "10px 12px",
-          }}
-        >
-          <div>
-            iOS bridge: {iosBootstrapStatus.bridgeAvailable ? "available" : "unavailable"}
-            {" · "}
-            Last bootstrap: {formatStatusTime(iosBootstrapStatus.status?.lastBootstrapAt ?? null)}
-          </div>
-          <div>
-            Launch path: popup/onboarding → extension bridge → astra-shell://bootstrap → host app
-          </div>
-          {iosBootstrapStatus.history.length > 0 && (
+        {showIosBootstrapDiagnostics && (
+          <div
+            data-testid="onboarding-ios-bridge-diagnostics"
+            style={{
+              fontSize: 12,
+              color: "var(--astra-text-muted)",
+              textAlign: "left",
+              marginBottom: 20,
+              lineHeight: 1.45,
+            }}
+            className="astra-card"
+          >
             <div>
-              Recent bridge events: {iosBootstrapStatus.history.length}
+              iOS bridge: {iosBootstrapStatus.bridgeAvailable ? "available" : "unavailable"}
+              {" · "}
+              Last bootstrap: {formatStatusTime(iosBootstrapStatus.status?.lastBootstrapAt ?? null)}
             </div>
-          )}
-          <div style={{ display: "flex", gap: 8, marginTop: 8, flexWrap: "wrap" }}>
-            <button
-              type="button"
-              onClick={() => { void handleOpenInAstraApp() }}
-              style={{
-                ...primaryButtonStyle,
-                width: "auto",
-                padding: "8px 12px",
-                fontSize: 12,
-                ...(iosBootstrapStatus.bridgeAvailable ? {} : { opacity: 0.5, cursor: "not-allowed" }),
-              }}
-              disabled={!iosBootstrapStatus.bridgeAvailable}
-            >
-              Open in Astra App
-            </button>
-            <button
-              type="button"
-              onClick={() => { void handleReplayLatestBridgeEvent() }}
-              style={{
-                ...primaryButtonStyle,
-                width: "auto",
-                padding: "8px 12px",
-                fontSize: 12,
-                background: "#0f172a",
-                ...((!iosBootstrapStatus.bridgeAvailable || iosBootstrapStatus.history.length === 0) ? { opacity: 0.5, cursor: "not-allowed" } : {}),
-              }}
-              disabled={!iosBootstrapStatus.bridgeAvailable || iosBootstrapStatus.history.length === 0}
-            >
-              Replay last handoff
-            </button>
+            <div>
+              Launch path: popup/onboarding → extension bridge → astra-shell://bootstrap → host app
+            </div>
+            {iosBootstrapStatus.history.length > 0 && (
+              <div>
+                Recent bridge events: {iosBootstrapStatus.history.length}
+              </div>
+            )}
+            <div style={{ display: "flex", gap: 8, marginTop: 8, flexWrap: "wrap" }}>
+              <button
+                type="button"
+                onClick={() => { void handleOpenInAstraApp() }}
+                className="astra-btn-primary"
+                style={{ width: "auto", padding: "8px 12px", fontSize: 12 }}
+                disabled={!iosBootstrapStatus.bridgeAvailable}
+              >
+                Open in Astra App
+              </button>
+              <button
+                type="button"
+                onClick={() => { void handleReplayLatestBridgeEvent() }}
+                className="astra-btn-primary"
+                style={{ width: "auto", padding: "8px 12px", fontSize: 12, background: "var(--astra-text-primary)" }}
+                disabled={!iosBootstrapStatus.bridgeAvailable || iosBootstrapStatus.history.length === 0}
+              >
+                Replay last handoff
+              </button>
+            </div>
+            {iosBridgeActionMessage && (
+              <div style={{ marginTop: 8 }}>
+                {iosBridgeActionMessage}
+              </div>
+            )}
+            {iosBootstrapStatus.history.slice(0, 2).map((event) => (
+              <div key={event.sessionId}>
+                · {event.sessionId} ({event.source}) {formatStatusTime(event.issuedAt)}
+              </div>
+            ))}
           </div>
-          {iosBridgeActionMessage && (
-            <div style={{ marginTop: 8 }}>
-              {iosBridgeActionMessage}
-            </div>
-          )}
-          {iosBootstrapStatus.history.slice(0, 2).map((event) => (
-            <div key={event.sessionId}>
-              · {event.sessionId} ({event.source}) {formatStatusTime(event.issuedAt)}
-            </div>
-          ))}
-        </div>
+        )}
 
         <div style={{ transition: "opacity 0.2s ease" }}>
           {step === 0 && <StepWelcome onNext={() => setStep(1)} />}
@@ -681,10 +833,11 @@ export default function OnboardingApp() {
               onNext={() => setStep(2)}
             />
           )}
-          {step === 2 && <StepFeatures onNext={() => setStep(3)} />}
+          {step === 2 && <StepFeatures copyVariant={learningLoopCopyVariant} onContinue={handleFeaturesContinue} />}
           {step === 3 && (
             <StepReady
               targetLang={targetLang}
+              copyVariant={learningLoopCopyVariant}
               onComplete={() => void handleComplete()}
               completing={completing}
             />

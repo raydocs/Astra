@@ -301,8 +301,7 @@ describe("InputTranslate", () => {
 
     const updatedButton = getButton()
     expect(updatedButton?.textContent).toBe("⚠")
-    // jsdom normalises hex to rgb; just check it's amber-ish
-    expect(updatedButton?.style.background).toContain("245")
+    expect(updatedButton?.style.background).toContain("--astra-style-warning")
     expect(textInput.value).toBe("Hello")
   })
 

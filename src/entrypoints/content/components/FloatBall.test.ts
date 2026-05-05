@@ -13,12 +13,14 @@ const {
   subscribeLearningStateMock,
   getLearningStateMock,
   toggleCurrentTabTranslationMock,
+  readConfigMock,
 } = vi.hoisted(() => ({
   subscribePageTranslationStateMock: vi.fn(),
   retryFailedBlocksMock: vi.fn(),
   subscribeLearningStateMock: vi.fn(),
   getLearningStateMock: vi.fn(),
   toggleCurrentTabTranslationMock: vi.fn(),
+  readConfigMock: vi.fn(),
 }))
 
 vi.mock("../page-translate", () => ({
@@ -35,10 +37,20 @@ vi.mock("@/utils/extension/messages", () => ({
   toggleCurrentTabTranslation: toggleCurrentTabTranslationMock,
 }))
 
-import type { LearningStateSnapshot } from "../learning-state"
+vi.mock("@/utils/storage/config", () => ({
+  readConfig: readConfigMock,
+}))
+
+import { DEFAULT_ASTRA_CONFIG } from "@/types/config"
 import { mountFloatBall } from "./FloatBall"
 
-const idleLearningState: LearningStateSnapshot = {
+const idleLearningState: {
+  savesThisSession: number
+  hasSavedThisSession: boolean
+  lastSavedSurface: string | null
+  lastSavedAt: number | null
+  lastDueCount: number | null
+} = {
   savesThisSession: 0,
   hasSavedThisSession: false,
   lastSavedSurface: null,
@@ -92,6 +104,7 @@ describe("FloatBall", () => {
     })
     getLearningStateMock.mockReturnValue(idleLearningState)
     toggleCurrentTabTranslationMock.mockResolvedValue(undefined)
+    readConfigMock.mockResolvedValue(DEFAULT_ASTRA_CONFIG)
 
     vi.stubGlobal("PointerEvent", Event)
     Object.defineProperty(HTMLElement.prototype, "setPointerCapture", {
@@ -293,5 +306,55 @@ describe("FloatBall", () => {
 
     expect(retryFailedBlocksMock).toHaveBeenCalledTimes(1)
     expect(toggleCurrentTabTranslationMock).not.toHaveBeenCalled()
+  })
+
+  it("applies resolved font scaling to tooltip and progress badge", async () => {
+    let translationListener: ((snapshot: TranslationSnapshot) => void) | null = null
+    subscribePageTranslationStateMock.mockImplementation((listener: (snapshot: TranslationSnapshot) => void) => {
+      translationListener = listener
+      listener(snap({ phase: "idle" }))
+      return () => {}
+    })
+    readConfigMock.mockResolvedValue({
+      ...DEFAULT_ASTRA_CONFIG,
+      presentation: {
+        ...DEFAULT_ASTRA_CONFIG.presentation,
+        fontSize: 1.3,
+      },
+    })
+
+    await act(async () => {
+      mountFloatBall()
+      await Promise.resolve()
+      await Promise.resolve()
+    })
+
+    await act(async () => {
+      translationListener?.(snap({
+        phase: "running",
+        progress: {
+          totalBlocks: 10,
+          translatedBlocks: 4,
+          queuedBlocks: 0,
+          inFlightBlocks: 0,
+          failedBlocks: 0,
+        },
+      }))
+      await Promise.resolve()
+    })
+
+    const button = getMountedButton()
+    await act(async () => {
+      button.dispatchEvent(new MouseEvent("mouseover", { bubbles: true }))
+      await Promise.resolve()
+    })
+
+    const tooltip = button.querySelector("div") as HTMLDivElement | null
+    const progressBadge = button.querySelector("span") as HTMLSpanElement | null
+
+    expect(tooltip).toBeTruthy()
+    expect(progressBadge).toBeTruthy()
+    expect(tooltip?.style.fontSize).toBe("15.6px")
+    expect(progressBadge?.style.fontSize).toBe("14.3px")
   })
 })

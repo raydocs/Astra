@@ -2,6 +2,7 @@ import { act } from "react"
 import ReactDOM from "react-dom/client"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import type { AstraAccount, AstraSession } from "@/types/auth"
+import type { LearningContinuitySyncStatus } from "@/types/messages"
 
 const {
   readConfigMock,
@@ -15,8 +16,10 @@ const {
   revokeAstraSessionMock,
   fetchAstraAccountSummaryMock,
   fetchAstraContinuitySnapshotMock,
+  commitLearningContinuitySyncMock,
   getActiveTabStudyContextMock,
   getActiveTabTranslationStateMock,
+  getLearningContinuitySyncStatusMock,
   startActiveTabTranslationMock,
   stopActiveTabTranslationMock,
   getDueVocabularyCountMock,
@@ -47,8 +50,10 @@ const {
   revokeAstraSessionMock: vi.fn(),
   fetchAstraAccountSummaryMock: vi.fn(),
   fetchAstraContinuitySnapshotMock: vi.fn(),
+  commitLearningContinuitySyncMock: vi.fn(),
   getActiveTabStudyContextMock: vi.fn(),
   getActiveTabTranslationStateMock: vi.fn(),
+  getLearningContinuitySyncStatusMock: vi.fn(),
   startActiveTabTranslationMock: vi.fn(),
   stopActiveTabTranslationMock: vi.fn(),
   getDueVocabularyCountMock: vi.fn(),
@@ -95,8 +100,10 @@ vi.mock("@/utils/extension/messages", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/utils/extension/messages")>()
   return {
     ...actual,
+    commitLearningContinuitySync: commitLearningContinuitySyncMock,
     getActiveTabStudyContext: getActiveTabStudyContextMock,
     getActiveTabTranslationState: getActiveTabTranslationStateMock,
+    getLearningContinuitySyncStatus: getLearningContinuitySyncStatusMock,
     saveConfigInBackground: saveConfigInBackgroundMock,
     startActiveTabTranslation: startActiveTabTranslationMock,
     stopActiveTabTranslation: stopActiveTabTranslationMock,
@@ -138,6 +145,32 @@ vi.mock("@/utils/reading/assist", () => ({
 
 vi.mock("@/utils/translate/translate", () => ({
   translateTexts: translateTextsMock,
+  translateExplanationWithQualityRetry: async (request: {
+    source: string
+    requiredGlossaryTerms?: Array<{ sourceTerm: string; preferredTerm: string; enabled?: boolean }>
+    [key: string]: unknown
+  }) => {
+    const {
+      buildExplanationRepairInstruction,
+      validateExplanationQuality,
+    } = await import("@/utils/translate/explanation-quality")
+    const { source, requiredGlossaryTerms = [], ...translateRequest } = request
+    const baseRequest = { ...translateRequest, texts: [source], task: "explain" }
+    const firstResult = await translateTextsMock(baseRequest)
+    if (!firstResult.ok) return { ok: false, message: firstResult.error.message, retried: false }
+    const firstText = firstResult.translations[0] ?? ""
+    const firstQuality = validateExplanationQuality({ source, explanation: firstText, requiredGlossaryTerms })
+    if (firstQuality.ok) return { ok: true, text: firstText, retried: false }
+    const retryResult = await translateTextsMock({
+      ...baseRequest,
+      explanationRepairInstruction: buildExplanationRepairInstruction(firstQuality),
+    })
+    if (!retryResult.ok) return { ok: false, message: retryResult.error.message, retried: true, quality: firstQuality }
+    const retryText = retryResult.translations[0] ?? ""
+    const retryQuality = validateExplanationQuality({ source, explanation: retryText, requiredGlossaryTerms })
+    if (!retryQuality.ok) return { ok: false, message: retryQuality.message, retried: true, quality: retryQuality }
+    return { ok: true, text: retryText, retried: true }
+  },
 }))
 
 vi.mock("@/utils/tts", async (importOriginal) => {
@@ -161,8 +194,10 @@ vi.mock("@/utils/storage/study-progress", async (importOriginal) => {
 })
 
 import type { AstraConfig } from "@/types/config"
-import { DEFAULT_ASTRA_CONFIG } from "@/types/config"
+import { DEFAULT_ASTRA_CONFIG, DEFAULT_SUBTITLE_QUALITY_CONTROLS } from "@/types/config"
 import { t } from "@/utils/i18n"
+import { getRecentEvents } from "@/utils/telemetry"
+import { OWNED_READING_STORAGE_KEY } from "@/utils/storage/owned-reading"
 import App from "./App"
 
 function createConfig(patch: Partial<AstraConfig> = {}): AstraConfig {
@@ -176,6 +211,10 @@ function createConfig(patch: Partial<AstraConfig> = {}): AstraConfig {
     presentation: {
       ...DEFAULT_ASTRA_CONFIG.presentation,
       ...patch.presentation,
+    },
+    subtitleQualityControls: {
+      ...DEFAULT_SUBTITLE_QUALITY_CONTROLS,
+      ...(patch.subtitleQualityControls ?? {}),
     },
     sites: {
       ...DEFAULT_ASTRA_CONFIG.sites,
@@ -308,6 +347,26 @@ function createAccountSummary(overrides: Record<string, unknown> = {}) {
   }
 }
 
+function createLearningContinuitySyncStatus(
+  patch: Partial<LearningContinuitySyncStatus> = {},
+): LearningContinuitySyncStatus {
+  return {
+    inFlight: false,
+    queued: false,
+    lastReason: "popup-save",
+    lastStartedAt: "2026-04-09T01:04:00.000Z",
+    lastFinishedAt: "2026-04-09T01:05:00.000Z",
+    lastResult: null,
+    lastError: null,
+    accountEmail: "user@example.com",
+    stateLastRunAt: "2026-04-09T01:04:00.000Z",
+    stateLastSuccessAt: "2026-04-09T01:05:00.000Z",
+    stateLastError: null,
+    cursors: { config: "cfg-3", vocabulary: "voc-7", reading_history: "hist-2", study_progress: "progress-4" },
+    ...patch,
+  }
+}
+
 describe("popup App", () => {
   let container: HTMLDivElement
   let root: ReactDOM.Root
@@ -337,6 +396,12 @@ describe("popup App", () => {
       ok: true,
       config: createConfig(input),
     }))
+    const defaultContinuitySyncStatus = createLearningContinuitySyncStatus()
+    getLearningContinuitySyncStatusMock.mockResolvedValue({
+      ok: true,
+      status: defaultContinuitySyncStatus,
+    })
+    commitLearningContinuitySyncMock.mockResolvedValue({ ok: true, status: defaultContinuitySyncStatus })
     readAstraSessionMock.mockResolvedValue(createSession())
     saveAstraSessionMock.mockImplementation(async (session: unknown) => session)
     clearAstraSessionMock.mockResolvedValue(undefined)
@@ -542,6 +607,7 @@ describe("popup App", () => {
       })
     }
     container.remove()
+    window.history.replaceState({}, "", "/popup.html")
     vi.useRealTimers()
   })
 
@@ -551,6 +617,25 @@ describe("popup App", () => {
 
   async function flushApp() {
     await act(async () => {
+      await Promise.resolve()
+      await Promise.resolve()
+      await Promise.resolve()
+    })
+  }
+
+  async function getLearningLoopTelemetryEvents() {
+    await flushApp()
+    const events = await getRecentEvents(50)
+    return events.filter((event) => event.type === "feature_usage" && event.data.feature === "learning_loop")
+  }
+
+  async function refreshPopupWithContinuityStatus(status: LearningContinuitySyncStatus | null) {
+    getLearningContinuitySyncStatusMock.mockResolvedValueOnce(
+      status ? { ok: true, status } : { ok: false, error: { code: "UNKNOWN", message: "No status" } },
+    )
+    await act(async () => {
+      window.dispatchEvent(new Event("focus"))
+      await Promise.resolve()
       await Promise.resolve()
       await Promise.resolve()
       await Promise.resolve()
@@ -591,17 +676,765 @@ describe("popup App", () => {
     })
   })
 
+  it("shows the learning closure primer above simple controls and reuses popup actions", async () => {
+    await flushApp()
+
+    const primer = container.querySelector('[data-testid="learning-closure-primer-card"]') as HTMLElement
+    const languageLevelSelect = container.querySelector('[data-testid="popup-language-level-select"]') as HTMLSelectElement
+    expect(primer).toBeTruthy()
+    expect(primer.dataset.copyVariant).toBe("loop_first")
+    expect(primer.dataset.recommendedAction).toBe("translate_page")
+    expect((container.querySelector('[data-testid="learning-closure-primer-translate"]') as HTMLButtonElement).dataset.recommended).toBe("true")
+    expect(container.querySelector('[data-testid="learning-closure-primer-recommended-marker"]')?.textContent).toContain("Recommended next")
+    expect(primer.textContent).toContain("Reading-to-review workflow")
+    expect(primer.textContent).toContain("not just translations")
+    expect(primer.textContent).toContain("Free start · connected practice")
+    expect(primer.textContent).toContain("Translate, Deep Read, save, and review stay in one trail")
+    expect(primer.textContent).toContain("Generic translators/readers stop after the answer")
+    expect(primer.textContent).toContain("First win activation")
+    expect(primer.textContent).toContain("Save one useful sentence from a real page")
+    expect(primer.textContent).toContain("Translate a page, open Deep Read, explain one sentence, save it")
+    expect(primer.textContent).not.toContain("not unlimited bulk translation")
+    expect(container.querySelector('[data-testid="learning-closure-value-stack-copy"]')).toBeFalsy()
+    expect(container.querySelector('[data-testid="learning-closure-differentiation-copy"]')).toBeFalsy()
+    expect(primer.compareDocumentPosition(languageLevelSelect) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+
+    expect(await getLearningLoopTelemetryEvents()).toContainEqual(expect.objectContaining({
+      data: expect.objectContaining({
+        event: "popup_primer_viewed",
+        source: "popup",
+        variant: "loop_first",
+        sentenceCount: 2,
+        nextStep: "read",
+        recommendedAction: "translate_page",
+        recommendationReason: "next_step_read",
+        actionableActionCount: 4,
+        actionableActions: ["translate_page", "open_deep_read", "explain_sentence", "open_review"],
+        hasActionableRecommendation: true,
+      }),
+    }))
+
+    startActiveTabTranslationMock.mockClear()
+    browserMock.tabs.create.mockClear()
+    translateTextsMock.mockClear()
+
+    await act(async () => {
+      ;(container.querySelector('[data-testid="learning-closure-primer-translate"]') as HTMLButtonElement).click()
+      await Promise.resolve()
+      await Promise.resolve()
+    })
+    expect(startActiveTabTranslationMock).toHaveBeenCalledWith(expect.objectContaining({ contentScope: "page" }))
+
+    await act(async () => {
+      ;(container.querySelector('[data-testid="learning-closure-primer-deep-read"]') as HTMLButtonElement).click()
+      await Promise.resolve()
+      await Promise.resolve()
+    })
+    expect(browserMock.tabs.create).toHaveBeenCalledWith({ url: "/deep-read.html" })
+
+    await act(async () => {
+      ;(container.querySelector('[data-testid="learning-closure-primer-explain"]') as HTMLButtonElement).click()
+      await Promise.resolve()
+      await Promise.resolve()
+      await Promise.resolve()
+    })
+    expect(translateTextsMock).toHaveBeenCalledWith(expect.objectContaining({
+      task: "explain",
+      texts: ["First article sentence."],
+    }))
+
+    browserMock.tabs.create.mockClear()
+    await act(async () => {
+      ;(container.querySelector('[data-testid="learning-closure-primer-review"]') as HTMLButtonElement).click()
+      await Promise.resolve()
+    })
+    expect(browserMock.tabs.create).toHaveBeenCalledWith(expect.objectContaining({
+      url: expect.stringContaining("/vocabulary.html?tab=review"),
+    }))
+
+    const learningLoopTelemetry = await getLearningLoopTelemetryEvents()
+    const primerClickActions = learningLoopTelemetry
+      .filter((event) => event.data.event === "popup_primer_cta_clicked")
+      .map((event) => event.data.action)
+    expect(primerClickActions).toEqual(expect.arrayContaining([
+      "translate_page",
+      "open_deep_read",
+      "explain_sentence",
+      "open_review",
+    ]))
+    expect(learningLoopTelemetry).toContainEqual(expect.objectContaining({
+      data: expect.objectContaining({
+        event: "popup_primer_cta_clicked",
+        action: "translate_page",
+        recommendedAction: "translate_page",
+        clickedRecommendedAction: true,
+      }),
+    }))
+    expect(learningLoopTelemetry).toContainEqual(expect.objectContaining({
+      data: expect.objectContaining({
+        event: "popup_primer_cta_clicked",
+        action: "open_deep_read",
+        recommendedAction: "translate_page",
+        clickedRecommendedAction: false,
+      }),
+    }))
+    expect(learningLoopTelemetry).toContainEqual(expect.objectContaining({
+      data: expect.objectContaining({
+        event: "deep_read_opened",
+        source: "popup",
+        variant: "loop_first",
+      }),
+    }))
+    expect(learningLoopTelemetry).toContainEqual(expect.objectContaining({
+      data: expect.objectContaining({
+        event: "sentence_explained",
+        source: "popup_deep_read",
+        variant: "loop_first",
+      }),
+    }))
+  })
+
+  it("renders idle subtitle QC state and polls for fresh snapshots", async () => {
+    const baseState = createIdleState().state
+    getActiveTabTranslationStateMock.mockResolvedValueOnce({
+      ok: true,
+      state: {
+        ...baseState,
+        subtitleQuality: {
+          surface: "video",
+          active: true,
+          platform: "youtube",
+          pipeline: "youtube-hybrid",
+          source: "timedtext",
+          status: "ready",
+          anomalies: [],
+          translatedNodeCount: 1,
+          sourceTextLength: 12,
+          pendingRequestCount: 0,
+          cacheSize: 3,
+          capturedAt: Date.now(),
+        },
+      },
+    })
+
+    await act(async () => {
+      window.dispatchEvent(new Event("focus"))
+      await Promise.resolve()
+      await Promise.resolve()
+      await Promise.resolve()
+      await Promise.resolve()
+    })
+
+    expect(container.querySelector('[data-testid="subtitle-qc-panel"]')?.textContent).toContain("video · youtube")
+    expect(container.textContent).toContain("youtube-hybrid / timedtext")
+    expect(container.textContent).toContain("ready · fresh")
+
+    getActiveTabTranslationStateMock.mockResolvedValueOnce({
+      ok: true,
+      state: {
+        ...baseState,
+        subtitleQuality: {
+          surface: "video",
+          active: true,
+          platform: "youtube",
+          pipeline: "youtube-hybrid",
+          source: null,
+          status: "waiting-track",
+          anomalies: ["delayed-track"],
+          translatedNodeCount: 0,
+          sourceTextLength: 0,
+          pendingRequestCount: 1,
+          cacheSize: 3,
+          capturedAt: Date.now(),
+        },
+      },
+    })
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1500)
+      await Promise.resolve()
+      await Promise.resolve()
+      await Promise.resolve()
+    })
+
+    expect(container.textContent).toContain("waiting-track")
+    expect(container.textContent).toContain("Anomalies: delayed-track")
+  })
+
+  it("uses configured local subtitle QC poll interval and freshness threshold", async () => {
+    const baseState = createIdleState().state
+    readConfigMock.mockResolvedValueOnce(createConfig({
+      subtitleQualityControls: {
+        ...DEFAULT_SUBTITLE_QUALITY_CONTROLS,
+        popupPollIntervalMs: 2200,
+        freshnessThresholdMs: 7000,
+      },
+    }))
+    getActiveTabTranslationStateMock.mockResolvedValueOnce({
+      ok: true,
+      state: {
+        ...baseState,
+        subtitleQuality: {
+          surface: "video",
+          active: true,
+          platform: "youtube",
+          pipeline: "youtube-hybrid",
+          source: "timedtext",
+          status: "ready",
+          anomalies: [],
+          translatedNodeCount: 1,
+          sourceTextLength: 12,
+          pendingRequestCount: 0,
+          cacheSize: 3,
+          capturedAt: Date.now() - 6000,
+        },
+      },
+    })
+
+    await act(async () => {
+      window.dispatchEvent(new Event("focus"))
+      await Promise.resolve()
+      await Promise.resolve()
+      await Promise.resolve()
+      await Promise.resolve()
+    })
+
+    expect(container.textContent).toContain("ready · fresh")
+    expect((container.querySelector('input[aria-label="Subtitle QC poll interval"]') as HTMLInputElement | null)?.value).toBe("2200")
+    expect((container.querySelector('input[aria-label="Subtitle QC freshness threshold"]') as HTMLInputElement | null)?.value).toBe("7000")
+
+    const callsAfterFreshRender = getActiveTabTranslationStateMock.mock.calls.length
+    getActiveTabTranslationStateMock.mockResolvedValueOnce({
+      ok: true,
+      state: {
+        ...baseState,
+        subtitleQuality: {
+          surface: "video",
+          active: true,
+          platform: "youtube",
+          pipeline: "youtube-hybrid",
+          source: null,
+          status: "waiting-track",
+          anomalies: [],
+          translatedNodeCount: 0,
+          sourceTextLength: 0,
+          pendingRequestCount: 1,
+          cacheSize: 8,
+          capturedAt: Date.now(),
+        },
+      },
+    })
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(2199)
+      await Promise.resolve()
+    })
+    expect(getActiveTabTranslationStateMock).toHaveBeenCalledTimes(callsAfterFreshRender)
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1)
+      await Promise.resolve()
+      await Promise.resolve()
+      await Promise.resolve()
+    })
+
+    expect(container.textContent).toContain("waiting-track")
+    expect(container.querySelector('[data-testid="subtitle-qc-trend-pending"]')?.textContent).toContain("1")
+    expect(container.querySelector('[data-testid="subtitle-qc-trend-cache"]')?.textContent).toContain("8")
+    expect(container.querySelector('[data-testid="subtitle-qc-preset-suggestion"]')?.textContent).toContain("live")
+
+    const saveCallsBeforePreset = saveConfigInBackgroundMock.mock.calls.length
+    await act(async () => {
+      ;(container.querySelector('[data-testid="subtitle-qc-preset-apply"]') as HTMLButtonElement).click()
+      await Promise.resolve()
+    })
+    expect(saveConfigInBackgroundMock).toHaveBeenCalledTimes(saveCallsBeforePreset + 1)
+    const presetPatch = saveConfigInBackgroundMock.mock.calls.at(-1)?.[0] as Partial<AstraConfig>
+    expect(Object.keys(presetPatch)).toEqual(["subtitleQualityControls"])
+    expect(presetPatch.subtitleQualityControls).toEqual({
+      popupPollIntervalMs: 750,
+      freshnessThresholdMs: 2500,
+      adaptivePresetName: "live",
+      adaptivePresetManualOverrideLocked: true,
+    })
+  })
+
+  it("auto-applies adaptive subtitle QC presets with a subtitleQualityControls-only patch", async () => {
+    vi.setSystemTime(60_000)
+    const baseState = createIdleState().state
+    readConfigMock.mockResolvedValueOnce(createConfig({
+      subtitleQualityControls: {
+        ...DEFAULT_SUBTITLE_QUALITY_CONTROLS,
+        adaptivePresetAutoSwitchEnabled: true,
+        adaptivePresetCooldownMs: 30_000,
+        adaptivePresetLastAppliedAt: 0,
+        adaptivePresetName: "standard",
+      },
+    }))
+    getActiveTabTranslationStateMock.mockResolvedValueOnce({
+      ok: true,
+      state: {
+        ...baseState,
+        subtitleQuality: {
+          surface: "video",
+          active: true,
+          platform: "youtube",
+          pipeline: "youtube-hybrid",
+          source: "timedtext",
+          status: "ready",
+          anomalies: [],
+          translatedNodeCount: 1,
+          sourceTextLength: 12,
+          pendingRequestCount: 0,
+          cacheSize: 8,
+          capturedAt: Date.now(),
+        },
+      },
+    })
+
+    await act(async () => {
+      window.dispatchEvent(new Event("focus"))
+      await Promise.resolve()
+      await Promise.resolve()
+      await Promise.resolve()
+      await Promise.resolve()
+    })
+    await flushApp()
+
+    const autoPatch = saveConfigInBackgroundMock.mock.calls
+      .map((call) => call[0] as Partial<AstraConfig>)
+      .find((patch) => patch.subtitleQualityControls?.adaptivePresetName === "saver")
+    expect(autoPatch).toBeDefined()
+    expect(Object.keys(autoPatch ?? {})).toEqual(["subtitleQualityControls"])
+    expect(autoPatch?.subtitleQualityControls).toEqual({
+      popupPollIntervalMs: 5000,
+      freshnessThresholdMs: 15000,
+      adaptivePresetName: "saver",
+      adaptivePresetLastAppliedAt: 60_000,
+    })
+  })
+
+  it("exports local subtitle QC diagnostics JSON from the popup", async () => {
+    let createdDiagnosticsBlob: Blob | null = null
+    const createObjectURLMock = vi.fn((blob: Blob) => {
+      createdDiagnosticsBlob = blob
+      return "blob:astra-subtitle-qc"
+    })
+    const revokeObjectURLMock = vi.fn()
+    const NativeBlob = globalThis.Blob
+    let lastDownloadBlobParts: BlobPart[] = []
+    let clickedDownloadAnchor: HTMLAnchorElement | null = null
+    vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(function (this: HTMLAnchorElement) {
+      clickedDownloadAnchor = this
+    })
+    Object.defineProperty(globalThis, "Blob", {
+      configurable: true,
+      value: class TestDownloadBlob extends NativeBlob {
+        constructor(blobParts?: BlobPart[], options?: BlobPropertyBag) {
+          lastDownloadBlobParts = [...(blobParts ?? [])]
+          super(blobParts, options)
+        }
+      },
+    })
+    Object.defineProperty(URL, "createObjectURL", {
+      configurable: true,
+      value: createObjectURLMock,
+    })
+    Object.defineProperty(URL, "revokeObjectURL", {
+      configurable: true,
+      value: revokeObjectURLMock,
+    })
+
+    const baseState = createIdleState().state
+    getActiveTabTranslationStateMock.mockResolvedValueOnce({
+      ok: true,
+      state: {
+        ...baseState,
+        subtitleQuality: {
+          surface: "video",
+          active: true,
+          platform: "youtube",
+          pipeline: "youtube-hybrid",
+          source: "dom",
+          status: "fallback-ready",
+          anomalies: ["missing-track"],
+          translatedNodeCount: 1,
+          sourceTextLength: 24,
+          pendingRequestCount: 1,
+          cacheSize: 2,
+          capturedAt: Date.now(),
+        },
+        diagnostics: {
+          contentScope: "page",
+          effectiveContentScope: "page",
+        },
+      },
+    })
+
+    await act(async () => {
+      window.dispatchEvent(new Event("focus"))
+      await Promise.resolve()
+      await Promise.resolve()
+      await Promise.resolve()
+      await Promise.resolve()
+    })
+
+    expect(container.querySelector('[data-testid="subtitle-qc-alert-latency"]')?.textContent).toContain("1 pending request")
+    expect(container.querySelector('[data-testid="subtitle-qc-alert-fallback"]')?.textContent).toContain("missing-track")
+    expect(container.querySelector('[data-testid="subtitle-qc-alert-latency"]')?.textContent).toContain("Remediation:")
+    expect(container.querySelector('[data-testid="subtitle-qc-alert-latency"]')?.textContent).toContain("Check QC faster")
+    expect(container.querySelector('[data-testid="subtitle-qc-alert-fallback"]')?.textContent).toContain("Widen fresh window")
+
+    await act(async () => {
+      ;(container.querySelector('[data-testid="subtitle-qc-action-fallback-export"]') as HTMLButtonElement).click()
+      await Promise.resolve()
+    })
+
+    expect(createObjectURLMock).toHaveBeenCalledTimes(1)
+    const blob = createdDiagnosticsBlob as Blob | null
+    expect(blob?.type).toBe("application/json;charset=utf-8")
+    const payload = JSON.parse(String(lastDownloadBlobParts[0] ?? ""))
+    expect(payload).toEqual(expect.objectContaining({
+      schema: "astra.subtitle-qc.local-diagnostics.v1",
+      localOnly: true,
+      subtitleQuality: expect.objectContaining({
+        source: "dom",
+        status: "fallback-ready",
+        anomalies: ["missing-track"],
+      }),
+      subtitleQualityControls: expect.objectContaining({
+        popupPollIntervalMs: 1500,
+        freshnessThresholdMs: 5000,
+      }),
+      runtimeDiagnostics: expect.objectContaining({
+        contentScope: "page",
+        effectiveContentScope: "page",
+      }),
+    }))
+    expect(payload.popup).toEqual(expect.objectContaining({
+      phase: "idle",
+      hostname: "example.com",
+      siteEnabled: true,
+      contentAvailable: true,
+    }))
+    expect((clickedDownloadAnchor as HTMLAnchorElement | null)?.download).toMatch(/^astra-subtitle-qc-diagnostics-.*\.json$/)
+    expect(revokeObjectURLMock).toHaveBeenCalledWith("blob:astra-subtitle-qc")
+    expect(container.textContent).toContain("Diagnostics JSON exported locally.")
+
+    const saveCallsBeforeRemediation = saveConfigInBackgroundMock.mock.calls.length
+    await act(async () => {
+      ;(container.querySelector('[data-testid="subtitle-qc-action-fallback-control"]') as HTMLButtonElement).click()
+      await Promise.resolve()
+    })
+    expect(saveConfigInBackgroundMock).toHaveBeenCalledTimes(saveCallsBeforeRemediation + 1)
+    expect(saveConfigInBackgroundMock).toHaveBeenLastCalledWith({
+      subtitleQualityControls: {
+        freshnessThresholdMs: 10000,
+        adaptivePresetManualOverrideLocked: true,
+      },
+    })
+  })
+
+  it("integrates site-rules explainability near current-site settings", async () => {
+    readConfigMock.mockResolvedValue(createConfig({
+      sites: {
+        "example.com": {
+          enabled: true,
+          alwaysTranslate: true,
+          selectors: [".article-body", "article["],
+          excludeSelectors: [".ad"],
+          paragraphMinLength: 30,
+        },
+      },
+    }))
+    getActiveTabTranslationStateMock.mockResolvedValue({
+      ok: true,
+      state: {
+        ...createIdleState().state,
+        phase: "running",
+        site: {
+          hostname: "example.com",
+          enabled: true,
+          alwaysTranslate: true,
+        },
+        diagnostics: {
+          contentScope: "page",
+          effectiveContentScope: "page",
+          siteRules: {
+            inputBlockCount: 3,
+            afterIncludeCount: 0,
+            afterExcludeCount: 0,
+            afterParagraphCount: 0,
+            filterStages: [
+              { id: "collected-blocks", count: 3 },
+              { id: "after-include-filters", count: 0 },
+              { id: "after-exclude-filters", count: 0 },
+              { id: "after-paragraph-filter", count: 0 },
+            ],
+            selectors: {
+              configured: [".article-body", "article["],
+              valid: [".article-body"],
+              invalid: ["article["],
+              matchedBlocks: 0,
+            },
+            excludeSelectors: {
+              configured: [".ad"],
+              valid: [".ad"],
+              invalid: [],
+              matchedBlocks: 0,
+            },
+            paragraphMinLength: 30,
+          },
+        },
+      },
+    })
+
+    await act(async () => {
+      window.dispatchEvent(new Event("focus"))
+      await Promise.resolve()
+      await Promise.resolve()
+      await Promise.resolve()
+      await Promise.resolve()
+    })
+
+    const panel = container.querySelector('[data-testid="site-rules-explainability-panel"]')
+    const panelText = panel?.textContent ?? ""
+    expect(panelText).toContain("Why this page?")
+    expect(panelText).toContain("Saved site rule for example.com")
+    expect(panelText).toContain("Include selectors invalid")
+    expect(panelText).toContain("Runtime diagnostics")
+    expect(panelText).toContain("available")
+    expect(panelText).toContain("filters matched no translatable blocks")
+    expect(panelText).toContain("Clear include selectors")
+    const runtimeOrder = [
+      "Runtime diagnostics",
+      "Collected blocks",
+      "After include filters",
+      "After exclude filters",
+      "After paragraph filter",
+      "Scope",
+    ].map((label) => panelText.indexOf(label))
+    expect(runtimeOrder.every((index) => index >= 0)).toBe(true)
+    expect(runtimeOrder).toEqual([...runtimeOrder].sort((a, b) => a - b))
+    expect(panel?.parentElement?.textContent).toContain(t("popup_currentSite"))
+  })
+
+  it("clears include selectors from the explainability quick fix through the site-rule save path", async () => {
+    readConfigMock.mockResolvedValue(createConfig({
+      sites: {
+        "example.com": {
+          enabled: true,
+          alwaysTranslate: true,
+          selectors: ["article["],
+          excludeSelectors: [".ad"],
+          paragraphMinLength: 30,
+        },
+      },
+    }))
+    getActiveTabTranslationStateMock.mockResolvedValue({
+      ok: true,
+      state: {
+        ...createIdleState().state,
+        phase: "running",
+        site: {
+          hostname: "example.com",
+          enabled: true,
+          alwaysTranslate: true,
+        },
+        diagnostics: {
+          contentScope: "page",
+          effectiveContentScope: "page",
+          siteRules: {
+            inputBlockCount: 3,
+            afterIncludeCount: 0,
+            afterExcludeCount: 0,
+            afterParagraphCount: 0,
+            selectors: {
+              configured: ["article["],
+              valid: [],
+              invalid: ["article["],
+              matchedBlocks: 0,
+            },
+            excludeSelectors: {
+              configured: [".ad"],
+              valid: [".ad"],
+              invalid: [],
+              matchedBlocks: 0,
+            },
+            paragraphMinLength: 30,
+          },
+        },
+      },
+    })
+
+    await act(async () => {
+      window.dispatchEvent(new Event("focus"))
+      await Promise.resolve()
+      await Promise.resolve()
+      await Promise.resolve()
+      await Promise.resolve()
+    })
+
+    saveConfigInBackgroundMock.mockClear()
+    const quickFixButton = container.querySelector('[data-testid="site-rules-quick-fix-clear-include-selectors"]') as HTMLButtonElement
+    expect(quickFixButton?.textContent).toBe("Clear include selectors")
+
+    await act(async () => {
+      quickFixButton.click()
+      await vi.runAllTimersAsync()
+    })
+    await flushApp()
+
+    expect(saveConfigInBackgroundMock).toHaveBeenCalledTimes(1)
+    const calls = saveConfigInBackgroundMock.mock.calls
+    const savedConfig = calls[calls.length - 1][0] as Partial<AstraConfig>
+    expect(savedConfig.sites?.["example.com"]?.selectors).toBeUndefined()
+    expect(savedConfig.sites?.["example.com"]?.excludeSelectors).toEqual([".ad"])
+  })
+
+  it("clears exclude selectors from the explainability quick fix through the site-rule save path", async () => {
+    readConfigMock.mockResolvedValue(createConfig({
+      sites: {
+        "example.com": {
+          enabled: true,
+          alwaysTranslate: true,
+          selectors: [".article-body"],
+          excludeSelectors: ["aside["],
+          paragraphMinLength: 30,
+        },
+      },
+    }))
+    getActiveTabTranslationStateMock.mockResolvedValue({
+      ok: true,
+      state: {
+        ...createIdleState().state,
+        phase: "running",
+        site: {
+          hostname: "example.com",
+          enabled: true,
+          alwaysTranslate: true,
+        },
+        diagnostics: {
+          contentScope: "page",
+          effectiveContentScope: "page",
+          siteRules: {
+            inputBlockCount: 3,
+            afterIncludeCount: 2,
+            afterExcludeCount: 2,
+            afterParagraphCount: 2,
+            selectors: {
+              configured: [".article-body"],
+              valid: [".article-body"],
+              invalid: [],
+              matchedBlocks: 2,
+            },
+            excludeSelectors: {
+              configured: ["aside["],
+              valid: [],
+              invalid: ["aside["],
+              matchedBlocks: 0,
+            },
+            paragraphMinLength: 30,
+          },
+        },
+      },
+    })
+
+    await act(async () => {
+      window.dispatchEvent(new Event("focus"))
+      await Promise.resolve()
+      await Promise.resolve()
+      await Promise.resolve()
+      await Promise.resolve()
+    })
+
+    saveConfigInBackgroundMock.mockClear()
+    const quickFixButton = container.querySelector('[data-testid="site-rules-quick-fix-clear-exclude-selectors"]') as HTMLButtonElement
+    expect(quickFixButton?.textContent).toBe("Clear exclude selectors")
+
+    await act(async () => {
+      quickFixButton.click()
+      await vi.runAllTimersAsync()
+    })
+    await flushApp()
+
+    expect(saveConfigInBackgroundMock).toHaveBeenCalledTimes(1)
+    const calls = saveConfigInBackgroundMock.mock.calls
+    const savedConfig = calls[calls.length - 1][0] as Partial<AstraConfig>
+    expect(savedConfig.sites?.["example.com"]?.selectors).toEqual([".article-body"])
+    expect(savedConfig.sites?.["example.com"]?.excludeSelectors).toBeUndefined()
+  })
+
   it("shows connection status and plan label", async () => {
     await flushApp()
 
     expect(container.textContent).toContain(t("popup_connected"))
     expect(container.textContent).toContain("Pro plan")
+    const continuityCard = container.querySelector('[data-testid="learning-continuity-commit-card"]')
+    expect(continuityCard?.textContent).toContain("Learning continuity commit")
+    expect(continuityCard?.textContent).toContain("synced")
+    expect(continuityCard?.textContent).toContain("SRS schedule remains local-only")
+    const accountContinuityCard = container.querySelector('[data-testid="popup-account-continuity-card"]') as HTMLElement
+    expect(accountContinuityCard).toBeTruthy()
+    expect(accountContinuityCard.textContent).toContain("Continuity is connected for this account")
+    expect(accountContinuityCard.textContent).toContain("Connected proof")
+    expect(accountContinuityCard.textContent).toContain("no sign-in action is needed")
+    expect(accountContinuityCard.textContent).toContain("SRS schedule timing stays local-only")
+    expect(container.querySelector('[data-testid="popup-account-continuity-sign-in-cta"]')).toBeNull()
+    expect(container.querySelector('[data-testid="study-account-continuity-nudge"]')?.textContent).toContain("Continuity is connected for this account")
+    expect(container.querySelector('[data-testid="study-account-continuity-nudge"]')?.textContent).toContain("SRS schedule timing stays local-only")
+    expect(container.querySelector('[data-testid="study-account-continuity-sign-in-cta"]')).toBeNull()
     expect(container.textContent).toContain("Astra continuity · 1 device · 1 active")
     expect(container.textContent).toContain("Config bootstrap: enabled · Cursor cfg-3")
     expect(container.textContent).toContain("Reading history sync: off · Optional")
     expect(container.textContent).toContain("Study progress sync: off · Optional · Daily stats stay local")
-    expect(container.textContent).toContain("Config continuity ready · Optional collections available in Settings")
+    expect(container.textContent).toContain("Learning continuity commit: synced")
+    expect(container.textContent).toContain("Config, vocabulary, reading history, and study progress continuity ready · SRS schedule fields stay local")
     expect(container.textContent).toContain("Plan and daily quota mirror Astra account summary.")
+  })
+
+  const continuityCardStateCases: Array<[string, LearningContinuitySyncStatus, string, boolean]> = [
+    ["syncing", createLearningContinuitySyncStatus({ inFlight: true, stateLastSuccessAt: null }), "Syncing…", true],
+    ["queued", createLearningContinuitySyncStatus({ queued: true, stateLastSuccessAt: null }), "Sync now", true],
+    ["error-retry", createLearningContinuitySyncStatus({ lastError: "Relay unavailable", stateLastError: "Relay unavailable", stateLastSuccessAt: null }), "Retry sync", false],
+    ["synced", createLearningContinuitySyncStatus({ stateLastSuccessAt: "2026-04-09T01:10:00.000Z" }), "Sync now", false],
+    ["ready-to-sync", createLearningContinuitySyncStatus({ stateLastSuccessAt: null, lastFinishedAt: null, stateLastRunAt: null }), "Sync now", false],
+  ]
+
+  it.each(continuityCardStateCases)("shows continuity card state %s", async (expectedState, status, expectedButtonLabel, expectDisabled) => {
+    await refreshPopupWithContinuityStatus(status)
+
+    const state = container.querySelector('[data-testid="learning-continuity-commit-state"]')
+    const action = container.querySelector('[data-testid="learning-continuity-sync-now"]') as HTMLButtonElement | null
+
+    expect(state?.textContent).toContain(expectedState)
+    expect(action?.textContent).toContain(expectedButtonLabel)
+    expect(action?.disabled).toBe(expectDisabled)
+  })
+
+  it("runs manual continuity sync from the popup card and updates state", async () => {
+    await refreshPopupWithContinuityStatus(createLearningContinuitySyncStatus({
+      lastError: "Relay unavailable",
+      stateLastError: "Relay unavailable",
+      stateLastSuccessAt: null,
+    }))
+    const nextStatus = createLearningContinuitySyncStatus({
+      lastError: null,
+      stateLastError: null,
+      stateLastSuccessAt: "2026-04-09T01:12:00.000Z",
+    })
+    commitLearningContinuitySyncMock.mockResolvedValueOnce({ ok: true, status: nextStatus })
+
+    const action = container.querySelector('[data-testid="learning-continuity-sync-now"]') as HTMLButtonElement
+    await act(async () => {
+      action.click()
+      await Promise.resolve()
+      await Promise.resolve()
+      await Promise.resolve()
+    })
+
+    expect(commitLearningContinuitySyncMock).toHaveBeenCalledWith("popup-continuity-card")
+    expect(container.querySelector('[data-testid="learning-continuity-commit-state"]')?.textContent).toContain("synced")
   })
 
   it("shows quota bar with usage info", async () => {
@@ -609,6 +1442,80 @@ describe("popup App", () => {
 
     expect(container.textContent).toContain("50%")
     expect(container.textContent).toContain("100k / 200k tokens")
+  })
+
+  it("surfaces unauthenticated continuity copy and opens the existing sign-in panel from the CTA", async () => {
+    readAstraSessionMock.mockResolvedValue(null)
+
+    await act(async () => {
+      window.dispatchEvent(new Event("focus"))
+      await Promise.resolve()
+      await Promise.resolve()
+      await Promise.resolve()
+      await Promise.resolve()
+    })
+    await flushApp()
+
+    const conversionCard = container.querySelector('[data-testid="popup-account-continuity-card"]') as HTMLElement
+    expect(conversionCard).toBeTruthy()
+    const primer = container.querySelector('[data-testid="learning-closure-primer-card"]') as HTMLElement
+    expect(conversionCard.compareDocumentPosition(primer) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    expect(conversionCard.textContent).toContain("Account continuity")
+    expect(conversionCard.textContent).toContain("Keep your learning trail when you switch devices")
+    expect(conversionCard.textContent).toContain("saved learning cards, reading queue, and study progress")
+    expect(conversionCard.textContent).toContain("Proof from this popup session")
+    expect(conversionCard.textContent).toContain("Same CTA: use the existing popup sign-in panel")
+    expect(conversionCard.textContent).toContain("No billing change")
+    expect(conversionCard.textContent).toContain("existing Astra sign-in panel")
+    const studyContinuityNudge = container.querySelector('[data-testid="study-account-continuity-nudge"]') as HTMLElement
+    expect(studyContinuityNudge?.textContent).toContain("Keep your learning trail")
+    expect(studyContinuityNudge?.textContent).toContain("Proof on this page is already forming")
+    expect(studyContinuityNudge?.textContent).toContain("existing Astra sign-in panel")
+    expect(container.querySelector('[data-testid="popup-account-continuity-proof-moment"]')?.textContent).toContain("Proof")
+    expect(container.querySelector('[data-testid="study-account-continuity-proof-moment"]')?.textContent).toContain("Same CTA")
+    expect(container.querySelector('[data-testid="study-account-continuity-sign-in-cta"]')?.textContent).toContain("Sign in to keep continuity")
+
+    const signInPanel = container.querySelector('[data-testid="popup-sign-in-panel"]') as HTMLDetailsElement
+    expect(signInPanel.open).toBe(false)
+
+    await act(async () => {
+      ;(container.querySelector('[data-testid="popup-account-continuity-sign-in-cta"]') as HTMLButtonElement).click()
+      await Promise.resolve()
+    })
+
+    expect(signInPanel.open).toBe(true)
+    expect(createAstraSessionMock).not.toHaveBeenCalled()
+  })
+
+  it("opens and focuses the existing sign-in panel from popup ?focus=sign-in", async () => {
+    await act(async () => {
+      root.unmount()
+      await Promise.resolve()
+    })
+    rootUnmounted = true
+    window.history.replaceState({}, "", "/popup.html?focus=sign-in")
+    readAstraSessionMock.mockResolvedValue(null)
+    root = ReactDOM.createRoot(container)
+    rootUnmounted = false
+
+    await act(async () => {
+      root.render(<App />)
+      await Promise.resolve()
+      await Promise.resolve()
+      await Promise.resolve()
+    })
+    await flushApp()
+
+    const signInPanel = container.querySelector('[data-testid="popup-sign-in-panel"]') as HTMLDetailsElement
+    const emailInput = container.querySelector('input[type="email"]') as HTMLInputElement
+    expect(signInPanel.open).toBe(true)
+
+    await act(async () => {
+      await vi.runOnlyPendingTimersAsync()
+    })
+
+    expect(document.activeElement).toBe(emailInput)
+    expect(createAstraSessionMock).not.toHaveBeenCalled()
   })
 
   it("creates and stores an Astra session from the popup login flow", async () => {
@@ -711,6 +1618,68 @@ describe("popup App", () => {
     expect(container.textContent).toContain("阅读文章")
   })
 
+  it("renders the weekly ROI summary from local study and vocabulary activity", async () => {
+    const now = new Date("2026-04-09T12:00:00.000Z").getTime()
+    vi.setSystemTime(now)
+    getStudyProgressMock.mockResolvedValue({
+      pages: [{
+        url: "https://example.com/article",
+        hostname: "example.com",
+        title: "Example article",
+        completedSteps: ["read", "guided_read", "explain", "vocab_save", "vocab_review"],
+        sentencesExplained: 5,
+        vocabSaved: 3,
+        vocabReviewed: 2,
+        startedAt: now - 90 * 60_000,
+        lastActivityAt: now,
+      }],
+      dailyStats: { date: "2026-04-09", pagesStudied: 1, sentencesExplained: 5, vocabSaved: 3, vocabReviewed: 2 },
+    })
+    getVocabularyEntriesMock.mockResolvedValue([
+      {
+        id: "roi-mastered",
+        text: "retained",
+        url: "https://example.com/article",
+        hostname: "example.com",
+        savedAt: now - 2 * 24 * 60 * 60_000,
+        srsBox: 4,
+        nextReviewAt: now + 2 * 24 * 60 * 60_000,
+        reviewCount: 3,
+        lastReviewedAt: now - 60_000,
+      },
+      {
+        id: "roi-review-miss",
+        text: "retry",
+        url: "https://example.com/article",
+        hostname: "example.com",
+        savedAt: now - 3 * 24 * 60 * 60_000,
+        srsBox: 1,
+        nextReviewAt: now + 24 * 60 * 60_000,
+        reviewCount: 1,
+        lastReviewedAt: now - 2 * 60_000,
+      },
+    ])
+
+    await act(async () => {
+      window.dispatchEvent(new Event("focus"))
+      await Promise.resolve()
+      await Promise.resolve()
+      await Promise.resolve()
+    })
+    await flushApp()
+
+    const card = container.querySelector('[data-testid="weekly-roi-summary-card"]') as HTMLElement
+    expect(card).toBeTruthy()
+    expect(card.textContent).toContain("Weekly ROI")
+    expect(card.textContent).toContain("7-day learning return")
+    expect(card.textContent).toContain("45 min")
+    expect(card.textContent).toContain("50%")
+    expect(card.textContent).toContain("1 active page")
+    expect(card.textContent).toContain("1 loop closed")
+    expect(card.textContent).toContain("2 saved")
+    expect(card.textContent).toContain("2 reviewed")
+  })
+
   it("shows the same current-page progress counters and next-step hint in the popup", async () => {
     deriveStudyLoopViewModelMock.mockReturnValue({
       currentPage: {
@@ -730,6 +1699,15 @@ describe("popup App", () => {
       completionPercent: 80,
       dailyStats: { date: "2026-04-03", pagesStudied: 1, sentencesExplained: 2, vocabSaved: 1, vocabReviewed: 0 },
       recentPages: [],
+      personalizedStrategy: {
+        id: "review_saved_context",
+        label: "Review this page’s saved context",
+        hint: "Finish the loop by reviewing at least one saved card from this page while the source context is still fresh.",
+        focusStep: "vocab_review",
+        trigger: "saved_more_than_reviewed",
+        progressSignature: "read>guided_read>explain>vocab_save|next:vocab_review|e:2|s:1|r:0|pct:80",
+        evidence: "1 saved · 0 reviewed",
+      },
     })
 
     await act(async () => {
@@ -745,6 +1723,19 @@ describe("popup App", () => {
     expect(container.textContent).toContain("复习 0 词")
     expect(container.textContent).toContain("下一步： 复习")
     expect(container.textContent).toContain("复习这篇页面里至少一张已保存卡片，闭合本页的学习回路。")
+    expect(container.querySelector('[data-testid="study-personalized-strategy-card"]')?.textContent).toContain("Review this page’s saved context")
+    expect(container.textContent).toContain("Finish the loop by reviewing at least one saved card from this page while the source context is still fresh.")
+
+    expect(await getLearningLoopTelemetryEvents()).toContainEqual(expect.objectContaining({
+      data: expect.objectContaining({
+        event: "popup_primer_viewed",
+        psarEligible: true,
+        personalizedStrategyApplied: true,
+        personalizedStrategyId: "review_saved_context",
+        personalizedStrategyTrigger: "saved_more_than_reviewed",
+        personalizedStrategyFocusStep: "vocab_review",
+      }),
+    }))
   })
 
   it("opens the standalone deep-read page from the study hub", async () => {
@@ -764,6 +1755,57 @@ describe("popup App", () => {
     })
   })
 
+  it("opens the reading queue from the study hub", async () => {
+    await flushApp()
+
+    const readingQueueButton = container.querySelector('[data-testid="study-open-reading-queue"]') as HTMLButtonElement
+    expect(readingQueueButton).toBeTruthy()
+    expect(readingQueueButton.textContent).toBe(t("vocabulary_actionOpenReadingQueue"))
+
+    browserMock.tabs.create.mockClear()
+    await act(async () => {
+      readingQueueButton.click()
+      await Promise.resolve()
+    })
+
+    expect(browserMock.tabs.create).toHaveBeenCalledWith({
+      url: "/vocabulary.html?tab=reading",
+    })
+  })
+
+  it("saves the current page as a content asset from the popup study hub", async () => {
+    await flushApp()
+
+    const card = container.querySelector('[data-testid="study-content-assetization-card"]') as HTMLElement
+    const saveButton = container.querySelector('[data-testid="study-save-page-asset"]') as HTMLButtonElement
+    expect(card).toBeTruthy()
+    expect(card.textContent).toContain("内容资产")
+    expect(card.textContent).toContain("把当前页面保存到阅读队列")
+    expect(saveButton.disabled).toBe(false)
+
+    commitLearningContinuitySyncMock.mockClear()
+    await act(async () => {
+      saveButton.click()
+      await Promise.resolve()
+      await Promise.resolve()
+      await Promise.resolve()
+    })
+
+    const ownedReadingStore = browserMock.__storage[OWNED_READING_STORAGE_KEY]
+    expect(ownedReadingStore).toEqual(expect.objectContaining({ version: 1 }))
+    expect(ownedReadingStore.items).toContainEqual(expect.objectContaining({
+      sourceType: "article",
+      title: "Example article",
+      sourceUrl: "https://example.com/article",
+      status: "saved",
+      readingHistoryRecordId: "https://example.com/article",
+      studyProgressRecordId: "https://example.com/article",
+    }))
+    expect(container.querySelector('[data-testid="study-content-assetization-message"]')?.textContent).toContain("已保存到阅读队列。")
+    expect((container.querySelector('[data-testid="study-save-page-asset"]') as HTMLButtonElement).disabled).toBe(true)
+    expect(commitLearningContinuitySyncMock).toHaveBeenCalledWith("popup-content-assetization")
+  })
+
   it("shows usage and routing feedback in the popup", async () => {
     await flushApp()
 
@@ -775,6 +1817,100 @@ describe("popup App", () => {
     expect(container.textContent).toContain("openai / gpt-5.4-nano")
     expect(container.textContent).toContain("direct → relay")
     expect(container.textContent).toContain("这里只显示当前设备上的翻译活动；它不会改变你的 Astra 账户配额，命中缓存的内容也不会出现在这里。")
+  })
+
+  it("opens the Image/OCR Translation Beta page from diagnostics", async () => {
+    await flushApp()
+
+    const betaButton = getButtons().find((button) => button.textContent === "Open Image/OCR Translation Beta")
+    expect(betaButton).toBeDefined()
+    expect(container.textContent).toContain("Overlay preview is approximate; compare rows remain available.")
+
+    browserMock.tabs.create.mockClear()
+    await act(async () => {
+      betaButton?.click()
+      await Promise.resolve()
+    })
+
+    expect(browserMock.tabs.create).toHaveBeenCalledWith({
+      url: "/image-translate.html",
+    })
+  })
+
+  it("opens the Document Intake Hub page from diagnostics", async () => {
+    await flushApp()
+
+    const intakeButton = getButtons().find((button) => button.textContent === "Open Document Intake Hub")
+    expect(intakeButton).toBeDefined()
+    expect(container.textContent).toContain("Route PDF, EPUB, SRT, or VTT files to existing readers")
+    expect(container.textContent).toContain("short-lived local handoff can open the reader automatically")
+    expect(container.textContent).toContain("File bytes stay local and are never synced")
+
+    browserMock.tabs.create.mockClear()
+    await act(async () => {
+      intakeButton?.click()
+      await Promise.resolve()
+    })
+
+    expect(browserMock.tabs.create).toHaveBeenCalledWith({
+      url: "/document-intake.html",
+    })
+  })
+
+  it("persists the popup explanation glossary editor", async () => {
+    await flushApp()
+
+    const glossaryInput = container.querySelector('[data-testid="popup-explanation-glossary-input"]') as HTMLTextAreaElement
+    expect(glossaryInput).toBeTruthy()
+
+    await setFormValue(glossaryInput, "Astra => 阿斯特拉\nrouter = 路由器")
+    await flushApp()
+
+    expect(saveConfigInBackgroundMock).toHaveBeenLastCalledWith(expect.objectContaining({
+      explanationGlossary: [
+        { sourceTerm: "Astra", preferredTerm: "阿斯特拉", enabled: true },
+        { sourceTerm: "router", preferredTerm: "路由器", enabled: true },
+      ],
+    }))
+  })
+
+  it("persists global font scale from the popup", async () => {
+    await flushApp()
+
+    const globalFontInput = container.querySelector('[data-testid="popup-global-font-size-input"]') as HTMLInputElement
+    expect(globalFontInput).toBeTruthy()
+
+    await setFormValue(globalFontInput, "1.25")
+    await flushApp()
+
+    expect(saveConfigInBackgroundMock).toHaveBeenLastCalledWith(expect.objectContaining({
+      presentation: expect.objectContaining({
+        fontSize: 1.25,
+      }),
+    }))
+  })
+
+  it("persists site-level font scale override from the popup", async () => {
+    await flushApp()
+
+    const siteFontSizeInput = container.querySelector('[data-testid="site-font-size-input"]') as HTMLInputElement
+    expect(siteFontSizeInput).toBeTruthy()
+
+    await setFormValue(siteFontSizeInput, "1.35")
+    await act(async () => {
+      await vi.runAllTimersAsync()
+    })
+    await flushApp()
+
+    expect(saveConfigInBackgroundMock).toHaveBeenLastCalledWith(expect.objectContaining({
+      sites: expect.objectContaining({
+        "example.com": expect.objectContaining({
+          presentation: expect.objectContaining({
+            fontSize: 1.35,
+          }),
+        }),
+      }),
+    }))
   })
 
   it("persists site advanced rules from the popup", async () => {
@@ -981,6 +2117,15 @@ describe("popup App", () => {
     expect(container.textContent).toContain(t("popup_studyArticleExcerpt"))
     expect(container.textContent).toContain("First article sentence. Second article sentence with more detail.")
     expect(container.textContent).toContain(t("popup_studySentenceDeck"))
+    const studyOutcomeCopy = container.querySelector('[data-testid="study-outcome-copy"]')
+    expect(studyOutcomeCopy?.textContent).toContain("saved review cards connected")
+    expect(studyOutcomeCopy?.textContent).toContain("repeat practice")
+    expect(studyOutcomeCopy?.textContent).toContain("Translate a page, open Deep Read, explain one sentence, save it")
+    expect(studyOutcomeCopy?.textContent).toContain("same page context back")
+    expect(studyOutcomeCopy?.textContent).not.toContain("Start free -> Build assets -> Keep continuity")
+    expect(studyOutcomeCopy?.textContent).not.toContain("Build learning assets: save useful sentences")
+    expect(studyOutcomeCopy?.textContent).not.toContain("Local beta boundary")
+    expect(studyOutcomeCopy?.textContent).not.toContain("billing commitment")
   })
 
   it("opens deep read instead of starting guided article translation from the popup button", async () => {
@@ -1111,6 +2256,44 @@ describe("popup App", () => {
     }))
   })
 
+  it("rejects source-echo popup sentence explanations before study credit or persistence", async () => {
+    translateTextsMock.mockResolvedValue({
+      ok: true,
+      translations: ["First article sentence."],
+    })
+    recordStudyEventMock.mockClear()
+
+    const explainButtons = getButtons().filter((button) => button.textContent === t("popup_studyExplainSentence"))
+    expect(explainButtons.length).toBeGreaterThan(0)
+
+    await act(async () => {
+      explainButtons[0].click()
+      await Promise.resolve()
+      await Promise.resolve()
+      await Promise.resolve()
+    })
+
+    expect(container.textContent).toContain("Warning: Explanation output echoed the source text. Please retry.")
+    expect(recordStudyEventMock).not.toHaveBeenCalledWith(expect.objectContaining({
+      step: "explain",
+    }))
+
+    saveVocabularyEntryMock.mockClear()
+    const firstSentenceCard = container.querySelector('[data-testid="study-sentence-card-0"]') as HTMLDivElement
+    const saveButton = Array.from(firstSentenceCard.querySelectorAll("button")).find((button) => button.textContent === t("actionSave"))
+
+    await act(async () => {
+      saveButton?.click()
+      await Promise.resolve()
+      await Promise.resolve()
+      await Promise.resolve()
+    })
+
+    const [savedEntry] = saveVocabularyEntryMock.mock.calls.at(-1) ?? []
+    expect(savedEntry).toBeDefined()
+    expect(savedEntry.explanation).toBeUndefined()
+  })
+
   it("supports sentence navigation and single-sentence speech from the popup", async () => {
     const nextButton = container.querySelector('[data-testid="study-sentence-next"]') as HTMLButtonElement
     const speakButton = container.querySelector('[data-testid="study-sentence-speak"]') as HTMLButtonElement
@@ -1148,6 +2331,7 @@ describe("popup App", () => {
 
     await act(async () => {
       explainButtons[0].click()
+      await Promise.resolve()
       await Promise.resolve()
       await Promise.resolve()
     })
@@ -1189,6 +2373,7 @@ describe("popup App", () => {
       }),
     }))
     expect(container.querySelector('[data-testid="study-sentence-saved-cta-1"]')).toBeTruthy()
+    expect(commitLearningContinuitySyncMock).toHaveBeenCalledWith("popup-save")
   })
 
   it("runs the popup deep-read chain from explain to save to review and speak", async () => {
@@ -1212,6 +2397,16 @@ describe("popup App", () => {
     })
     getDueVocabularyCountMock.mockResolvedValueOnce(3).mockResolvedValueOnce(4)
 
+    const languageSelect = container.querySelector('[data-testid="popup-language-level-select"]') as HTMLSelectElement
+    const explainModeSelect = container.querySelector('[data-testid="popup-explain-mode-select"]') as HTMLSelectElement
+    await act(async () => {
+      languageSelect.value = "beginner"
+      languageSelect.dispatchEvent(new Event("change", { bubbles: true }))
+      explainModeSelect.value = "exam"
+      explainModeSelect.dispatchEvent(new Event("change", { bubbles: true }))
+      await Promise.resolve()
+    })
+
     const explainButtons = getButtons().filter((button) => button.textContent === t("popup_studyExplainSentence"))
     await act(async () => {
       explainButtons[0].click()
@@ -1219,6 +2414,13 @@ describe("popup App", () => {
       await Promise.resolve()
       await Promise.resolve()
     })
+
+    expect(translateTextsMock).toHaveBeenCalledWith(expect.objectContaining({
+      task: "explain",
+      languageLevel: "beginner",
+      explainMode: "exam",
+    }))
+    expect(container.textContent).toContain("Explain profile: Exam · Beginner")
 
     const saveButtons = getButtons().filter((button) => button.textContent === t("actionSave"))
     expect(saveButtons.length).toBeGreaterThan(0)
@@ -1242,11 +2444,20 @@ describe("popup App", () => {
         hostname: "example.com",
         sentenceText: "First article sentence.",
         sentenceIndex: 0,
+        languageLevel: "beginner",
+        explainMode: "exam",
       }),
     }))
     expect(recordStudyEventMock).toHaveBeenCalledWith(expect.objectContaining({
       url: "https://example.com/article",
       step: "vocab_save",
+    }))
+    expect(await getLearningLoopTelemetryEvents()).toContainEqual(expect.objectContaining({
+      data: expect.objectContaining({
+        event: "sentence_saved",
+        source: "popup_deep_read",
+        variant: "loop_first",
+      }),
     }))
     expect(container.textContent).toContain(t("actionSaved"))
 
@@ -1264,16 +2475,6 @@ describe("popup App", () => {
 
     expect(browserMock.tabs.create).toHaveBeenCalledWith(expect.objectContaining({
       url: expect.stringContaining("/vocabulary.html?tab=review"),
-    }))
-
-    await act(async () => {
-      speakButton.click()
-      await Promise.resolve()
-      await Promise.resolve()
-    })
-
-    expect(speakMock).toHaveBeenCalledWith("First article sentence.", expect.objectContaining({
-      lang: "zh-CN",
     }))
   })
 
@@ -1306,7 +2507,92 @@ describe("popup App", () => {
     })
 
     expect(container.querySelector('[data-testid="study-sentence-saved-cta-0"]')).toBeTruthy()
+    expect(container.querySelector('[data-testid="study-page-saved-review-cta"]')).toBeTruthy()
+    expect(container.textContent).toContain(t("popup_studyPageSavedReviewAction"))
     expect(container.textContent).toContain(t("actionSaved"))
+
+    const pageReviewButton = container.querySelector('[data-testid="study-page-saved-review-button"]') as HTMLButtonElement
+    await act(async () => {
+      pageReviewButton.click()
+      await Promise.resolve()
+    })
+
+    expect(browserMock.tabs.create).toHaveBeenCalledWith(expect.objectContaining({
+      url: expect.stringContaining("loop=page"),
+    }))
+    expect(browserMock.tabs.create).toHaveBeenCalledWith(expect.objectContaining({
+      url: expect.stringContaining("entryId=saved-sentence-1"),
+    }))
+  })
+
+  it("routes the vocab review next-step action to current-page saved review when available", async () => {
+    deriveStudyLoopViewModelMock.mockReturnValue({
+      currentPage: {
+        url: "https://example.com/article",
+        hostname: "example.com",
+        title: "Example article",
+        completedSteps: ["read", "guided_read", "explain", "vocab_save"],
+        sentencesExplained: 1,
+        vocabSaved: 1,
+        vocabReviewed: 0,
+        startedAt: 1000,
+        lastActivityAt: 2000,
+      },
+      completedSteps: ["read", "guided_read", "explain", "vocab_save"],
+      currentCounts: { sentencesExplained: 1, vocabSaved: 1, vocabReviewed: 0 },
+      nextStep: "vocab_review",
+      completionPercent: 80,
+      dailyStats: { date: "2026-04-03", pagesStudied: 1, sentencesExplained: 1, vocabSaved: 1, vocabReviewed: 0 },
+      recentPages: [],
+    })
+    getVocabularyEntriesMock.mockResolvedValue([{
+      id: "saved-sentence-next-step",
+      text: "First article sentence.",
+      explanation: "Saved earlier",
+      context: "First article sentence. Second article sentence with more detail.",
+      url: "https://example.com/article?utm=source",
+      hostname: "example.com",
+      savedAt: 1000,
+      srsBox: 1,
+      nextReviewAt: 1000,
+      reviewCount: 0,
+      lastReviewedAt: null,
+      sourceContext: {
+        surface: "popup_deep_read",
+        pageUrl: "https://example.com/article?utm=source",
+        studyProgressRecordId: "https://example.com/article",
+        pageTitle: "Example article",
+        sentenceText: "First article sentence.",
+        sentenceIndex: 0,
+      },
+    }])
+
+    await act(async () => {
+      window.dispatchEvent(new Event("focus"))
+      await Promise.resolve()
+      await Promise.resolve()
+      await Promise.resolve()
+    })
+
+    const nextStepButton = container.querySelector('[data-testid="study-next-step-action"]') as HTMLButtonElement
+    expect(nextStepButton).toBeTruthy()
+    expect(nextStepButton.textContent).toBe(t("popup_studyPageSavedReviewAction"))
+
+    browserMock.tabs.create.mockClear()
+    await act(async () => {
+      nextStepButton.click()
+      await Promise.resolve()
+    })
+
+    expect(browserMock.tabs.create).toHaveBeenCalledWith(expect.objectContaining({
+      url: expect.stringContaining("loop=page"),
+    }))
+    expect(browserMock.tabs.create).toHaveBeenCalledWith(expect.objectContaining({
+      url: expect.stringContaining("studyUrl=https%3A%2F%2Fexample.com%2Farticle"),
+    }))
+    expect(browserMock.tabs.create).toHaveBeenCalledWith(expect.objectContaining({
+      url: expect.stringContaining("entryId=saved-sentence-next-step"),
+    }))
   })
 
   it("builds the sentence deck from fallback summary text when no article excerpt is available", async () => {
@@ -1373,6 +2659,7 @@ describe("popup App", () => {
     expect(container.textContent).toContain(t("popup_studySummaryEmpty"))
     expect(container.textContent).not.toContain(t("popup_studySentenceDeck"))
     expect(container.querySelector('[data-testid="study-sentence-deck-fallback"]')).toBeFalsy()
+    expect(container.querySelector('[data-testid="study-outcome-copy"]')).toBeFalsy()
     expect(getButtons().filter((button) => button.textContent === t("popup_studyExplainSentence"))).toHaveLength(0)
   })
 
@@ -1452,6 +2739,133 @@ describe("popup App", () => {
 
     expect(browserMock.tabs.create).toHaveBeenCalledWith(expect.objectContaining({
       url: expect.stringContaining("/vocabulary.html?tab=review"),
+    }))
+  })
+
+  it("passes popup explanation glossary terms through sentence explain requests", async () => {
+    await flushApp()
+
+    const glossaryInput = container.querySelector('[data-testid="popup-explanation-glossary-input"]') as HTMLTextAreaElement
+    await setFormValue(glossaryInput, "First article => 首篇文章")
+    await flushApp()
+
+    translateTextsMock.mockResolvedValue({
+      ok: true,
+      translations: ["首篇文章 is the required term; the sentence introduces the first article sentence."],
+    })
+
+    const explainButtons = getButtons().filter((button) => button.textContent === t("popup_studyExplainSentence"))
+    await act(async () => {
+      explainButtons[0].click()
+      await Promise.resolve()
+      await Promise.resolve()
+      await Promise.resolve()
+    })
+
+    expect(translateTextsMock).toHaveBeenCalledWith(expect.objectContaining({
+      task: "explain",
+      context: expect.objectContaining({
+        explanationGlossary: "First article => 首篇文章",
+      }),
+    }))
+    expect(container.textContent).toContain("首篇文章 is the required term")
+    expect(container.querySelector('[data-testid="study-sentence-glossary-evidence-0"]')?.textContent).toBe("Glossary applied: First article → 首篇文章")
+
+    saveVocabularyEntryMock.mockClear()
+    const firstSentenceCard = container.querySelector('[data-testid="study-sentence-card-0"]') as HTMLDivElement
+    const saveButton = Array.from(firstSentenceCard.querySelectorAll("button")).find((button) => button.textContent === t("actionSave"))
+
+    await act(async () => {
+      saveButton?.click()
+      await Promise.resolve()
+      await Promise.resolve()
+      await Promise.resolve()
+    })
+
+    expect(saveVocabularyEntryMock).toHaveBeenCalledWith(expect.objectContaining({
+      sourceContext: expect.objectContaining({
+        matchedGlossaryTerms: [{ sourceTerm: "First article", preferredTerm: "首篇文章" }],
+      }),
+    }))
+  })
+
+  it("retries popup sentence explanations that fail the glossary quality gate", async () => {
+    await flushApp()
+
+    const languageSelect = container.querySelector('[data-testid="popup-language-level-select"]') as HTMLSelectElement
+    const explainModeSelect = container.querySelector('[data-testid="popup-explain-mode-select"]') as HTMLSelectElement
+    await act(async () => {
+      languageSelect.value = "beginner"
+      languageSelect.dispatchEvent(new Event("change", { bubbles: true }))
+      explainModeSelect.value = "exam"
+      explainModeSelect.dispatchEvent(new Event("change", { bubbles: true }))
+      await Promise.resolve()
+    })
+
+    const glossaryInput = container.querySelector('[data-testid="popup-explanation-glossary-input"]') as HTMLTextAreaElement
+    await setFormValue(glossaryInput, "First article => 首篇文章")
+    await flushApp()
+
+    translateTextsMock
+      .mockResolvedValueOnce({
+        ok: true,
+        translations: ["This explains that the sentence introduces the article."],
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        translations: ["首篇文章 is the required term; this explains that the sentence introduces the article."],
+      })
+    recordStudyEventMock.mockClear()
+
+    const explainButtons = getButtons().filter((button) => button.textContent === t("popup_studyExplainSentence"))
+    await act(async () => {
+      explainButtons[0].click()
+      await Promise.resolve()
+      await Promise.resolve()
+      await Promise.resolve()
+    })
+
+    expect(translateTextsMock).toHaveBeenCalledTimes(2)
+    expect(translateTextsMock).toHaveBeenNthCalledWith(2, expect.objectContaining({
+      task: "explain",
+      languageLevel: "beginner",
+      explainMode: "exam",
+      context: expect.objectContaining({
+        explanationGlossary: "First article => 首篇文章",
+      }),
+      explanationRepairInstruction: expect.stringContaining("include every matched preferred term exactly"),
+    }))
+    expect(container.textContent).toContain("首篇文章 is the required term")
+    expect(recordStudyEventMock).toHaveBeenCalledWith(expect.objectContaining({
+      step: "explain",
+    }))
+  })
+
+  it("rejects popup sentence explanations missing required glossary terms after the recovery retry", async () => {
+    await flushApp()
+
+    const glossaryInput = container.querySelector('[data-testid="popup-explanation-glossary-input"]') as HTMLTextAreaElement
+    await setFormValue(glossaryInput, "First article => 首篇文章")
+    await flushApp()
+
+    translateTextsMock.mockResolvedValue({
+      ok: true,
+      translations: ["This explains that the sentence introduces the article."],
+    })
+    recordStudyEventMock.mockClear()
+
+    const explainButtons = getButtons().filter((button) => button.textContent === t("popup_studyExplainSentence"))
+    await act(async () => {
+      explainButtons[0].click()
+      await Promise.resolve()
+      await Promise.resolve()
+      await Promise.resolve()
+    })
+
+    expect(translateTextsMock).toHaveBeenCalledTimes(2)
+    expect(container.textContent).toContain("Warning: Explanation output omitted required glossary term \"首篇文章\" for source term \"First article\". Please retry.")
+    expect(recordStudyEventMock).not.toHaveBeenCalledWith(expect.objectContaining({
+      step: "explain",
     }))
   })
 })

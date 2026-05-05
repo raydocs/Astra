@@ -9,10 +9,11 @@ import { computeFingerprint, getPageDigest, isDigestStale, savePageDigest, type 
 import { generatePageDigest } from "@/utils/reading/assist"
 import { getReadingHistory } from "@/utils/storage/reading-history"
 import { buildSentenceAnchor, readSentenceAnchorFromSearchParams, resolveSentenceAnchorIndex } from "@/utils/sentence-anchor"
-import { deriveStudyLoopViewModel, getStudyProgress, recordStudyEvent, type StudyLoopViewModel, type StudyStep } from "@/utils/storage/study-progress"
+import { deriveStudyLoopViewModel, getStudyProgress, recordStudyEvent, type PersonalizedTeachingStrategy, type StudyLoopViewModel, type StudyStep } from "@/utils/storage/study-progress"
 import { splitSentences, isTtsSupported, speak, speakWithHighlight, stopSpeaking } from "@/utils/tts"
 import { translateTexts } from "@/utils/translate/translate"
-import { getDueVocabularyCount, saveVocabularyEntry } from "@/utils/storage/vocabulary"
+import { getDueVocabularyCount, getVocabularyEntries, isVocabularyEntryFromStudyUrl, saveVocabularyEntry, type VocabularyEntry } from "@/utils/storage/vocabulary"
+import { openFocusedReview, openPageReviewLoop } from "@/utils/review-link"
 import { buildOwnedReadingVocabularySourceLink, upsertOwnedArticleFromUrl } from "@/utils/storage/owned-reading"
 import type { AstraConfig, ExplainMode } from "@/types/config"
 import type { PageStudyContext } from "@/types/messages"
@@ -98,6 +99,58 @@ function getStudyStepHint(step: StudyStep | null): string {
   }
 }
 
+function buildPersonalizedStrategyTelemetry(strategy: PersonalizedTeachingStrategy | null | undefined) {
+  const eligible = !!strategy
+  return {
+    psarEligible: eligible,
+    personalizedStrategyApplied: eligible,
+    personalizedStrategyId: strategy?.id ?? null,
+    personalizedStrategyLabel: strategy?.label ?? null,
+    personalizedStrategyTrigger: strategy?.trigger ?? null,
+    personalizedStrategyFocusStep: strategy?.focusStep ?? null,
+    personalizedStrategyProgressSignature: strategy?.progressSignature ?? null,
+  }
+}
+
+interface PageSavedReviewSummary {
+  studyUrl: string
+  count: number
+  entryId?: string
+}
+
+function derivePageSavedReviewState(
+  entries: VocabularyEntry[],
+  studyUrl?: string | null,
+): {
+  summary: PageSavedReviewSummary | null
+  savedSentenceIndices: Set<number>
+  savedSentenceEntryIds: Record<number, string>
+} {
+  const matchedEntries = studyUrl
+    ? entries.filter((entry) => isVocabularyEntryFromStudyUrl(entry, studyUrl))
+    : []
+  const savedSentenceIndices = new Set<number>()
+  const savedSentenceEntryIds: Record<number, string> = {}
+
+  for (const entry of matchedEntries) {
+    const sentenceIndex = entry.sourceContext?.surface === "popup_deep_read"
+      ? entry.sourceContext.sentenceIndex
+      : undefined
+    if (typeof sentenceIndex === "number") {
+      savedSentenceIndices.add(sentenceIndex)
+      savedSentenceEntryIds[sentenceIndex] = entry.id
+    }
+  }
+
+  return {
+    summary: studyUrl && matchedEntries.length > 0
+      ? { studyUrl, count: matchedEntries.length, entryId: matchedEntries[0]?.id }
+      : null,
+    savedSentenceIndices,
+    savedSentenceEntryIds,
+  }
+}
+
 export default function DeepReadApp() {
   const [config, setConfig] = useState<AstraConfig | null>(null)
   const [studyContext, setStudyContext] = useState<PageStudyContext | null>(null)
@@ -112,6 +165,8 @@ export default function DeepReadApp() {
   const [explanations, setExplanations] = useState<Record<number, string>>({})
   const [explainingIndex, setExplainingIndex] = useState<number | null>(null)
   const [savedSentenceIndices, setSavedSentenceIndices] = useState<Set<number>>(() => new Set())
+  const [savedSentenceEntryIds, setSavedSentenceEntryIds] = useState<Record<number, string>>({})
+  const [pageSavedReviewSummary, setPageSavedReviewSummary] = useState<PageSavedReviewSummary | null>(null)
   const [savingIndex, setSavingIndex] = useState<number | null>(null)
   const [speakingIndex, setSpeakingIndex] = useState<number | null>(null)
   const [autoPlayEnabled, setAutoPlayEnabled] = useState(false)
@@ -122,10 +177,11 @@ export default function DeepReadApp() {
       const searchParams = new URLSearchParams(window.location.search)
       const requestedPageUrl = searchParams.get("pageUrl")?.trim() || ""
       const requestedSentenceAnchor = readSentenceAnchorFromSearchParams(searchParams)
-      const [nextConfig, history, savedSession] = await Promise.all([
+      const [nextConfig, history, savedSession, vocabularyEntries] = await Promise.all([
         readConfig(),
         getReadingHistory(),
         requestedPageUrl ? getDeepReadSession(requestedPageUrl) : getLatestDeepReadSession(),
+        getVocabularyEntries(),
       ])
       setConfig(nextConfig)
       setLastReadingPage(history[0]
@@ -137,6 +193,7 @@ export default function DeepReadApp() {
         : null)
       const nextDueCount = await getDueVocabularyCount()
       setDueCount(nextDueCount)
+      let savedSessionStudyLoop: StudyLoopViewModel | null = null
 
       if (savedSession) {
         setSnapshotSentences(savedSession.sentences)
@@ -159,8 +216,13 @@ export default function DeepReadApp() {
         setPageDigest(digest)
         const storedProgress = await getStudyProgress().catch(() => null)
         if (storedProgress) {
-          setStudyLoop(deriveStudyLoopViewModel(storedProgress, savedSession.pageUrl))
+          savedSessionStudyLoop = deriveStudyLoopViewModel(storedProgress, savedSession.pageUrl)
+          setStudyLoop(savedSessionStudyLoop)
         }
+        const savedState = derivePageSavedReviewState(vocabularyEntries, savedSession.pageUrl)
+        setPageSavedReviewSummary(savedState.summary)
+        setSavedSentenceIndices(savedState.savedSentenceIndices)
+        setSavedSentenceEntryIds(savedState.savedSentenceEntryIds)
       }
 
       let contextResponse = await getActiveTabStudyContext()
@@ -176,6 +238,7 @@ export default function DeepReadApp() {
             source: "saved_session",
             restoredFromSession: true,
             pageUrl: savedSession.pageUrl,
+            ...buildPersonalizedStrategyTelemetry(savedSessionStudyLoop?.personalizedStrategy),
           })
         }
         return
@@ -200,6 +263,10 @@ export default function DeepReadApp() {
       setStudyContext(nextStudyContext)
       setSnapshotSentences(nextSentences)
       setSelectedSentenceIndex(nextSelectedSentenceIndex)
+      const savedState = derivePageSavedReviewState(vocabularyEntries, nextStudyContext.pageUrl)
+      setPageSavedReviewSummary(savedState.summary)
+      setSavedSentenceIndices(savedState.savedSentenceIndices)
+      setSavedSentenceEntryIds(savedState.savedSentenceEntryIds)
 
       await saveDeepReadSession({
         context: contextResponse.context,
@@ -207,11 +274,6 @@ export default function DeepReadApp() {
       })
 
       if (nextStudyContext.pageUrl) {
-        recordLearningLoopEvent("deep_read_opened", {
-          source: "live_context",
-          restoredFromSession: !!savedSession,
-          pageUrl: nextStudyContext.pageUrl,
-        })
         await recordStudyEvent({
           url: nextStudyContext.pageUrl,
           hostname: nextStudyContext.hostname ?? "",
@@ -219,7 +281,14 @@ export default function DeepReadApp() {
           step: "guided_read",
         }).catch(() => undefined)
         const store = await getStudyProgress().catch(() => null)
-        setStudyLoop(store ? deriveStudyLoopViewModel(store, nextStudyContext.pageUrl) : null)
+        const nextStudyLoop = store ? deriveStudyLoopViewModel(store, nextStudyContext.pageUrl) : null
+        setStudyLoop(nextStudyLoop)
+        recordLearningLoopEvent("deep_read_opened", {
+          source: "live_context",
+          restoredFromSession: !!savedSession,
+          pageUrl: nextStudyContext.pageUrl,
+          ...buildPersonalizedStrategyTelemetry(nextStudyLoop?.personalizedStrategy),
+        })
       }
 
       const pageUrl = contextResponse.context.pageUrl
@@ -266,6 +335,9 @@ export default function DeepReadApp() {
     ? `${t("popup_studyNext")} ${getStudyStepLabel(studyLoop.nextStep)}`
     : t("popup_deepReadNextStepHeadline")
   const studyLoopHint = getStudyStepHint(studyLoop?.nextStep ?? null)
+  const savedPageReviewActionLabel = pageSavedReviewSummary
+    ? t("popup_studyPageSavedReviewAction")
+    : dueCount > 0 ? `${t("popup_review")} (${dueCount})` : t("popup_review")
 
   useEffect(() => {
     if (!sentences.length) return
@@ -346,6 +418,7 @@ export default function DeepReadApp() {
           pageUrl: studyContext?.pageUrl,
           sentenceIndex: index,
           sentenceHash: buildSentenceAnchor(sentences[index], index)?.sentenceHash,
+          ...buildPersonalizedStrategyTelemetry(studyLoop?.personalizedStrategy),
         })
         await recordDeepReadStudyStep("explain")
       }
@@ -364,7 +437,7 @@ export default function DeepReadApp() {
         title: studyContext.pageTitle ?? studyContext.hostname ?? sentences[index],
         status: "saved",
       })
-      await saveVocabularyEntry({
+      const savedEntry = await saveVocabularyEntry({
         text: sentences[index],
         explanation: explanations[index],
         context: studyContext.articleExcerpt ?? studyContext.contentSummary ?? studyContext.metaDescription,
@@ -384,11 +457,18 @@ export default function DeepReadApp() {
         hostname: studyContext.hostname,
       })
       setSavedSentenceIndices((current) => new Set(current).add(index))
+      setSavedSentenceEntryIds((current) => ({ ...current, [index]: savedEntry.id }))
+      setPageSavedReviewSummary((current) => ({
+        studyUrl: current?.studyUrl ?? pageUrl,
+        count: (current?.count ?? 0) + 1,
+        entryId: current?.entryId ?? savedEntry.id,
+      }))
       setDueCount(await getDueVocabularyCount())
       recordLearningLoopEvent("sentence_saved", {
         pageUrl,
         sentenceIndex: index,
         sentenceHash: buildSentenceAnchor(sentences[index], index)?.sentenceHash,
+        ...buildPersonalizedStrategyTelemetry(studyLoop?.personalizedStrategy),
       })
       await recordDeepReadStudyStep("vocab_save")
     } finally {
@@ -485,6 +565,31 @@ export default function DeepReadApp() {
     void browser.tabs.create({ url: browser.runtime.getURL("/vocabulary.html?tab=review") })
   }
 
+  const openFocusedReviewForSentence = (index: number) => {
+    const savedEntryId = savedSentenceEntryIds[index]
+    if (savedEntryId) {
+      const pageUrl = studyContext?.pageUrl?.trim()
+      if (pageUrl) {
+        void openPageReviewLoop(pageUrl, savedEntryId)
+        return
+      }
+
+      void openFocusedReview(savedEntryId)
+      return
+    }
+
+    openReview()
+  }
+
+  const openSavedPageReview = () => {
+    if (!pageSavedReviewSummary?.studyUrl) {
+      openReview()
+      return
+    }
+
+    void openPageReviewLoop(pageSavedReviewSummary.studyUrl, pageSavedReviewSummary.entryId)
+  }
+
   const openSourcePage = () => {
     const pageUrl = studyContext?.pageUrl?.trim()
     if (!pageUrl) return
@@ -492,6 +597,7 @@ export default function DeepReadApp() {
     recordLearningLoopEvent("returned_to_source", {
       pageUrl,
       source: "deep_read",
+      ...buildPersonalizedStrategyTelemetry(studyLoop?.personalizedStrategy),
     })
     void browser.tabs.create({ url: pageUrl })
   }
@@ -502,59 +608,59 @@ export default function DeepReadApp() {
   }
 
   return (
-    <div style={pageShellStyle}>
-      <div style={pageGlowStyle} />
-      <div style={pageGlowSecondaryStyle} />
+    <div className="astra-deep-read-shell">
+      <div className="astra-deep-read-glow" />
+      <div className="astra-deep-read-glow-secondary" />
 
-      <div style={pageContainerStyle}>
-        <section style={heroCardStyle}>
+      <div className="astra-deep-read-container">
+        <section className="astra-deep-read-hero-card">
           <div style={{ display: "flex", flexWrap: "wrap", justifyContent: "space-between", gap: 20, alignItems: "flex-start" }}>
             <div style={{ flex: "1 1 460px", minWidth: 0 }}>
-              <div style={eyebrowStyle}>{t("popup_deepReadTitle")}</div>
-              <h1 style={{ fontSize: 34, lineHeight: 1.1, margin: "0 0 10px", color: "#f8fafc" }}>
+              <div className="astra-eyebrow">{t("popup_deepReadTitle")}</div>
+              <h1 className="astra-deep-read-hero-title">
                 {studyContext?.pageTitle || t("popup_deepReadPageFallbackTitle")}
               </h1>
-              <p style={{ fontSize: 15, lineHeight: 1.7, color: "rgba(226,232,240,0.86)", margin: 0, maxWidth: 700 }}>
+              <p className="astra-deep-read-hero-subtitle">
                 {studyContext?.hostname || t("popup_deepReadHint")}
               </p>
               {studyContext?.pageUrl && /^https?:\/\//i.test(studyContext.pageUrl) && (
-                <button type="button" style={{ ...secondaryButtonStyle, marginTop: 14 }} onClick={openSourcePage}>
+                <button type="button" className="astra-btn-secondary" style={{ marginTop: 14 }} onClick={openSourcePage}>
                   {t("review_openSourcePage")}
                 </button>
               )}
             </div>
 
             <div style={{ display: "grid", gap: 10, gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))", flex: "1 1 320px", width: "100%" }}>
-              <div style={heroStatCardStyle}>
-                <div style={heroStatLabelStyle}>{t("popup_studySentenceDeck")}</div>
-                <div style={heroStatValueStyle}>{sentences.length || 0}</div>
+              <div className="astra-deep-read-hero-stat-card">
+                <div className="astra-micro-label astra-deep-read-hero-stat-label">{t("popup_studySentenceDeck")}</div>
+                <div className="astra-deep-read-hero-stat-value">{sentences.length || 0}</div>
               </div>
-              <div style={heroStatCardStyle}>
-                <div style={heroStatLabelStyle}>{t("popup_review")}</div>
-                <div style={heroStatValueStyle}>{dueCount}</div>
+              <div className="astra-deep-read-hero-stat-card">
+                <div className="astra-micro-label astra-deep-read-hero-stat-label">{t("popup_review")}</div>
+                <div className="astra-deep-read-hero-stat-value">{dueCount}</div>
               </div>
-              <div style={heroStatCardStyle}>
-                <div style={heroStatLabelStyle}>{t("label_explainMode")}</div>
-                <div style={{ ...heroStatValueStyle, fontSize: 16 }}>{explainModeLabel || "-"}</div>
+              <div className="astra-deep-read-hero-stat-card">
+                <div className="astra-micro-label astra-deep-read-hero-stat-label">{t("label_explainMode")}</div>
+                <div className="astra-deep-read-hero-stat-value astra-deep-read-hero-stat-value--compact">{explainModeLabel || "-"}</div>
               </div>
             </div>
           </div>
         </section>
 
         {errorMessage && (
-          <div style={{ marginBottom: 16, padding: "12px 14px", background: "#fff7ed", border: "1px solid #fdba74", borderRadius: 14, color: "#9a3412", position: "relative", zIndex: 1 }}>
+          <div className="astra-deep-read-alert">
             {errorMessage}
           </div>
         )}
 
-        <div style={contentGridStyle}>
-          <section style={primaryPanelStyle}>
+        <div className="astra-deep-read-content-grid">
+          <section className="astra-card astra-deep-read-primary-panel">
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12, marginBottom: 18, flexWrap: "wrap" }}>
               <div>
-                <div style={{ fontSize: 13, fontWeight: 800, letterSpacing: 0.4, textTransform: "uppercase", color: "#c2410c", marginBottom: 6 }}>
+                <div className="astra-micro-label astra-deep-read-warm-label">
                   {t("popup_studySentenceDeck")}
                 </div>
-                <div style={{ fontSize: 15, color: "#475569" }}>
+                <div className="astra-deep-read-progress-copy">
                   {selectedSentence
                     ? formatMessage(t("popup_deepReadSentenceProgress"), selectedSentenceIndex + 1, sentences.length)
                     : t("popup_studySummaryEmpty")}
@@ -564,21 +670,21 @@ export default function DeepReadApp() {
                 <button
                   type="button"
                   onClick={() => setReadingMode("focus")}
-                  style={readingMode === "focus" ? primaryButtonStyle : secondaryButtonStyle}
+                  className={readingMode === "focus" ? "astra-btn-primary" : "astra-btn-secondary"}
                 >
                   Focus
                 </button>
                 <button
                   type="button"
                   onClick={() => setReadingMode("reading")}
-                  style={readingMode === "reading" ? primaryButtonStyle : secondaryButtonStyle}
+                  className={readingMode === "reading" ? "astra-btn-primary" : "astra-btn-secondary"}
                 >
                   Reading view
                 </button>
                 <button
                   type="button"
                   onClick={() => handleGoToAdjacentSentence(-1)}
-                  style={{ ...secondaryButtonStyle, opacity: selectedSentenceIndex > 0 ? 1 : 0.5, cursor: selectedSentenceIndex > 0 ? "pointer" : "not-allowed" }}
+                  className="astra-btn-secondary"
                   disabled={selectedSentenceIndex <= 0}
                 >
                   {t("actionPrevious")}
@@ -586,7 +692,7 @@ export default function DeepReadApp() {
                 <button
                   type="button"
                   onClick={() => void handleSpeakSentence(selectedSentenceIndex)}
-                  style={{ ...secondaryButtonStyle, opacity: canSpeakSelectedSentence ? 1 : 0.5, cursor: canSpeakSelectedSentence ? "pointer" : "not-allowed" }}
+                  className="astra-btn-secondary"
                   disabled={!canSpeakSelectedSentence}
                 >
                   {speakingIndex === selectedSentenceIndex ? t("actionStop") : t("actionSpeak")}
@@ -594,7 +700,7 @@ export default function DeepReadApp() {
                 <button
                   type="button"
                   onClick={() => void handleAutoPlaySelectedSentence()}
-                  style={{ ...secondaryButtonStyle, opacity: canSpeakSelectedSentence ? 1 : 0.5, cursor: canSpeakSelectedSentence ? "pointer" : "not-allowed" }}
+                  className="astra-btn-secondary"
                   disabled={!canSpeakSelectedSentence}
                 >
                   {autoPlayEnabled ? t("popup_deepReadStopAutoplay") : t("popup_deepReadAutoplay")}
@@ -602,7 +708,7 @@ export default function DeepReadApp() {
                 <button
                   type="button"
                   onClick={() => void handleExplainSentence(selectedSentenceIndex)}
-                  style={{ ...secondaryButtonStyle, opacity: selectedSentence ? 1 : 0.5, cursor: selectedSentence ? "pointer" : "not-allowed" }}
+                  className="astra-btn-secondary"
                   disabled={!selectedSentence}
                 >
                   {explainingIndex === selectedSentenceIndex ? `${t("actionExplain")}...` : t("actionExplain")}
@@ -610,7 +716,7 @@ export default function DeepReadApp() {
                 <button
                   type="button"
                   onClick={() => void handleSaveSentence(selectedSentenceIndex)}
-                  style={{ ...primaryButtonStyle, opacity: selectedSentence ? 1 : 0.5, cursor: selectedSentence ? "pointer" : "not-allowed" }}
+                  className="astra-btn-primary"
                   disabled={!selectedSentence}
                 >
                   {savedSentenceIndices.has(selectedSentenceIndex) ? t("actionSaved") : savingIndex === selectedSentenceIndex ? t("actionSaving") : t("actionSave")}
@@ -618,7 +724,7 @@ export default function DeepReadApp() {
                 <button
                   type="button"
                   onClick={() => handleGoToAdjacentSentence(1)}
-                  style={{ ...secondaryButtonStyle, opacity: selectedSentenceIndex < sentences.length - 1 ? 1 : 0.5, cursor: selectedSentenceIndex < sentences.length - 1 ? "pointer" : "not-allowed" }}
+                  className="astra-btn-secondary"
                   disabled={selectedSentenceIndex >= sentences.length - 1}
                 >
                   {t("actionNext")}
@@ -626,41 +732,65 @@ export default function DeepReadApp() {
               </div>
             </div>
 
-            <div style={focusSentenceCardStyle}>
+            <div className="astra-deep-read-focus-card">
               <div style={{ display: "flex", justifyContent: "space-between", gap: 12, flexWrap: "wrap", marginBottom: 14 }}>
-                <div style={{ fontSize: 12, fontWeight: 800, letterSpacing: 0.3, textTransform: "uppercase", color: "#9a3412" }}>
+                <div className="astra-micro-label astra-deep-read-warm-label">
                   {studyContext?.hostname || t("popup_studyTitle")}
                 </div>
                 <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                  <span style={chipStyle}>{formatMessage(t("popup_deepReadSavedCount"), savedCount)}</span>
-                  <span style={chipStyle}>{explainModeLabel || t("label_explainMode")}</span>
+                  <span className="astra-chip-warm">{formatMessage(t("popup_deepReadSavedCount"), savedCount)}</span>
+                  <span className="astra-chip-warm">{explainModeLabel || t("label_explainMode")}</span>
                 </div>
               </div>
 
-              <div style={{ fontSize: 26, lineHeight: 1.45, fontWeight: 700, color: "#0f172a" }}>
+              <div className="astra-deep-read-focus-text">
                 {selectedSentence || (studyContext?.contentSummary || studyContext?.metaDescription || t("popup_studySummaryEmpty"))}
               </div>
 
-              <p style={{ margin: "16px 0 0", fontSize: 14, lineHeight: 1.7, color: "#475569" }}>
+              <p className="astra-deep-read-helper-copy">
                 {studyContext?.articleExcerpt
                   ? t("popup_studyArticleExcerpt")
                   : t("popup_studySentenceDeckFallback")}
               </p>
             </div>
 
+            {pageSavedReviewSummary && (
+              <div data-testid="deep-read-page-saved-review-cta" className="astra-deep-read-success-callout">
+                <div className="astra-deep-read-success-title">
+                  {t("popup_studyPageSavedReviewTitle")}
+                </div>
+                <div className="astra-deep-read-success-text">
+                  {t("popup_studyPageSavedReviewHint", String(pageSavedReviewSummary.count))}
+                </div>
+                <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginTop: 12 }}>
+                  <button
+                    type="button"
+                    data-testid="deep-read-page-saved-review-button"
+                    className="astra-cta-secondary"
+                    onClick={openSavedPageReview}
+                  >
+                    {t("popup_studyPageSavedReviewAction")}
+                  </button>
+                  <button type="button" className="astra-btn-secondary" onClick={openVocabulary}>
+                    {t("popup_vocabulary")}
+                  </button>
+                </div>
+              </div>
+            )}
+
             {readingMode === "reading" && sentences.length > 0 && (
-              <div style={readingWorkspaceStyle}>
+              <div className="astra-deep-read-reading-workspace">
                 <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "center", marginBottom: 14, flexWrap: "wrap" }}>
                   <div>
-                    <div style={{ fontSize: 12, fontWeight: 800, letterSpacing: 0.3, textTransform: "uppercase", color: "#475569", marginBottom: 4 }}>
+                    <div className="astra-micro-label astra-deep-read-muted-label">
                       Reading workspace
                     </div>
-                    <div style={{ fontSize: 13, color: "#64748b" }}>
+                    <div className="astra-deep-read-muted-copy">
                       Select any visible sentence to sync the focus card and keep studying from there.
                     </div>
                   </div>
                   {selectedSentenceAnchor?.sentenceHash && (
-                    <span style={chipStyle}>{selectedSentenceAnchor.sentenceHash}</span>
+                    <span className="astra-chip-warm">{selectedSentenceAnchor.sentenceHash}</span>
                   )}
                 </div>
                 <div style={{ display: "grid", gap: 10 }}>
@@ -671,15 +801,13 @@ export default function DeepReadApp() {
                         key={`reading:${index}:${sentence}`}
                         type="button"
                         onClick={() => setSelectedSentenceIndex(index)}
-                        style={{
-                          ...readingSentenceButtonStyle,
-                          ...(isSelected ? readingSentenceButtonSelectedStyle : null),
-                        }}
+                        className="astra-sentence-btn"
+                        aria-pressed={isSelected}
                       >
-                        <span style={{ ...readingSentenceLabelStyle, color: isSelected ? "#c2410c" : "#64748b" }}>
+                        <div className="astra-micro-label" style={{ color: isSelected ? "var(--astra-accent-warm-hover)" : "var(--astra-text-muted)", marginBottom: 4 }}>
                           {formatMessage(t("popup_deepReadSentenceNumber"), index + 1)}
-                        </span>
-                        <span style={{ fontSize: 15, lineHeight: 1.8, color: "#1e293b" }}>{sentence}</span>
+                        </div>
+                        <div className="astra-deep-read-reading-sentence-text">{sentence}</div>
                       </button>
                     )
                   })}
@@ -688,25 +816,37 @@ export default function DeepReadApp() {
             )}
 
             {selectedExplanation && (
-              <div style={explanationCardStyle}>
-                <div style={{ fontSize: 12, fontWeight: 800, letterSpacing: 0.3, textTransform: "uppercase", color: "#1d4ed8", marginBottom: 8 }}>
+              <div className="astra-deep-read-explanation-card">
+                <div className="astra-micro-label astra-deep-read-info-label">
                   {explainModeLabel || t("actionExplain")}
                 </div>
-                <div style={{ whiteSpace: "pre-wrap", color: "#1e3a8a", lineHeight: 1.7 }}>
+                <div className="astra-deep-read-info-copy">
                   {selectedExplanation}
                 </div>
               </div>
             )}
 
             {savedSentenceIndices.has(selectedSentenceIndex) && (
-              <div style={savedBannerStyle}>
-                <div style={{ fontWeight: 700, color: "#166534", marginBottom: 4 }}>{t("learningSavedTitle")}</div>
-                <div style={{ fontSize: 13, color: "#166534" }}>{t("learningSavedHint")}</div>
+              <div className="astra-deep-read-success-callout">
+                <div className="astra-deep-read-success-title astra-deep-read-success-title--regular">{t("learningSavedTitle")}</div>
+                <div className="astra-deep-read-success-text">{t("learningSavedHint")}</div>
+                <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginTop: 12 }}>
+                  <button
+                    type="button"
+                    className="astra-btn-primary"
+                    onClick={() => openFocusedReviewForSentence(selectedSentenceIndex)}
+                  >
+                    {savedSentenceEntryIds[selectedSentenceIndex] ? t("review_actionReviewThisSentenceNow") : t("popup_review")}
+                  </button>
+                  <button type="button" className="astra-btn-secondary" onClick={openVocabulary}>
+                    {t("popup_vocabulary")}
+                  </button>
+                </div>
               </div>
             )}
 
             <div style={{ marginTop: 20 }}>
-              <div style={{ fontSize: 13, fontWeight: 800, letterSpacing: 0.3, textTransform: "uppercase", color: "#64748b", marginBottom: 10 }}>
+              <div className="astra-micro-label astra-deep-read-section-label">
                 {t("popup_deepReadQueueTitle")}
               </div>
 
@@ -720,22 +860,14 @@ export default function DeepReadApp() {
                       key={`${index}:${sentence}`}
                       type="button"
                       onClick={() => setSelectedSentenceIndex(index)}
-                      style={{
-                        textAlign: "left",
-                        padding: "14px 16px",
-                        borderRadius: 14,
-                        border: isSelected ? "1px solid #fb923c" : "1px solid rgba(148,163,184,0.22)",
-                        background: isSelected ? "linear-gradient(135deg, #fff7ed 0%, #ffffff 100%)" : "rgba(255,255,255,0.74)",
-                        boxShadow: isSelected ? "0 14px 30px rgba(249,115,22,0.12)" : "none",
-                        cursor: "pointer",
-                        color: "#0f172a",
-                      }}
+                      className="astra-sentence-btn"
+                      aria-pressed={isSelected}
                     >
                       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, marginBottom: 6 }}>
-                        <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: 0.3, textTransform: "uppercase", color: isSelected ? "#c2410c" : "#64748b" }}>
+                        <div className="astra-micro-label" style={{ color: isSelected ? "var(--astra-accent-warm-hover)" : "var(--astra-text-muted)" }}>
                           {formatMessage(t("popup_deepReadSentenceNumber"), index + 1)}
                         </div>
-                        {isSaved && <span style={{ ...chipStyle, background: "#dcfce7", color: "#166534", borderColor: "#86efac" }}>{t("actionSaved")}</span>}
+                        {isSaved && <span className="astra-chip-success">{t("actionSaved")}</span>}
                       </div>
                       <div style={{ fontSize: 14, lineHeight: 1.65 }}>{sentence}</div>
                     </button>
@@ -743,21 +875,21 @@ export default function DeepReadApp() {
                 })}
 
                 {!sentences.length && (
-                  <div style={{ padding: "18px 16px", borderRadius: 14, background: "rgba(255,255,255,0.74)", border: "1px solid rgba(148,163,184,0.22)", color: "#475569" }}>
-                    <div style={{ fontSize: 15, fontWeight: 700, color: "#0f172a", marginBottom: 6 }}>
+                  <div className="astra-deep-read-empty-state">
+                    <div className="astra-deep-read-empty-title">
                       {lastReadingPage ? t("popup_deepReadEmptyHistoryTitle") : t("popup_studyEmptyTitle")}
                     </div>
-                    <div style={{ fontSize: 13, lineHeight: 1.65 }}>
+                    <div className="astra-deep-read-empty-copy">
                       {lastReadingPage ? t("popup_deepReadEmptyHistoryHint") : t("popup_studySummaryEmpty")}
                     </div>
                     {lastReadingPage && (
                       <div style={{ marginTop: 12 }}>
-                        <div style={{ fontSize: 12, color: "#64748b", marginBottom: 8 }}>
+                        <div className="astra-deep-read-empty-meta">
                           {lastReadingPage.title || lastReadingPage.hostname || lastReadingPage.url}
                         </div>
                         <button
                           type="button"
-                          style={primaryButtonStyle}
+                          className="astra-btn-primary"
                           onClick={openLastReadingPage}
                         >
                           {t("popup_deepReadOpenLastPage")}
@@ -771,71 +903,83 @@ export default function DeepReadApp() {
           </section>
 
           <aside style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-            <section style={sidebarCardStyle}>
-              <div style={sidebarTitleStyle}>{t("popup_studyTitle")}</div>
-              <div style={{ fontSize: 14, lineHeight: 1.75, color: "#334155", whiteSpace: "pre-wrap" }}>
-                {studyContext?.contentSummary || studyContext?.metaDescription || t("popup_studySummaryEmpty")}
-              </div>
-              {studyContext?.articleExcerpt && (
-                <div style={{ marginTop: 14, padding: "12px 14px", borderRadius: 12, background: "#f8fafc", border: "1px solid #e2e8f0", color: "#475569", fontSize: 13, lineHeight: 1.7 }}>
-                  {studyContext.articleExcerpt}
-                </div>
-              )}
-            </section>
-
-            <section style={sidebarCardStyle}>
+            <section className="astra-deep-read-sidebar-card">
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, marginBottom: 10, flexWrap: "wrap" }}>
-                <div style={sidebarTitleStyle}>{pageDigest ? pageDigest.headline : t("popup_generateDigest")}</div>
-                <button type="button" style={secondaryButtonStyle} onClick={() => void handleGenerateDigest()}>
+                <div className="astra-sidebar-title">{t("popup_studyTitle")}</div>
+                <button type="button" className="astra-btn-secondary" onClick={() => void handleGenerateDigest()}>
                   {digestLoading ? "..." : pageDigest ? t("popup_regenerateDigest") : t("popup_generateDigest")}
                 </button>
               </div>
 
               {pageDigest ? (
                 <>
-                  <div style={{ fontSize: 14, color: "#334155", lineHeight: 1.75, marginBottom: 12 }}>{pageDigest.summary}</div>
+                  <div className="astra-deep-read-digest-summary">{pageDigest.summary}</div>
                   {pageDigest.suggestedAction && (
-                    <div style={{ padding: "12px 14px", background: "#fefce8", border: "1px solid #fde68a", borderRadius: 12, fontSize: 13, color: "#854d0e", lineHeight: 1.65 }}>
+                    <div className="astra-deep-read-warm-callout">
                       {pageDigest.suggestedAction}
                     </div>
                   )}
                   {digestStale && (
-                    <div style={{ marginTop: 10, fontSize: 12, color: "#9a3412" }}>{t("popup_digestStaleHint")}</div>
+                    <div className="astra-deep-read-stale-copy">{t("popup_digestStaleHint")}</div>
                   )}
                 </>
               ) : (
-                <div style={{ fontSize: 13, color: "#64748b", lineHeight: 1.7 }}>
+                <div className="astra-deep-read-digest-empty">
                   {t("popup_deepReadHint")}
                 </div>
               )}
             </section>
 
-            <section style={ctaCardStyle}>
-              <div style={{ fontSize: 12, fontWeight: 800, letterSpacing: 0.3, textTransform: "uppercase", color: "#fed7aa", marginBottom: 8 }}>
+            <section className="astra-deep-read-cta-card">
+              <div className="astra-micro-label astra-deep-read-cta-eyebrow">
                 {t("popup_deepReadNextStepTitle")}
               </div>
-              <div style={{ fontSize: 24, lineHeight: 1.2, fontWeight: 800, color: "#fff7ed", marginBottom: 10 }}>
+              <div className="astra-deep-read-cta-title">
                 {studyLoopHeadline}
               </div>
-              <div style={{ fontSize: 14, lineHeight: 1.7, color: "rgba(255,237,213,0.86)", marginBottom: 16 }}>
+              <div className="astra-deep-read-cta-text">
                 {studyLoopHint}
               </div>
               {studyLoop && (
-                <div style={{ marginBottom: 16, padding: "12px 14px", borderRadius: 14, background: "rgba(255,247,237,0.12)", border: "1px solid rgba(255,255,255,0.16)" }}>
-                  <div style={{ fontSize: 12, fontWeight: 700, color: "#fff7ed", marginBottom: 6 }}>
+                <div className="astra-deep-read-cta-progress">
+                  <div className="astra-deep-read-cta-progress-title">
                     {studyLoop.completionPercent}% complete
                   </div>
-                  <div style={{ fontSize: 12, lineHeight: 1.6, color: "rgba(255,237,213,0.84)" }}>
+                  <div className="astra-deep-read-cta-progress-copy">
                     {studyLoop.completedSteps.length > 0
                       ? studyLoop.completedSteps.map((step) => getStudyStepLabel(step)).join(" → ")
                       : t("popup_studyNoStepsYet")}
                   </div>
                 </div>
               )}
+              {studyLoop?.personalizedStrategy && (
+                <div
+                  data-testid="deep-read-personalized-strategy-card"
+                  className="astra-deep-read-strategy-card"
+                >
+                  <div className="astra-deep-read-strategy-kicker">
+                    Personalized strategy
+                  </div>
+                  <div className="astra-deep-read-strategy-title">
+                    {studyLoop.personalizedStrategy.label}
+                  </div>
+                  <div className="astra-deep-read-strategy-copy">
+                    {studyLoop.personalizedStrategy.hint}
+                  </div>
+                  <div className="astra-deep-read-strategy-evidence">
+                    {studyLoop.personalizedStrategy.evidence}
+                  </div>
+                </div>
+              )}
               <div style={{ display: "grid", gap: 10, gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))" }}>
-                <button type="button" style={ctaPrimaryButtonStyle} onClick={openReadingQueue}>{t("vocabulary_tabReading")}</button>
-                <button type="button" style={ctaSecondaryButtonStyle} onClick={openReview}>
-                  {dueCount > 0 ? `${t("popup_review")} (${dueCount})` : t("popup_review")}
+                <button type="button" className="astra-cta-primary" onClick={openReadingQueue}>{t("vocabulary_tabReading")}</button>
+                <button
+                  type="button"
+                  data-testid="deep-read-next-step-review-button"
+                  className="astra-cta-secondary"
+                  onClick={openSavedPageReview}
+                >
+                  {savedPageReviewActionLabel}
                 </button>
               </div>
             </section>
@@ -844,239 +988,4 @@ export default function DeepReadApp() {
       </div>
     </div>
   )
-}
-
-const pageShellStyle: React.CSSProperties = {
-  minHeight: "100vh",
-  padding: "24px 16px 40px",
-  background: "linear-gradient(180deg, #fff7ed 0%, #fffaf3 42%, #f8fafc 100%)",
-  fontFamily: "system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif",
-  color: "#0f172a",
-  lineHeight: 1.5,
-  position: "relative",
-  overflow: "hidden",
-}
-
-const pageGlowStyle: React.CSSProperties = {
-  position: "absolute",
-  top: -120,
-  right: -40,
-  width: 320,
-  height: 320,
-  borderRadius: "50%",
-  background: "radial-gradient(circle, rgba(251,146,60,0.30) 0%, rgba(251,146,60,0) 72%)",
-}
-
-const pageGlowSecondaryStyle: React.CSSProperties = {
-  position: "absolute",
-  left: -120,
-  top: 220,
-  width: 260,
-  height: 260,
-  borderRadius: "50%",
-  background: "radial-gradient(circle, rgba(59,130,246,0.18) 0%, rgba(59,130,246,0) 72%)",
-}
-
-const pageContainerStyle: React.CSSProperties = {
-  maxWidth: 1180,
-  margin: "0 auto",
-  position: "relative",
-  zIndex: 1,
-}
-
-const heroCardStyle: React.CSSProperties = {
-  marginBottom: 18,
-  padding: "24px 24px 22px",
-  borderRadius: 24,
-  background: "linear-gradient(135deg, #0f172a 0%, #1e293b 52%, #7c2d12 100%)",
-  boxShadow: "0 24px 80px rgba(15,23,42,0.22)",
-}
-
-const eyebrowStyle: React.CSSProperties = {
-  display: "inline-flex",
-  alignItems: "center",
-  gap: 6,
-  padding: "6px 10px",
-  borderRadius: 999,
-  background: "rgba(255,255,255,0.10)",
-  border: "1px solid rgba(255,255,255,0.14)",
-  fontSize: 11,
-  fontWeight: 800,
-  letterSpacing: 0.5,
-  textTransform: "uppercase",
-  color: "#fdba74",
-  marginBottom: 14,
-}
-
-const heroStatCardStyle: React.CSSProperties = {
-  padding: "14px 16px",
-  borderRadius: 18,
-  background: "rgba(255,255,255,0.08)",
-  border: "1px solid rgba(255,255,255,0.12)",
-  backdropFilter: "blur(10px)",
-}
-
-const heroStatLabelStyle: React.CSSProperties = {
-  fontSize: 11,
-  fontWeight: 800,
-  letterSpacing: 0.4,
-  textTransform: "uppercase",
-  color: "rgba(226,232,240,0.75)",
-  marginBottom: 6,
-}
-
-const heroStatValueStyle: React.CSSProperties = {
-  fontSize: 26,
-  fontWeight: 800,
-  color: "#f8fafc",
-}
-
-const contentGridStyle: React.CSSProperties = {
-  display: "grid",
-  gap: 18,
-  gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))",
-  alignItems: "start",
-}
-
-const primaryPanelStyle: React.CSSProperties = {
-  padding: 22,
-  background: "rgba(255,255,255,0.76)",
-  border: "1px solid rgba(255,255,255,0.65)",
-  borderRadius: 24,
-  boxShadow: "0 20px 50px rgba(15,23,42,0.08)",
-  backdropFilter: "blur(12px)",
-}
-
-const focusSentenceCardStyle: React.CSSProperties = {
-  padding: "22px 20px",
-  borderRadius: 22,
-  background: "linear-gradient(180deg, #ffffff 0%, #fff7ed 100%)",
-  border: "1px solid rgba(251,146,60,0.28)",
-  boxShadow: "0 18px 36px rgba(251,146,60,0.10)",
-}
-
-const explanationCardStyle: React.CSSProperties = {
-  marginTop: 14,
-  padding: "16px 18px",
-  background: "#eff6ff",
-  border: "1px solid #bfdbfe",
-  borderRadius: 16,
-}
-
-const savedBannerStyle: React.CSSProperties = {
-  marginTop: 14,
-  padding: "14px 16px",
-  background: "#f0fdf4",
-  border: "1px solid #86efac",
-  borderRadius: 16,
-}
-
-const chipStyle: React.CSSProperties = {
-  display: "inline-flex",
-  alignItems: "center",
-  borderRadius: 999,
-  border: "1px solid #fed7aa",
-  background: "rgba(255,255,255,0.82)",
-  color: "#9a3412",
-  fontSize: 11,
-  fontWeight: 800,
-  padding: "5px 9px",
-}
-
-const readingWorkspaceStyle: React.CSSProperties = {
-  marginTop: 18,
-  padding: "18px 18px 16px",
-  borderRadius: 20,
-  background: "rgba(248,250,252,0.82)",
-  border: "1px solid rgba(226,232,240,0.95)",
-}
-
-const readingSentenceButtonStyle: React.CSSProperties = {
-  display: "grid",
-  gap: 6,
-  textAlign: "left",
-  borderRadius: 14,
-  border: "1px solid rgba(203,213,225,0.9)",
-  background: "rgba(255,255,255,0.8)",
-  padding: "14px 16px",
-  cursor: "pointer",
-}
-
-const readingSentenceButtonSelectedStyle: React.CSSProperties = {
-  border: "1px solid #fb923c",
-  background: "linear-gradient(135deg, #fff7ed 0%, #ffffff 100%)",
-  boxShadow: "0 14px 30px rgba(249,115,22,0.12)",
-}
-
-const readingSentenceLabelStyle: React.CSSProperties = {
-  fontSize: 11,
-  fontWeight: 800,
-  letterSpacing: 0.3,
-  textTransform: "uppercase",
-}
-
-const sidebarCardStyle: React.CSSProperties = {
-  padding: 18,
-  background: "rgba(255,255,255,0.82)",
-  border: "1px solid rgba(226,232,240,0.95)",
-  borderRadius: 20,
-  boxShadow: "0 14px 30px rgba(15,23,42,0.05)",
-}
-
-const sidebarTitleStyle: React.CSSProperties = {
-  fontSize: 16,
-  fontWeight: 800,
-  color: "#0f172a",
-  marginBottom: 10,
-}
-
-const ctaCardStyle: React.CSSProperties = {
-  padding: 20,
-  borderRadius: 22,
-  background: "linear-gradient(135deg, #9a3412 0%, #ea580c 52%, #fb923c 100%)",
-  boxShadow: "0 18px 42px rgba(194,65,12,0.24)",
-}
-
-const primaryButtonStyle: React.CSSProperties = {
-  border: "1px solid #ea580c",
-  background: "#ea580c",
-  color: "#fff7ed",
-  borderRadius: 10,
-  padding: "9px 14px",
-  fontSize: 12,
-  fontWeight: 700,
-  cursor: "pointer",
-}
-
-const secondaryButtonStyle: React.CSSProperties = {
-  border: "1px solid #cbd5e1",
-  background: "#ffffff",
-  color: "#0f172a",
-  borderRadius: 10,
-  padding: "9px 14px",
-  fontSize: 12,
-  fontWeight: 700,
-  cursor: "pointer",
-}
-
-const ctaPrimaryButtonStyle: React.CSSProperties = {
-  border: "1px solid rgba(255,255,255,0.3)",
-  background: "#fff7ed",
-  color: "#9a3412",
-  borderRadius: 12,
-  padding: "11px 14px",
-  fontSize: 13,
-  fontWeight: 800,
-  cursor: "pointer",
-}
-
-const ctaSecondaryButtonStyle: React.CSSProperties = {
-  border: "1px solid rgba(255,255,255,0.32)",
-  background: "rgba(255,247,237,0.12)",
-  color: "#fff7ed",
-  borderRadius: 12,
-  padding: "11px 14px",
-  fontSize: 13,
-  fontWeight: 800,
-  cursor: "pointer",
 }

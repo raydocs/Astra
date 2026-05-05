@@ -24,6 +24,18 @@ const {
   stopPageTranslationMock,
   translatePageSubtitlesMock,
   removeTranslatedSubtitlesMock,
+  captureCurrentVideoNoteSourceMock,
+  getVideoSubtitleQualitySnapshotMock,
+  isVideoPageMock,
+  isVideoSubtitleTranslationActiveMock,
+  startVideoSubtitleTranslationMock,
+  stopVideoSubtitleTranslationMock,
+  setupVideoNavigationHandlerMock,
+  getMeetingCaptionQualitySnapshotMock,
+  isMeetingPageMock,
+  isMeetingCaptionTranslationActiveMock,
+  startMeetingCaptionTranslationMock,
+  stopMeetingCaptionTranslationMock,
 } = vi.hoisted(() => ({
   mountFloatBallMock: vi.fn(),
   mountSelectionToolbarMock: vi.fn(),
@@ -38,6 +50,18 @@ const {
   stopPageTranslationMock: vi.fn(),
   translatePageSubtitlesMock: vi.fn(),
   removeTranslatedSubtitlesMock: vi.fn(),
+  captureCurrentVideoNoteSourceMock: vi.fn(),
+  getVideoSubtitleQualitySnapshotMock: vi.fn(),
+  isVideoPageMock: vi.fn(),
+  isVideoSubtitleTranslationActiveMock: vi.fn(),
+  startVideoSubtitleTranslationMock: vi.fn(),
+  stopVideoSubtitleTranslationMock: vi.fn(),
+  setupVideoNavigationHandlerMock: vi.fn(),
+  getMeetingCaptionQualitySnapshotMock: vi.fn(),
+  isMeetingPageMock: vi.fn(),
+  isMeetingCaptionTranslationActiveMock: vi.fn(),
+  startMeetingCaptionTranslationMock: vi.fn(),
+  stopMeetingCaptionTranslationMock: vi.fn(),
 }))
 
 vi.mock("./components/FloatBall", () => ({
@@ -87,6 +111,24 @@ vi.mock("./subtitle-translate", () => ({
   removeTranslatedSubtitles: removeTranslatedSubtitlesMock,
 }))
 
+vi.mock("./video-platforms", () => ({
+  captureCurrentVideoNoteSource: captureCurrentVideoNoteSourceMock,
+  getVideoSubtitleQualitySnapshot: getVideoSubtitleQualitySnapshotMock,
+  isVideoPage: isVideoPageMock,
+  isVideoSubtitleTranslationActive: isVideoSubtitleTranslationActiveMock,
+  startVideoSubtitleTranslation: startVideoSubtitleTranslationMock,
+  stopVideoSubtitleTranslation: stopVideoSubtitleTranslationMock,
+  setupVideoNavigationHandler: setupVideoNavigationHandlerMock,
+}))
+
+vi.mock("./meeting-captions", () => ({
+  getMeetingCaptionQualitySnapshot: getMeetingCaptionQualitySnapshotMock,
+  isMeetingPage: isMeetingPageMock,
+  isMeetingCaptionTranslationActive: isMeetingCaptionTranslationActiveMock,
+  startMeetingCaptionTranslation: startMeetingCaptionTranslationMock,
+  stopMeetingCaptionTranslation: stopMeetingCaptionTranslationMock,
+}))
+
 describe("content entrypoint mounting", () => {
   beforeEach(() => {
     vi.resetModules()
@@ -102,6 +144,18 @@ describe("content entrypoint mounting", () => {
     stopPageTranslationMock.mockReset()
     removeTranslatedSubtitlesMock.mockReset()
     translatePageSubtitlesMock.mockReset()
+    captureCurrentVideoNoteSourceMock.mockReset()
+    getVideoSubtitleQualitySnapshotMock.mockReset()
+    isVideoPageMock.mockReset()
+    isVideoSubtitleTranslationActiveMock.mockReset()
+    startVideoSubtitleTranslationMock.mockReset()
+    stopVideoSubtitleTranslationMock.mockReset()
+    setupVideoNavigationHandlerMock.mockReset()
+    getMeetingCaptionQualitySnapshotMock.mockReset()
+    isMeetingPageMock.mockReset()
+    isMeetingCaptionTranslationActiveMock.mockReset()
+    startMeetingCaptionTranslationMock.mockReset()
+    stopMeetingCaptionTranslationMock.mockReset()
     document.head.innerHTML = ""
     document.body.innerHTML = ""
     history.pushState = originalHistoryPushState
@@ -119,7 +173,7 @@ describe("content entrypoint mounting", () => {
       targetLang: "zh-CN",
       hoverTrigger: "always",
       contentScope: "page",
-      presentation: { mode: "bilingual", theme: "default" },
+      presentation: { mode: "bilingual", theme: "default", fontSize: 0.92, translationColor: "#64748b" },
     })
     getPageTranslationStateMock.mockReturnValue({
       phase: "idle",
@@ -148,6 +202,15 @@ describe("content entrypoint mounting", () => {
       presentation: { mode: "bilingual", theme: "default" },
       site: { hostname: "example.com", enabled: true, alwaysTranslate: false },
     })
+    captureCurrentVideoNoteSourceMock.mockResolvedValue(null)
+    getVideoSubtitleQualitySnapshotMock.mockReturnValue(null)
+    isVideoPageMock.mockReturnValue(false)
+    isVideoSubtitleTranslationActiveMock.mockReturnValue(false)
+    startVideoSubtitleTranslationMock.mockResolvedValue(undefined)
+    getMeetingCaptionQualitySnapshotMock.mockReturnValue(null)
+    isMeetingPageMock.mockReturnValue(false)
+    isMeetingCaptionTranslationActiveMock.mockReturnValue(false)
+    startMeetingCaptionTranslationMock.mockResolvedValue(true)
   })
 
   it("mounts all interactive overlays in the top frame and float ball only once", async () => {
@@ -160,6 +223,7 @@ describe("content entrypoint mounting", () => {
     expect(mountHoverTranslateMock).toHaveBeenCalledTimes(1)
     expect(mountInputTranslateMock).toHaveBeenCalledTimes(1)
     expect(mountFloatBallMock).toHaveBeenCalledTimes(1)
+    expect(document.querySelector<HTMLStyleElement>("style[data-astra-content-styles='1']")?.textContent).toContain(".astra-theme-mask .astra-translation-inner")
   })
 
   it("mounts hover, selection, and input overlays inside child frames without duplicating the float ball", async () => {
@@ -172,6 +236,85 @@ describe("content entrypoint mounting", () => {
     expect(mountHoverTranslateMock).toHaveBeenCalledTimes(1)
     expect(mountInputTranslateMock).toHaveBeenCalledTimes(1)
     expect(mountFloatBallMock).not.toHaveBeenCalled()
+  })
+
+  it("captures a clicked page image for context-menu handoff when canvas export is available", async () => {
+    isTopFrameMock.mockReturnValue(true)
+    vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new Error("force canvas fallback")))
+    const browser = getMockBrowser()
+    const sendResponse = vi.fn()
+    const contentScript = (await import("./index")).default
+    const image = document.createElement("img")
+    image.src = "https://example.com/menu.svg"
+    Object.defineProperty(image, "naturalWidth", { configurable: true, value: 320 })
+    Object.defineProperty(image, "naturalHeight", { configurable: true, value: 160 })
+    document.body.appendChild(image)
+    const drawImage = vi.fn()
+    const getContextSpy = vi.spyOn(HTMLCanvasElement.prototype, "getContext").mockImplementation(() => ({ drawImage }) as unknown as CanvasRenderingContext2D)
+    const toDataUrlSpy = vi.spyOn(HTMLCanvasElement.prototype, "toDataURL").mockReturnValue("data:image/png;base64,cGl4ZWxz")
+
+    try {
+      await contentScript.main({} as never)
+      await browser.__emitRuntimeMessage(
+        { type: "content/capture-image", payload: { imageUrl: "https://example.com/menu.svg" } },
+        { id: "sender" },
+        sendResponse,
+      )
+      await Promise.resolve()
+      await Promise.resolve()
+
+      expect(drawImage).toHaveBeenCalledWith(image, 0, 0, 320, 160)
+      expect(sendResponse).toHaveBeenCalledWith({
+        ok: true,
+        capture: {
+          dataUrl: "data:image/png;base64,cGl4ZWxz",
+          mimeType: "image/png",
+          fileName: "menu.svg",
+          byteLength: 6,
+        },
+      })
+    } finally {
+      getContextSpy.mockRestore()
+      toDataUrlSpy.mockRestore()
+      vi.unstubAllGlobals()
+    }
+  })
+
+  it("returns a capture failure when the page image cannot be exported", async () => {
+    isTopFrameMock.mockReturnValue(true)
+    vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new Error("blocked")))
+    const browser = getMockBrowser()
+    const sendResponse = vi.fn()
+    const contentScript = (await import("./index")).default
+    const image = document.createElement("img")
+    image.src = "https://example.com/private.png"
+    Object.defineProperty(image, "naturalWidth", { configurable: true, value: 200 })
+    Object.defineProperty(image, "naturalHeight", { configurable: true, value: 100 })
+    document.body.appendChild(image)
+    const getContextSpy = vi.spyOn(HTMLCanvasElement.prototype, "getContext").mockImplementation(() => ({ drawImage: vi.fn() }) as unknown as CanvasRenderingContext2D)
+    const toDataUrlSpy = vi.spyOn(HTMLCanvasElement.prototype, "toDataURL").mockImplementation(() => {
+      throw new Error("tainted canvas")
+    })
+
+    try {
+      await contentScript.main({} as never)
+      await browser.__emitRuntimeMessage(
+        { type: "content/capture-image", payload: { imageUrl: "https://example.com/private.png" } },
+        { id: "sender" },
+        sendResponse,
+      )
+      await Promise.resolve()
+      await Promise.resolve()
+
+      expect(sendResponse).toHaveBeenCalledWith({
+        ok: false,
+        error: "tainted canvas",
+      })
+    } finally {
+      getContextSpy.mockRestore()
+      toDataUrlSpy.mockRestore()
+      vi.unstubAllGlobals()
+    }
   })
 
   it("toggle starts page translation and subtitles when currently idle", async () => {
@@ -467,6 +610,77 @@ describe("content entrypoint mounting", () => {
     await Promise.resolve()
     await Promise.resolve()
 
+    expect(stopPageTranslationMock).not.toHaveBeenCalled()
+    expect(removeTranslatedSubtitlesMock).not.toHaveBeenCalled()
+    expect(startPageTranslationMock).not.toHaveBeenCalled()
+  })
+
+  it("restarts active video and meeting caption sessions when idle presentation font or color changes", async () => {
+    isTopFrameMock.mockReturnValue(true)
+    readConfigMock.mockResolvedValue({
+      provider: { accessToken: "", relayBaseURL: "https://astra.example/v1" },
+      inputTranslation: "enabled",
+    })
+    readAstraSessionMock.mockResolvedValue({
+      sessionToken: "astra-session",
+      relayBaseURL: "https://astra.example/v1",
+    })
+    getPageTranslationStateMock.mockReturnValue({
+      phase: "idle",
+      sessionId: 2,
+      targetLang: "zh-CN",
+      lastError: null,
+      progress: { totalBlocks: 0, queuedBlocks: 0, inFlightBlocks: 0, translatedBlocks: 0, failedBlocks: 0 },
+      presentation: { mode: "bilingual", theme: "default" },
+      site: { hostname: "example.com", enabled: true, alwaysTranslate: false },
+    })
+    resolveSiteTranslationSettingsMock.mockReturnValue({
+      enabled: true,
+      alwaysTranslate: false,
+      targetLang: "zh-CN",
+      hoverTrigger: "always",
+      contentScope: "page",
+      presentation: { mode: "bilingual", theme: "default", fontSize: 0.92, translationColor: "#64748b" },
+    })
+
+    const browser = getMockBrowser()
+    const contentScript = (await import("./index")).default
+    await contentScript.main({} as never)
+
+    stopVideoSubtitleTranslationMock.mockClear()
+    startVideoSubtitleTranslationMock.mockClear()
+    stopMeetingCaptionTranslationMock.mockClear()
+    startMeetingCaptionTranslationMock.mockClear()
+    stopPageTranslationMock.mockClear()
+    removeTranslatedSubtitlesMock.mockClear()
+    startPageTranslationMock.mockClear()
+
+    isVideoPageMock.mockReturnValue(true)
+    isVideoSubtitleTranslationActiveMock.mockReturnValue(true)
+    isMeetingPageMock.mockReturnValue(true)
+    isMeetingCaptionTranslationActiveMock.mockReturnValue(true)
+    resolveSiteTranslationSettingsMock.mockReturnValue({
+      enabled: true,
+      alwaysTranslate: false,
+      targetLang: "zh-CN",
+      hoverTrigger: "always",
+      contentScope: "page",
+      presentation: { mode: "bilingual", theme: "default", fontSize: 1.1, translationColor: "#22c55e" },
+    })
+
+    await browser.__emitStorageChange({
+      "astra.config.v1": {
+        oldValue: { presentation: { fontSize: 0.92, translationColor: "#64748b" } },
+        newValue: { presentation: { fontSize: 1.1, translationColor: "#22c55e" } },
+      },
+    }, "local")
+    await Promise.resolve()
+    await Promise.resolve()
+
+    expect(stopVideoSubtitleTranslationMock).toHaveBeenCalledTimes(1)
+    expect(startVideoSubtitleTranslationMock).toHaveBeenCalledTimes(1)
+    expect(stopMeetingCaptionTranslationMock).toHaveBeenCalledTimes(1)
+    expect(startMeetingCaptionTranslationMock).toHaveBeenCalledTimes(1)
     expect(stopPageTranslationMock).not.toHaveBeenCalled()
     expect(removeTranslatedSubtitlesMock).not.toHaveBeenCalled()
     expect(startPageTranslationMock).not.toHaveBeenCalled()

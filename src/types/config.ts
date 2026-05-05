@@ -4,7 +4,7 @@ import type { AstraSession } from "./auth"
 export const ProviderIdSchema = z.enum(["openai", "gemini"])
 
 export const TranslationModeSchema = z.enum(["bilingual", "translation-only"])
-export const TranslationThemeSchema = z.enum(["default", "underline", "highlight"])
+export const TranslationThemeSchema = z.enum(["default", "underline", "highlight", "mask"])
 export const HoverTriggerSchema = z.enum(["alt", "always", "disabled"])
 export const ContentScopeSchema = z.enum(["page", "article"])
 export const InputTranslationSchema = z.enum(["enabled", "disabled"])
@@ -13,6 +13,12 @@ export const LanguageLevelSchema = z.enum(["beginner", "intermediate", "advanced
 export const ExplainModeSchema = z.enum(["beginner", "exam", "deep"])
 export const TTSEngineSchema = z.enum(["browser", "edge"])
 export const AstraSyncCollectionSchema = z.enum(["config", "vocabulary", "reading_history", "study_progress"])
+
+export const ExplanationGlossaryTermSchema = z.object({
+  sourceTerm: z.string().trim().min(1).max(120),
+  preferredTerm: z.string().trim().min(1).max(120),
+  enabled: z.boolean().default(true),
+})
 
 export const PresentationSettingsSchema = z.object({
   mode: TranslationModeSchema.default("bilingual"),
@@ -46,6 +52,42 @@ export const TTSSettingsInputSchema = z.object({
   highlightSentences: z.boolean().optional(),
 })
 
+export const SubtitleQualityPresetNameSchema = z.enum(["live", "standard", "saver"])
+
+export const SubtitleQualityControlsSchema = z.object({
+  popupPollIntervalMs: z.number().int().min(500).max(30_000).default(1_500),
+  freshnessThresholdMs: z.number().int().min(1_000).max(60_000).default(5_000),
+  adaptivePresetAutoSwitchEnabled: z.boolean().default(false),
+  adaptivePresetCooldownMs: z.number().int().min(5_000).max(300_000).default(30_000),
+  adaptivePresetManualOverrideLocked: z.boolean().default(false),
+  adaptivePresetLastAppliedAt: z.number().int().min(0).optional(),
+  adaptivePresetName: SubtitleQualityPresetNameSchema.default("standard"),
+})
+
+export const SubtitleQualityControlsInputSchema = z.object({
+  popupPollIntervalMs: z.number().int().min(500).max(30_000).optional(),
+  freshnessThresholdMs: z.number().int().min(1_000).max(60_000).optional(),
+  adaptivePresetAutoSwitchEnabled: z.boolean().optional(),
+  adaptivePresetCooldownMs: z.number().int().min(5_000).max(300_000).optional(),
+  adaptivePresetManualOverrideLocked: z.boolean().optional(),
+  adaptivePresetLastAppliedAt: z.number().int().min(0).optional(),
+  adaptivePresetName: SubtitleQualityPresetNameSchema.optional(),
+})
+
+export const DEFAULT_SUBTITLE_QUALITY_CONTROLS = SubtitleQualityControlsSchema.parse({
+  popupPollIntervalMs: 1_500,
+  freshnessThresholdMs: 5_000,
+  adaptivePresetAutoSwitchEnabled: false,
+  adaptivePresetCooldownMs: 30_000,
+  adaptivePresetManualOverrideLocked: false,
+  adaptivePresetName: "standard",
+})
+
+export const SiteProviderOverrideSchema = z.object({
+  id: ProviderIdSchema.optional(),
+  model: z.string().trim().min(1).optional(),
+})
+
 export const SiteConfigSchema = z.object({
   enabled: z.boolean().default(true),
   alwaysTranslate: z.boolean().default(false),
@@ -53,10 +95,15 @@ export const SiteConfigSchema = z.object({
   hoverTrigger: HoverTriggerSchema.optional(),
   contentScope: ContentScopeSchema.optional(),
   presentation: PresentationSettingsInputSchema.optional(),
+  provider: SiteProviderOverrideSchema.optional(),
   /** CSS selectors limiting translation scope to matching elements. */
   selectors: z.array(z.string()).optional(),
   /** CSS selectors for elements to exclude from translation. */
   excludeSelectors: z.array(z.string()).optional(),
+  /** URL path patterns that allow this site rule to apply. */
+  includePathPatterns: z.array(z.string()).optional(),
+  /** URL path patterns that prevent this site rule from applying. */
+  excludePathPatterns: z.array(z.string()).optional(),
   /** Minimum text length for a block to be translated. */
   paragraphMinLength: z.number().int().min(0).optional(),
   /** Custom CSS injected into the page when this site config is active. */
@@ -70,8 +117,11 @@ export const SiteConfigInputSchema = z.object({
   hoverTrigger: HoverTriggerSchema.optional(),
   contentScope: ContentScopeSchema.optional(),
   presentation: PresentationSettingsInputSchema.optional(),
+  provider: SiteProviderOverrideSchema.optional(),
   selectors: z.array(z.string()).optional(),
   excludeSelectors: z.array(z.string()).optional(),
+  includePathPatterns: z.array(z.string()).optional(),
+  excludePathPatterns: z.array(z.string()).optional(),
   paragraphMinLength: z.number().int().min(0).optional(),
   customCss: z.string().max(5000).optional(),
 })
@@ -120,6 +170,7 @@ export const AstraConfigSchema = z.object({
   inputTranslationMode: InputTranslationModeSchema.default("replace"),
   languageLevel: LanguageLevelSchema.default("intermediate"),
   explainMode: ExplainModeSchema.default("deep"),
+  explanationGlossary: z.array(ExplanationGlossaryTermSchema).default([]),
   privacyMode: z.boolean().default(false),
   provider: ProviderConfigSchema.default({
     id: "openai",
@@ -140,6 +191,7 @@ export const AstraConfigSchema = z.object({
     fontSize: 0.92,
     translationColor: "#64748b",
   }),
+  subtitleQualityControls: SubtitleQualityControlsSchema.optional(),
   sites: z.record(z.string(), SiteConfigSchema).default({}),
   customActions: z.array(CustomActionSchema).default([]),
 })
@@ -153,6 +205,7 @@ export const AstraConfigInputSchema = z.object({
   inputTranslationMode: InputTranslationModeSchema.optional(),
   languageLevel: LanguageLevelSchema.optional(),
   explainMode: ExplainModeSchema.optional(),
+  explanationGlossary: z.array(ExplanationGlossaryTermSchema).optional(),
   privacyMode: z.boolean().optional(),
   provider: z.object({
     id: ProviderIdSchema.optional(),
@@ -163,6 +216,7 @@ export const AstraConfigInputSchema = z.object({
   }).optional(),
   tts: TTSSettingsInputSchema.optional(),
   presentation: PresentationSettingsInputSchema.optional(),
+  subtitleQualityControls: SubtitleQualityControlsInputSchema.optional(),
   sites: z.record(z.string(), SiteConfigInputSchema).optional(),
   customActions: z.array(CustomActionSchema).optional(),
 })
@@ -187,6 +241,7 @@ export const AstraSyncedConfigSchema = z.object({
   inputTranslationMode: InputTranslationModeSchema.default("replace"),
   languageLevel: LanguageLevelSchema.default("intermediate"),
   explainMode: ExplainModeSchema.default("deep"),
+  explanationGlossary: z.array(ExplanationGlossaryTermSchema).default([]),
   privacyMode: z.boolean().default(false),
   provider: AstraSyncedProviderConfigSchema.default({
     id: "openai",
@@ -219,6 +274,7 @@ export const AstraSyncedConfigGlobalSchema = z.object({
   inputTranslationMode: InputTranslationModeSchema.default("replace"),
   languageLevel: LanguageLevelSchema.default("intermediate"),
   explainMode: ExplainModeSchema.default("deep"),
+  explanationGlossary: z.array(ExplanationGlossaryTermSchema).default([]),
   privacyMode: z.boolean().default(false),
   provider: AstraSyncedProviderConfigSchema.default({
     id: "openai",
@@ -272,8 +328,12 @@ export type InputTranslationMode = z.infer<typeof InputTranslationModeSchema>
 export type LanguageLevel = z.infer<typeof LanguageLevelSchema>
 export type ExplainMode = z.infer<typeof ExplainModeSchema>
 export type TTSEngine = z.infer<typeof TTSEngineSchema>
+export type ExplanationGlossaryTerm = z.infer<typeof ExplanationGlossaryTermSchema>
 export type PresentationSettings = z.infer<typeof PresentationSettingsSchema>
 export type TTSSettings = z.infer<typeof TTSSettingsSchema>
+export type SubtitleQualityPresetName = z.infer<typeof SubtitleQualityPresetNameSchema>
+export type SubtitleQualityControls = z.infer<typeof SubtitleQualityControlsSchema>
+export type SiteProviderOverride = z.infer<typeof SiteProviderOverrideSchema>
 export type SiteConfig = z.infer<typeof SiteConfigSchema>
 export type SiteConfigInput = z.infer<typeof SiteConfigInputSchema>
 export type OpenAIProviderConfig = z.infer<typeof OpenAIProviderConfigSchema>
@@ -317,6 +377,7 @@ export interface ResolvedSiteTranslationSettings {
   hoverTrigger: HoverTrigger
   contentScope: ContentScope
   presentation: PresentationSettings
+  provider?: SiteProviderOverride
   selectors?: string[]
   excludeSelectors?: string[]
   paragraphMinLength?: number
@@ -345,6 +406,7 @@ export const DEFAULT_ASTRA_CONFIG: AstraConfig = {
   inputTranslationMode: "replace" as const,
   languageLevel: "intermediate" as const,
   explainMode: "deep" as const,
+  explanationGlossary: [],
   privacyMode: false,
   provider: {
     id: "openai",
@@ -365,6 +427,7 @@ export const DEFAULT_ASTRA_CONFIG: AstraConfig = {
     fontSize: 0.92,
     translationColor: "#64748b",
   },
+  subtitleQualityControls: DEFAULT_SUBTITLE_QUALITY_CONTROLS,
   sites: {},
   customActions: [],
 }
@@ -411,9 +474,105 @@ function normalizeTTSSettings(tts?: Partial<TTSSettings> | null): TTSSettings {
   }
 }
 
+function normalizeSubtitleQualityControls(
+  controls?: Partial<SubtitleQualityControls> | null,
+): SubtitleQualityControls {
+  return SubtitleQualityControlsSchema.parse({
+    ...DEFAULT_SUBTITLE_QUALITY_CONTROLS,
+    ...controls,
+  })
+}
+
+const MAX_EXPLANATION_GLOSSARY_TERMS = 20
+const EXPLANATION_GLOSSARY_SEPARATOR = " => "
+
+export function normalizeExplanationGlossary(
+  terms?: Array<Partial<ExplanationGlossaryTerm>> | null,
+): ExplanationGlossaryTerm[] {
+  const seen = new Set<string>()
+  const normalized: ExplanationGlossaryTerm[] = []
+
+  for (const term of terms ?? []) {
+    const sourceTerm = term.sourceTerm?.trim()
+    const preferredTerm = term.preferredTerm?.trim()
+    if (!sourceTerm || !preferredTerm) continue
+
+    const key = sourceTerm.toLowerCase()
+    if (seen.has(key)) continue
+    seen.add(key)
+
+    normalized.push({
+      sourceTerm,
+      preferredTerm,
+      enabled: term.enabled ?? true,
+    })
+
+    if (normalized.length >= MAX_EXPLANATION_GLOSSARY_TERMS) break
+  }
+
+  return normalized
+}
+
+export function parseExplanationGlossaryText(value: string): ExplanationGlossaryTerm[] {
+  const parsedTerms: Array<Partial<ExplanationGlossaryTerm>> = value
+    .split(/\r?\n/)
+    .flatMap((line) => {
+      const trimmed = line.trim()
+      if (!trimmed) return []
+      const separator = trimmed.includes("=>") ? "=>" : trimmed.includes("=") ? "=" : null
+      if (!separator) return []
+      const [sourceTerm, ...preferredParts] = trimmed.split(separator)
+      return [{
+        sourceTerm,
+        preferredTerm: preferredParts.join(separator),
+        enabled: true,
+      }]
+    })
+
+  return normalizeExplanationGlossary(parsedTerms)
+}
+
+export function serializeExplanationGlossary(terms?: Array<Partial<ExplanationGlossaryTerm>> | null): string {
+  return normalizeExplanationGlossary(terms)
+    .filter((term) => term.enabled !== false)
+    .map((term) => `${term.sourceTerm}${EXPLANATION_GLOSSARY_SEPARATOR}${term.preferredTerm}`)
+    .join("\n")
+}
+
+function normalizeSiteProviderOverride(
+  provider?: Partial<SiteProviderOverride> | null,
+): SiteProviderOverride | undefined {
+  const model = provider?.model?.trim()
+  const normalized = {
+    ...(provider?.id ? { id: provider.id } : {}),
+    ...(model ? { model } : {}),
+  }
+
+  return Object.keys(normalized).length > 0 ? normalized : undefined
+}
+
+function normalizePathPattern(pattern: string): string | null {
+  const trimmed = pattern.trim()
+  if (!trimmed) return null
+  return trimmed.startsWith("/") ? trimmed : `/${trimmed}`
+}
+
+function normalizePathPatterns(patterns?: string[] | null): string[] | undefined {
+  const normalized = [...new Set(
+    (patterns ?? [])
+      .map(normalizePathPattern)
+      .filter((pattern): pattern is string => Boolean(pattern)),
+  )]
+
+  return normalized.length > 0 ? normalized : undefined
+}
+
 function normalizeSiteConfig(siteConfig?: Partial<SiteConfig> | null): SiteConfig {
   const targetLang = siteConfig?.targetLang?.trim()
   const presentation = siteConfig?.presentation
+  const provider = normalizeSiteProviderOverride(siteConfig?.provider)
+  const includePathPatterns = normalizePathPatterns(siteConfig?.includePathPatterns)
+  const excludePathPatterns = normalizePathPatterns(siteConfig?.excludePathPatterns)
   const normalizedPresentation = presentation
     ? {
         ...(presentation.mode ? { mode: presentation.mode } : {}),
@@ -432,8 +591,11 @@ function normalizeSiteConfig(siteConfig?: Partial<SiteConfig> | null): SiteConfi
     ...(normalizedPresentation && Object.keys(normalizedPresentation).length > 0
       ? { presentation: normalizedPresentation }
       : {}),
+    ...(provider ? { provider } : {}),
     ...(siteConfig?.selectors ? { selectors: siteConfig.selectors } : {}),
     ...(siteConfig?.excludeSelectors ? { excludeSelectors: siteConfig.excludeSelectors } : {}),
+    ...(includePathPatterns ? { includePathPatterns } : {}),
+    ...(excludePathPatterns ? { excludePathPatterns } : {}),
     ...(siteConfig?.paragraphMinLength != null ? { paragraphMinLength: siteConfig.paragraphMinLength } : {}),
     ...(siteConfig?.customCss ? { customCss: siteConfig.customCss } : {}),
   }
@@ -446,8 +608,11 @@ export function isDefaultSiteConfig(siteConfig: SiteConfig): boolean {
     && !siteConfig.hoverTrigger
     && !siteConfig.contentScope
     && (!siteConfig.presentation || Object.keys(siteConfig.presentation).length === 0)
+    && (!siteConfig.provider || Object.keys(siteConfig.provider).length === 0)
     && !siteConfig.selectors?.length
     && !siteConfig.excludeSelectors?.length
+    && !siteConfig.includePathPatterns?.length
+    && !siteConfig.excludePathPatterns?.length
     && siteConfig.paragraphMinLength == null
     && !siteConfig.customCss
 }
@@ -466,18 +631,75 @@ export function normalizeSiteKey(hostnameOrUrl: string): string | null {
   }
 }
 
+function resolveSiteUrlParts(hostnameOrUrl: string | null | undefined): {
+  hostname: string | null
+  pathname: string
+} {
+  const raw = hostnameOrUrl?.trim()
+  if (!raw) return { hostname: null, pathname: "/" }
+
+  try {
+    const url = raw.includes("://") ? new URL(raw) : new URL(`https://${raw}`)
+    const hostname = url.hostname.trim().toLowerCase().replace(/\.+$/, "") || null
+    return { hostname, pathname: url.pathname || "/" }
+  } catch {
+    return { hostname: normalizeSiteKey(raw), pathname: "/" }
+  }
+}
+
+function pathMatchesPattern(pathname: string, pattern: string): boolean {
+  const normalizedPattern = normalizePathPattern(pattern)
+  if (!normalizedPattern) return false
+
+  const normalizedPathname = pathname.startsWith("/") ? pathname : `/${pathname}`
+  const regexSource = normalizedPattern
+    .replace(/[|\\{}()[\]^$+?.]/g, "\\$&")
+    .replace(/\*/g, ".*")
+
+  return new RegExp(`^${regexSource}$`).test(normalizedPathname || "/")
+}
+
+function isSitePathAllowed(siteConfig: SiteConfig | undefined, pathname: string): boolean {
+  if (!siteConfig) return true
+
+  const includePatterns = normalizePathPatterns(siteConfig.includePathPatterns) ?? []
+  const excludePatterns = normalizePathPatterns(siteConfig.excludePathPatterns) ?? []
+  const includePass = includePatterns.length === 0
+    || includePatterns.some(pattern => pathMatchesPattern(pathname, pattern))
+  const excludeHit = excludePatterns.some(pattern => pathMatchesPattern(pathname, pattern))
+
+  return includePass && !excludeHit
+}
+
+function resolveSiteConfigForHostname(
+  sites: Record<string, SiteConfig> | null | undefined,
+  hostname: string | null,
+): SiteConfig | undefined {
+  if (!hostname || !sites) return undefined
+
+  const exactConfig = sites[hostname]
+  if (exactConfig) return exactConfig
+
+  if (hostname.startsWith("www.")) {
+    return sites[hostname.slice(4)]
+  }
+
+  return undefined
+}
+
 export function resolveSiteTranslationSettings(
   config: AstraConfig,
   hostnameOrUrl: string | null | undefined,
   overrides: TranslationOverrides = {},
 ): ResolvedSiteTranslationSettings {
-  const hostname = hostnameOrUrl ? normalizeSiteKey(hostnameOrUrl) : null
-  const siteConfig = hostname ? config.sites[hostname] : undefined
+  const { hostname, pathname } = resolveSiteUrlParts(hostnameOrUrl)
+  const siteConfig = resolveSiteConfigForHostname(config.sites, hostname)
+  const pathAllowed = isSitePathAllowed(siteConfig, pathname)
   const basePresentation = normalizePresentation(config.presentation)
 
   return {
     hostname,
-    enabled: siteConfig?.enabled ?? true,
+    enabled: (siteConfig?.enabled ?? true) && pathAllowed,
     alwaysTranslate: siteConfig?.alwaysTranslate ?? false,
     targetLang: overrides.targetLang?.trim()
       || siteConfig?.targetLang?.trim()
@@ -494,6 +716,7 @@ export function resolveSiteTranslationSettings(
       fontSize: siteConfig?.presentation?.fontSize ?? basePresentation.fontSize,
       translationColor: siteConfig?.presentation?.translationColor ?? basePresentation.translationColor,
     },
+    provider: siteConfig?.provider,
     selectors: overrides.selectors ?? siteConfig?.selectors,
     excludeSelectors: overrides.excludeSelectors ?? siteConfig?.excludeSelectors,
     paragraphMinLength: overrides.paragraphMinLength ?? siteConfig?.paragraphMinLength,
@@ -524,11 +747,48 @@ export function resolveManagedProviderConfig(
   }
 }
 
+export function resolveSiteProviderConfig(
+  config: AstraConfig,
+  hostnameOrUrl: string | null | undefined,
+  session?: AstraSession | null,
+): ProviderConfig {
+  const managedProvider = resolveManagedProviderConfig(config.provider, session)
+  const hostname = hostnameOrUrl ? normalizeSiteKey(hostnameOrUrl) : null
+  const siteProvider = resolveSiteConfigForHostname(config.sites, hostname)?.provider
+
+  if (!siteProvider?.id && !siteProvider?.model) {
+    return managedProvider
+  }
+
+  const providerId = siteProvider.id ?? managedProvider.id
+  const providerChanged = providerId !== managedProvider.id
+  const model = siteProvider.model?.trim()
+    || (providerChanged ? getDefaultProviderModel(providerId) : managedProvider.model)
+
+  return normalizeProviderConfig({
+    ...managedProvider,
+    id: providerId,
+    model,
+    // A single direct API key belongs to the globally selected provider. If a site
+    // switches provider, route via the managed/custom relay instead of sending that
+    // key to a different upstream provider.
+    apiKey: providerChanged ? "" : managedProvider.apiKey,
+  } as Partial<ProviderConfig>)
+}
+
 export function hasResolvedProviderAccess(
   provider: ProviderConfig,
   session?: AstraSession | null,
 ): boolean {
   return hasProviderAccess(resolveManagedProviderConfig(provider, session))
+}
+
+export function hasResolvedSiteProviderAccess(
+  config: AstraConfig,
+  hostnameOrUrl: string | null | undefined,
+  session?: AstraSession | null,
+): boolean {
+  return hasProviderAccess(resolveSiteProviderConfig(config, hostnameOrUrl, session))
 }
 
 function normalizeProviderConfig(provider?: Partial<ProviderConfig> | null): ProviderConfig {
@@ -567,10 +827,12 @@ export function normalizeConfig(config: AstraConfig): AstraConfig {
     inputTranslationMode: config.inputTranslationMode ?? DEFAULT_ASTRA_CONFIG.inputTranslationMode,
     languageLevel: config.languageLevel ?? DEFAULT_ASTRA_CONFIG.languageLevel,
     explainMode: config.explainMode ?? DEFAULT_ASTRA_CONFIG.explainMode,
+    explanationGlossary: normalizeExplanationGlossary(config.explanationGlossary),
     privacyMode: config.privacyMode ?? DEFAULT_ASTRA_CONFIG.privacyMode,
     provider: normalizeProviderConfig(config.provider),
     tts: normalizeTTSSettings(config.tts),
     presentation: normalizePresentation(config.presentation),
+    subtitleQualityControls: normalizeSubtitleQualityControls(config.subtitleQualityControls),
     sites,
     customActions: config.customActions ?? [],
   }
@@ -595,6 +857,7 @@ export function buildSyncSafeConfig(
     inputTranslationMode: normalized.inputTranslationMode,
     languageLevel: normalized.languageLevel,
     explainMode: normalized.explainMode,
+    explanationGlossary: normalized.explanationGlossary,
     privacyMode: normalized.privacyMode,
     provider: {
       id: normalized.provider.id,
@@ -633,6 +896,7 @@ export function buildSyncSafeConfigGlobal(
     inputTranslationMode: normalized.inputTranslationMode,
     languageLevel: normalized.languageLevel,
     explainMode: normalized.explainMode,
+    explanationGlossary: normalized.explanationGlossary,
     privacyMode: normalized.privacyMode,
     provider: {
       id: normalized.provider.id,
@@ -669,6 +933,7 @@ export function mergeSyncSafeConfig(
         : {}),
     },
     explainMode: parsedSyncedConfig.explainMode,
+    explanationGlossary: parsedSyncedConfig.explanationGlossary,
     tts: {
       ...normalizedCurrent.tts,
       ...parsedSyncedConfig.tts,

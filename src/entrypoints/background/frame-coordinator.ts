@@ -133,6 +133,9 @@ function buildAggregateSnapshot(
   const base = topFrameSnapshot ?? buildFallbackTopFrameSnapshot(topFrame)
   const phase = aggregatePhase(snapshots)
   const framesTranslating = snapshots.filter((s) => s.phase !== "idle").length
+  const subtitleQuality = topFrameSnapshot?.subtitleQuality
+    ?? snapshots.find((s) => s.subtitleQuality?.active)?.subtitleQuality
+    ?? base.subtitleQuality
 
   return {
     phase,
@@ -142,6 +145,8 @@ function buildAggregateSnapshot(
     progress: aggregateProgress(snapshots),
     presentation: topFrameSnapshot?.presentation ?? base.presentation,
     site: topFrameSnapshot?.site ?? base.site,
+    diagnostics: topFrameSnapshot?.diagnostics ?? base.diagnostics,
+    ...(subtitleQuality ? { subtitleQuality } : {}),
     framesTotal,
     framesTranslating,
   }

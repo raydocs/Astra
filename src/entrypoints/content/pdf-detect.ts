@@ -88,7 +88,7 @@ function createBanner(): HTMLDivElement {
   Object.assign(dismissBtn.style, {
     background: "transparent",
     border: "none",
-    color: "#94a3b8",
+    color: "var(--astra-text-hint)",
     fontSize: "18px",
     cursor: "pointer",
     padding: "0 2px",

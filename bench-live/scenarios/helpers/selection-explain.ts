@@ -15,6 +15,7 @@ export function buildLiveSelectionExplainEvaluation(
       shouldCopy?: boolean
       expectedTask?: "explain" | "translate"
       requireContext?: boolean
+      requireExplainProfile?: boolean
     }
     successSummary: string
     failureSummary: string

@@ -8,10 +8,16 @@
 import { runInlineAction } from "../inline-actions"
 import { translateTexts } from "@/utils/translate/translate"
 import { readConfig } from "@/utils/storage/config"
-import { resolveSiteTranslationSettings } from "@/types/config"
+import {
+  DEFAULT_ASTRA_CONFIG,
+  resolveSiteTranslationSettings,
+  type AstraConfig,
+  type ResolvedSiteTranslationSettings,
+} from "@/types/config"
 import type { VideoNotePlatform, VideoNoteTranscriptCapture } from "@/types/video-notes"
+import type { SubtitleQualitySnapshot } from "@/types/translation"
 
-import type { VideoPlatformConfig } from "./types"
+import type { VideoPlatformConfig, VideoSubtitleRenderingRule } from "./types"
 import {
   captureYouTubeVideoNoteTranscript,
   getYouTubeVideoNoteTitle,
@@ -28,6 +34,9 @@ import { primevideoPlatform } from "./primevideo"
 import { disneyplusPlatform } from "./disneyplus"
 import { udemyPlatform } from "./udemy"
 import { courseraPlatform } from "./coursera"
+import { vimeoPlatform } from "./vimeo"
+import { tedPlatform } from "./ted"
+import { khanAcademyPlatform } from "./khanacademy"
 
 const ALL_PLATFORMS: VideoPlatformConfig[] = [
   youtubePlatform,
@@ -37,6 +46,9 @@ const ALL_PLATFORMS: VideoPlatformConfig[] = [
   disneyplusPlatform,
   udemyPlatform,
   courseraPlatform,
+  vimeoPlatform,
+  tedPlatform,
+  khanAcademyPlatform,
 ]
 
 const ASTRA_SUBTITLE_CLASS = "astra-video-subtitle"
@@ -51,6 +63,13 @@ interface StructuredTrackCue {
   endTime: number
   text: string
   translation?: string
+}
+
+interface CaptionPresentationStyle {
+  mode: ResolvedSiteTranslationSettings["presentation"]["mode"]
+  theme: ResolvedSiteTranslationSettings["presentation"]["theme"]
+  fontSize?: string
+  translationColor?: string
 }
 
 const MAX_CACHE_SIZE = 500
@@ -132,10 +151,39 @@ export async function captureCurrentVideoNoteSource(): Promise<VideoNoteSourcePa
   return null
 }
 
-async function getTargetLang(): Promise<string> {
+function resolveCaptionPresentationStyle(
+  config: AstraConfig,
+  resolved: ResolvedSiteTranslationSettings,
+): CaptionPresentationStyle {
+  const sitePresentation = resolved.hostname
+    ? config.sites[resolved.hostname]?.presentation
+    : undefined
+  const globalPresentation = config.presentation ?? DEFAULT_ASTRA_CONFIG.presentation
+  const defaultPresentation = DEFAULT_ASTRA_CONFIG.presentation
+
+  const hasFontSizeOverride = sitePresentation?.fontSize != null
+    || globalPresentation.fontSize !== defaultPresentation.fontSize
+  const hasColorOverride = !!sitePresentation?.translationColor
+    || globalPresentation.translationColor !== defaultPresentation.translationColor
+
+  return {
+    mode: resolved.presentation.mode,
+    theme: resolved.presentation.theme,
+    ...(hasFontSizeOverride ? { fontSize: `${resolved.presentation.fontSize}em` } : {}),
+    ...(hasColorOverride ? { translationColor: resolved.presentation.translationColor } : {}),
+  }
+}
+
+async function getResolvedSubtitleSettings(): Promise<{
+  targetLang: string
+  presentation: CaptionPresentationStyle
+}> {
   const config = await readConfig()
   const resolved = resolveSiteTranslationSettings(config, window.location.hostname)
-  return resolved.targetLang
+  return {
+    targetLang: resolved.targetLang,
+    presentation: resolveCaptionPresentationStyle(config, resolved),
+  }
 }
 
 function injectStyles(): void {
@@ -145,17 +193,32 @@ function injectStyles(): void {
   style.textContent = `
     .${ASTRA_SUBTITLE_CLASS} {
       display: block;
-      color: #fffc;
-      font-size: 0.85em;
+      color: var(--astra-caption-color, #fffc);
+      font-size: var(--astra-caption-font-size, 0.85em);
       line-height: 1.4;
       white-space: pre-line;
       text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.8);
       margin-top: 2px;
+      margin-left: auto;
+      margin-right: auto;
+      max-width: var(--astra-caption-max-width, none);
+      text-align: var(--astra-caption-text-align, center);
       padding: 2px 6px;
       background: rgba(0, 0, 0, 0.6);
       border-radius: 3px;
       pointer-events: none;
       font-family: "YouTube Noto", Roboto, "PingFang SC", "Microsoft YaHei", Arial, sans-serif;
+    }
+
+    .${ASTRA_SUBTITLE_CLASS}[data-astra-presentation-theme="underline"] {
+      background: transparent;
+      border-bottom: 2px solid var(--astra-caption-color, #fffc);
+      border-radius: 0;
+      padding-inline: 2px;
+    }
+
+    .${ASTRA_SUBTITLE_CLASS}[data-astra-presentation-theme="highlight"] {
+      background: rgba(99, 102, 241, 0.82);
     }
   `
   document.head.appendChild(style)
@@ -202,12 +265,44 @@ function hasMatchingTranslation(
   return translationText === undefined || existing.textContent === translationText
 }
 
-function injectTranslation(container: HTMLElement, text: string, sourceText: string): void {
+function applyPresentationStyle(el: HTMLElement, presentation: CaptionPresentationStyle): void {
+  el.dataset.astraPresentationMode = presentation.mode
+  el.dataset.astraPresentationTheme = presentation.theme
+  if (presentation.fontSize) {
+    el.style.setProperty("--astra-caption-font-size", presentation.fontSize)
+  }
+  if (presentation.translationColor) {
+    el.style.setProperty("--astra-caption-color", presentation.translationColor)
+  }
+}
+
+function applyPlatformRenderingRule(el: HTMLElement, rule: VideoSubtitleRenderingRule): void {
+  el.dataset.astraRenderRuleId = rule.ruleId
+  el.dataset.astraRenderSurface = rule.surface
+  el.dataset.astraRenderInsertionPoint = rule.insertionPoint
+  el.dataset.astraNativeCuePolicy = rule.nativeCuePolicy
+  el.style.setProperty("--astra-caption-max-width", rule.maxWidth)
+  el.style.setProperty("--astra-caption-text-align", rule.textAlign)
+  rule.className
+    .split(/\s+/)
+    .filter(Boolean)
+    .forEach((className) => el.classList.add(className))
+}
+
+function injectTranslation(
+  container: HTMLElement,
+  text: string,
+  sourceText: string,
+  presentation: CaptionPresentationStyle,
+  renderingRule: VideoSubtitleRenderingRule,
+): void {
   clearInjectedTranslations(container)
   const el = document.createElement("span")
   el.className = ASTRA_SUBTITLE_CLASS
   el.textContent = text
   el.setAttribute("data-source", sourceText)
+  applyPresentationStyle(el, presentation)
+  applyPlatformRenderingRule(el, renderingRule)
   container.appendChild(el)
 }
 
@@ -215,6 +310,7 @@ async function translateAndInject(
   platform: VideoPlatformConfig,
   captionWindow: HTMLElement,
   targetLang: string,
+  presentation: CaptionPresentationStyle,
 ): Promise<void> {
   const sourceText = getCaptionText(platform, captionWindow).trim()
   if (!sourceText || sourceText.length < 2) return
@@ -225,7 +321,7 @@ async function translateAndInject(
   const cacheKey = `${sourceText}|${targetLang}`
   const cached = cacheGet(cacheKey)
   if (cached) {
-    injectTranslation(captionWindow, cached, sourceText)
+    injectTranslation(captionWindow, cached, sourceText, presentation, platform.subtitleRendering)
     return
   }
 
@@ -243,7 +339,7 @@ async function translateAndInject(
       cachePut(cacheKey, result.text)
       const currentText = getCaptionText(platform, captionWindow).trim()
       if (currentText === sourceText) {
-        injectTranslation(captionWindow, result.text, sourceText)
+        injectTranslation(captionWindow, result.text, sourceText, presentation, platform.subtitleRendering)
       }
     }
   } finally {
@@ -251,7 +347,11 @@ async function translateAndInject(
   }
 }
 
-function handleCaptionMutation(platform: VideoPlatformConfig, targetLang: string): void {
+function handleCaptionMutation(
+  platform: VideoPlatformConfig,
+  targetLang: string,
+  presentation: CaptionPresentationStyle,
+): void {
   const container = document.querySelector(platform.captionContainerSelector)
   if (!container) return
 
@@ -263,14 +363,14 @@ function handleCaptionMutation(platform: VideoPlatformConfig, targetLang: string
     if (child.classList.contains(ASTRA_SUBTITLE_CLASS)) continue
     const text = getCaptionText(platform, child)
     if (text) {
-      void translateAndInject(platform, child, targetLang)
+      void translateAndInject(platform, child, targetLang, presentation)
       foundChild = true
     }
   }
 
   if (!foundChild) {
     const text = getCaptionText(platform, container as HTMLElement)
-    if (text) void translateAndInject(platform, container as HTMLElement, targetLang)
+    if (text) void translateAndInject(platform, container as HTMLElement, targetLang, presentation)
   }
 }
 
@@ -461,6 +561,7 @@ async function startStructuredTrackSubtitleSession(
   platform: VideoPlatformConfig,
   rootContainer: HTMLElement,
   targetLang: string,
+  presentation: CaptionPresentationStyle,
 ): Promise<(() => void) | null> {
   const video = findVideoForContainer(rootContainer)
   if (!(video instanceof HTMLVideoElement)) {
@@ -523,7 +624,7 @@ async function startStructuredTrackSubtitleSession(
     const translationText = translations.join("\n")
 
     if (!hasMatchingTranslation(renderTarget, sourceText, translationText)) {
-      injectTranslation(renderTarget, translationText, sourceText)
+      injectTranslation(renderTarget, translationText, sourceText, presentation, platform.subtitleRendering)
     }
 
     rootContainer.dataset.astraCaptionPipeline = `${platform.id}-layered`
@@ -556,7 +657,7 @@ async function startStructuredTrackSubtitleSession(
     rootContainer.dataset.astraCaptionPipeline = `${platform.id}-layered`
     rootContainer.dataset.astraCaptionSource = "dom"
     rootContainer.dataset.astraCaptionStatus = "fallback-ready"
-    void translateAndInject(platform, fallbackTarget, targetLang)
+    void translateAndInject(platform, fallbackTarget, targetLang, presentation)
   }
 
   const sessionObserver = new MutationObserver(() => {
@@ -665,12 +766,51 @@ export function isVideoPage(): boolean {
   return platform !== null && platform.isVideoPage()
 }
 
+export function isVideoSubtitleTranslationActive(): boolean {
+  return activePlatform !== null
+}
+
+function readCaptionDatasetValue(
+  element: HTMLElement | null,
+  key: keyof HTMLElement["dataset"],
+): string | null {
+  const value = element?.dataset[key]
+  return typeof value === "string" && value.trim().length > 0 ? value : null
+}
+
+export function getVideoSubtitleQualitySnapshot(): SubtitleQualitySnapshot | null {
+  if (!activePlatform) return null
+
+  const container = document.querySelector(activePlatform.captionContainerSelector)
+  const captionRoot = container instanceof HTMLElement ? container : null
+  const sourceText = captionRoot ? getCaptionText(activePlatform, captionRoot).trim() : ""
+  const anomalies = readCaptionDatasetValue(captionRoot, "astraCaptionAnomalies")
+    ?.split(/\s+/)
+    .map((item) => item.trim())
+    .filter(Boolean) ?? []
+
+  return {
+    surface: "video",
+    active: true,
+    platform: activePlatform.id,
+    pipeline: readCaptionDatasetValue(captionRoot, "astraCaptionPipeline"),
+    source: readCaptionDatasetValue(captionRoot, "astraCaptionSource"),
+    status: readCaptionDatasetValue(captionRoot, "astraCaptionStatus") ?? (captionRoot ? "observing" : "starting"),
+    anomalies,
+    translatedNodeCount: captionRoot?.querySelectorAll(`.${ASTRA_SUBTITLE_CLASS}`).length ?? 0,
+    sourceTextLength: sourceText.length,
+    pendingRequestCount: pendingTranslations.size,
+    cacheSize: translationCache.size,
+    capturedAt: Date.now(),
+  }
+}
+
 export async function startVideoSubtitleTranslation(): Promise<void> {
   const platform = detectPlatform()
   if (!platform || !platform.isVideoPage() || activePlatform) return
 
   activePlatform = platform
-  const targetLang = await getTargetLang()
+  const { targetLang, presentation } = await getResolvedSubtitleSettings()
   injectStyles()
 
   const container = await waitForElement(platform.captionContainerSelector)
@@ -686,7 +826,13 @@ export async function startVideoSubtitleTranslation(): Promise<void> {
       cacheGet,
       cachePut,
       getDomCaptionText: (captionContainer) => getCaptionText(platform, captionContainer),
-      injectTranslation,
+      injectTranslation: (captionContainer, text, sourceText) => injectTranslation(
+        captionContainer,
+        text,
+        sourceText,
+        presentation,
+        platform.subtitleRendering,
+      ),
     })
 
     if (session) {
@@ -700,6 +846,7 @@ export async function startVideoSubtitleTranslation(): Promise<void> {
       platform,
       container as HTMLElement,
       targetLang,
+      presentation,
     )
 
     if (sessionStop) {
@@ -710,10 +857,10 @@ export async function startVideoSubtitleTranslation(): Promise<void> {
   }
 
   observer = new MutationObserver(() => {
-    handleCaptionMutation(platform, targetLang)
+    handleCaptionMutation(platform, targetLang, presentation)
   })
   observer.observe(container, { childList: true, subtree: true, characterData: true })
-  handleCaptionMutation(platform, targetLang)
+  handleCaptionMutation(platform, targetLang, presentation)
   activeSessionStop = null
   void preloadSubtitleBatch(platform, targetLang)
 }
@@ -755,4 +902,14 @@ export function setupVideoNavigationHandler(): void {
 
 export function getSupportedPlatformIds(): string[] {
   return ALL_PLATFORMS.map((p) => p.id)
+}
+
+export function getSupportedPlatformRenderingRules(): Array<{
+  id: string
+  subtitleRendering: VideoSubtitleRenderingRule
+}> {
+  return ALL_PLATFORMS.map((platform) => ({
+    id: platform.id,
+    subtitleRendering: platform.subtitleRendering,
+  }))
 }

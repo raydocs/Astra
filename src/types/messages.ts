@@ -4,6 +4,8 @@ import {
   AstraConfigInputSchema,
   AstraConfigSchema,
   ContentScopeSchema,
+  ExplainModeSchema,
+  LanguageLevelSchema,
   TranslationModeSchema,
   TranslationThemeSchema,
 } from "./config"
@@ -24,6 +26,8 @@ export const TranslationRequestContextSchema = z.object({
   selectionContext: z.string().trim().min(1).optional(),
   /** Terminology glossary for consistent translation of domain-specific terms. */
   terminologyGlossary: z.string().trim().min(1).optional(),
+  /** Explanation glossary: required source => preferred terms for learner-facing explanations. */
+  explanationGlossary: z.string().trim().min(1).optional(),
 })
 
 export const ContentTranslationOverridesSchema = z.object({
@@ -44,6 +48,9 @@ export const TranslateBatchPayloadSchema = z.object({
   task: TranslationTaskSchema.optional(),
   customSystemPrompt: z.string().max(2000).optional(),
   placeholderFormat: TranslationPlaceholderFormatSchema.optional(),
+  languageLevel: LanguageLevelSchema.optional(),
+  explainMode: ExplainModeSchema.optional(),
+  explanationRepairInstruction: z.string().trim().min(1).max(1600).optional(),
 })
 
 const TranslationErrorCodeSchema = z.enum([
@@ -86,6 +93,55 @@ const TranslationSiteSnapshotSchema = z.object({
   alwaysTranslate: z.boolean(),
 })
 
+const TranslationSelectorDiagnosticsSchema = z.object({
+  configured: z.array(z.string()),
+  valid: z.array(z.string()),
+  invalid: z.array(z.string()),
+  matchedBlocks: z.number().int().nonnegative(),
+})
+
+const TranslationSiteRuleFilterStageIdSchema = z.enum([
+  "collected-blocks",
+  "after-include-filters",
+  "after-exclude-filters",
+  "after-paragraph-filter",
+])
+
+const TranslationSiteRuleFilterStageDiagnosticsSchema = z.object({
+  id: TranslationSiteRuleFilterStageIdSchema,
+  count: z.number().int().nonnegative(),
+})
+
+const TranslationRuntimeDiagnosticsSchema = z.object({
+  contentScope: z.string().optional(),
+  effectiveContentScope: z.string().optional(),
+  siteRules: z.object({
+    inputBlockCount: z.number().int().nonnegative(),
+    afterIncludeCount: z.number().int().nonnegative(),
+    afterExcludeCount: z.number().int().nonnegative(),
+    afterParagraphCount: z.number().int().nonnegative(),
+    filterStages: z.array(TranslationSiteRuleFilterStageDiagnosticsSchema).optional(),
+    selectors: TranslationSelectorDiagnosticsSchema,
+    excludeSelectors: TranslationSelectorDiagnosticsSchema,
+    paragraphMinLength: z.number().int().nonnegative().optional(),
+  }).optional(),
+}).passthrough()
+
+const SubtitleQualitySnapshotSchema = z.object({
+  surface: z.enum(["video", "meeting"]),
+  active: z.boolean(),
+  platform: z.string().trim().min(1).nullable(),
+  pipeline: z.string().trim().min(1).nullable(),
+  source: z.string().trim().min(1).nullable(),
+  status: z.string().trim().min(1),
+  anomalies: z.array(z.string()),
+  translatedNodeCount: z.number().int().nonnegative(),
+  sourceTextLength: z.number().int().nonnegative(),
+  pendingRequestCount: z.number().int().nonnegative(),
+  cacheSize: z.number().int().nonnegative(),
+  capturedAt: z.number().int().nonnegative(),
+})
+
 const TranslationSnapshotSchema = z.object({
   phase: z.enum(["idle", "starting", "running", "stopping"]),
   sessionId: z.number().int().nonnegative(),
@@ -97,6 +153,8 @@ const TranslationSnapshotSchema = z.object({
     theme: TranslationThemeSchema,
   }),
   site: TranslationSiteSnapshotSchema,
+  diagnostics: TranslationRuntimeDiagnosticsSchema.optional(),
+  subtitleQuality: SubtitleQualitySnapshotSchema.optional(),
   framesTotal: z.number().int().nonnegative().optional(),
   framesTranslating: z.number().int().nonnegative().optional(),
 })
@@ -143,6 +201,65 @@ const RuntimeSaveConfigResponseSchema = z.union([
   }),
 ])
 
+const LearningContinuitySyncCountSchema = z.object({
+  config: z.number().int().nonnegative(),
+  vocabulary: z.number().int().nonnegative(),
+  reading_history: z.number().int().nonnegative(),
+  study_progress: z.number().int().nonnegative(),
+})
+
+const LearningContinuitySyncResultSchema = z.object({
+  skipped: z.boolean(),
+  reason: z.enum(["no-session", "anonymous-session", "missing-relay-base-url", "synced"]),
+  pushed: LearningContinuitySyncCountSchema,
+  pulled: LearningContinuitySyncCountSchema,
+  rejected: z.number().int().nonnegative(),
+})
+
+const LearningContinuitySyncStatusSchema = z.object({
+  inFlight: z.boolean(),
+  queued: z.boolean(),
+  lastReason: z.string().trim().min(1).nullable(),
+  lastStartedAt: z.string().trim().min(1).nullable(),
+  lastFinishedAt: z.string().trim().min(1).nullable(),
+  lastResult: LearningContinuitySyncResultSchema.nullable(),
+  lastError: z.string().trim().min(1).nullable(),
+  accountEmail: z.string().trim().min(1).nullable(),
+  stateLastRunAt: z.string().trim().min(1).nullable(),
+  stateLastSuccessAt: z.string().trim().min(1).nullable(),
+  stateLastError: z.string().trim().min(1).nullable(),
+  cursors: z.object({
+    config: z.string().trim().min(1).nullable(),
+    vocabulary: z.string().trim().min(1).nullable(),
+    reading_history: z.string().trim().min(1).nullable(),
+    study_progress: z.string().trim().min(1).nullable(),
+  }),
+})
+
+const RuntimeLearningContinuitySyncResponseSchema = z.union([
+  z.object({
+    type: z.literal("runtime/learning-continuity-sync:success"),
+    payload: z.object({
+      status: LearningContinuitySyncStatusSchema,
+      result: LearningContinuitySyncResultSchema.nullable(),
+    }),
+  }),
+  z.object({
+    type: z.literal("runtime/learning-continuity-sync:error"),
+    error: TranslationErrorSchema,
+    payload: z.object({
+      status: LearningContinuitySyncStatusSchema,
+    }).optional(),
+  }),
+])
+
+const RuntimeLearningContinuitySyncStatusResponseSchema = z.object({
+  type: z.literal("runtime/learning-continuity-sync-status:success"),
+  payload: z.object({
+    status: LearningContinuitySyncStatusSchema,
+  }),
+})
+
 const RuntimeVideoNoteCreateFromCurrentTabPayloadSchema = z.object({
   forceRegenerate: z.boolean().optional(),
 })
@@ -176,6 +293,8 @@ const RuntimeVideoNoteGetJobResponseSchema = z.union([
 const RuntimeResponseSchema = z.union([
   RuntimeTranslateResponseSchema,
   RuntimeSaveConfigResponseSchema,
+  RuntimeLearningContinuitySyncResponseSchema,
+  RuntimeLearningContinuitySyncStatusResponseSchema,
   RuntimeVideoNoteCreateResponseSchema,
   RuntimeVideoNoteGetJobResponseSchema,
 ])
@@ -273,6 +392,15 @@ export interface RuntimeSaveConfigRequest {
   payload: z.infer<typeof AstraConfigInputSchema>
 }
 
+export interface RuntimeLearningContinuitySyncRequest {
+  type: "runtime/learning-continuity-sync"
+  reason?: string
+}
+
+export interface RuntimeLearningContinuitySyncStatusRequest {
+  type: "runtime/learning-continuity-sync-status"
+}
+
 export interface RuntimeVideoNoteCreateFromCurrentTabRequest {
   type: "runtime/video-note:create-from-current-tab"
   payload?: z.infer<typeof RuntimeVideoNoteCreateFromCurrentTabPayloadSchema>
@@ -293,6 +421,32 @@ export interface RuntimeSaveConfigSuccessResponse {
 export interface RuntimeSaveConfigErrorResponse {
   type: "runtime/save-config:error"
   error: TranslationError
+}
+
+export type LearningContinuitySyncResult = z.infer<typeof LearningContinuitySyncResultSchema>
+export type LearningContinuitySyncStatus = z.infer<typeof LearningContinuitySyncStatusSchema>
+
+export interface RuntimeLearningContinuitySyncSuccessResponse {
+  type: "runtime/learning-continuity-sync:success"
+  payload: {
+    status: LearningContinuitySyncStatus
+    result: LearningContinuitySyncResult | null
+  }
+}
+
+export interface RuntimeLearningContinuitySyncErrorResponse {
+  type: "runtime/learning-continuity-sync:error"
+  error: TranslationError
+  payload?: {
+    status: LearningContinuitySyncStatus
+  }
+}
+
+export interface RuntimeLearningContinuitySyncStatusSuccessResponse {
+  type: "runtime/learning-continuity-sync-status:success"
+  payload: {
+    status: LearningContinuitySyncStatus
+  }
 }
 
 export interface RuntimeVideoNoteCreateFromCurrentTabSuccessResponse {
@@ -320,6 +474,8 @@ export type RuntimeRequest =
   | RuntimeTabCommandRequest
   | RuntimeCurrentTabCommandRequest
   | RuntimeSaveConfigRequest
+  | RuntimeLearningContinuitySyncRequest
+  | RuntimeLearningContinuitySyncStatusRequest
   | RuntimeVideoNoteCreateFromCurrentTabRequest
   | RuntimeVideoNoteGetJobRequest
 export type RuntimeResponse =
@@ -327,6 +483,9 @@ export type RuntimeResponse =
   | RuntimeTranslateBatchErrorResponse
   | RuntimeSaveConfigSuccessResponse
   | RuntimeSaveConfigErrorResponse
+  | RuntimeLearningContinuitySyncSuccessResponse
+  | RuntimeLearningContinuitySyncErrorResponse
+  | RuntimeLearningContinuitySyncStatusSuccessResponse
   | RuntimeVideoNoteCreateFromCurrentTabSuccessResponse
   | RuntimeVideoNoteCreateFromCurrentTabErrorResponse
   | RuntimeVideoNoteGetJobSuccessResponse
@@ -427,6 +586,22 @@ export function isRuntimeSaveConfigRequest(
     && AstraConfigInputSchema.safeParse(candidate.payload).success
 }
 
+export function isRuntimeLearningContinuitySyncRequest(
+  value: unknown,
+): value is RuntimeLearningContinuitySyncRequest {
+  if (typeof value !== "object" || value === null) return false
+  const candidate = value as Partial<RuntimeLearningContinuitySyncRequest>
+  return candidate.type === "runtime/learning-continuity-sync"
+    && (candidate.reason === undefined || typeof candidate.reason === "string")
+}
+
+export function isRuntimeLearningContinuitySyncStatusRequest(
+  value: unknown,
+): value is RuntimeLearningContinuitySyncStatusRequest {
+  if (typeof value !== "object" || value === null) return false
+  return (value as Partial<RuntimeLearningContinuitySyncStatusRequest>).type === "runtime/learning-continuity-sync-status"
+}
+
 export function isRuntimeVideoNoteCreateFromCurrentTabRequest(
   value: unknown,
 ): value is RuntimeVideoNoteCreateFromCurrentTabRequest {
@@ -459,6 +634,18 @@ export function isRuntimeSaveConfigResponse(
   value: unknown,
 ): value is RuntimeSaveConfigSuccessResponse | RuntimeSaveConfigErrorResponse {
   return RuntimeSaveConfigResponseSchema.safeParse(value).success
+}
+
+export function isRuntimeLearningContinuitySyncResponse(
+  value: unknown,
+): value is RuntimeLearningContinuitySyncSuccessResponse | RuntimeLearningContinuitySyncErrorResponse {
+  return RuntimeLearningContinuitySyncResponseSchema.safeParse(value).success
+}
+
+export function isRuntimeLearningContinuitySyncStatusResponse(
+  value: unknown,
+): value is RuntimeLearningContinuitySyncStatusSuccessResponse {
+  return RuntimeLearningContinuitySyncStatusResponseSchema.safeParse(value).success
 }
 
 export function isContentCommand(value: unknown): value is ContentCommand {

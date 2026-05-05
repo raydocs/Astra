@@ -27,6 +27,7 @@ vi.mock("@/utils/translate/translate", () => ({
   translateTexts: translateTextsMock,
 }))
 
+import { SITE_RULE_FILTER_STAGE_ORDER } from "@/types/translation"
 import {
   getPageTranslationState,
   startPageTranslation,
@@ -220,6 +221,41 @@ describe("page translation controller", () => {
     }))
   })
 
+  it("publishes site-rule diagnostics for invalid selectors and no-match filters", async () => {
+    document.body.innerHTML = `
+      <main>
+        <p id="diagnostic-visible">Diagnostic visible text block long enough</p>
+        <p id="diagnostic-second">Another diagnostic text block long enough</p>
+      </main>
+    `
+    setRect(document.getElementById("diagnostic-visible")!, 40)
+    setRect(document.getElementById("diagnostic-second")!, 80)
+
+    await startPageTranslation({
+      targetLang: "zh-CN",
+      selectors: [".missing-article", "article["],
+      excludeSelectors: [".ad-slot"],
+      paragraphMinLength: 30,
+    })
+    await flushPromises()
+
+    const diagnostics = getPageTranslationState().diagnostics?.siteRules
+    expect(diagnostics?.inputBlockCount).toBeGreaterThan(0)
+    expect(diagnostics?.selectors.valid).toEqual([".missing-article"])
+    expect(diagnostics?.selectors.invalid).toEqual(["article["])
+    expect(diagnostics?.selectors.matchedBlocks).toBe(0)
+    expect(diagnostics?.afterIncludeCount).toBe(0)
+    expect(diagnostics?.afterParagraphCount).toBe(0)
+    expect(diagnostics?.filterStages?.map((stage) => stage.id)).toEqual(SITE_RULE_FILTER_STAGE_ORDER)
+    expect(diagnostics?.filterStages?.map((stage) => stage.count)).toEqual([
+      diagnostics?.inputBlockCount,
+      diagnostics?.afterIncludeCount,
+      diagnostics?.afterExcludeCount,
+      diagnostics?.afterParagraphCount,
+    ])
+    expect(translateTextsMock).not.toHaveBeenCalled()
+  })
+
   it("serializes rich inline text into placeholders and restores safe inline markup", async () => {
     document.body.innerHTML = `
       <main>
@@ -405,6 +441,22 @@ describe("page translation controller", () => {
     })
   })
 
+  it("applies mask theme to translated page nodes", async () => {
+    translateTextsMock.mockResolvedValue({
+      ok: true,
+      translations: ["遮罩译文"],
+    })
+
+    await startPageTranslation({
+      targetLang: "zh-CN",
+      translationTheme: "mask",
+    })
+    await flushPromises()
+
+    expect(getPageTranslationState().presentation.theme).toBe("mask")
+    expect(document.querySelector("[data-astra-translation='1']")?.classList.contains("astra-theme-mask")).toBe(true)
+  })
+
   it("stops immediately when the current site is disabled", async () => {
     readConfigMock.mockResolvedValueOnce({
       version: 1,
@@ -432,6 +484,43 @@ describe("page translation controller", () => {
     expect(state.phase).toBe("idle")
     expect(state.lastError?.code).toBe("SITE_DISABLED")
     expect(translateTextsMock).not.toHaveBeenCalled()
+  })
+
+  it("uses the current URL path for site include path rules", async () => {
+    window.history.replaceState({}, "", "/article?foo=1#bar")
+    readConfigMock.mockResolvedValueOnce({
+      version: 1,
+      targetLang: "zh-CN",
+      provider: {
+        id: "openai",
+        accessToken: "astra-token",
+        relayBaseURL: "https://astra.example/v1",
+        model: "gpt-5.4-nano",
+      },
+      presentation: {
+        mode: "bilingual",
+        theme: "default",
+      },
+      sites: {
+        [window.location.hostname]: {
+          enabled: true,
+          alwaysTranslate: false,
+          includePathPatterns: ["/article"],
+        },
+      },
+    })
+    translateTextsMock.mockResolvedValue({
+      ok: true,
+      translations: ["可见文本"],
+    })
+
+    await startPageTranslation()
+    await flushPromises()
+
+    expect(getPageTranslationState().lastError).toBeNull()
+    expect(translateTextsMock).toHaveBeenCalledWith(expect.objectContaining({
+      texts: ["Visible text"],
+    }))
   })
 
   it("re-translates blocks when source text changes in place", async () => {

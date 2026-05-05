@@ -1,14 +1,17 @@
-import { useEffect, useState } from "react"
+import { useEffect, useRef, useState } from "react"
 import { browser } from "#imports"
-import type { VocabularyEntry } from "@/utils/storage/vocabulary"
-import { recordLearningLoopEvent } from "@/utils/learning-loop-events"
+import type { VocabularyEntry, VocabularyThemePackImportPreview } from "@/utils/storage/vocabulary"
+import { buildLearningLoopAccountContinuityPopupSignInUrl, buildLearningLoopAccountContinuityProofMoment, LEARNING_LOOP_COMMERCIAL_SURFACE_COPY, recordLearningLoopEvent, type LearningLoopAccountContinuityAuthState } from "@/utils/learning-loop-events"
+import { commitLearningContinuitySync } from "@/utils/extension/messages"
 import {
   getVocabularyEntries,
+  importVocabularyEntriesFromThemePackPayload,
+  previewVocabularyEntriesFromThemePackPayload,
   removeVocabularyEntry,
   getDueVocabularyCount,
   updateVocabularyEntry,
 } from "@/utils/storage/vocabulary"
-import { deriveVocabularySourceDisplay } from "@/utils/storage/vocabulary-core"
+import { deriveVocabularySourceDisplay, getPageReviewVocabularyEntries, normalizeVocabularyStudyUrl } from "@/utils/storage/vocabulary-core"
 import { getReadingHistoryEntry } from "@/utils/storage/reading-history"
 import {
   deriveStudyLoopPageSummary,
@@ -16,29 +19,44 @@ import {
   getStudyProgress,
   type StudyLoopPageCounts,
   type StudyLoopPageSummary,
+  type StudyPageProgress,
   type StudyStep,
 } from "@/utils/storage/study-progress"
-import type { OwnedReadingItem, OwnedReadingQueueView, OwnedReadingStatus } from "@/utils/storage/owned-reading"
+import type {
+  OwnedReadingItem,
+  OwnedReadingQueueView,
+  OwnedReadingStatus,
+  OwnedReadingThemePackPackageImportPreview,
+  OwnedReadingThemePackPackagePayload,
+} from "@/utils/storage/owned-reading"
 import {
   buildOwnedReadingResumeTarget,
+  buildSignedOwnedReadingThemePackPackage,
+  buildOwnedReadingThemePacks,
   countOwnedReadingItemsByView,
   deriveOwnedReadingArticleUrl,
   describeOwnedReadingProgress,
   describeOwnedReadingResumeBehavior,
   filterOwnedReadingItemsByView,
   getOwnedReadingSourceTypeLabel,
+  importOwnedReadingThemePackPackagePayload,
+  previewOwnedReadingThemePackPackagePayload,
   listOwnedReadingItems,
   markOwnedReadingOpened,
+  parseSignedOwnedReadingThemePackPackage,
   matchOwnedReadingItemForVocabularyEntry,
   removeOwnedReadingItem,
   setOwnedReadingStatus,
   syncRecentReadingHistoryToOwnedQueue,
+  verifyOwnedReadingThemePackPackage,
 } from "@/utils/storage/owned-reading"
 import { isTtsSupported, speak, stopSpeaking } from "@/utils/tts"
 import { readConfig } from "@/utils/storage/config"
+import { readAstraSession } from "@/utils/storage/auth"
 import { translateTexts } from "@/utils/translate/translate"
 import type { ExplainMode } from "@/types/config"
-import { openVocabularyEntryInDeepRead } from "@/utils/deep-read-link"
+import { openPageInDeepRead, openVocabularyEntryInDeepRead } from "@/utils/deep-read-link"
+import { openFocusedReview, openPageReviewLoop } from "@/utils/review-link"
 import ReviewMode from "./ReviewMode"
 import { t } from "@/utils/i18n"
 
@@ -114,6 +132,12 @@ function exportAnkiTSV(entries: VocabularyEntry[]): void {
   downloadFile(tsv, "astra-vocabulary-anki.tsv", "text/tab-separated-values;charset=utf-8")
 }
 
+async function exportReadingThemePacksJSON(items: readonly OwnedReadingItem[], entries: readonly VocabularyEntry[]): Promise<void> {
+  const payload = await buildSignedOwnedReadingThemePackPackage(items, entries)
+  const json = JSON.stringify(payload, null, 2)
+  downloadFile(json, `astra-reading-theme-pack-package-${formatDateISO(Date.now())}.json`, "application/json;charset=utf-8")
+}
+
 function downloadFile(content: string, filename: string, mimeType: string): void {
   const blob = new Blob([content], { type: mimeType })
   const url = URL.createObjectURL(blob)
@@ -124,6 +148,18 @@ function downloadFile(content: string, filename: string, mimeType: string): void
   a.click()
   document.body.removeChild(a)
   URL.revokeObjectURL(url)
+}
+
+function readLocalTextFile(file: File): Promise<string> {
+  if (typeof file.text === "function") {
+    return file.text()
+  }
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader()
+    reader.onload = () => resolve(String(reader.result ?? ""))
+    reader.onerror = () => reject(reader.error ?? new Error("Unable to read the selected file."))
+    reader.readAsText(file)
+  })
 }
 
 function getInitialTab(): ActiveTab {
@@ -139,6 +175,49 @@ interface ReadingArticleSummary {
   hostname: string
   wordsTranslated: number | null
   progress: StudyLoopPageSummary
+}
+
+interface ReadingPageReviewTarget {
+  itemId: string
+  studyUrl: string
+  entryId?: string
+  count: number
+}
+
+interface ReadingQueueReviewTarget {
+  itemId: string
+  mode: "page" | "focused"
+  count: number
+  entryId?: string
+  studyUrl?: string
+}
+
+interface ReadingQueueRowModel {
+  item: OwnedReadingItem
+  formatBadgeLabel: string
+  statusLabel: string
+  openedLabel: string
+  savedVocabularyCount: number
+  savedVocabularyLabel: string
+  resumeTarget: ReturnType<typeof buildOwnedReadingResumeTarget>
+  resumeBehaviorLabel: string
+  progressLabel: string | null
+  articleSummary?: ReadingArticleSummary
+  reviewTarget: ReadingQueueReviewTarget | null
+  deepReadNextStepTarget: ReadingDeepReadNextStepTarget | null
+}
+
+interface ReadingDeepReadNextStepTarget {
+  itemId: string
+  pageUrl: string
+  nextStep: Extract<StudyStep, "guided_read" | "explain" | "vocab_save">
+}
+
+interface PendingThemePackImport {
+  generatedAt: string
+  payload: OwnedReadingThemePackPackagePayload
+  readingPreview: OwnedReadingThemePackPackageImportPreview
+  vocabularyPreview: VocabularyThemePackImportPreview
 }
 
 function getReadingStepLabel(step: StudyStep): string {
@@ -182,6 +261,192 @@ function getReadingNextStepHint(step: StudyStep | null): string {
 function formatWordsTranslated(wordsTranslated: number | null): string | null {
   if (wordsTranslated === null || wordsTranslated < 0) return null
   return `${wordsTranslated} ${wordsTranslated === 1 ? "word" : "words"} translated`
+}
+
+function formatSavedVocabularyCount(count: number): string {
+  return count === 1 ? "Saved vocabulary: 1 card" : `Saved vocabulary: ${count} cards`
+}
+
+function getReadingFormatBadgeLabel(sourceType: OwnedReadingItem["sourceType"]): string {
+  switch (sourceType) {
+    case "article":
+      return "Article"
+    case "pdf":
+      return "PDF"
+    case "epub":
+      return "EPUB"
+    case "subtitle-file":
+      return "Subtitle"
+  }
+}
+
+function sortVocabularyEntriesForDocumentReview(entries: VocabularyEntry[]): VocabularyEntry[] {
+  return [...entries].sort((a, b) => {
+    const aSentenceIndex = a.sourceContext?.sentenceIndex
+    const bSentenceIndex = b.sourceContext?.sentenceIndex
+    if (aSentenceIndex !== undefined && bSentenceIndex !== undefined && aSentenceIndex !== bSentenceIndex) {
+      return aSentenceIndex - bSentenceIndex
+    }
+    if (aSentenceIndex !== undefined) return -1
+    if (bSentenceIndex !== undefined) return 1
+    return b.savedAt - a.savedAt
+  })
+}
+
+function getVocabularyEntriesForReadingItem(item: OwnedReadingItem, entries: VocabularyEntry[]): VocabularyEntry[] {
+  return sortVocabularyEntriesForDocumentReview(
+    entries.filter((entry) => matchOwnedReadingItemForVocabularyEntry([item], entry)?.id === item.id),
+  )
+}
+
+function uniqueStudyUrlCandidates(values: Array<string | null | undefined>): string[] {
+  const seen = new Set<string>()
+  const urls: string[] = []
+  for (const value of values) {
+    const trimmed = value?.trim()
+    const normalized = normalizeVocabularyStudyUrl(trimmed)
+    if (!trimmed || !normalized || seen.has(normalized)) continue
+    seen.add(normalized)
+    urls.push(trimmed)
+  }
+  return urls
+}
+
+function buildReadingPageReviewTarget(
+  item: OwnedReadingItem,
+  articleSummary: ReadingArticleSummary | undefined,
+  entries: VocabularyEntry[],
+): ReadingPageReviewTarget | null {
+  if (item.sourceType !== "article" || articleSummary?.progress.nextStep !== "vocab_review") return null
+
+  const studyUrls = uniqueStudyUrlCandidates([
+    item.studyProgressRecordId,
+    deriveOwnedReadingArticleUrl(item),
+    articleSummary.pageUrl,
+  ])
+
+  for (const studyUrl of studyUrls) {
+    const pageEntries = getPageReviewVocabularyEntries(entries, studyUrl)
+    if (pageEntries.length > 0) {
+      return {
+        itemId: item.id,
+        studyUrl,
+        entryId: pageEntries[0]?.id,
+        count: pageEntries.length,
+      }
+    }
+  }
+
+  return null
+}
+
+function buildReadingReviewTarget(
+  item: OwnedReadingItem,
+  articleSummary: ReadingArticleSummary | undefined,
+  entries: VocabularyEntry[],
+): ReadingQueueReviewTarget | null {
+  const savedEntries = getVocabularyEntriesForReadingItem(item, entries)
+  if (savedEntries.length === 0) return null
+
+  const articlePageTarget = buildReadingPageReviewTarget(item, articleSummary, entries)
+  if (articlePageTarget) {
+    return { ...articlePageTarget, mode: "page" }
+  }
+
+  const linkedEntryIds = new Set(savedEntries.map((entry) => entry.id))
+  const studyUrls = uniqueStudyUrlCandidates([
+    item.studyProgressRecordId,
+    item.localUri,
+    item.sourceUrl,
+    item.sourceType === "article" ? deriveOwnedReadingArticleUrl(item) : null,
+    ...savedEntries.flatMap((entry) => [
+      entry.sourceContext?.studyProgressRecordId,
+      entry.sourceContext?.pageUrl,
+      entry.url,
+    ]),
+  ])
+
+  for (const studyUrl of studyUrls) {
+    const pageEntries = getPageReviewVocabularyEntries(entries, studyUrl)
+      .filter((entry) => linkedEntryIds.has(entry.id))
+    if (pageEntries.length > 0) {
+      return {
+        itemId: item.id,
+        mode: "page",
+        studyUrl,
+        entryId: pageEntries[0]?.id,
+        count: pageEntries.length,
+      }
+    }
+  }
+
+  return {
+    itemId: item.id,
+    mode: "focused",
+    entryId: savedEntries[0]?.id,
+    count: savedEntries.length,
+  }
+}
+
+function isDeepReadNextStep(step: StudyStep | null | undefined): step is ReadingDeepReadNextStepTarget["nextStep"] {
+  return step === "guided_read" || step === "explain" || step === "vocab_save"
+}
+
+function buildReadingDeepReadNextStepTarget(
+  item: OwnedReadingItem,
+  articleSummary: ReadingArticleSummary | undefined,
+): ReadingDeepReadNextStepTarget | null {
+  if (item.sourceType !== "article" || !isDeepReadNextStep(articleSummary?.progress.nextStep)) return null
+
+  const pageUrl = uniqueStudyUrlCandidates([
+    articleSummary?.pageUrl,
+    deriveOwnedReadingArticleUrl(item),
+    item.studyProgressRecordId,
+  ]).find((candidate) => /^https?:\/\//i.test(candidate))
+
+  return pageUrl
+    ? {
+        itemId: item.id,
+        pageUrl,
+        nextStep: articleSummary.progress.nextStep,
+      }
+    : null
+}
+
+function buildReadingQueueRow(
+  item: OwnedReadingItem,
+  articleSummary: ReadingArticleSummary | undefined,
+  entries: VocabularyEntry[],
+): ReadingQueueRowModel {
+  const savedVocabularyCount = getVocabularyEntriesForReadingItem(item, entries).length
+  return {
+    item,
+    formatBadgeLabel: getReadingFormatBadgeLabel(item.sourceType),
+    statusLabel: item.status.replace("_", " "),
+    openedLabel: formatDate(item.openedAt),
+    savedVocabularyCount,
+    savedVocabularyLabel: formatSavedVocabularyCount(savedVocabularyCount),
+    resumeTarget: buildOwnedReadingResumeTarget(item),
+    resumeBehaviorLabel: describeOwnedReadingResumeBehavior(item),
+    progressLabel: describeOwnedReadingProgress(item),
+    articleSummary,
+    reviewTarget: buildReadingReviewTarget(item, articleSummary, entries),
+    deepReadNextStepTarget: buildReadingDeepReadNextStepTarget(item, articleSummary),
+  }
+}
+
+function findStudyProgressPageForReadingItem(
+  item: OwnedReadingItem,
+  pages: StudyPageProgress[],
+  pageUrl: string | null,
+): StudyPageProgress | null {
+  const candidates = new Set(uniqueStudyUrlCandidates([
+    item.studyProgressRecordId,
+    pageUrl,
+  ]).map((value) => normalizeVocabularyStudyUrl(value)))
+
+  if (candidates.size === 0) return null
+  return pages.find((page) => candidates.has(normalizeVocabularyStudyUrl(page.url))) ?? null
 }
 
 function getReadingViewLabel(view: OwnedReadingQueueView): string {
@@ -236,6 +501,10 @@ function getLearningDeskHint(params: {
   return "Use Astra while reading and this space will turn into your daily study desk."
 }
 
+function buildPopupSignInDeepLinkUrl(): string {
+  return buildLearningLoopAccountContinuityPopupSignInUrl((path) => browser.runtime.getURL(path as "/popup.html"))
+}
+
 function formatLocalDayLabel(date: string): string {
   const parsed = new Date(`${date}T00:00:00`)
   if (Number.isNaN(parsed.getTime())) return date
@@ -271,6 +540,19 @@ export default function VocabularyApp() {
   const [speakingEntryId, setSpeakingEntryId] = useState<string | null>(null)
   const [explainingEntryId, setExplainingEntryId] = useState<string | null>(null)
   const [expandedContextEntryIds, setExpandedContextEntryIds] = useState<Set<string>>(() => new Set())
+  const [accountContinuityAuthState, setAccountContinuityAuthState] = useState<LearningLoopAccountContinuityAuthState | "unknown">("unknown")
+  const [themePackImportStatus, setThemePackImportStatus] = useState<string>("")
+  const [pendingThemePackImport, setPendingThemePackImport] = useState<PendingThemePackImport | null>(null)
+  const importInputRef = useRef<HTMLInputElement | null>(null)
+
+  const refreshAccountContinuityAuthState = async () => {
+    try {
+      const session = await readAstraSession()
+      setAccountContinuityAuthState(session?.identityMode === "authenticated" ? "signed_in" : "signed_out")
+    } catch {
+      setAccountContinuityAuthState("signed_out")
+    }
+  }
 
   const loadEntries = async () => {
     const [data, due, progress, ownedItems] = await Promise.all([
@@ -280,7 +562,24 @@ export default function VocabularyApp() {
       listOwnedReadingItems(),
     ])
     setEntries(data)
+    setReadingItems(ownedItems)
     setLinkedOwnedReadingItems(ownedItems)
+    const articleSummaryEntries = ownedItems.map((row) => {
+      if (row.sourceType !== "article") return null
+      const pageUrl = deriveOwnedReadingArticleUrl(row)
+      const progressKey = row.studyProgressRecordId?.trim() || pageUrl
+      const page = findStudyProgressPageForReadingItem(row, progress.pages, pageUrl)
+
+      return [row.id, {
+        pageUrl: pageUrl ?? progressKey ?? "",
+        hostname: page?.hostname ?? "",
+        wordsTranslated: null,
+        progress: deriveStudyLoopPageSummary(page),
+      }] as [string, ReadingArticleSummary]
+    })
+    setReadingArticleSummaries(Object.fromEntries(
+      articleSummaryEntries.filter((entry): entry is [string, ReadingArticleSummary] => entry !== null),
+    ))
     setDueCount(due)
     setDailyPagesStudied(progress.dailyStats.pagesStudied)
     setDailySentencesExplained(progress.dailyStats.sentencesExplained)
@@ -293,7 +592,12 @@ export default function VocabularyApp() {
   const loadReadingQueue = async () => {
     setReadingLoading(true)
     await syncRecentReadingHistoryToOwnedQueue()
-    const items = await listOwnedReadingItems()
+    void commitLearningContinuitySync("vocabulary-owned-reading-merge")
+    const [items, data] = await Promise.all([
+      listOwnedReadingItems(),
+      getVocabularyEntries(),
+    ])
+    setEntries(data)
     setReadingItems(items)
     setLinkedOwnedReadingItems(items)
 
@@ -328,6 +632,15 @@ export default function VocabularyApp() {
     }
     void loadEntries()
   }, [activeTab])
+
+  useEffect(() => {
+    void refreshAccountContinuityAuthState()
+    const refreshOnFocus = () => {
+      void refreshAccountContinuityAuthState()
+    }
+    window.addEventListener("focus", refreshOnFocus)
+    return () => window.removeEventListener("focus", refreshOnFocus)
+  }, [])
 
   useEffect(() => {
     return () => {
@@ -414,6 +727,28 @@ export default function VocabularyApp() {
       return b.openedAt - a.openedAt
     })
 
+  const readingRows = readingItems.map((item) => buildReadingQueueRow(item, readingArticleSummaries[item.id], entries))
+  const readingRowsByItemId = new Map(readingRows.map((row) => [row.item.id, row]))
+  const readingThemePacks = buildOwnedReadingThemePacks(readingItems)
+  const readingPageReviewTargets = readingRows
+    .map((row) => row.reviewTarget?.mode === "page" && row.reviewTarget.studyUrl ? row.reviewTarget : null)
+    .filter((target): target is ReadingQueueReviewTarget & { mode: "page"; studyUrl: string } => target !== null)
+  const learningDeskPageReviewTarget = [...readingPageReviewTargets]
+    .sort((a, b) => {
+      const aItem = readingItems.find((item) => item.id === a.itemId)
+      const bItem = readingItems.find((item) => item.id === b.itemId)
+      return (bItem?.openedAt ?? 0) - (aItem?.openedAt ?? 0)
+    })[0] ?? null
+  const readingDeepReadNextStepTargets = readingRows
+    .map((row) => row.deepReadNextStepTarget)
+    .filter((target): target is ReadingDeepReadNextStepTarget => target !== null)
+  const learningDeskDeepReadNextStepTarget = [...readingDeepReadNextStepTargets]
+    .sort((a, b) => {
+      const aItem = readingItems.find((item) => item.id === a.itemId)
+      const bItem = readingItems.find((item) => item.id === b.itemId)
+      return (bItem?.openedAt ?? 0) - (aItem?.openedAt ?? 0)
+    })[0] ?? null
+
   const hasDailyProgress =
     dailyPagesStudied > 0
     || dailySentencesExplained > 0
@@ -431,11 +766,46 @@ export default function VocabularyApp() {
     inProgressCount: readingCounts.in_progress,
   })
 
+  const openAccountContinuitySignIn = () => {
+    void browser.tabs.create({ url: buildPopupSignInDeepLinkUrl() })
+  }
+
+  const openReadingReview = async (target: ReadingQueueReviewTarget) => {
+    if (target.mode === "page" && target.studyUrl) {
+      await openPageReviewLoop(target.studyUrl, target.entryId)
+      return
+    }
+    if (target.entryId) {
+      await openFocusedReview(target.entryId)
+    }
+  }
+
+  const openReadingPageReview = async (target: ReadingQueueReviewTarget) => {
+    await openReadingReview(target)
+  }
+
+  const openReadingDeepReadNextStep = async (target: ReadingDeepReadNextStepTarget) => {
+    const item = readingItems.find((row) => row.id === target.itemId)
+    if (item) {
+      await markOwnedReadingOpened(item.id)
+      void commitLearningContinuitySync("vocabulary-owned-reading-opened")
+      recordLearningLoopEvent("resumed_reading", {
+        ownedReadingItemId: item.id,
+        pageUrl: target.pageUrl,
+        sourceType: item.sourceType,
+        source: "vocabulary",
+      })
+    }
+    await openPageInDeepRead(target.pageUrl)
+    void loadReadingQueue()
+  }
+
   const openReadingItem = async (item: OwnedReadingItem) => {
     const target = buildOwnedReadingResumeTarget(item)
     if (!target) return
 
     await markOwnedReadingOpened(item.id)
+    void commitLearningContinuitySync("vocabulary-owned-reading-opened")
     recordLearningLoopEvent("resumed_reading", {
       ownedReadingItemId: item.id,
       pageUrl: target.url,
@@ -448,12 +818,76 @@ export default function VocabularyApp() {
 
   const handleReadingStatus = async (id: string, status: OwnedReadingStatus) => {
     await setOwnedReadingStatus(id, status)
+    void commitLearningContinuitySync("vocabulary-owned-reading-status")
     void loadReadingQueue()
   }
 
   const handleRemoveReading = async (id: string) => {
     await removeOwnedReadingItem(id)
+    void commitLearningContinuitySync("vocabulary-owned-reading-remove")
     void loadReadingQueue()
+  }
+
+  const handleExportReadingThemePacks = async () => {
+    await exportReadingThemePacksJSON(readingItems, entries)
+  }
+
+  const handleImportReadingThemePack = () => {
+    importInputRef.current?.click()
+  }
+
+  const handleImportReadingThemePackFile = async (file: File | null | undefined) => {
+    if (!file) return
+    setPendingThemePackImport(null)
+    setThemePackImportStatus("Verifying theme-pack package signature…")
+    try {
+      const text = await readLocalTextFile(file)
+      const signedPackage = parseSignedOwnedReadingThemePackPackage(text)
+      const payload = await verifyOwnedReadingThemePackPackage(signedPackage)
+      const [readingPreview, vocabularyPreview] = await Promise.all([
+        previewOwnedReadingThemePackPackagePayload(payload),
+        previewVocabularyEntriesFromThemePackPayload(payload),
+      ])
+      setPendingThemePackImport({
+        generatedAt: signedPackage.generatedAt,
+        payload,
+        readingPreview,
+        vocabularyPreview,
+      })
+      setThemePackImportStatus(
+        `Signature verified. Preview ready: ${readingPreview.importedCount} reading item(s) and ${vocabularyPreview.importedCount} vocabulary entr${vocabularyPreview.importedCount === 1 ? "y" : "ies"} can be applied.`,
+      )
+    } catch (error) {
+      setThemePackImportStatus(error instanceof Error ? error.message : "Theme-pack package import failed.")
+    } finally {
+      if (importInputRef.current) {
+        importInputRef.current.value = ""
+      }
+    }
+  }
+
+  const handleApplyReadingThemePackImport = async () => {
+    if (!pendingThemePackImport) return
+    setThemePackImportStatus("Applying verified theme-pack package…")
+    try {
+      const [readingResult, vocabularyResult] = await Promise.all([
+        importOwnedReadingThemePackPackagePayload(pendingThemePackImport.payload),
+        importVocabularyEntriesFromThemePackPayload(pendingThemePackImport.payload),
+      ])
+      setPendingThemePackImport(null)
+      setThemePackImportStatus(
+        `Signature verified. Imported ${readingResult.importedCount} reading item(s) and ${vocabularyResult.importedCount} vocabulary entr${vocabularyResult.importedCount === 1 ? "y" : "ies"}.`,
+      )
+      void commitLearningContinuitySync("vocabulary-theme-pack-import")
+      await loadReadingQueue()
+    } catch (error) {
+      setThemePackImportStatus(error instanceof Error ? error.message : "Theme-pack package import failed.")
+    }
+  }
+
+  const handleCancelReadingThemePackImport = () => {
+    setPendingThemePackImport(null)
+    setThemePackImportStatus("Theme-pack package import canceled before local changes were applied.")
   }
 
   const handleSpeakEntry = async (entry: VocabularyEntry) => {
@@ -531,11 +965,10 @@ export default function VocabularyApp() {
   }
 
   const containerStyle: React.CSSProperties = {
-    maxWidth: 720,
     margin: "0 auto",
     padding: "24px 20px",
-    fontFamily: "system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif",
-    color: "#0f172a",
+    fontFamily: "var(--astra-font)",
+    color: "var(--astra-text-primary)",
     lineHeight: 1.5,
   }
 
@@ -560,8 +993,8 @@ export default function VocabularyApp() {
   const countBadgeStyle: React.CSSProperties = {
     fontSize: 13,
     fontWeight: 500,
-    color: "#6366f1",
-    background: "rgba(99, 102, 241, 0.1)",
+    color: "var(--astra-brand)",
+    background: "var(--astra-brand-muted)",
     borderRadius: 999,
     padding: "2px 10px",
   }
@@ -570,7 +1003,9 @@ export default function VocabularyApp() {
     width: "100%",
     padding: "8px 12px",
     fontSize: 14,
-    border: "1px solid #e2e8f0",
+    color: "var(--astra-text-primary)",
+    background: "var(--astra-bg-input)",
+    border: "1px solid var(--astra-border)",
     borderRadius: 8,
     outline: "none",
     boxSizing: "border-box",
@@ -586,9 +1021,9 @@ export default function VocabularyApp() {
 
   const sortButtonStyle = (active: boolean): React.CSSProperties => ({
     border: "1px solid",
-    borderColor: active ? "#6366f1" : "#e2e8f0",
-    background: active ? "rgba(99, 102, 241, 0.08)" : "#fff",
-    color: active ? "#6366f1" : "#64748b",
+    borderColor: active ? "var(--astra-brand)" : "var(--astra-border)",
+    background: active ? "var(--astra-brand-muted)" : "var(--astra-bg-card)",
+    color: active ? "var(--astra-brand)" : "var(--astra-text-muted)",
     borderRadius: 6,
     padding: "5px 12px",
     fontSize: 12,
@@ -597,9 +1032,9 @@ export default function VocabularyApp() {
   })
 
   const exportButtonStyle: React.CSSProperties = {
-    border: "1px solid #e2e8f0",
-    background: "#fff",
-    color: "#334155",
+    border: "1px solid var(--astra-border)",
+    background: "var(--astra-bg-card)",
+    color: "var(--astra-text-secondary)",
     borderRadius: 6,
     padding: "5px 12px",
     fontSize: 12,
@@ -608,9 +1043,9 @@ export default function VocabularyApp() {
   }
 
   const learningActionButtonStyle: React.CSSProperties = {
-    border: "1px solid #bfdbfe",
-    background: "#eff6ff",
-    color: "#1d4ed8",
+    border: "1px solid var(--astra-info-border)",
+    background: "var(--astra-info-bg)",
+    color: "var(--astra-info)",
     borderRadius: 8,
     padding: "6px 10px",
     fontSize: 12,
@@ -619,29 +1054,29 @@ export default function VocabularyApp() {
   }
 
   const cardStyle: React.CSSProperties = {
-    border: "1px solid #e2e8f0",
+    border: "1px solid var(--astra-border)",
     borderRadius: 10,
     padding: "12px 16px",
     marginBottom: 10,
-    background: "#fff",
+    background: "var(--astra-bg-card)",
   }
 
   const wordStyle: React.CSSProperties = {
     fontSize: 16,
     fontWeight: 600,
-    color: "#0f172a",
+    color: "var(--astra-text-primary)",
     marginBottom: 4,
   }
 
   const translationStyle: React.CSSProperties = {
     fontSize: 14,
-    color: "#6366f1",
+    color: "var(--astra-brand)",
     marginBottom: 6,
   }
 
   const contextStyle: React.CSSProperties = {
     fontSize: 12,
-    color: "#64748b",
+    color: "var(--astra-text-muted)",
     fontStyle: "italic",
     marginBottom: 6,
     lineHeight: 1.4,
@@ -657,13 +1092,13 @@ export default function VocabularyApp() {
 
   const metaStyle: React.CSSProperties = {
     fontSize: 11,
-    color: "#94a3b8",
+    color: "var(--astra-text-hint)",
   }
 
   const deleteBtnStyle: React.CSSProperties = {
     border: "none",
-    background: "rgba(239, 68, 68, 0.08)",
-    color: "#ef4444",
+    background: "var(--astra-danger-bg)",
+    color: "var(--astra-danger)",
     borderRadius: 6,
     padding: "3px 10px",
     fontSize: 11,
@@ -673,8 +1108,8 @@ export default function VocabularyApp() {
 
   const confirmBtnStyle: React.CSSProperties = {
     border: "none",
-    background: "#ef4444",
-    color: "#fff",
+    background: "var(--astra-danger)",
+    color: "var(--astra-text-on-brand)",
     borderRadius: 6,
     padding: "3px 10px",
     fontSize: 11,
@@ -685,7 +1120,7 @@ export default function VocabularyApp() {
   const emptyStyle: React.CSSProperties = {
     textAlign: "center",
     padding: "48px 20px",
-    color: "#94a3b8",
+    color: "var(--astra-text-hint)",
     fontSize: 15,
   }
 
@@ -694,31 +1129,31 @@ export default function VocabularyApp() {
     fontSize: 14,
     fontWeight: 600,
     border: "none",
-    borderBottom: active ? "2px solid #6366f1" : "2px solid transparent",
-    background: "transparent",
-    color: active ? "#6366f1" : "#64748b",
+    borderBottom: active ? "2px solid var(--astra-brand)" : "2px solid var(--astra-clear)",
+    background: "var(--astra-clear)",
+    color: active ? "var(--astra-brand)" : "var(--astra-text-muted)",
     cursor: "pointer",
   })
 
   const tabBarStyle: React.CSSProperties = {
     display: "flex",
     gap: 4,
-    borderBottom: "1px solid #e2e8f0",
+    borderBottom: "1px solid var(--astra-border)",
     marginBottom: 20,
   }
 
   const learningDeskCardStyle: React.CSSProperties = {
     marginBottom: 18,
     padding: "16px 18px",
-    background: "linear-gradient(135deg, #eff6ff 0%, #f8fafc 55%, #ecfeff 100%)",
-    border: "1px solid #bfdbfe",
+    background: "linear-gradient(135deg, var(--astra-brand-muted) 0%, var(--astra-bg-primary) 55%, var(--astra-bg-primary) 100%)",
+    border: "1px solid var(--astra-brand-border)",
     borderRadius: 14,
   }
 
   const learningDeskActionStyle: React.CSSProperties = {
-    border: "1px solid #bfdbfe",
-    background: "#ffffffcc",
-    color: "#1d4ed8",
+    border: "1px solid var(--astra-info-border)",
+    background: "var(--astra-bg-card)",
+    color: "var(--astra-info)",
     borderRadius: 8,
     padding: "7px 12px",
     fontSize: 12,
@@ -726,18 +1161,76 @@ export default function VocabularyApp() {
     cursor: "pointer",
   }
 
-  const showListLoading = activeTab !== "reading" && loading
-  const showReadingLoading = activeTab === "reading" && readingLoading
+  const accountContinuityAuthHydrated = accountContinuityAuthState !== "unknown"
+  const showListLoading = activeTab !== "reading" && (loading || !accountContinuityAuthHydrated)
+  const showReadingLoading = activeTab === "reading" && (readingLoading || !accountContinuityAuthHydrated)
+  const accountContinuityCopy = LEARNING_LOOP_COMMERCIAL_SURFACE_COPY.accountContinuity
+  const resolvedAccountContinuityAuthState: LearningLoopAccountContinuityAuthState = accountContinuityAuthState === "signed_in" ? "signed_in" : "signed_out"
+  const isAccountContinuitySignedIn = accountContinuityAuthState === "signed_in"
+  const vocabularyContinuityProofCounts = {
+    dueReviewCount: dueCount,
+    savedSentenceCount: entries.length,
+    inProgressReadingCount: readingCounts.in_progress,
+    pagesStudiedToday: dailyPagesStudied,
+    sentencesExplainedToday: dailySentencesExplained,
+    vocabSavedToday: dailyVocabSaved,
+    vocabReviewedToday: dailyVocabReviewed,
+  }
+  const vocabularyListProofMoment = buildLearningLoopAccountContinuityProofMoment("vocabulary_list", vocabularyContinuityProofCounts, { authState: resolvedAccountContinuityAuthState })
+  const vocabularyReviewProofMoment = buildLearningLoopAccountContinuityProofMoment("vocabulary_review", vocabularyContinuityProofCounts, { authState: resolvedAccountContinuityAuthState })
+  const vocabularyReadingProofMoment = buildLearningLoopAccountContinuityProofMoment("vocabulary_reading", vocabularyContinuityProofCounts, { authState: resolvedAccountContinuityAuthState })
+  const renderAccountContinuityProofCard = (testId: string, proofMoment: string) => (
+    <div
+      data-testid={testId}
+      style={{
+        marginBottom: 12,
+        padding: "10px 12px",
+        background: "var(--astra-bg-elevated)",
+        border: "1px solid var(--astra-border-strong)",
+        borderRadius: 10,
+      }}
+    >
+      <div style={{ fontSize: 11, fontWeight: 800, color: "var(--astra-text-secondary)", textTransform: "uppercase", letterSpacing: "0.04em" }}>
+        {accountContinuityCopy.eyebrow}
+      </div>
+      <div style={{ fontSize: 13, fontWeight: 800, color: "var(--astra-text-primary)", marginTop: 4 }}>
+        {isAccountContinuitySignedIn ? accountContinuityCopy.connectedTitle : accountContinuityCopy.title}
+      </div>
+      <div style={{ fontSize: 12, color: "var(--astra-text-secondary)", lineHeight: 1.45, marginTop: 4, fontWeight: 700 }}>
+        {proofMoment}
+      </div>
+      {isAccountContinuitySignedIn && (
+        <div style={{ fontSize: 11, color: "var(--astra-text-muted)", lineHeight: 1.45, marginTop: 6 }}>
+          {accountContinuityCopy.boundary}
+        </div>
+      )}
+      {accountContinuityAuthHydrated && !isAccountContinuitySignedIn && (
+        <>
+          <button
+            type="button"
+            data-testid={`${testId}-sign-in-cta`}
+            style={{ ...learningDeskActionStyle, width: "100%", marginTop: 8 }}
+            onClick={openAccountContinuitySignIn}
+          >
+            {accountContinuityCopy.cta}
+          </button>
+          <div style={{ fontSize: 11, color: "var(--astra-text-muted)", lineHeight: 1.45, marginTop: 6 }}>
+            {accountContinuityCopy.ctaHelper}
+          </div>
+        </>
+      )}
+    </div>
+  )
   if (showListLoading || showReadingLoading) {
     return (
-      <div style={containerStyle}>
-        <p style={{ color: "#94a3b8", textAlign: "center" }}>Loading...</p>
+      <div className="astra-container astra-container--medium" style={containerStyle}>
+        <p style={{ color: "var(--astra-text-hint)", textAlign: "center" }}>Loading...</p>
       </div>
     )
   }
 
   return (
-    <div style={containerStyle}>
+    <div className="astra-container astra-container--medium" style={containerStyle}>
       <div style={headerStyle}>
         <h1 style={titleStyle}>
           {t("vocabulary_title")}
@@ -757,33 +1250,84 @@ export default function VocabularyApp() {
         </button>
       </div>
 
-      {activeTab === "review" && <ReviewMode />}
+        {activeTab === "review" && (
+          <>
+            {accountContinuityAuthHydrated && renderAccountContinuityProofCard("vocabulary-review-continuity-proof", vocabularyReviewProofMoment)}
+            <ReviewMode />
+          </>
+        )}
 
       {activeTab === "list" && (
         <>
           <div style={learningDeskCardStyle}>
-            <div style={{ fontSize: 12, fontWeight: 800, letterSpacing: 0.4, textTransform: "uppercase", color: "#1d4ed8", marginBottom: 6 }}>
+            <div style={{ fontSize: 12, fontWeight: 800, letterSpacing: 0.4, textTransform: "uppercase", color: "var(--astra-info)", marginBottom: 6 }}>
               {t("vocabulary_learningDeskTitle")}
             </div>
-            <div style={{ fontSize: 18, lineHeight: 1.35, fontWeight: 700, color: "#0f172a", marginBottom: 6 }}>
+            <div style={{ fontSize: 18, lineHeight: 1.35, fontWeight: 700, color: "var(--astra-text-primary)", marginBottom: 6 }}>
               {learningDeskHeadline}
             </div>
-            <div style={{ fontSize: 13, color: "#475569", marginBottom: 12 }}>
+            <div style={{ fontSize: 13, color: "var(--astra-text-secondary)", marginBottom: 12 }}>
               {learningDeskHint}
             </div>
+            <div
+              data-testid="vocabulary-continuity-nudge"
+              style={{
+                marginBottom: 12,
+                padding: "10px 12px",
+                background: "var(--astra-bg-elevated)",
+                border: "1px solid var(--astra-border-strong)",
+                borderRadius: 10,
+              }}
+            >
+              <div style={{ fontSize: 11, fontWeight: 800, color: "var(--astra-text-secondary)", textTransform: "uppercase", letterSpacing: "0.04em" }}>
+                {accountContinuityCopy.eyebrow}
+              </div>
+              <div style={{ fontSize: 13, fontWeight: 800, color: "var(--astra-text-primary)", marginTop: 4 }}>
+                {isAccountContinuitySignedIn ? accountContinuityCopy.connectedTitle : accountContinuityCopy.title}
+              </div>
+              <div style={{ fontSize: 12, color: "var(--astra-text-secondary)", lineHeight: 1.45, marginTop: 4 }}>
+                {isAccountContinuitySignedIn ? accountContinuityCopy.connectedSummary : accountContinuityCopy.bullets[0]}
+              </div>
+              <div style={{ fontSize: 11, color: "var(--astra-text-muted)", lineHeight: 1.45, marginTop: 6 }}>
+                {isAccountContinuitySignedIn ? accountContinuityCopy.bullets[2] : accountContinuityCopy.bullets[1]}
+              </div>
+              <div data-testid="vocabulary-account-continuity-proof-moment" style={{ fontSize: 12, color: "var(--astra-text-secondary)", lineHeight: 1.45, marginTop: 6, fontWeight: 700 }}>
+                {vocabularyListProofMoment}
+              </div>
+              {isAccountContinuitySignedIn && (
+                <div style={{ fontSize: 11, color: "var(--astra-text-muted)", lineHeight: 1.45, marginTop: 6 }}>
+                  {accountContinuityCopy.boundary}
+                </div>
+              )}
+              {!isAccountContinuitySignedIn && (
+                <>
+                  <button
+                    type="button"
+                    data-testid="vocabulary-account-continuity-sign-in-cta"
+                    style={{ ...learningDeskActionStyle, width: "100%", marginTop: 8 }}
+                    onClick={openAccountContinuitySignIn}
+                  >
+                    {accountContinuityCopy.cta}
+                  </button>
+                  <div style={{ fontSize: 11, color: "var(--astra-text-muted)", lineHeight: 1.45, marginTop: 6 }}>
+                    {accountContinuityCopy.ctaHelper}
+                  </div>
+                </>
+              )}
+            </div>
             <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginBottom: 12 }}>
-              <div style={{ background: "#fff", border: "1px solid #dbeafe", borderRadius: 10, padding: "10px 12px", minWidth: 120 }}>
-                <div style={{ fontSize: 11, fontWeight: 700, color: "#64748b", marginBottom: 4 }}>Due review</div>
-                <div style={{ fontSize: 11, fontWeight: 700, color: "#64748b", marginBottom: 4 }}>{t("vocabulary_statDueReview")}</div>
-                <div style={{ fontSize: 22, fontWeight: 800, color: dueCount > 0 ? "#b45309" : "#0f172a" }}>{dueCount}</div>
+              <div style={{ background: "var(--astra-bg-card)", border: "1px solid var(--astra-info-border)", borderRadius: 10, padding: "10px 12px", minWidth: 120 }}>
+                <div style={{ fontSize: 11, fontWeight: 700, color: "var(--astra-text-muted)", marginBottom: 4 }}>Due review</div>
+                <div style={{ fontSize: 11, fontWeight: 700, color: "var(--astra-text-muted)", marginBottom: 4 }}>{t("vocabulary_statDueReview")}</div>
+                <div style={{ fontSize: 22, fontWeight: 800, color: dueCount > 0 ? "var(--astra-warning)" : "var(--astra-text-primary)" }}>{dueCount}</div>
               </div>
-              <div style={{ background: "#fff", border: "1px solid #dbeafe", borderRadius: 10, padding: "10px 12px", minWidth: 120 }}>
-                <div style={{ fontSize: 11, fontWeight: 700, color: "#64748b", marginBottom: 4 }}>{t("vocabulary_statInProgress")}</div>
-                <div style={{ fontSize: 22, fontWeight: 800, color: "#0f172a" }}>{readingCounts.in_progress}</div>
+              <div style={{ background: "var(--astra-bg-card)", border: "1px solid var(--astra-info-border)", borderRadius: 10, padding: "10px 12px", minWidth: 120 }}>
+                <div style={{ fontSize: 11, fontWeight: 700, color: "var(--astra-text-muted)", marginBottom: 4 }}>{t("vocabulary_statInProgress")}</div>
+                <div style={{ fontSize: 22, fontWeight: 800, color: "var(--astra-text-primary)" }}>{readingCounts.in_progress}</div>
               </div>
-              <div style={{ background: "#fff", border: "1px solid #dbeafe", borderRadius: 10, padding: "10px 12px", minWidth: 120 }}>
-                <div style={{ fontSize: 11, fontWeight: 700, color: "#64748b", marginBottom: 4 }}>{t("vocabulary_statSavedWords")}</div>
-                <div style={{ fontSize: 22, fontWeight: 800, color: "#0f172a" }}>{entries.length}</div>
+              <div style={{ background: "var(--astra-bg-card)", border: "1px solid var(--astra-info-border)", borderRadius: 10, padding: "10px 12px", minWidth: 120 }}>
+                <div style={{ fontSize: 11, fontWeight: 700, color: "var(--astra-text-muted)", marginBottom: 4 }}>{t("vocabulary_statSavedWords")}</div>
+                <div style={{ fontSize: 22, fontWeight: 800, color: "var(--astra-text-primary)" }}>{entries.length}</div>
               </div>
             </div>
             <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
@@ -797,13 +1341,47 @@ export default function VocabularyApp() {
                 {t("vocabulary_actionBrowseSaved")}
               </button>
             </div>
+            {learningDeskPageReviewTarget && (
+              <div data-testid="learning-desk-page-review-cta" style={{ marginTop: 12, padding: "10px 12px", background: "var(--astra-success-bg)", border: "1px solid var(--astra-success-border)", borderRadius: 10 }}>
+                <div style={{ fontSize: 12, fontWeight: 800, color: "var(--astra-success)", marginBottom: 4 }}>
+                  {t("popup_studyPageSavedReviewTitle")}
+                </div>
+                <div style={{ fontSize: 12, color: "var(--astra-success)", lineHeight: 1.45, marginBottom: 8 }}>
+                  {t("popup_studyPageSavedReviewHint", String(learningDeskPageReviewTarget.count))}
+                </div>
+                <button
+                  type="button"
+                  style={learningDeskActionStyle}
+                  onClick={() => void openReadingPageReview(learningDeskPageReviewTarget)}
+                >
+                  {t("popup_studyPageSavedReviewAction")}
+                </button>
+              </div>
+            )}
+            {learningDeskDeepReadNextStepTarget && (
+              <div data-testid="learning-desk-deep-read-next-step-cta" style={{ marginTop: 12, padding: "10px 12px", background: "var(--astra-info-bg)", border: "1px solid var(--astra-info-border)", borderRadius: 10 }}>
+                <div style={{ fontSize: 12, fontWeight: 800, color: "var(--astra-info)", marginBottom: 4 }}>
+                  Continue next step in Deep Read
+                </div>
+                <div style={{ fontSize: 12, color: "var(--astra-info)", lineHeight: 1.45, marginBottom: 8 }}>
+                  Next: {getReadingStepLabel(learningDeskDeepReadNextStepTarget.nextStep)}
+                </div>
+                <button
+                  type="button"
+                  style={learningDeskActionStyle}
+                  onClick={() => void openReadingDeepReadNextStep(learningDeskDeepReadNextStepTarget)}
+                >
+                  Continue next step in Deep Read
+                </button>
+              </div>
+            )}
             {featuredReadingItem && (
-              <div style={{ marginTop: 12, padding: "10px 12px", background: "#ffffffcc", border: "1px solid #dbeafe", borderRadius: 10 }}>
-                <div style={{ fontSize: 11, fontWeight: 700, color: "#64748b", marginBottom: 4 }}>{t("vocabulary_continueReadingTitle")}</div>
-                <div style={{ fontSize: 13, fontWeight: 700, color: "#0f172a", marginBottom: 4 }}>
+              <div style={{ marginTop: 12, padding: "10px 12px", background: "var(--astra-bg-card)", border: "1px solid var(--astra-info-border)", borderRadius: 10 }}>
+                <div style={{ fontSize: 11, fontWeight: 700, color: "var(--astra-text-muted)", marginBottom: 4 }}>{t("vocabulary_continueReadingTitle")}</div>
+                <div style={{ fontSize: 13, fontWeight: 700, color: "var(--astra-text-primary)", marginBottom: 4 }}>
                   {featuredReadingItem.title}
                 </div>
-                <div style={{ fontSize: 12, color: "#64748b", marginBottom: 8 }}>
+                <div style={{ fontSize: 12, color: "var(--astra-text-muted)", marginBottom: 8 }}>
                   {describeOwnedReadingResumeBehavior(featuredReadingItem)}
                 </div>
                 <button
@@ -822,43 +1400,43 @@ export default function VocabularyApp() {
               style={{
                 marginBottom: 16,
                 padding: "12px 14px",
-                background: "#f8fafc",
-                border: "1px solid #e2e8f0",
+                background: "var(--astra-bg-elevated)",
+                border: "1px solid var(--astra-border)",
                 borderRadius: 10,
               }}
               aria-label={t("review_todayProgressAria")}
             >
               <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8, flexWrap: "wrap" }}>
-                <div style={{ fontSize: 12, fontWeight: 700, color: "#475569" }}>
+                <div style={{ fontSize: 12, fontWeight: 700, color: "var(--astra-text-secondary)" }}>
                   {t("popup_studyTodayStatsTitle")}
                 </div>
                 <button
                   type="button"
                   onClick={() => setDailyStatsInfoOpen((current) => !current)}
                   aria-expanded={dailyStatsInfoOpen}
+                  className="astra-cursor-pointer"
                   style={{
-                    border: "1px solid #cbd5e1",
-                    background: "#ffffff",
-                    color: "#475569",
+                    border: "1px solid var(--astra-border-strong)",
+                    background: "var(--astra-bg-card)",
+                    color: "var(--astra-text-secondary)",
                     borderRadius: 999,
                     padding: "2px 8px",
                     fontSize: 11,
                     fontWeight: 700,
-                    cursor: "pointer",
                   }}
                 >
                   {t("popup_studyTodayStatsInfoAction")}
                 </button>
               </div>
-              <div style={{ fontSize: 11, color: "#94a3b8", marginBottom: 8 }}>
+              <div style={{ fontSize: 11, color: "var(--astra-text-hint)", marginBottom: 8 }}>
                 {t("popup_studyTodayStatsHint", dailyStatsLabel || dailyStatsDate)}
               </div>
               {dailyStatsInfoOpen && (
-                <div style={{ fontSize: 11, color: "#64748b", lineHeight: 1.6, marginBottom: 8 }}>
+                <div style={{ fontSize: 11, color: "var(--astra-text-muted)", lineHeight: 1.6, marginBottom: 8 }}>
                   {t("popup_studyTodayStatsResetBoundary")}
                 </div>
               )}
-              <div style={{ display: "flex", flexWrap: "wrap", gap: "8px 14px", fontSize: 12, color: "#64748b" }}>
+              <div style={{ display: "flex", flexWrap: "wrap", gap: "8px 14px", fontSize: 12, color: "var(--astra-text-muted)" }}>
                 <span>{t("popup_studyStatPages", dailyPagesStudied.toString())}</span>
                 <span>{t("popup_studyStatExplained", dailySentencesExplained.toString())}</span>
                 <span>{t("popup_studyStatSaved", dailyVocabSaved.toString())}</span>
@@ -877,7 +1455,7 @@ export default function VocabularyApp() {
           </div>
 
           <div style={toolbarStyle}>
-            <span style={{ fontSize: 12, color: "#64748b", marginRight: 4 }}>{t("vocabulary_sortLabel")}</span>
+            <span style={{ fontSize: 12, color: "var(--astra-text-muted)", marginRight: 4 }}>{t("vocabulary_sortLabel")}</span>
             <button
               type="button"
               style={sortButtonStyle(sortMode === "time")}
@@ -917,16 +1495,16 @@ export default function VocabularyApp() {
                 <button
                   type="button"
                   key={tag}
+                  className="astra-cursor-pointer"
                   style={{
                     border: "1px solid",
-                    borderColor: activeTagFilter === tag ? "#6366f1" : "#e2e8f0",
-                    background: activeTagFilter === tag ? "rgba(99, 102, 241, 0.08)" : "#fff",
-                    color: activeTagFilter === tag ? "#6366f1" : "#64748b",
+                    borderColor: activeTagFilter === tag ? "var(--astra-brand)" : "var(--astra-border)",
+                    background: activeTagFilter === tag ? "var(--astra-brand-muted)" : "var(--astra-bg-card)",
+                    color: activeTagFilter === tag ? "var(--astra-brand)" : "var(--astra-text-muted)",
                     borderRadius: 999,
                     padding: "3px 10px",
                     fontSize: 12,
                     fontWeight: 500,
-                    cursor: "pointer",
                   }}
                   onClick={() => setActiveTagFilter(activeTagFilter === tag ? null : tag)}
                 >
@@ -963,7 +1541,7 @@ export default function VocabularyApp() {
               <div
                 data-role="vocabulary-entry-card"
                 data-entry-id={entry.id}
-                style={{ cursor: "pointer" }}
+                className="astra-cursor-pointer"
                 onClick={() => setExpandedId(expandedId === entry.id ? null : entry.id)}
               >
                 <div style={wordStyle}>{entry.text}</div>
@@ -971,12 +1549,12 @@ export default function VocabularyApp() {
                   <div style={translationStyle}>{entry.translation}</div>
                 )}
                 {sourceDisplay.surfaceLabel && (
-                  <div style={{ fontSize: 11, color: "#6366f1", fontWeight: 700, marginBottom: 4 }}>
+                  <div style={{ fontSize: 11, color: "var(--astra-brand)", fontWeight: 700, marginBottom: 4 }}>
                     {sourceDisplay.surfaceLabel}
                   </div>
                 )}
                 {sourceDisplay.sourceLabel && (
-                  <div style={{ fontSize: 12, color: "#334155", fontWeight: 600, marginBottom: 4 }}>
+                  <div style={{ fontSize: 12, color: "var(--astra-text-secondary)", fontWeight: 600, marginBottom: 4 }}>
                     {sourceDisplay.sourceLabel}
                   </div>
                 )}
@@ -992,23 +1570,23 @@ export default function VocabularyApp() {
                       event.stopPropagation()
                       toggleExpandedContext(entry.id)
                     }}
+                    className="astra-cursor-pointer"
                     style={{
                       border: "none",
                       background: "none",
-                      color: "#2563eb",
+                      color: "var(--astra-info)",
                       borderRadius: 0,
                       padding: 0,
                       marginBottom: 6,
                       fontSize: 12,
                       fontWeight: 700,
-                      cursor: "pointer",
                     }}
                   >
                     {isContextExpanded ? t("vocabulary_contextShowLess") : t("vocabulary_contextShowMore")}
                   </button>
                 )}
                 {entry.note && expandedId !== entry.id && (
-                  <div style={{ fontSize: 12, color: "#64748b", marginBottom: 4 }}>
+                  <div style={{ fontSize: 12, color: "var(--astra-text-muted)", marginBottom: 4 }}>
                     Note: {entry.note.length > 80 ? `${entry.note.slice(0, 80)}...` : entry.note}
                   </div>
                 )}
@@ -1019,8 +1597,8 @@ export default function VocabularyApp() {
                         key={tag}
                         style={{
                           fontSize: 11,
-                          background: "rgba(99, 102, 241, 0.08)",
-                          color: "#6366f1",
+                          background: "var(--astra-brand-muted)",
+                          color: "var(--astra-brand)",
                           borderRadius: 999,
                           padding: "1px 8px",
                           fontWeight: 500,
@@ -1034,47 +1612,47 @@ export default function VocabularyApp() {
               </div>
 
               {expandedId === entry.id && (
-                <div style={{ marginTop: 8, borderTop: "1px solid #f1f5f9", paddingTop: 8 }}>
+                <div style={{ marginTop: 8, borderTop: "1px solid var(--astra-border)", paddingTop: 8 }}>
                   {(sourceDisplay.sourceContext?.pageTitle || sourceDisplay.sourceContext?.sentenceText || sourceDisplay.articleExcerpt || sourceDisplay.contentSummary || sourceDisplay.pageUrl || sourceDisplay.hostname) && (
                     <div
                       style={{
                         marginBottom: 10,
                         padding: "8px 10px",
-                        background: "#f8fafc",
-                        border: "1px solid #e2e8f0",
+                        background: "var(--astra-bg-elevated)",
+                        border: "1px solid var(--astra-border)",
                         borderRadius: 8,
                       }}
                     >
-                      <div style={{ fontSize: 12, fontWeight: 700, color: "#334155", marginBottom: 6 }}>
+                      <div style={{ fontSize: 12, fontWeight: 700, color: "var(--astra-text-secondary)", marginBottom: 6 }}>
                         {t("vocabulary_sourceContextTitle")}
                       </div>
                       {sourceDisplay.sourceContext?.pageTitle && (
-                        <div style={{ fontSize: 12, color: "#334155", fontWeight: 600, marginBottom: 4 }}>
+                        <div style={{ fontSize: 12, color: "var(--astra-text-secondary)", fontWeight: 600, marginBottom: 4 }}>
                           {sourceDisplay.sourceContext.pageTitle}
                         </div>
                       )}
                       {sourceDisplay.hostname && (
-                        <div style={{ fontSize: 11, color: "#64748b", marginBottom: 4 }}>
+                        <div style={{ fontSize: 11, color: "var(--astra-text-muted)", marginBottom: 4 }}>
                           {t("vocabulary_sourceHostLabel")} {sourceDisplay.hostname}
                         </div>
                       )}
                       {sourceDisplay.pageUrl && (
-                        <div style={{ fontSize: 11, color: "#64748b", marginBottom: 4, wordBreak: "break-all" }}>
+                        <div style={{ fontSize: 11, color: "var(--astra-text-muted)", marginBottom: 4, wordBreak: "break-all" }}>
                           {/^https?:\/\//i.test(sourceDisplay.pageUrl) ? t("vocabulary_sourceUrlLabel") : t("vocabulary_sourceFileLabel")} {sourceDisplay.pageUrl}
                         </div>
                       )}
                       {sourceDisplay.sourceContext?.sentenceText && (
-                        <div style={{ fontSize: 12, color: "#475569", lineHeight: 1.5, marginBottom: 4 }}>
+                        <div style={{ fontSize: 12, color: "var(--astra-text-secondary)", lineHeight: 1.5, marginBottom: 4 }}>
                           {t("vocabulary_sourceSentenceLabel")} {sourceDisplay.sourceContext.sentenceText}
                         </div>
                       )}
                       {sourceDisplay.articleExcerpt && (
-                        <div style={{ fontSize: 12, color: "#64748b", lineHeight: 1.5, whiteSpace: "pre-wrap", marginBottom: 4 }}>
+                        <div style={{ fontSize: 12, color: "var(--astra-text-muted)", lineHeight: 1.5, whiteSpace: "pre-wrap", marginBottom: 4 }}>
                           {t("vocabulary_sourceExcerptLabel")} {sourceDisplay.articleExcerpt}
                         </div>
                       )}
                       {sourceDisplay.contentSummary && (
-                        <div style={{ fontSize: 12, color: "#64748b", lineHeight: 1.5, whiteSpace: "pre-wrap" }}>
+                        <div style={{ fontSize: 12, color: "var(--astra-text-muted)", lineHeight: 1.5, whiteSpace: "pre-wrap" }}>
                           {t("vocabulary_sourceSummaryLabel")} {sourceDisplay.contentSummary}
                         </div>
                       )}
@@ -1085,22 +1663,22 @@ export default function VocabularyApp() {
                       style={{
                         marginBottom: 10,
                         padding: "8px 10px",
-                        background: "rgba(99, 102, 241, 0.05)",
-                        border: "1px solid rgba(99, 102, 241, 0.15)",
+                        background: "var(--astra-brand-muted)",
+                        border: "1px solid var(--astra-brand-border)",
                         borderRadius: 8,
                       }}
                     >
-                      <div style={{ fontSize: 12, fontWeight: 700, color: "#334155", marginBottom: 4 }}>
+                      <div style={{ fontSize: 12, fontWeight: 700, color: "var(--astra-text-secondary)", marginBottom: 4 }}>
                         {t("vocabulary_readingAssetTitle")}
                       </div>
-                      <div style={{ fontSize: 12, color: "#334155", fontWeight: 600, marginBottom: 4 }}>
+                      <div style={{ fontSize: 12, color: "var(--astra-text-secondary)", fontWeight: 600, marginBottom: 4 }}>
                         {linkedReadingItem.title} · {getOwnedReadingSourceTypeLabel(linkedReadingItem.sourceType)}
                       </div>
-                      <div style={{ fontSize: 11, color: "#64748b", marginBottom: linkedReadingProgress ? 4 : 8 }}>
+                      <div style={{ fontSize: 11, color: "var(--astra-text-muted)", marginBottom: linkedReadingProgress ? 4 : 8 }}>
                         {describeOwnedReadingResumeBehavior(linkedReadingItem)}
                       </div>
                       {linkedReadingProgress && (
-                        <div style={{ fontSize: 11, color: "#64748b", marginBottom: 8 }}>
+                        <div style={{ fontSize: 11, color: "var(--astra-text-muted)", marginBottom: 8 }}>
                           {linkedReadingProgress}
                         </div>
                       )}
@@ -1158,16 +1736,19 @@ export default function VocabularyApp() {
                     </button>
                   </div>
                   <div style={{ marginBottom: 8 }}>
-                    <label style={{ fontSize: 12, fontWeight: 600, color: "#475569", display: "block", marginBottom: 4 }}>
+                    <label htmlFor={`vocabulary-entry-${entry.id}-note`} style={{ fontSize: 12, fontWeight: 600, color: "var(--astra-text-secondary)", display: "block", marginBottom: 4 }}>
                       {t("vocabulary_noteLabel")}
                     </label>
                     <textarea
+                      id={`vocabulary-entry-${entry.id}-note`}
                       style={{
                         width: "100%",
                         minHeight: 60,
                         padding: "6px 10px",
                         fontSize: 13,
-                        border: "1px solid #e2e8f0",
+                        color: "var(--astra-text-primary)",
+                        background: "var(--astra-bg-input)",
+                        border: "1px solid var(--astra-border)",
                         borderRadius: 6,
                         resize: "vertical",
                         fontFamily: "inherit",
@@ -1181,16 +1762,19 @@ export default function VocabularyApp() {
                     />
                   </div>
                   <div>
-                    <label style={{ fontSize: 12, fontWeight: 600, color: "#475569", display: "block", marginBottom: 4 }}>
+                    <label htmlFor={`vocabulary-entry-${entry.id}-tags`} style={{ fontSize: 12, fontWeight: 600, color: "var(--astra-text-secondary)", display: "block", marginBottom: 4 }}>
                       {t("vocabulary_tagsLabel")}
                     </label>
                     <input
+                      id={`vocabulary-entry-${entry.id}-tags`}
                       type="text"
                       style={{
                         width: "100%",
                         padding: "6px 10px",
                         fontSize: 13,
-                        border: "1px solid #e2e8f0",
+                        color: "var(--astra-text-primary)",
+                        background: "var(--astra-bg-input)",
+                        border: "1px solid var(--astra-border)",
                         borderRadius: 6,
                         fontFamily: "inherit",
                         boxSizing: "border-box",
@@ -1218,7 +1802,7 @@ export default function VocabularyApp() {
                             href={sourcePageUrl}
                             target="_blank"
                             rel="noopener noreferrer"
-                            style={{ color: "#94a3b8", textDecoration: "underline" }}
+                            style={{ color: "var(--astra-text-hint)", textDecoration: "underline" }}
                           >
                             source
                           </a>
@@ -1229,13 +1813,13 @@ export default function VocabularyApp() {
                             <button
                               type="button"
                               data-testid={`vocab-open-source-${entry.id}`}
+                              className="astra-cursor-pointer"
                               style={{
                                 border: "none",
                                 background: "none",
                                 padding: 0,
-                                color: "#6366f1",
+                                color: "var(--astra-brand)",
                                 textDecoration: "underline",
-                                cursor: "pointer",
                                 fontSize: "inherit",
                                 fontFamily: "inherit",
                               }}
@@ -1270,7 +1854,7 @@ export default function VocabularyApp() {
                       </button>
                       <button
                         type="button"
-                        style={{ ...deleteBtnStyle, color: "#64748b", background: "rgba(100,116,139,0.08)" }}
+                        style={{ ...deleteBtnStyle, color: "var(--astra-text-muted)", background: "var(--astra-bg-hover)" }}
                         onClick={() => setConfirmDeleteId(null)}
                       >
                         {t("vocabulary_deleteCancel")}
@@ -1297,14 +1881,15 @@ export default function VocabularyApp() {
 
       {activeTab === "reading" && (
         <>
-          <p style={{ fontSize: 13, color: "#64748b", marginTop: 0, marginBottom: 8 }}>
+          <p style={{ fontSize: 13, color: "var(--astra-text-muted)", marginTop: 0, marginBottom: 8 }}>
             {t("vocabulary_readingIntro")}
           </p>
-          <p style={{ fontSize: 12, color: "#94a3b8", marginTop: 0, marginBottom: 16 }}>
+          <p style={{ fontSize: 12, color: "var(--astra-text-hint)", marginTop: 0, marginBottom: 16 }}>
             {getReadingViewHint(readingSubTab)}
           </p>
+          {accountContinuityAuthHydrated && renderAccountContinuityProofCard("vocabulary-reading-continuity-proof", vocabularyReadingProofMoment)}
           <div style={{ ...toolbarStyle, marginBottom: 12 }}>
-            <span style={{ fontSize: 12, color: "#64748b", marginRight: 4 }}>{t("vocabulary_viewLabel")}</span>
+            <span style={{ fontSize: 12, color: "var(--astra-text-muted)", marginRight: 4 }}>{t("vocabulary_viewLabel")}</span>
             <button
               type="button"
               data-testid="reading-view-recent"
@@ -1330,7 +1915,7 @@ export default function VocabularyApp() {
               {getReadingViewLabel("in_progress")} ({readingCounts.in_progress})
             </button>
             <div style={{ flex: 1 }} />
-            <span style={{ fontSize: 12, color: "#64748b", marginRight: 4 }}>{t("vocabulary_sortLabel")}</span>
+            <span style={{ fontSize: 12, color: "var(--astra-text-muted)", marginRight: 4 }}>{t("vocabulary_sortLabel")}</span>
             <button
               type="button"
               data-testid="reading-sort-opened"
@@ -1347,7 +1932,92 @@ export default function VocabularyApp() {
             >
               {t("vocabulary_readingSortTitle")}
             </button>
+            <button
+              type="button"
+              data-testid="reading-theme-pack-export"
+              style={exportButtonStyle}
+              onClick={handleExportReadingThemePacks}
+              disabled={readingThemePacks.length === 0}
+            >
+              Export signed theme pack ({readingThemePacks.length})
+            </button>
+            <button
+              type="button"
+              data-testid="reading-theme-pack-import"
+              style={exportButtonStyle}
+              onClick={handleImportReadingThemePack}
+            >
+              Import signed theme pack
+            </button>
+            <input
+              ref={importInputRef}
+              type="file"
+              accept="application/json,.json"
+              data-testid="reading-theme-pack-import-input"
+              style={{ display: "none" }}
+              onChange={(event) => {
+                void handleImportReadingThemePackFile(event.currentTarget.files?.[0])
+              }}
+            />
           </div>
+          {themePackImportStatus && (
+            <div data-testid="reading-theme-pack-import-status" style={{ ...metaStyle, marginBottom: 12 }}>
+              {themePackImportStatus}
+            </div>
+          )}
+          {pendingThemePackImport && (
+            <div
+              data-testid="reading-theme-pack-import-preview"
+              style={{
+                marginBottom: 12,
+                padding: "10px 12px",
+                background: "var(--astra-bg-elevated)",
+                border: "1px solid var(--astra-border-strong)",
+                borderRadius: 10,
+              }}
+            >
+              <div style={{ fontSize: 12, fontWeight: 800, color: "var(--astra-text-secondary)", marginBottom: 4 }}>
+                Review signed package import
+              </div>
+              <div style={{ fontSize: 11, color: "var(--astra-text-muted)", marginBottom: 8 }}>
+                Package generated: {pendingThemePackImport.generatedAt}
+              </div>
+              <div style={{ fontSize: 12, color: "var(--astra-text-secondary)", marginBottom: 4 }}>
+                Reading preview: add {pendingThemePackImport.readingPreview.newCount}, update {pendingThemePackImport.readingPreview.updatedCount}, skip {pendingThemePackImport.readingPreview.skippedCount}.
+              </div>
+              <div style={{ fontSize: 12, color: "var(--astra-text-secondary)", marginBottom: 4 }}>
+                Vocabulary preview: add {pendingThemePackImport.vocabularyPreview.importedCount}, skip {pendingThemePackImport.vocabularyPreview.skippedCount}.
+              </div>
+              {(pendingThemePackImport.readingPreview.conflicts.length > 0 || pendingThemePackImport.vocabularyPreview.conflicts.length > 0) && (
+                <div data-testid="reading-theme-pack-import-conflicts" style={{ fontSize: 11, color: "var(--astra-warning)", marginBottom: 6 }}>
+                  Local conflicts: {pendingThemePackImport.readingPreview.conflicts.slice(0, 3).map((conflict) => `${conflict.action} ${conflict.title}`).join("; ")}
+                  {pendingThemePackImport.readingPreview.conflicts.length > 0 && pendingThemePackImport.vocabularyPreview.conflicts.length > 0 ? "; " : ""}
+                  {pendingThemePackImport.vocabularyPreview.conflicts.slice(0, 3).map((conflict) => `skip vocabulary ${conflict.text}`).join("; ")}
+                </div>
+              )}
+              <div data-testid="reading-theme-pack-import-rollback-preview" style={{ fontSize: 11, color: "var(--astra-text-secondary)", marginBottom: 8 }}>
+                Rollback preview: remove {pendingThemePackImport.readingPreview.rollback.removeCount} new reading item(s), restore {pendingThemePackImport.readingPreview.rollback.restoreCount} updated reading item(s), and remove {pendingThemePackImport.vocabularyPreview.rollback.removeCount} new vocabulary entr{pendingThemePackImport.vocabularyPreview.rollback.removeCount === 1 ? "y" : "ies"}.
+              </div>
+              <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                <button
+                  type="button"
+                  data-testid="reading-theme-pack-import-apply"
+                  style={learningActionButtonStyle}
+                  onClick={() => void handleApplyReadingThemePackImport()}
+                >
+                  Apply import
+                </button>
+                <button
+                  type="button"
+                  data-testid="reading-theme-pack-import-cancel"
+                  style={sortButtonStyle(false)}
+                  onClick={handleCancelReadingThemePackImport}
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
+          )}
 
           {readingFiltered.length === 0 ? (
             <div style={emptyStyle}>
@@ -1359,27 +2029,52 @@ export default function VocabularyApp() {
             </div>
           ) : (
             readingFiltered.map((item) => {
-              const articleSummary = readingArticleSummaries[item.id]
+              const row = readingRowsByItemId.get(item.id) ?? buildReadingQueueRow(item, readingArticleSummaries[item.id], entries)
+              const articleSummary = row.articleSummary
               const translatedLabel = formatWordsTranslated(articleSummary?.wordsTranslated ?? null)
-              const resumeTarget = buildOwnedReadingResumeTarget(item)
-              const sourceTypeLabel = getOwnedReadingSourceTypeLabel(item.sourceType)
-              const progressLabel = describeOwnedReadingProgress(item)
+              const resumeTarget = row.resumeTarget
+              const progressLabel = row.progressLabel
+              const reviewTarget = row.reviewTarget
+              const deepReadNextStepTarget = row.deepReadNextStepTarget
 
               return (
-            <div key={item.id} style={cardStyle}>
-                <div style={wordStyle}>{item.title}</div>
-                <div style={{ ...metaStyle, marginBottom: 8 }}>
-                  <span style={{ textTransform: "capitalize" }}>{item.status.replace("_", " ")}</span>
-                  {" · "}
-                  <span>{formatDate(item.openedAt)}</span>
-                  {" · "}
-                  <span>{sourceTypeLabel}</span>
+            <div key={item.id} style={cardStyle} data-testid={`reading-row-${item.id}`}>
+                <div style={{ ...wordStyle, display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                  <span>{item.title}</span>
+                  <span
+                    data-testid={`reading-format-badge-${item.id}`}
+                    style={{
+                      fontSize: 11,
+                      fontWeight: 800,
+                      color: "var(--astra-brand-active)",
+                      background: "var(--astra-brand-muted)",
+                      border: "1px solid var(--astra-brand-border)",
+                      borderRadius: 999,
+                      padding: "1px 8px",
+                      textTransform: "uppercase",
+                    }}
+                  >
+                    {row.formatBadgeLabel}
+                  </span>
                 </div>
-                <div style={{ fontSize: 11, color: resumeTarget?.requiresFileSelection ? "#92400e" : "#2563eb", marginBottom: progressLabel ? 4 : 8, fontWeight: 600 }}>
-                  Resume: {describeOwnedReadingResumeBehavior(item)}
+                <div style={{ ...metaStyle, marginBottom: 8 }}>
+                  <span style={{ textTransform: "capitalize" }}>{row.statusLabel}</span>
+                  {" · "}
+                  <span>{row.openedLabel}</span>
+                  {" · "}
+                  <span>{getOwnedReadingSourceTypeLabel(item.sourceType)}</span>
+                </div>
+                <div
+                  data-testid={`reading-saved-count-${item.id}`}
+                  style={{ fontSize: 11, color: row.savedVocabularyCount > 0 ? "var(--astra-success)" : "var(--astra-text-muted)", marginBottom: 4, fontWeight: 700 }}
+                >
+                  {row.savedVocabularyLabel}
+                </div>
+                <div style={{ fontSize: 11, color: !resumeTarget ? "var(--astra-danger)" : resumeTarget.requiresFileSelection ? "var(--astra-warning)" : "var(--astra-info)", marginBottom: progressLabel ? 4 : 8, fontWeight: 600 }}>
+                  Resume: {row.resumeBehaviorLabel}
                 </div>
                 {progressLabel && (
-                  <div style={{ fontSize: 11, color: "#64748b", marginBottom: 8 }}>
+                  <div style={{ fontSize: 11, color: "var(--astra-text-muted)", marginBottom: 8 }}>
                     {progressLabel}
                   </div>
                 )}
@@ -1388,33 +2083,33 @@ export default function VocabularyApp() {
                     style={{
                       marginBottom: 8,
                       padding: "8px 10px",
-                      background: "#f8fafc",
-                      border: "1px solid #e2e8f0",
+                      background: "var(--astra-bg-elevated)",
+                      border: "1px solid var(--astra-border)",
                       borderRadius: 8,
                     }}
                   >
                     {articleSummary.hostname && (
-                      <div style={{ fontSize: 11, color: "#334155", fontWeight: 600, marginBottom: 4 }}>
+                      <div style={{ fontSize: 11, color: "var(--astra-text-secondary)", fontWeight: 600, marginBottom: 4 }}>
                         Host: {articleSummary.hostname}
                       </div>
                     )}
                     {articleSummary.pageUrl && (
-                      <div style={{ fontSize: 11, color: "#64748b", marginBottom: 4, wordBreak: "break-all" }}>
+                      <div style={{ fontSize: 11, color: "var(--astra-text-muted)", marginBottom: 4, wordBreak: "break-all" }}>
                         Page: {articleSummary.pageUrl}
                       </div>
                     )}
                     {translatedLabel && (
-                      <div style={{ fontSize: 11, color: "#64748b", marginBottom: 4 }}>
+                      <div style={{ fontSize: 11, color: "var(--astra-text-muted)", marginBottom: 4 }}>
                         Translated: {translatedLabel}
                       </div>
                     )}
-                    <div style={{ fontSize: 11, color: "#334155", marginBottom: 4 }}>
+                    <div style={{ fontSize: 11, color: "var(--astra-text-secondary)", marginBottom: 4 }}>
                       Study loop: {formatReadingStepTrail(articleSummary.progress.completedSteps)}
                     </div>
-                    <div style={{ fontSize: 11, color: "#64748b", marginBottom: 4 }}>
+                    <div style={{ fontSize: 11, color: "var(--astra-text-muted)", marginBottom: 4 }}>
                       Counts: {formatReadingCounts(articleSummary.progress.currentCounts)}
                     </div>
-                    <div style={{ fontSize: 11, color: "#2563eb", fontWeight: 600 }}>
+                    <div style={{ fontSize: 11, color: "var(--astra-info)", fontWeight: 600 }}>
                       Next: {getReadingNextStepHint(articleSummary.progress.nextStep)}
                     </div>
                   </div>
@@ -1423,12 +2118,33 @@ export default function VocabularyApp() {
                   <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
                     <button
                       type="button"
+                      data-testid={`reading-resume-${item.id}`}
                       style={sortButtonStyle(false)}
                       onClick={() => void openReadingItem(item)}
                       disabled={!resumeTarget}
                     >
                       Resume
                     </button>
+                    {reviewTarget && (
+                      <button
+                        type="button"
+                        data-testid={reviewTarget.mode === "page" ? `reading-page-review-${item.id}` : `reading-focused-review-${item.id}`}
+                        style={sortButtonStyle(false)}
+                        onClick={() => void openReadingReview(reviewTarget)}
+                      >
+                        {t("popup_studyPageSavedReviewAction")}
+                      </button>
+                    )}
+                    {deepReadNextStepTarget && (
+                      <button
+                        type="button"
+                        data-testid={`reading-deep-read-next-step-${item.id}`}
+                        style={sortButtonStyle(false)}
+                        onClick={() => void openReadingDeepReadNextStep(deepReadNextStepTarget)}
+                      >
+                        Continue next step in Deep Read
+                      </button>
+                    )}
                     <button
                       type="button"
                       style={sortButtonStyle(false)}

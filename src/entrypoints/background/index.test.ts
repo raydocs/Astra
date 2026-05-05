@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest"
 
 import { createMockBrowser, setMockBrowser } from "../../../test/utils/mockBrowser"
 import { STUDY_PROGRESS_STORAGE_KEY } from "@/utils/storage/study-progress"
+import { DEEP_READ_SESSION_STORAGE_KEY } from "@/utils/storage/deep-read-session"
 
 const readConfigMock = vi.fn()
 const saveConfigMock = vi.fn()
@@ -12,11 +13,13 @@ const translateWithProviderDetailedMock = vi.fn()
 const executeTabCommandMock = vi.fn()
 const getProviderRoutingMetadataFromErrorMock = vi.fn()
 const runPhaseOneCollectionSyncMock = vi.fn()
+const readPhaseOneCollectionSyncStatusMock = vi.fn()
 const cleanExpiredCacheMock = vi.fn()
 const getCachedTranslationsMock = vi.fn()
 const setCachedTranslationMock = vi.fn()
 const initializeTranslationUsageSessionMock = vi.fn()
 const recordTranslationUsageMock = vi.fn()
+const createImageTranslateHandoffMock = vi.fn()
 
 vi.mock("@/utils/storage/config", () => ({
   readConfig: readConfigMock,
@@ -35,6 +38,7 @@ vi.mock("@/utils/providers/router", () => ({
 }))
 
 vi.mock("@/utils/storage/config-sync", () => ({
+  readPhaseOneCollectionSyncStatus: readPhaseOneCollectionSyncStatusMock,
   runPhaseOneCollectionSync: runPhaseOneCollectionSyncMock,
 }))
 
@@ -51,6 +55,11 @@ vi.mock("@/utils/storage/translation-usage", () => ({
 
 vi.mock("./frame-coordinator", () => ({
   executeTabCommand: executeTabCommandMock,
+}))
+
+vi.mock("@/entrypoints/image-translate/handoff", () => ({
+  createImageTranslateHandoff: createImageTranslateHandoffMock,
+  IMAGE_TRANSLATE_HANDOFF_QUERY_PARAM: "handoff",
 }))
 
 function getMockBrowser(): ReturnType<typeof createMockBrowser> {
@@ -78,17 +87,26 @@ describe("background runtime translation routing", () => {
     executeTabCommandMock.mockReset()
     getProviderRoutingMetadataFromErrorMock.mockReset()
     runPhaseOneCollectionSyncMock.mockReset()
+    readPhaseOneCollectionSyncStatusMock.mockReset()
     cleanExpiredCacheMock.mockReset()
     getCachedTranslationsMock.mockReset()
     setCachedTranslationMock.mockReset()
     initializeTranslationUsageSessionMock.mockReset()
     recordTranslationUsageMock.mockReset()
+    createImageTranslateHandoffMock.mockReset()
     runPhaseOneCollectionSyncMock.mockResolvedValue({
       skipped: true,
       reason: "no-session",
       pushed: { config: 0, vocabulary: 0, reading_history: 0, study_progress: 0 },
       pulled: { config: 0, vocabulary: 0, reading_history: 0, study_progress: 0 },
       rejected: 0,
+    })
+    readPhaseOneCollectionSyncStatusMock.mockResolvedValue({
+      accountEmail: "user@example.com",
+      stateLastRunAt: "2026-04-09T01:00:00.000Z",
+      stateLastSuccessAt: "2026-04-09T01:00:10.000Z",
+      stateLastError: null,
+      cursors: { config: null, vocabulary: "voc-1", reading_history: null, study_progress: "progress-1" },
     })
     ensureAstraDeviceIdentityMock.mockResolvedValue({
       version: 1,
@@ -109,6 +127,13 @@ describe("background runtime translation routing", () => {
     setCachedTranslationMock.mockResolvedValue(undefined)
     initializeTranslationUsageSessionMock.mockResolvedValue(undefined)
     recordTranslationUsageMock.mockResolvedValue(undefined)
+    createImageTranslateHandoffMock.mockResolvedValue({
+      token: "img_test-token",
+      imageUrl: "https://example.com/menu.svg",
+      source: "context-menu-image",
+      createdAt: 1,
+      expiresAt: 2,
+    })
   })
 
   it("schedules a phase-1 collection sync on startup", async () => {
@@ -118,6 +143,153 @@ describe("background runtime translation routing", () => {
     await Promise.resolve()
 
     expect(runPhaseOneCollectionSyncMock).toHaveBeenCalledTimes(1)
+  })
+
+  it("registers the image translation context menu on install", async () => {
+    const browser = getMockBrowser()
+    const background = (await import("./index")).default
+    background.main()
+
+    await browser.__emitInstalled({ reason: "install" })
+
+    expect(browser.contextMenus.create).toHaveBeenCalledWith({
+      id: "astra-translate-image",
+      title: "Translate image with Astra",
+      contexts: ["image"],
+    })
+  })
+
+  it("continues registering new context-menu items when existing IDs already exist", async () => {
+    const browser = getMockBrowser()
+    browser.contextMenus.create
+      .mockImplementationOnce(() => { throw new Error("Duplicate id") })
+      .mockImplementationOnce(() => { throw new Error("Duplicate id") })
+      .mockImplementation(() => undefined)
+    const background = (await import("./index")).default
+    background.main()
+
+    await browser.__emitInstalled({ reason: "update" })
+
+    expect(browser.contextMenus.create).toHaveBeenCalledWith({
+      id: "astra-translate-image",
+      title: "Translate image with Astra",
+      contexts: ["image"],
+    })
+  })
+
+  it("opens image translate page with a short-lived handoff token from image context menu clicks", async () => {
+    const browser = getMockBrowser()
+    browser.tabs.sendMessage.mockResolvedValueOnce({
+      ok: true,
+      capture: {
+        dataUrl: "data:image/svg+xml;base64,PHN2Zz48dGV4dD5IZWxsbzwvdGV4dD48L3N2Zz4=",
+        mimeType: "image/svg+xml",
+        fileName: "menu.svg",
+        byteLength: 23,
+      },
+    })
+    const background = (await import("./index")).default
+    background.main()
+
+    await browser.__emitContextMenuClicked(
+      { menuItemId: "astra-translate-image", srcUrl: "https://example.com/menu.svg", frameId: 3 },
+      { id: 7, url: "https://example.com/article", title: "Example Article" },
+    )
+    await flushRuntimeResponse()
+
+    expect(browser.tabs.sendMessage).toHaveBeenCalledWith(7, {
+      type: "content/capture-image",
+      payload: { imageUrl: "https://example.com/menu.svg" },
+    }, { frameId: 3 })
+    expect(createImageTranslateHandoffMock).toHaveBeenCalledWith({
+      imageUrl: "https://example.com/menu.svg",
+      pageUrl: "https://example.com/article",
+      pageTitle: "Example Article",
+      captured: {
+        dataUrl: "data:image/svg+xml;base64,PHN2Zz48dGV4dD5IZWxsbzwvdGV4dD48L3N2Zz4=",
+        mimeType: "image/svg+xml",
+        fileName: "menu.svg",
+        byteLength: 23,
+      },
+    })
+    expect(browser.tabs.create).toHaveBeenCalledWith({
+      url: "/image-translate.html?handoff=img_test-token",
+    })
+    expect(browser.tabs.sendMessage).not.toHaveBeenCalledWith(7, expect.objectContaining({
+      type: "content/translate-image",
+    }), expect.anything())
+  })
+
+  it("falls back to a URL-only handoff when page image capture fails", async () => {
+    const browser = getMockBrowser()
+    browser.tabs.sendMessage.mockRejectedValueOnce(new Error("content unavailable"))
+    const background = (await import("./index")).default
+    background.main()
+
+    await browser.__emitContextMenuClicked(
+      { menuItemId: "astra-translate-image", srcUrl: "https://example.com/private.png" },
+      { id: 7, url: "https://example.com/article", title: "Example Article" },
+    )
+    await flushRuntimeResponse()
+
+    expect(createImageTranslateHandoffMock).toHaveBeenCalledWith({
+      imageUrl: "https://example.com/private.png",
+      pageUrl: "https://example.com/article",
+      pageTitle: "Example Article",
+    })
+    expect(browser.tabs.create).toHaveBeenCalledWith({
+      url: "/image-translate.html?handoff=img_test-token",
+    })
+  })
+
+  it("retries URL-only handoff when captured payload storage fails", async () => {
+    const browser = getMockBrowser()
+    browser.tabs.sendMessage.mockResolvedValueOnce({
+      ok: true,
+      capture: {
+        dataUrl: "data:image/png;base64,cGl4ZWxz",
+        mimeType: "image/png",
+        fileName: "private.png",
+        byteLength: 6,
+      },
+    })
+    createImageTranslateHandoffMock
+      .mockRejectedValueOnce(new Error("storage quota exceeded"))
+      .mockResolvedValueOnce({
+        token: "img_url_only",
+        imageUrl: "https://example.com/private.png",
+        source: "context-menu-image",
+        createdAt: 1,
+        expiresAt: 2,
+      })
+    const background = (await import("./index")).default
+    background.main()
+
+    await browser.__emitContextMenuClicked(
+      { menuItemId: "astra-translate-image", srcUrl: "https://example.com/private.png" },
+      { id: 7, url: "https://example.com/article", title: "Example Article" },
+    )
+    await flushRuntimeResponse()
+
+    expect(createImageTranslateHandoffMock).toHaveBeenNthCalledWith(1, {
+      imageUrl: "https://example.com/private.png",
+      pageUrl: "https://example.com/article",
+      pageTitle: "Example Article",
+      captured: {
+        dataUrl: "data:image/png;base64,cGl4ZWxz",
+        mimeType: "image/png",
+        fileName: "private.png",
+        byteLength: 6,
+      },
+    })
+    expect(createImageTranslateHandoffMock).toHaveBeenNthCalledWith(2, {
+      imageUrl: "https://example.com/private.png",
+      pageUrl: "https://example.com/article",
+      pageTitle: "Example Article",
+    })
+    expect(browser.tabs.create).toHaveBeenCalledWith({
+      url: "/image-translate.html?handoff=img_url_only",
+    })
   })
 
   it("schedules a collection sync when study progress changes locally", async () => {
@@ -137,6 +309,97 @@ describe("background runtime translation routing", () => {
     await Promise.resolve()
 
     expect(runPhaseOneCollectionSyncMock).toHaveBeenCalledTimes(1)
+  })
+
+  it("schedules a collection sync when deep-read session anchors change locally", async () => {
+    const browser = getMockBrowser()
+    const background = (await import("./index")).default
+    background.main()
+
+    runPhaseOneCollectionSyncMock.mockClear()
+
+    await browser.__emitStorageChange({
+      [DEEP_READ_SESSION_STORAGE_KEY]: {
+        oldValue: undefined,
+        newValue: { sessions: [{ pageUrl: "https://example.com/article", sentences: ["One."], selectedSentenceIndex: 0, updatedAt: 1000 }] },
+      },
+    }, "local")
+
+    await Promise.resolve()
+
+    expect(runPhaseOneCollectionSyncMock).toHaveBeenCalledTimes(1)
+  })
+
+  it("commits learning continuity on demand and returns phase-one status", async () => {
+    const browser = getMockBrowser()
+    const sendResponse = vi.fn()
+    const background = (await import("./index")).default
+    background.main()
+    await flushRuntimeResponse()
+    runPhaseOneCollectionSyncMock.mockClear()
+    runPhaseOneCollectionSyncMock.mockResolvedValueOnce({
+      skipped: false,
+      reason: "synced",
+      pushed: { config: 0, vocabulary: 1, reading_history: 0, study_progress: 1 },
+      pulled: { config: 0, vocabulary: 0, reading_history: 0, study_progress: 0 },
+      rejected: 0,
+    })
+
+    await browser.__emitRuntimeMessage(
+      { type: "runtime/learning-continuity-sync", reason: "popup-save" },
+      { id: "sender" },
+      sendResponse,
+    )
+
+    await flushRuntimeResponse()
+
+    expect(runPhaseOneCollectionSyncMock).toHaveBeenCalledTimes(1)
+    expect(sendResponse).toHaveBeenCalledWith(expect.objectContaining({
+      type: "runtime/learning-continuity-sync:success",
+      payload: expect.objectContaining({
+        result: expect.objectContaining({ pushed: expect.objectContaining({ vocabulary: 1, study_progress: 1 }) }),
+        status: expect.objectContaining({ lastReason: "popup-save", stateLastSuccessAt: "2026-04-09T01:00:10.000Z" }),
+      }),
+    }))
+  })
+
+  it("coalesces concurrent learning continuity commits", async () => {
+    const browser = getMockBrowser()
+    const sendResponseA = vi.fn()
+    const sendResponseB = vi.fn()
+    let resolveSync: (value: {
+      skipped: boolean
+      reason: "synced"
+      pushed: { config: number; vocabulary: number; reading_history: number; study_progress: number }
+      pulled: { config: number; vocabulary: number; reading_history: number; study_progress: number }
+      rejected: number
+    }) => void = () => {}
+
+    const background = (await import("./index")).default
+    background.main()
+    await flushRuntimeResponse()
+    runPhaseOneCollectionSyncMock.mockClear()
+    runPhaseOneCollectionSyncMock.mockImplementationOnce(() => new Promise((resolve) => {
+      resolveSync = resolve
+    }))
+
+    void browser.__emitRuntimeMessage({ type: "runtime/learning-continuity-sync", reason: "popup-save" }, { id: "a" }, sendResponseA)
+    void browser.__emitRuntimeMessage({ type: "runtime/learning-continuity-sync", reason: "review-answer" }, { id: "b" }, sendResponseB)
+    await Promise.resolve()
+
+    expect(runPhaseOneCollectionSyncMock).toHaveBeenCalledTimes(1)
+    resolveSync({
+      skipped: false,
+      reason: "synced",
+      pushed: { config: 0, vocabulary: 1, reading_history: 0, study_progress: 1 },
+      pulled: { config: 0, vocabulary: 0, reading_history: 0, study_progress: 0 },
+      rejected: 0,
+    })
+    await flushRuntimeResponse()
+
+    expect(sendResponseA).toHaveBeenCalled()
+    expect(sendResponseB).toHaveBeenCalled()
+    expect(runPhaseOneCollectionSyncMock).toHaveBeenCalledTimes(2)
   })
 
   it("returns a success response for translate batch requests", async () => {
@@ -282,6 +545,83 @@ describe("background runtime translation routing", () => {
       route: "direct",
       success: true,
     }))
+  })
+
+  it("uses sender hostname, not caller payload hostname, for site provider routing", async () => {
+    const browser = getMockBrowser()
+    const sendResponse = vi.fn()
+
+    readConfigMock.mockResolvedValue({
+      connectionMode: "astra",
+      languageLevel: "intermediate",
+      privacyMode: false,
+      provider: {
+        id: "openai",
+        apiKey: "sk-openai",
+        accessToken: "astra-session",
+        relayBaseURL: "https://astra.example/v1",
+        model: "gpt-5.4-nano",
+      },
+      sites: {
+        "example.com": {
+          enabled: true,
+          alwaysTranslate: false,
+          provider: {
+            id: "gemini",
+            model: "gemini-3.1-pro",
+          },
+        },
+      },
+    })
+    readAstraSessionMock.mockResolvedValue({
+      sessionToken: "astra-session",
+      relayBaseURL: "https://astra.example/v1",
+    })
+    translateWithProviderDetailedMock.mockResolvedValue({
+      translations: ["你好"],
+      metadata: {
+        attemptedTransports: ["relay"],
+        finalTransport: "relay",
+        fallbackUsed: false,
+        route: "relay",
+      },
+    })
+
+    const background = (await import("./index")).default
+    background.main()
+
+    await browser.__emitRuntimeMessage(
+      {
+        type: "runtime/translate-batch",
+        payload: {
+          texts: ["hello"],
+          targetLang: "zh-CN",
+          context: { hostname: "attacker.example" },
+        },
+      },
+      { id: "sender", url: "https://example.com/article" },
+      sendResponse,
+    )
+
+    await flushRuntimeResponse()
+
+    expect(translateWithProviderDetailedMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        id: "gemini",
+        apiKey: "",
+        accessToken: "astra-session",
+        relayBaseURL: "https://astra.example/v1",
+        model: "gemini-3.1-pro",
+      }),
+      expect.objectContaining({ texts: ["hello"], targetLang: "zh-CN" }),
+    )
+    const cacheLookupCall = getCachedTranslationsMock.mock.calls[0] as [Array<{
+      cacheContext?: { providerId?: string; model?: string }
+    }>]
+    expect(cacheLookupCall[0][0]?.cacheContext).toMatchObject({
+      providerId: "gemini",
+      model: "gemini-3.1-pro",
+    })
   })
 
   it("records relay-only route reporting for the popup usage path", async () => {
@@ -479,6 +819,7 @@ describe("background runtime translation routing", () => {
       contentSummary: "",
       selectionContext: "",
       terminologyGlossary: "Astra => 阿斯特拉\nrouter => 路由器",
+      explanationGlossary: "",
     }))
     expect(sendResponse).toHaveBeenCalledWith({
       type: "runtime/translate-batch:success",
@@ -570,6 +911,7 @@ describe("background runtime translation routing", () => {
       contentSummary: "",
       selectionContext: "",
       terminologyGlossary: "",
+      explanationGlossary: "",
     }))
   })
 
@@ -657,6 +999,7 @@ describe("background runtime translation routing", () => {
       contentSummary: "",
       selectionContext: "",
       terminologyGlossary: "",
+      explanationGlossary: "",
     }))
     expect(sendResponse).toHaveBeenCalledWith({
       type: "runtime/translate-batch:success",

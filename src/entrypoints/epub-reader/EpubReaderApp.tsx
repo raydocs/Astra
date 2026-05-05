@@ -12,6 +12,14 @@ import type { NavItem } from "epubjs/types/navigation"
 import { browser } from "#imports"
 import type { RuntimeResponse } from "@/types/messages"
 import { upsertOwnedEpubFromImport } from "@/utils/storage/owned-reading"
+import {
+  consumeDocumentFileHandoff,
+  describeDocumentFileHandoffFailure,
+  DOCUMENT_FILE_HANDOFF_FAILURE_QUERY_PARAM,
+  DOCUMENT_FILE_HANDOFF_QUERY_PARAM,
+  readDocumentFileBytes,
+  type DocumentFileHandoffFailureReason,
+} from "@/utils/reading/document-file-handoff"
 
 type Phase = "idle" | "loading" | "reading" | "error"
 
@@ -24,6 +32,13 @@ interface ChapterContent {
 }
 
 const BATCH_SIZE = 8
+
+function coerceHandoffFailureReason(value: string | null): DocumentFileHandoffFailureReason | null {
+  if (value === "invalid" || value === "missing" || value === "expired" || value === "oversize" || value === "corrupt" || value === "storage_error") {
+    return value
+  }
+  return null
+}
 
 async function getTargetLang(): Promise<string> {
   try {
@@ -43,13 +58,32 @@ export function EpubReaderApp() {
   const [toc, setToc] = useState<NavItem[]>([])
   const [chapter, setChapter] = useState<ChapterContent | null>(null)
   const bookRef = useRef<Book | null>(null)
-  const fileInputRef = useRef<HTMLInputElement>(null)
   const chapterGenRef = useRef(0)
   const epubImportFileNameRef = useRef<string>("book.epub")
 
   useEffect(() => {
-    const hint = new URLSearchParams(window.location.search).get("reopenHint")
-    if (hint) {
+    const params = new URLSearchParams(window.location.search)
+    const hint = params.get("reopenHint")
+    const handoffToken = params.get(DOCUMENT_FILE_HANDOFF_QUERY_PARAM)
+    const handoffFailure = coerceHandoffFailureReason(params.get(DOCUMENT_FILE_HANDOFF_FAILURE_QUERY_PARAM))
+
+    if (handoffToken) {
+      void consumeDocumentFileHandoff(handoffToken, "epub").then(async (result) => {
+        if (result.ok) {
+          setReopenBanner(`Opened ${result.file.name} from Document Intake local handoff. File bytes stayed on this device and were not synced.`)
+          const bytes = await readDocumentFileBytes(result.file)
+          const arrayBuffer = bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer
+          await loadBook(arrayBuffer, result.file.name)
+          return
+        }
+        setReopenBanner(describeDocumentFileHandoffFailure(result.reason, hint))
+      })
+      return
+    }
+
+    if (handoffFailure) {
+      setReopenBanner(describeDocumentFileHandoffFailure(handoffFailure, hint))
+    } else if (hint) {
       setReopenBanner(decodeURIComponent(hint))
     }
   }, [])
@@ -161,13 +195,21 @@ export function EpubReaderApp() {
     event.preventDefault()
     const file = event.dataTransfer.files[0]
     if (file?.name.endsWith(".epub")) {
-      void file.arrayBuffer().then((buf) => loadBook(buf, file.name))
+      void readDocumentFileBytes(file).then((bytes) => {
+        const arrayBuffer = bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer
+        return loadBook(arrayBuffer, file.name)
+      })
     }
   }, [])
 
   const handleFileSelect = useCallback((event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0]
-    if (file) void file.arrayBuffer().then((buf) => loadBook(buf, file.name))
+    if (file) {
+      void readDocumentFileBytes(file).then((bytes) => {
+        const arrayBuffer = bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer
+        return loadBook(arrayBuffer, file.name)
+      })
+    }
   }, [])
 
   // Cleanup
@@ -176,9 +218,9 @@ export function EpubReaderApp() {
   }, [])
 
   return (
-    <div style={containerStyle}>
+    <div className="astra-container astra-container--wide" style={containerStyle}>
       <header style={headerStyle}>
-        <h1 style={{ margin: 0, fontSize: 18, color: "#6366f1" }}>Astra ePub Reader</h1>
+        <h1 style={{ margin: 0, fontSize: 18, color: "var(--astra-brand)" }}>Astra ePub Reader</h1>
         {bookTitle && <span style={{ fontSize: 13, color: "#64748b" }}>{bookTitle}</span>}
       </header>
 
@@ -200,22 +242,32 @@ export function EpubReaderApp() {
       )}
 
       {phase === "idle" && (
-        <div
-          style={dropZoneStyle}
+        <label
+          htmlFor="astra-epub-reader-file-input"
+          className="astra-drop-zone-cursor astra-reader-drop-zone"
           onDragOver={(e) => e.preventDefault()}
           onDrop={handleFileDrop}
-          onClick={() => fileInputRef.current?.click()}
         >
           <input
-            ref={fileInputRef}
+            id="astra-epub-reader-file-input"
             type="file"
             accept=".epub"
             onChange={handleFileSelect}
             style={{ display: "none" }}
           />
-          <div style={{ fontSize: 48, marginBottom: 16 }}>EPUB</div>
-          <div style={{ fontSize: 16, color: "#334155" }}>Drop an ePub file here or click to select</div>
-        </div>
+          <div className="astra-reader-drop-zone__content">
+            <div className="astra-reader-drop-zone__icon" aria-hidden="true">EPUB</div>
+            <div className="astra-reader-drop-zone__eyebrow">Chapter-by-chapter translation</div>
+            <div className="astra-reader-drop-zone__title">Drop an ePub file here</div>
+            <div className="astra-reader-drop-zone__description">
+              or click to select. Astra will open the table of contents, translate readable passages, and keep your place by chapter.
+            </div>
+            <div className="astra-reader-drop-zone__chips" aria-label="Supported file type">
+              <span className="astra-reader-drop-zone__chip">EPUB</span>
+              <span className="astra-reader-drop-zone__chip">Chapters</span>
+            </div>
+          </div>
+        </label>
       )}
 
       {phase === "error" && (
@@ -223,23 +275,24 @@ export function EpubReaderApp() {
       )}
 
       {phase === "loading" && (
-        <div style={{ padding: 24, textAlign: "center", color: "#6366f1" }}>Loading ePub...</div>
+      <div style={{ padding: 24, textAlign: "center", color: "var(--astra-brand)" }}>Loading ePub...</div>
       )}
 
       {phase === "reading" && (
         <div style={{ display: "flex", gap: 16 }}>
           {/* Table of Contents sidebar */}
           <nav style={tocStyle}>
-            <div style={{ fontWeight: 600, fontSize: 13, marginBottom: 8, color: "#6366f1" }}>Contents</div>
+          <div style={{ fontWeight: 600, fontSize: 13, marginBottom: 8, color: "var(--astra-brand)" }}>Contents</div>
             {toc.map((item) => (
               <button
                 key={item.href}
                 type="button"
+                className="astra-cursor-pointer"
                 onClick={() => bookRef.current && void openChapter(bookRef.current, item)}
                 style={{
                   ...tocItemStyle,
                   fontWeight: chapter?.href === item.href ? 600 : 400,
-                  color: chapter?.href === item.href ? "#6366f1" : "#334155",
+                  color: chapter?.href === item.href ? "var(--astra-brand)" : "#334155",
                 }}
               >
                 {item.label?.trim()}
@@ -253,7 +306,7 @@ export function EpubReaderApp() {
               <>
                 <h2 style={{ fontSize: 20, color: "#1e293b", marginBottom: 16 }}>{chapter.title}</h2>
                 {chapter.translating && (
-                  <div style={{ fontSize: 12, color: "#6366f1", marginBottom: 12 }}>Translating...</div>
+                  <div style={{ fontSize: 12, color: "var(--astra-brand)", marginBottom: 12 }}>Translating...</div>
                 )}
                 {chapter.paragraphs.map((para, i) => (
                   <div key={i} style={blockStyle}>
@@ -261,7 +314,7 @@ export function EpubReaderApp() {
                     {chapter.translations.has(i) ? (
                       <div style={translationStyle}>{chapter.translations.get(i)}</div>
                     ) : chapter.translating ? (
-                      <div style={{ fontSize: 13, color: "#94a3b8" }}>...</div>
+                      <div style={{ fontSize: 13, color: "var(--astra-text-hint)" }}>...</div>
                     ) : null}
                   </div>
                 ))}
@@ -276,7 +329,6 @@ export function EpubReaderApp() {
 
 const containerStyle: React.CSSProperties = {
   fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif',
-  maxWidth: 1100,
   margin: "0 auto",
   padding: 16,
 }
@@ -286,22 +338,14 @@ const headerStyle: React.CSSProperties = {
   alignItems: "center",
   gap: 12,
   padding: "12px 0",
-  borderBottom: "1px solid #e2e8f0",
+  borderBottom: "1px solid var(--astra-border)",
   marginBottom: 16,
-}
-
-const dropZoneStyle: React.CSSProperties = {
-  border: "2px dashed #cbd5e1",
-  borderRadius: 12,
-  padding: "64px 24px",
-  textAlign: "center",
-  cursor: "pointer",
 }
 
 const tocStyle: React.CSSProperties = {
   width: 220,
   flexShrink: 0,
-  borderRight: "1px solid #e2e8f0",
+  borderRight: "1px solid var(--astra-border)",
   paddingRight: 12,
   maxHeight: "80vh",
   overflowY: "auto",
@@ -315,7 +359,6 @@ const tocItemStyle: React.CSSProperties = {
   background: "transparent",
   padding: "6px 4px",
   fontSize: 13,
-  cursor: "pointer",
   borderRadius: 4,
 }
 
@@ -338,10 +381,10 @@ const sourceStyle: React.CSSProperties = {
 }
 
 const translationStyle: React.CSSProperties = {
-  fontSize: 14,
+  fontSize: "var(--astra-text-base)",
   lineHeight: 1.6,
-  color: "#6366f1",
+  color: "var(--astra-brand)",
   marginTop: 4,
   paddingLeft: 8,
-  borderLeft: "2px solid #6366f1",
+  borderLeft: "2px solid var(--astra-brand)",
 }

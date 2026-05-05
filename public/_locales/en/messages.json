@@ -50,6 +50,18 @@
   "translationThemeLabel": {
     "message": "Translation Theme"
   },
+  "label_translationFontSize": {
+    "message": "Font scale"
+  },
+  "label_translationFontSizeValue": {
+    "message": "$1x",
+    "placeholders": {
+      "1": { "content": "$1" }
+    }
+  },
+  "label_siteTranslationFontSize": {
+    "message": "Site font scale"
+  },
   "themeDefault": {
     "message": "Default"
   },
@@ -58,6 +70,9 @@
   },
   "themeHighlight": {
     "message": "Highlight"
+  },
+  "themeMask": {
+    "message": "Mask"
   },
   "scopeLabel": {
     "message": "Translation Scope"
@@ -179,6 +194,18 @@
   "learningSavedHint": {
     "message": "Open vocabulary or jump into review to keep this phrase active."
   },
+  "popup_studyPageSavedReviewTitle": {
+    "message": "Saved sentences on this page"
+  },
+  "popup_studyPageSavedReviewHint": {
+    "message": "$1 saved sentence(s) from this page can be reviewed anytime.",
+    "placeholders": {
+      "1": { "content": "$1" }
+    }
+  },
+  "popup_studyPageSavedReviewAction": {
+    "message": "Review saved sentences from this page"
+  },
   "popup_studyTitle": {
     "message": "Study Hub"
   },
@@ -214,6 +241,33 @@
   },
   "popup_deepReadAction": {
     "message": "Start deep read"
+  },
+  "popup_contentAssetizationEyebrow": {
+    "message": "Content asset"
+  },
+  "popup_contentAssetizationTitle": {
+    "message": "Save this page to your Reading queue"
+  },
+  "popup_contentAssetizationHint": {
+    "message": "Keep the source page as a reusable learning asset before saving sentences or reviewing later."
+  },
+  "popup_contentAssetizationSaveAction": {
+    "message": "Save page asset"
+  },
+  "popup_contentAssetizationSavingAction": {
+    "message": "Saving page…"
+  },
+  "popup_contentAssetizationSavedAction": {
+    "message": "Page saved"
+  },
+  "popup_contentAssetizationSavedHint": {
+    "message": "Saved to the Reading queue."
+  },
+  "popup_contentAssetizationAlreadySaved": {
+    "message": "Already saved in the Reading queue."
+  },
+  "popup_contentAssetizationSaveError": {
+    "message": "Could not save this page."
   },
   "popup_deepReadPageFallbackTitle": {
     "message": "Astra Deep Read"
@@ -754,6 +808,9 @@
   "popup_studySavedContinue": {
     "message": "Continue in Vocabulary or Review."
   },
+  "review_actionReviewThisSentenceNow": {
+    "message": "Review this sentence now"
+  },
   "popup_studyStatPages": {
     "message": "$1 pages",
     "placeholders": {
@@ -813,6 +870,30 @@
   },
   "review_emptyCaughtUpHint": {
     "message": "No cards due for review. Check back later."
+  },
+  "review_focusedFallbackMissingCard": {
+    "message": "Saved card was not found; showing due review instead."
+  },
+  "review_pageLoopNoCards": {
+    "message": "No saved cards were found for this page."
+  },
+  "review_returnToDeepReadSentence": {
+    "message": "Return to this sentence in Deep Read"
+  },
+  "review_resumeReadingThisPage": {
+    "message": "Resume reading this page"
+  },
+  "review_focusedCompleteTitle": {
+    "message": "Sentence review complete"
+  },
+  "review_focusedCompleteHint": {
+    "message": "Close the loop by reopening the original sentence context."
+  },
+  "review_pageLoopCompleteTitle": {
+    "message": "Page review complete"
+  },
+  "review_pageLoopCompleteHint": {
+    "message": "You reviewed the saved cards from this page. Return to Deep Read to keep going."
   },
   "review_sessionCompleteTitle": {
     "message": "Session Complete"

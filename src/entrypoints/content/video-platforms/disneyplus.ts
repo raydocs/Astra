@@ -1,9 +1,11 @@
+import { playerCaptionWindowRenderingRule } from "./rendering-rules"
 import type { VideoPlatformConfig } from "./types"
 
 export const disneyplusPlatform: VideoPlatformConfig = {
   id: "disneyplus",
   hostnames: ["www.disneyplus.com"],
   preferTextTracks: true,
+  subtitleRendering: playerCaptionWindowRenderingRule("disneyplus"),
   // Disney+ uses timedtext containers similar to Netflix
   captionContainerSelector: [
     ".player-timedtext-text-container",

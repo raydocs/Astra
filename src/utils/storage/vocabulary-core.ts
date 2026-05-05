@@ -1,5 +1,6 @@
 import { z } from "zod"
 
+import { ExplainModeSchema, LanguageLevelSchema, type ExplainMode, type LanguageLevel } from "@/types/config"
 import { createDefaultSrsFields } from "@/utils/srs/leitner"
 import { buildSentenceHash } from "@/utils/sentence-anchor"
 
@@ -11,6 +12,10 @@ export const VocabularySourceContextSurfaceSchema = z.enum([
 ])
 
 const VocabularyOwnedReadingSourceTypeSchema = z.enum(["article", "pdf", "epub", "subtitle-file"])
+const VocabularyMatchedGlossaryTermSchema = z.object({
+  sourceTerm: z.string().trim().min(1),
+  preferredTerm: z.string().trim().min(1),
+})
 
 export const VocabularySourceContextSchema = z.object({
   surface: VocabularySourceContextSurfaceSchema,
@@ -22,10 +27,13 @@ export const VocabularySourceContextSchema = z.object({
   sentenceText: z.string().trim().min(1).optional(),
   sentenceHash: z.string().trim().min(1).optional(),
   sentenceIndex: z.number().int().nonnegative().optional(),
+  languageLevel: LanguageLevelSchema.optional(),
+  explainMode: ExplainModeSchema.optional(),
   ownedReadingItemId: z.string().trim().min(1).optional(),
   ownedReadingSourceType: VocabularyOwnedReadingSourceTypeSchema.optional(),
   ownedReadingTitle: z.string().trim().min(1).optional(),
   studyProgressRecordId: z.string().trim().min(1).optional(),
+  matchedGlossaryTerms: z.array(VocabularyMatchedGlossaryTermSchema).optional(),
 })
 
 export const VocabularyEntrySchema = z.object({
@@ -81,6 +89,58 @@ export function sanitizeVocabularyUrl(url?: string | null): string | undefined {
   }
 }
 
+export function normalizeVocabularyStudyUrl(value?: string | null): string {
+  const trimmed = value?.trim() ?? ""
+  if (!trimmed) return ""
+  return sanitizeVocabularyUrl(trimmed) ?? trimmed
+}
+
+export function getVocabularyStudyUrlCandidates(entry: Pick<VocabularyEntry, "sourceContext" | "url">): string[] {
+  const candidates = [
+    entry.sourceContext?.studyProgressRecordId,
+    entry.sourceContext?.pageUrl,
+    entry.url,
+  ]
+    .map((value) => normalizeVocabularyStudyUrl(value))
+    .filter(Boolean)
+
+  return Array.from(new Set(candidates))
+}
+
+export function isVocabularyEntryFromStudyUrl(
+  entry: Pick<VocabularyEntry, "sourceContext" | "url">,
+  studyUrl: string,
+): boolean {
+  const normalizedStudyUrl = normalizeVocabularyStudyUrl(studyUrl)
+  if (!normalizedStudyUrl) return false
+  return getVocabularyStudyUrlCandidates(entry).includes(normalizedStudyUrl)
+}
+
+export function getPageReviewVocabularyEntries(
+  entries: VocabularyEntry[],
+  studyUrl: string,
+  focusedEntryId = "",
+): VocabularyEntry[] {
+  return entries
+    .filter((entry) => isVocabularyEntryFromStudyUrl(entry, studyUrl))
+    .sort((a, b) => {
+      if (focusedEntryId) {
+        if (a.id === focusedEntryId && b.id !== focusedEntryId) return -1
+        if (b.id === focusedEntryId && a.id !== focusedEntryId) return 1
+      }
+
+      const aSentenceIndex = a.sourceContext?.sentenceIndex
+      const bSentenceIndex = b.sourceContext?.sentenceIndex
+      if (aSentenceIndex !== undefined && bSentenceIndex !== undefined && aSentenceIndex !== bSentenceIndex) {
+        return aSentenceIndex - bSentenceIndex
+      }
+      if (aSentenceIndex !== undefined) return -1
+      if (bSentenceIndex !== undefined) return 1
+
+      return b.savedAt - a.savedAt
+    })
+}
+
 export function buildSyncSafeVocabularyEntry(
   entry: VocabularyEntry | SyncedVocabularyEntry,
 ): SyncedVocabularyEntry {
@@ -120,6 +180,27 @@ function normalizeSourceText(value?: string | null): string | undefined {
   return trimmed ? trimmed : undefined
 }
 
+function normalizeMatchedGlossaryTerms(
+  terms?: VocabularySourceContext["matchedGlossaryTerms"] | null,
+): VocabularySourceContext["matchedGlossaryTerms"] | undefined {
+  const normalized = (terms ?? []).flatMap((term) => {
+    const sourceTerm = normalizeSourceText(term.sourceTerm)
+    const preferredTerm = normalizeSourceText(term.preferredTerm)
+    return sourceTerm && preferredTerm ? [{ sourceTerm, preferredTerm }] : []
+  })
+
+  return normalized.length > 0 ? normalized : undefined
+}
+
+export function formatGlossaryEvidenceLabel(
+  terms?: VocabularySourceContext["matchedGlossaryTerms"] | null,
+): string {
+  const normalized = normalizeMatchedGlossaryTerms(terms)
+  if (!normalized?.length) return ""
+
+  return `Glossary applied: ${normalized.map((term) => `${term.sourceTerm} → ${term.preferredTerm}`).join(", ")}`
+}
+
 export function normalizeVocabularySourceContext(
   sourceContext?: VocabularySourceContext,
   fallback?: { url?: string | null; hostname?: string | null },
@@ -138,6 +219,7 @@ export function normalizeVocabularySourceContext(
     ownedReadingItemId: normalizeSourceText(sourceContext.ownedReadingItemId),
     ownedReadingTitle: normalizeSourceText(sourceContext.ownedReadingTitle),
     studyProgressRecordId: sanitizeVocabularyUrl(sourceContext.studyProgressRecordId),
+    matchedGlossaryTerms: normalizeMatchedGlossaryTerms(sourceContext.matchedGlossaryTerms),
   })
 }
 
@@ -173,6 +255,24 @@ export function getVocabularySourceSurfaceLabel(
   }
 }
 
+function toTitleLabel(value: string): string {
+  return value.charAt(0).toUpperCase() + value.slice(1).replaceAll("_", " ")
+}
+
+export function formatExplainProfileLabel(profile?: {
+  languageLevel?: LanguageLevel | null
+  explainMode?: ExplainMode | null
+}): string {
+  const explainMode = profile?.explainMode
+  const languageLevel = profile?.languageLevel
+  if (!explainMode && !languageLevel) return ""
+
+  return `Explain profile: ${[
+    explainMode ? toTitleLabel(explainMode) : null,
+    languageLevel ? toTitleLabel(languageLevel) : null,
+  ].filter(Boolean).join(" · ")}`
+}
+
 export function deriveVocabularySourceDisplay(entry: Pick<VocabularyEntry, "context" | "url" | "hostname" | "sourceContext">) {
   const sourceContext = normalizeVocabularySourceContext(entry.sourceContext, {
     url: entry.url,
@@ -203,6 +303,8 @@ export function deriveVocabularySourceDisplay(entry: Pick<VocabularyEntry, "cont
     snippet,
     articleExcerpt,
     contentSummary,
+    explainProfileLabel: formatExplainProfileLabel(sourceContext),
+    glossaryEvidenceLabel: formatGlossaryEvidenceLabel(sourceContext?.matchedGlossaryTerms),
     pageUrl: sourceContext?.pageUrl ?? sanitizeVocabularyUrl(entry.url) ?? "",
     hostname: sourceContext?.hostname ?? normalizeSourceText(entry.hostname) ?? "",
     ownedReadingItemId: sourceContext?.ownedReadingItemId ?? "",

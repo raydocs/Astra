@@ -50,6 +50,18 @@
   "translationThemeLabel": {
     "message": "翻译主题"
   },
+  "label_translationFontSize": {
+    "message": "字体缩放"
+  },
+  "label_translationFontSizeValue": {
+    "message": "$1x",
+    "placeholders": {
+      "1": { "content": "$1" }
+    }
+  },
+  "label_siteTranslationFontSize": {
+    "message": "站点字体缩放"
+  },
   "themeDefault": {
     "message": "默认"
   },
@@ -58,6 +70,9 @@
   },
   "themeHighlight": {
     "message": "高亮"
+  },
+  "themeMask": {
+    "message": "遮罩"
   },
   "scopeLabel": {
     "message": "翻译范围"
@@ -179,6 +194,18 @@
   "learningSavedHint": {
     "message": "打开词汇表或直接进入复习，让这条表达继续留在学习循环里。"
   },
+  "popup_studyPageSavedReviewTitle": {
+    "message": "本页已保存的句子"
+  },
+  "popup_studyPageSavedReviewHint": {
+    "message": "本页已有 $1 条保存句子，可随时进入复习。",
+    "placeholders": {
+      "1": { "content": "$1" }
+    }
+  },
+  "popup_studyPageSavedReviewAction": {
+    "message": "复习本页保存的句子"
+  },
   "popup_studyTitle": {
     "message": "学习中心"
   },
@@ -214,6 +241,33 @@
   },
   "popup_deepReadAction": {
     "message": "开始深读"
+  },
+  "popup_contentAssetizationEyebrow": {
+    "message": "内容资产"
+  },
+  "popup_contentAssetizationTitle": {
+    "message": "把当前页面保存到阅读队列"
+  },
+  "popup_contentAssetizationHint": {
+    "message": "先把来源页面变成可继续学习的资产，之后保存句子和复习时都能找回上下文。"
+  },
+  "popup_contentAssetizationSaveAction": {
+    "message": "保存页面资产"
+  },
+  "popup_contentAssetizationSavingAction": {
+    "message": "正在保存页面…"
+  },
+  "popup_contentAssetizationSavedAction": {
+    "message": "页面已保存"
+  },
+  "popup_contentAssetizationSavedHint": {
+    "message": "已保存到阅读队列。"
+  },
+  "popup_contentAssetizationAlreadySaved": {
+    "message": "已在阅读队列中。"
+  },
+  "popup_contentAssetizationSaveError": {
+    "message": "暂时无法保存这个页面。"
   },
   "popup_deepReadPageFallbackTitle": {
     "message": "Astra 深读"
@@ -754,6 +808,9 @@
   "popup_studySavedContinue": {
     "message": "接下来可前往词库或复习。"
   },
+  "review_actionReviewThisSentenceNow": {
+    "message": "现在复习这一句"
+  },
   "popup_studyStatPages": {
     "message": "$1 页",
     "placeholders": {
@@ -813,6 +870,30 @@
   },
   "review_emptyCaughtUpHint": {
     "message": "当前没有到期卡片，稍后再来看看。"
+  },
+  "review_focusedFallbackMissingCard": {
+    "message": "未找到刚保存的卡片，已改为显示到期复习。"
+  },
+  "review_pageLoopNoCards": {
+    "message": "未找到这个页面已保存的卡片。"
+  },
+  "review_returnToDeepReadSentence": {
+    "message": "回到深读中的这一句"
+  },
+  "review_resumeReadingThisPage": {
+    "message": "继续阅读这一页"
+  },
+  "review_focusedCompleteTitle": {
+    "message": "这一句已复习完成"
+  },
+  "review_focusedCompleteHint": {
+    "message": "回到原文语境，完成保存、复习、再阅读的闭环。"
+  },
+  "review_pageLoopCompleteTitle": {
+    "message": "本页复习完成"
+  },
+  "review_pageLoopCompleteHint": {
+    "message": "你已复习这个页面保存的卡片。回到深读继续学习。"
   },
   "review_sessionCompleteTitle": {
     "message": "本轮复习完成"
