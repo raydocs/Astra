@@ -118,8 +118,10 @@ export function installBenchBrowser(
     type: "runtime/translate-batch:success" as const,
     payload: {
       translations: payload.texts.map((text) => {
-        const taskPrefix = payload.task === "explain" ? "EXPLAIN" : "ZH"
-        return `${taskPrefix}:${text.slice(0, 48)}`
+        if (payload.task === "explain") {
+          return `EXPLAIN: This passage is explained with concise target-language guidance for ${text.split(/\s+/).slice(0, 3).join(" ")}.`
+        }
+        return `ZH:${text.slice(0, 48)}`
       }),
     },
   }))

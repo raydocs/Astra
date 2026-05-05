@@ -97,12 +97,13 @@ async function mountHoverScenario(config: {
 
     const host = document.getElementById(HOST_ID)
     const panel = host?.shadowRoot?.querySelector("div > div") as HTMLDivElement | null
+    const panelText = panel?.textContent?.trim() ?? ""
     const triggerLabel = panel?.children[0]?.textContent?.trim() ?? ""
     const translationText = panel?.children[1]?.textContent?.trim() ?? ""
     const translateCalls = browser.getTranslateCalls()
     const execution: HoverExecution = {
       requestCount: translateCalls.length,
-      overlayVisible: !!host?.shadowRoot?.textContent?.trim(),
+      overlayVisible: panelText.length > 0,
       overlayText: translationText,
       overlayError: host?.shadowRoot?.textContent?.includes("⚠") ? host.shadowRoot?.textContent?.trim() ?? "" : "",
       triggerLabel,
