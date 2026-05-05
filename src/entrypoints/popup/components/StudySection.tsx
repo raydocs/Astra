@@ -888,6 +888,7 @@ export default function StudySection({
                   )}
                   <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 8 }}>
                     <button
+                      data-testid={`study-sentence-explain-${card.index}`}
                       type="button"
                       style={actionButtonStyle}
                       onClick={(event) => {
@@ -899,6 +900,7 @@ export default function StudySection({
                       {card.explainStatus === "explaining" ? `${t("popup_studyExplainSentence")}...` : t("popup_studyExplainSentence")}
                     </button>
                     <button
+                      data-testid={`study-sentence-save-${card.index}`}
                       type="button"
                       style={actionButtonStyle}
                       onClick={(event) => {

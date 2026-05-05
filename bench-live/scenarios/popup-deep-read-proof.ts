@@ -295,17 +295,50 @@ export const popupDeepReadProofScenario: LiveScenarioDefinition<PopupDeepReadPro
             { timeout: timeoutMs },
           ).then(() => true, () => false)
 
+        const waitForRelayExplainRequest = async (page: typeof popupPage, previousCount: number, timeoutMs: number) => {
+          const deadline = Date.now() + timeoutMs
+          while (Date.now() < deadline) {
+            const currentCount = relayServer!.translateRequests.filter((request) => request.task === "explain").length
+            if (currentCount > previousCount) return true
+            await page.waitForTimeout(250)
+          }
+          return false
+        }
+
+        const describeSentenceButtons = async (page: typeof popupPage) => page
+          .locator('[data-testid="study-sentence-card-0"] button')
+          .evaluateAll((buttons) => buttons.map((button, index) => ({
+            index,
+            testId: button.getAttribute("data-testid"),
+            text: button.textContent?.trim() ?? "",
+            disabled: button.hasAttribute("disabled"),
+            ariaDisabled: button.getAttribute("aria-disabled"),
+          })))
+          .catch(() => [])
+
         const clickExplainAndWait = async (page: typeof popupPage, attempt: number) => {
           const explainRequestsBefore = relayServer!.translateRequests.filter((request) => request.task === "explain").length
-          await page.locator('[data-testid="study-sentence-card-0"] button').nth(0).click({ timeout: 10_000 })
-          const explained = await waitForExplainResult(page, process.env.CI === "true" ? 45_000 : 25_000)
+          const explainButton = page.locator('[data-testid="study-sentence-explain-0"]')
+          await explainButton.waitFor({ state: "visible", timeout: 15_000 })
+          await page.waitForFunction(() => {
+            const button = document.querySelector<HTMLButtonElement>('[data-testid="study-sentence-explain-0"]')
+            return !!button && !button.disabled && button.textContent?.includes("Explain")
+          }, undefined, { timeout: 15_000 })
+          await explainButton.scrollIntoViewIfNeeded()
+          await explainButton.click({ timeout: 10_000 })
+          const relayRequested = await waitForRelayExplainRequest(page, explainRequestsBefore, process.env.CI === "true" ? 12_000 : 6_000)
+          const explained = relayRequested
+            ? await waitForExplainResult(page, process.env.CI === "true" ? 45_000 : 25_000)
+            : false
           if (!explained) {
             const explainRequestsAfter = relayServer!.translateRequests.filter((request) => request.task === "explain").length
-            runtime.log("Popup explain did not render before timeout.", {
+            runtime.log("Popup explain did not complete after clicking the explicit explain control.", {
               attempt,
+              relayRequested,
               explainRequestsBefore,
               explainRequestsAfter,
               popupUrl: page.url(),
+              sentenceButtons: await describeSentenceButtons(page),
             })
           }
           return explained
@@ -360,7 +393,7 @@ export const popupDeepReadProofScenario: LiveScenarioDefinition<PopupDeepReadPro
             && repairExplainRequest.explainMode === "exam"
             && (repairExplainRequest.context?.selectionContext?.length ?? 0) > 0
 
-          await popupPage.locator('[data-testid="study-sentence-card-0"] button').nth(1).click()
+          await popupPage.locator('[data-testid="study-sentence-save-0"]').click({ timeout: 10_000 })
           await popupPage.waitForSelector('[data-testid="study-sentence-saved-cta-0"]', { timeout: 10_000 })
           saveWorked = true
 
