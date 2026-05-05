@@ -490,7 +490,7 @@ export default defineBackground({
                 if (!captured) throw error
                 return createImageTranslateHandoff(baseHandoffInput)
               })
-              const imageTranslateUrl = `${browser.runtime.getURL("/image-translate.html" as "/popup.html")}?${IMAGE_TRANSLATE_HANDOFF_QUERY_PARAM}=${encodeURIComponent(handoff.token)}`
+              const imageTranslateUrl = `${browser.runtime.getURL("/image-translate.html")}?${IMAGE_TRANSLATE_HANDOFF_QUERY_PARAM}=${encodeURIComponent(handoff.token)}`
               await browser.tabs.create({ url: imageTranslateUrl })
             })().catch(() => {})
             return
