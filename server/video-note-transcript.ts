@@ -736,7 +736,7 @@ async function transcribeAudioWithOpenAi(params: {
   formData.set("model", "whisper-1")
   formData.set("response_format", "verbose_json")
   formData.append("timestamp_granularities[]", "segment")
-  formData.set("file", new Blob([audioBytes], { type: mimeType }), filename)
+  formData.set("file", new Blob([new Uint8Array(audioBytes)], { type: mimeType }), filename)
 
   const { response, text: rawPayload } = await fetchTextWithGuardrails({
     url: "https://api.openai.com/v1/audio/transcriptions",

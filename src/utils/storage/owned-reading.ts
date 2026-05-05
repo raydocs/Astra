@@ -285,7 +285,7 @@ export function buildOwnedReadingResumeTarget(item: OwnedReadingItem): OwnedRead
     url: qs ? `${base}?${qs}` : base,
     sourceType: item.sourceType,
     mode: "reader_handoff",
-    requiresFileSelection: item.sourceType !== "article",
+    requiresFileSelection: true,
   }
 }
 
