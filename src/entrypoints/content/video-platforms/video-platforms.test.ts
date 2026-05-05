@@ -241,6 +241,7 @@ function timedTextJson(events: Array<{ startMs: number; durationMs: number; text
 
 describe("video platform subtitle translation", () => {
   beforeEach(() => {
+    vi.clearAllMocks()
     vi.useFakeTimers()
     setMockBrowser(createMockBrowser())
     readConfigMock.mockResolvedValue(DEFAULT_ASTRA_CONFIG)
