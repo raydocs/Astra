@@ -35,9 +35,10 @@ vi.mock("@/utils/extension/messages", () => ({
   toggleCurrentTabTranslation: toggleCurrentTabTranslationMock,
 }))
 
+import type { LearningStateSnapshot } from "../learning-state"
 import { mountFloatBall } from "./FloatBall"
 
-const idleLearningState = {
+const idleLearningState: LearningStateSnapshot = {
   savesThisSession: 0,
   hasSavedThisSession: false,
   lastSavedSurface: null,
