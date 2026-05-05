@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from "vitest"
+import { beforeEach, describe, expect, it, vi } from "vitest"
 
 const {
   translateTextsMock,
@@ -45,6 +45,10 @@ vi.mock("./translation-context", () => ({
 import { runActionById, runInlineAction } from "./inline-actions"
 
 describe("runInlineAction", () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+  })
+
   it("runs translate requests without adding an explicit task", async () => {
     const contextElement = document.createElement("p")
 
