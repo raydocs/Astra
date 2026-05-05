@@ -302,29 +302,21 @@ export function SubtitleReaderApp() {
   }, [])
 
   return (
-    <div className="astra-container astra-container--wide" style={containerStyle}>
-      <header style={headerStyle}>
-        <h1 style={{ margin: 0, fontSize: 18, color: "#6366f1" }}>Astra File Translator</h1>
+    <div className="astra-container astra-container--wide astra-subtitle-shell">
+      <header className="astra-subtitle-header">
+        <div>
+          <div className="astra-subtitle-header__title">Astra File Translator</div>
+          <div className="astra-subtitle-header__meta">Subtitle and text translation</div>
+        </div>
         {fileName && (
-          <span style={{ fontSize: 13, color: "#64748b" }}>
+          <div className="astra-subtitle-header__meta">
             {fileName} ({formatLabel(fileFormat)}, {itemCount} {isDocument ? "paragraphs" : "cues"})
-          </span>
+          </div>
         )}
       </header>
 
       {reopenBanner && (
-        <div
-          role="status"
-          style={{
-            marginBottom: 12,
-            padding: "10px 12px",
-            fontSize: 13,
-            color: "#1e40af",
-            background: "rgba(99, 102, 241, 0.12)",
-            borderRadius: 8,
-            border: "1px solid rgba(99, 102, 241, 0.35)",
-          }}
-        >
+        <div role="status" className="astra-subtitle-status-card astra-subtitle-status-card--info">
           {reopenBanner}
         </div>
       )}
@@ -361,12 +353,12 @@ export function SubtitleReaderApp() {
       )}
 
       {phase === "error" && (
-        <div style={{ padding: 24, color: "#b45309", textAlign: "center" }}>{error}</div>
+        <div className="astra-subtitle-status-card astra-subtitle-status-card--error">{error}</div>
       )}
 
       {phase === "parsed" && (
-        <div style={{ textAlign: "center", padding: 24 }}>
-          <div style={{ fontSize: 14, color: "#334155", marginBottom: 16 }}>
+        <div className="astra-subtitle-status-card">
+          <div className="astra-subtitle-status-card__copy">
             Parsed {itemCount} {isDocument ? "paragraphs" : "cues"} from {formatLabel(fileFormat)} file
           </div>
           <button type="button" onClick={() => void startTranslation()} className="astra-btn-primary">
@@ -376,7 +368,7 @@ export function SubtitleReaderApp() {
       )}
 
       {phase === "translating" && (
-        <div style={{ textAlign: "center", padding: 16, color: "#6366f1" }}>
+        <div className="astra-subtitle-status-card">
           Translating {progress.current}/{progress.total} {isDocument ? "paragraphs" : "cues"}...
         </div>
       )}
@@ -385,7 +377,7 @@ export function SubtitleReaderApp() {
         <>
           {phase === "done" && (
             <>
-              <div style={{ display: "flex", gap: 8, marginBottom: savedRowKeys.size > 0 ? 12 : 16 }}>
+              <div className="astra-subtitle-actions">
                 {isDocument ? (
                   <button type="button" onClick={() => handleExport("md")} className="astra-btn-primary">Export Markdown</button>
                 ) : (
@@ -396,28 +388,15 @@ export function SubtitleReaderApp() {
                 )}
               </div>
               {savedRowKeys.size > 0 && (
-                <div
-                  role="status"
-                  aria-live="polite"
-                  data-role="subtitle-learning-chain"
-                  style={{
-                    marginBottom: 16,
-                    padding: "12px 14px",
-                    borderRadius: 10,
-                    border: "1px solid rgba(99, 102, 241, 0.2)",
-                    background: "rgba(99, 102, 241, 0.06)",
-                  }}
-                >
-                  <div style={{ fontSize: 12, fontWeight: 700, color: "#4338ca", marginBottom: 4 }}>
-                    Learning chain ready
-                  </div>
-                  <div style={{ fontSize: 13, color: "#475569", marginBottom: 8 }}>
+                <div role="status" aria-live="polite" data-role="subtitle-learning-chain" className="astra-subtitle-learning-chain">
+                  <div className="astra-subtitle-learning-chain__title">Learning chain ready</div>
+                  <div className="astra-subtitle-learning-chain__copy">
                     {savedRowKeys.size} saved {savedRowKeys.size === 1 ? "row is" : "rows are"} now available in Vocabulary, Review, and Reading queue revisit.
                   </div>
-                  <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                    <button type="button" onClick={() => openLearningSurface("list")} className="astra-btn-primary" style={{ padding: "4px 10px", fontSize: 12 }}>Open Vocabulary</button>
-                    <button type="button" onClick={() => openLearningSurface("review")} className="astra-btn-primary" style={{ padding: "4px 10px", fontSize: 12 }}>Start Review</button>
-                    <button type="button" onClick={() => openLearningSurface("reading")} className="astra-btn-primary" style={{ padding: "4px 10px", fontSize: 12 }}>Open Reading Queue</button>
+                  <div className="astra-subtitle-learning-chain__actions">
+                    <button type="button" onClick={() => openLearningSurface("list")} className="astra-btn-primary astra-subtitle-mini-btn">Open Vocabulary</button>
+                    <button type="button" onClick={() => openLearningSurface("review")} className="astra-btn-primary astra-subtitle-mini-btn">Start Review</button>
+                    <button type="button" onClick={() => openLearningSurface("reading")} className="astra-btn-primary astra-subtitle-mini-btn">Open Reading Queue</button>
                   </div>
                 </div>
               )}
@@ -425,105 +404,105 @@ export function SubtitleReaderApp() {
           )}
 
           {isDocument ? (
-            <table style={tableStyle}>
+            <table className="astra-subtitle-table">
               <thead>
                 <tr>
-                  <th style={thStyle}>#</th>
-                  <th style={thStyle}>Original</th>
-                  <th style={thStyle}>Translation</th>
-                  <th style={thStyle}>Learn</th>
+                  <th>#</th>
+                  <th>Original</th>
+                  <th>Translation</th>
+                  <th>Learn</th>
                 </tr>
               </thead>
               <tbody>
-                {docEntries.map((entry, i) => (
-                  <tr key={i}>
-                    <td style={tdStyle}>{entry.index}</td>
-                    <td style={tdStyle}>{entry.text}</td>
-                    <td style={{ ...tdStyle, color: "#6366f1" }}>
-                      {translations.get(i) ?? (phase === "translating" ? "..." : "")}
-                    </td>
-                    <td style={tdStyle}>
-                      {phase === "done" && (
-                        <div style={{ display: "flex", flexDirection: "column", gap: 6, alignItems: "flex-start" }}>
-                          <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-                            <button
-                              type="button"
-                              onClick={() => void handleExplainRow(i, entry.text)}
-                              disabled={explainingIndex !== null}
-                              className="astra-btn-primary" style={{ padding: "4px 10px", fontSize: 12 }}
-                            >
-                              {explainingIndex === i ? "…" : "Explain"}
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => void handleSaveRow(i, entry.text)}
-                              disabled={savingIndex !== null || savedRowKeys.has(rowSaveKey(i, entry.text))}
-                              className="astra-btn-primary" style={{ padding: "4px 10px", fontSize: 12 }}
-                            >
-                              {savedRowKeys.has(rowSaveKey(i, entry.text)) ? "Saved" : savingIndex === i ? "…" : "Save"}
-                            </button>
+                {docEntries.map((entry, i) => {
+                  const isSaved = savedRowKeys.has(rowSaveKey(i, entry.text))
+                  return (
+                    <tr key={i} className="astra-subtitle-line" data-state={isSaved ? "saved" : undefined}>
+                      <td className="astra-subtitle-line__index">{entry.index}</td>
+                      <td className="astra-subtitle-line__text">{entry.text}</td>
+                      <td className="astra-subtitle-line__translation">
+                        {translations.get(i) ?? (phase === "translating" ? "..." : "")}
+                      </td>
+                      <td className="astra-subtitle-line__actions">
+                        {phase === "done" && (
+                          <div className="astra-subtitle-line__actions-wrap">
+                            <div className="astra-subtitle-line__button-row">
+                              <button
+                                type="button"
+                                onClick={() => void handleExplainRow(i, entry.text)}
+                                disabled={explainingIndex !== null}
+                                className="astra-btn-primary astra-subtitle-mini-btn"
+                              >
+                                {explainingIndex === i ? "…" : "Explain"}
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => void handleSaveRow(i, entry.text)}
+                                disabled={savingIndex !== null || isSaved}
+                                className="astra-btn-primary astra-subtitle-mini-btn"
+                              >
+                                {isSaved ? "Saved" : savingIndex === i ? "…" : "Save"}
+                              </button>
+                            </div>
+                            {explanations[i] && <div className="astra-subtitle-explain-box">{explanations[i]}</div>}
                           </div>
-                          {explanations[i] && (
-                            <div style={explainBoxStyle}>{explanations[i]}</div>
-                          )}
-                        </div>
-                      )}
-                    </td>
-                  </tr>
-                ))}
+                        )}
+                      </td>
+                    </tr>
+                  )
+                })}
               </tbody>
             </table>
           ) : (
-            <table style={tableStyle}>
+            <table className="astra-subtitle-table">
               <thead>
                 <tr>
-                  <th style={thStyle}>#</th>
-                  <th style={thStyle}>Time</th>
-                  <th style={thStyle}>Original</th>
-                  <th style={thStyle}>Translation</th>
-                  <th style={thStyle}>Learn</th>
+                  <th>#</th>
+                  <th>Time</th>
+                  <th>Original</th>
+                  <th>Translation</th>
+                  <th>Learn</th>
                 </tr>
               </thead>
               <tbody>
-                {cues.map((cue, i) => (
-                  <tr key={i}>
-                    <td style={tdStyle}>{cue.index}</td>
-                    <td style={{ ...tdStyle, whiteSpace: "nowrap", fontSize: 11, color: "#64748b" }}>
-                      {cue.startTime}
-                    </td>
-                    <td style={tdStyle}>{cue.text}</td>
-                    <td style={{ ...tdStyle, color: "#6366f1" }}>
-                      {translations.get(i) ?? (phase === "translating" ? "..." : "")}
-                    </td>
-                    <td style={tdStyle}>
-                      {phase === "done" && (
-                        <div style={{ display: "flex", flexDirection: "column", gap: 6, alignItems: "flex-start" }}>
-                          <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-                            <button
-                              type="button"
-                              onClick={() => void handleExplainRow(i, cue.text)}
-                              disabled={explainingIndex !== null}
-                              className="astra-btn-primary" style={{ padding: "4px 10px", fontSize: 12 }}
-                            >
-                              {explainingIndex === i ? "…" : "Explain"}
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => void handleSaveRow(i, cue.text)}
-                              disabled={savingIndex !== null || savedRowKeys.has(rowSaveKey(i, cue.text))}
-                              className="astra-btn-primary" style={{ padding: "4px 10px", fontSize: 12 }}
-                            >
-                              {savedRowKeys.has(rowSaveKey(i, cue.text)) ? "Saved" : savingIndex === i ? "…" : "Save"}
-                            </button>
+                {cues.map((cue, i) => {
+                  const isSaved = savedRowKeys.has(rowSaveKey(i, cue.text))
+                  return (
+                    <tr key={i} className="astra-subtitle-line" data-state={isSaved ? "saved" : undefined}>
+                      <td className="astra-subtitle-line__index">{cue.index}</td>
+                      <td className="astra-subtitle-line__time">{cue.startTime}</td>
+                      <td className="astra-subtitle-line__text">{cue.text}</td>
+                      <td className="astra-subtitle-line__translation">
+                        {translations.get(i) ?? (phase === "translating" ? "..." : "")}
+                      </td>
+                      <td className="astra-subtitle-line__actions">
+                        {phase === "done" && (
+                          <div className="astra-subtitle-line__actions-wrap">
+                            <div className="astra-subtitle-line__button-row">
+                              <button
+                                type="button"
+                                onClick={() => void handleExplainRow(i, cue.text)}
+                                disabled={explainingIndex !== null}
+                                className="astra-btn-primary astra-subtitle-mini-btn"
+                              >
+                                {explainingIndex === i ? "…" : "Explain"}
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => void handleSaveRow(i, cue.text)}
+                                disabled={savingIndex !== null || isSaved}
+                                className="astra-btn-primary astra-subtitle-mini-btn"
+                              >
+                                {isSaved ? "Saved" : savingIndex === i ? "…" : "Save"}
+                              </button>
+                            </div>
+                            {explanations[i] && <div className="astra-subtitle-explain-box">{explanations[i]}</div>}
                           </div>
-                          {explanations[i] && (
-                            <div style={explainBoxStyle}>{explanations[i]}</div>
-                          )}
-                        </div>
-                      )}
-                    </td>
-                  </tr>
-                ))}
+                        )}
+                      </td>
+                    </tr>
+                  )
+                })}
               </tbody>
             </table>
           )}
@@ -531,55 +510,4 @@ export function SubtitleReaderApp() {
       )}
     </div>
   )
-}
-
-const containerStyle: React.CSSProperties = {
-  fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif',
-  margin: "0 auto",
-  padding: 16,
-}
-
-const headerStyle: React.CSSProperties = {
-  display: "flex",
-  alignItems: "center",
-  gap: 12,
-  padding: "12px 0",
-  borderBottom: "1px solid #e2e8f0",
-  marginBottom: 16,
-}
-
-// btnStyle — now using className="astra-btn-primary"
-// smallBtnStyle — now using className="astra-btn-primary" + style override
-
-const explainBoxStyle: React.CSSProperties = {
-  maxWidth: 280,
-  fontSize: 12,
-  lineHeight: 1.45,
-  color: "#1e3a8a",
-  background: "#eff6ff",
-  border: "1px solid #bfdbfe",
-  borderRadius: 6,
-  padding: "6px 8px",
-}
-
-const tableStyle: React.CSSProperties = {
-  width: "100%",
-  borderCollapse: "collapse",
-  fontSize: 13,
-}
-
-const thStyle: React.CSSProperties = {
-  textAlign: "left",
-  padding: "8px 6px",
-  borderBottom: "2px solid #e2e8f0",
-  color: "#64748b",
-  fontSize: 12,
-  fontWeight: 600,
-}
-
-const tdStyle: React.CSSProperties = {
-  padding: "6px",
-  borderBottom: "1px solid #f1f5f9",
-  verticalAlign: "top",
-  lineHeight: 1.5,
 }

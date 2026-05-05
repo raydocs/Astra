@@ -18,7 +18,7 @@ import type {
   TranslationMode,
 } from "@/types/config"
 import type { AstraAccount, AstraDeviceIdentity, AstraSession, AstraUsageSnapshot } from "@/types/auth"
-import { isRuntimeResponse, type LearningContinuitySyncStatus, type PageStudyContext } from "@/types/messages"
+import { isRuntimeResponse, type LearningContinuitySyncStatus, type PageStudyContext, type TranslationCacheStats } from "@/types/messages"
 import type { TranslationSnapshot } from "@/types/translation"
 import {
   resolveActiveHttpTab,
@@ -26,6 +26,7 @@ import {
   getActiveTabStudyContext,
   getActiveTabTranslationState,
   getLearningContinuitySyncStatus,
+  getTranslationCacheStats,
   retryActiveTabFailedBlocks,
   saveConfigInBackground,
   startActiveTabTranslation,
@@ -110,6 +111,7 @@ import SiteSettingsSection from "./components/SiteSettingsSection"
 import SiteRulesExplainabilityPanel, { type SiteRulesQuickFixAction } from "./components/SiteRulesExplainabilityPanel"
 import LearningContinuityCommitCard from "./components/LearningContinuityCommitCard"
 import LearningClosurePrimerCard from "./components/LearningClosurePrimerCard"
+import { PopupGroupCard, PopupHeader, PopupShell } from "./components/PopupDesignPrimitives"
 import StudySection, {
   type PopupPageAssetSaveStatus,
   type PopupSentenceCardViewModel,
@@ -443,6 +445,7 @@ export default function App() {
   const [dueCount, setDueCount] = useState(0)
   const [learningLoopCopyVariant, setLearningLoopCopyVariantState] = useState<LearningLoopCopyVariant>(DEFAULT_LEARNING_LOOP_COPY_VARIANT)
   const [usageSummary, setUsageSummary] = useState<TranslationUsageSummary | null>(null)
+  const [translationCacheStats, setTranslationCacheStats] = useState<TranslationCacheStats | null>(null)
   const [studyLoop, setStudyLoop] = useState<StudyLoopViewModel | null>(null)
   const [weeklyRoi, setWeeklyRoi] = useState<WeeklyLearningRoiViewModel | null>(null)
   const [pageDigest, setPageDigest] = useState<PageDigestRecord | null>(null)
@@ -481,14 +484,16 @@ export default function App() {
   const primerViewEventKeyRef = useRef<string | null>(null)
   const subtitleQualityTrendKeyRef = useRef<string | null>(null)
 
+  const effectiveSiteContext = activePageUrl ?? activeSiteKey
+
   const persistedResolvedSite = useMemo(
-    () => resolveSiteTranslationSettings(persistedConfig, activeSiteKey),
-    [persistedConfig, activeSiteKey],
+    () => resolveSiteTranslationSettings(persistedConfig, effectiveSiteContext),
+    [persistedConfig, effectiveSiteContext],
   )
 
   const draftResolvedSite = useMemo(
-    () => resolveSiteTranslationSettings(configDraft, activeSiteKey),
-    [configDraft, activeSiteKey],
+    () => resolveSiteTranslationSettings(configDraft, effectiveSiteContext),
+    [configDraft, effectiveSiteContext],
   )
 
   const subtitleQualityControls = configDraft.subtitleQualityControls ?? DEFAULT_SUBTITLE_QUALITY_CONTROLS
@@ -656,7 +661,7 @@ export default function App() {
   }
 
   const refreshAll = async () => {
-    const [config, siteKey, device, storedSession, history, currentDueCount, studyContextResponse, usage, studyStore, vocabularyEntries, iosStatus, continuitySync, ownedReadingItems] = await Promise.all([
+    const [config, siteKey, device, storedSession, history, currentDueCount, studyContextResponse, usage, cacheStatsResult, studyStore, vocabularyEntries, iosStatus, continuitySync, ownedReadingItems] = await Promise.all([
       readConfig(),
       getActiveSiteKey(),
       ensureAstraDeviceIdentity(),
@@ -665,6 +670,7 @@ export default function App() {
       getDueVocabularyCount(),
       getActiveTabStudyContext(),
       getTranslationUsageSummary(),
+      getTranslationCacheStats(),
       getStudyProgress(),
       getVocabularyEntries(),
       fetchIosBootstrapRuntimeStatus(),
@@ -675,6 +681,7 @@ export default function App() {
     setDueCount(currentDueCount)
     setStudyContext(studyContextResponse.ok ? studyContextResponse.context : null)
     setUsageSummary(usage)
+    setTranslationCacheStats(cacheStatsResult.ok ? cacheStatsResult.stats : null)
     setIosBootstrapStatus(iosStatus)
     const phaseOneStatus = continuitySync.ok ? continuitySync.status : null
     setLearningContinuitySyncStatus(phaseOneStatus)
@@ -1430,7 +1437,7 @@ export default function App() {
         hasUnsavedChangesRef.current = false
 
         if (activeSiteKey) {
-          const resolvedSite = resolveSiteTranslationSettings(nextConfig, activeSiteKey)
+          const resolvedSite = resolveSiteTranslationSettings(nextConfig, activePageUrl ?? activeSiteKey)
           if (!resolvedSite.enabled) {
             await stopActiveTabTranslation()
           } else if (options.retranslateActivePage && translationState?.phase !== "idle" && contentAvailable) {
@@ -2086,73 +2093,73 @@ export default function App() {
     })
   }
 
+  const headerSubtitle = currentSite.hostname
+    ? `${currentSite.hostname}${studyContext?.pageTitle ? ` · ${studyContext.pageTitle}` : ""}`
+    : statusMessage || sessionStatusLabel
+  const headerStatusTone = isAuthenticatedSession
+    ? "ready"
+    : continuityStatus?.device.ready
+      ? "warning"
+      : "muted"
+
   return (
-    <div style={{
-      width: "100%",
-      maxWidth: 400,
-      minWidth: 280,
-      padding: 16,
-      fontFamily: "system-ui, sans-serif",
-      boxSizing: "border-box",
-      background: "linear-gradient(180deg, var(--astra-popup-bg-soft) 0%, var(--astra-popup-bg-subtle) 42%, var(--astra-bg-primary) 100%)",
-      border: "1px solid var(--astra-popup-border-warm)",
-      borderRadius: 14,
-      color: "var(--astra-text-primary)",
-    }}>
-      {/* Header */}
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
-        <h2 style={{ margin: 0, fontSize: 18, display: "flex", alignItems: "center", gap: 8, color: "var(--astra-popup-text-warm)" }}>
-          Astra
-        </h2>
-        <button
-          type="button"
-          onClick={() => void browser.tabs.create({ url: browser.runtime.getURL("/options.html" as "/popup.html") })}
-          className="astra-popup-icon-btn"
-          title="Settings"
-        >
-          &#9881;
-        </button>
-      </div>
+    <PopupShell>
+      <PopupHeader
+        title="Astra"
+        subtitle={headerSubtitle}
+        statusLabel={`${sessionStatusLabel} · ${planLabel}`}
+        statusTone={headerStatusTone}
+        onOpenSettings={() => void browser.tabs.create({ url: browser.runtime.getURL("/options.html" as "/popup.html") })}
+      />
 
-      {/* Translate This Page button */}
-      {isIdle ? (
-        <button
-          onClick={() => {
-            void translate()
-          }}
-          className="astra-btn-primary"
-          style={{ width: "100%", padding: "10px 12px", fontSize: 15, fontWeight: 600 }}
-          disabled={translateDisabled}
-        >
-          {t("popup_translateThisPage")}
-        </button>
-      ) : (
-        <button
-          onClick={() => {
-            void removeTranslation()
-          }}
-          className="astra-btn-secondary"
-          style={{ width: "100%", padding: "10px 12px", fontSize: 15, fontWeight: 600 }}
-          disabled={removeDisabled}
-        >
-          {t("popup_stopTranslation")}
-        </button>
-      )}
+      <PopupGroupCard eyebrow={t("popup_currentSite")} className="astra-popup-primary-group">
+        <div className="astra-group-card--padded">
+          {isIdle ? (
+            <button
+              onClick={() => {
+                void translate()
+              }}
+              className="astra-btn-primary"
+              style={{ width: "100%", padding: "12px 14px", fontSize: 15, fontWeight: 700, justifyContent: "space-between" }}
+              disabled={translateDisabled}
+            >
+              {t("popup_translateThisPage")}
+            </button>
+          ) : (
+            <button
+              onClick={() => {
+                void removeTranslation()
+              }}
+              className="astra-btn-secondary"
+              style={{ width: "100%", padding: "12px 14px", fontSize: 15, fontWeight: 700 }}
+              disabled={removeDisabled}
+            >
+              {t("popup_stopTranslation")}
+            </button>
+          )}
 
-      <div style={{ marginTop: 8, display: "flex", alignItems: "center", gap: 6, fontSize: 12, color: "var(--astra-popup-text-warm)" }}>
-        <span style={{
-          display: "inline-block",
-          width: 8,
-          height: 8,
-          borderRadius: "50%",
-          background: isAuthenticatedSession ? "var(--astra-success)" : continuityStatus?.device.ready ? "var(--astra-accent-warm)" : "var(--astra-text-decorative)",
-        }} />
-        <span>
-          {sessionStatusLabel}
-          {" · "}
-          {planLabel}
-        </span>
-      </div>
+          <div style={{ marginTop: 8, display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+            <button
+              type="button"
+              onClick={openDeepReadPage}
+              className="astra-btn-secondary"
+              style={{ padding: "8px 10px", fontSize: 12, fontWeight: 700 }}
+              disabled={!studyReady}
+            >
+              {t("popup_deepReadAction")}
+            </button>
+            <button
+              type="button"
+              onClick={() => { void handleSaveCurrentPageAsset() }}
+              className="astra-btn-secondary"
+              style={{ padding: "8px 10px", fontSize: 12, fontWeight: 700 }}
+              disabled={pageAssetSaveStatus === "saving" || pageAssetSaveStatus === "saved" || !studyContext}
+            >
+              {pageAssetSaveStatus === "saved" ? t("popup_contentAssetizationSavedAction") : pageAssetSaveStatus === "saving" ? t("popup_contentAssetizationSavingAction") : t("popup_contentAssetizationSaveAction")}
+            </button>
+          </div>
+        </div>
+      </PopupGroupCard>
 
       {isAuthenticatedSession && (
         <LearningContinuityCommitCard
@@ -2193,30 +2200,20 @@ export default function App() {
       )}
 
       {accountContinuityAuthHydrated && (
-        <div
-          data-testid="popup-account-continuity-card"
-          style={{
-            marginTop: 12,
-            marginBottom: 8,
-            padding: "10px 12px",
-            background: "var(--astra-bg-primary)",
-            border: "1px solid var(--astra-border-strong)",
-            borderRadius: 10,
-          }}
-        >
-          <div style={{ fontSize: 11, fontWeight: 800, color: "var(--astra-text-secondary)", textTransform: "uppercase", letterSpacing: "0.04em" }}>
+        <div data-testid="popup-account-continuity-card" className="astra-account-continuity-card">
+          <div className="astra-account-continuity-card__eyebrow">
             {accountContinuityCopy.eyebrow}
           </div>
-          <div style={{ fontSize: 13, fontWeight: 800, color: "var(--astra-text-primary)", marginTop: 4 }}>
+          <div className="astra-account-continuity-card__title">
             {isAccountContinuitySignedIn ? accountContinuityCopy.connectedTitle : accountContinuityCopy.title}
           </div>
-          <div style={{ fontSize: 12, color: "var(--astra-text-secondary)", lineHeight: 1.45, marginTop: 4 }}>
+          <div className="astra-account-continuity-card__copy">
             {isAccountContinuitySignedIn ? accountContinuityCopy.connectedSummary : accountContinuityCopy.summary}
           </div>
-          <div data-testid="popup-account-continuity-proof-moment" style={{ fontSize: 11, color: "var(--astra-text-secondary)", lineHeight: 1.45, marginTop: 6, fontWeight: 700 }}>
+          <div data-testid="popup-account-continuity-proof-moment" className="astra-account-continuity-card__proof">
             {accountContinuityProofMoment}
           </div>
-          <div style={{ fontSize: 11, color: "var(--astra-text-muted)", lineHeight: 1.45, marginTop: 6 }}>
+          <div className="astra-account-continuity-card__boundary">
             {accountContinuityCopy.boundary}
           </div>
           {!isAccountContinuitySignedIn && (
@@ -2230,7 +2227,7 @@ export default function App() {
               >
                 {accountContinuityCopy.cta}
               </button>
-              <div style={{ fontSize: 11, color: "var(--astra-text-muted)", lineHeight: 1.45, marginTop: 6 }}>
+              <div className="astra-account-continuity-card__boundary">
                 {accountContinuityCopy.ctaHelper}
               </div>
             </>
@@ -2548,7 +2545,7 @@ export default function App() {
         </div>
 
         <div style={{ marginTop: 12 }}>
-          <UsageInsightsCard summary={usageSummary} />
+          <UsageInsightsCard summary={usageSummary} cacheStats={translationCacheStats} />
         </div>
 
         {activeSiteKey && (
@@ -2686,6 +2683,6 @@ export default function App() {
       <div style={{ fontSize: 11, color: "var(--astra-popup-text-warm-strong)", textAlign: "center", marginTop: 4 }}>
         Astra v0.1.0
       </div>
-    </div>
+    </PopupShell>
   )
 }

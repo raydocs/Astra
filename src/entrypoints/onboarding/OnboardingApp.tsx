@@ -47,54 +47,6 @@ const EXPLAIN_MODE_OPTIONS = [
 const BRAND_COLOR = "var(--astra-brand)"
 const TOTAL_STEPS = 4
 
-const containerStyle: React.CSSProperties = {
-  minHeight: "100vh",
-  display: "flex",
-  alignItems: "center",
-  justifyContent: "center",
-  fontFamily: "var(--astra-font)",
-  background: "linear-gradient(135deg, var(--astra-bg-primary) 0%, var(--astra-brand-muted) 100%)",
-  margin: 0,
-  padding: 24,
-  boxSizing: "border-box",
-}
-
-const cardStyle: React.CSSProperties = {
-  width: "100%",
-  maxWidth: 500,
-  background: "var(--astra-bg-card)",
-  borderRadius: 16,
-  boxShadow: "var(--astra-shadow-lg)",
-  padding: "48px 40px",
-  boxSizing: "border-box",
-}
-
-const dotContainerStyle: React.CSSProperties = {
-  display: "flex",
-  justifyContent: "center",
-  gap: 8,
-  marginBottom: 40,
-}
-
-const titleStyle: React.CSSProperties = {
-  fontSize: 28,
-  fontWeight: 700,
-  color: "var(--astra-text-primary)",
-  textAlign: "center",
-  margin: "0 0 8px 0",
-  lineHeight: 1.3,
-}
-
-const taglineStyle: React.CSSProperties = {
-  fontSize: 16,
-  color: "var(--astra-text-muted)",
-  textAlign: "center",
-  margin: "0 0 32px 0",
-  lineHeight: 1.5,
-}
-
-// primaryButtonStyle — now using className="astra-btn-primary"
-
 const labelTextStyle: React.CSSProperties = {
   display: "block",
   fontSize: 14,
@@ -201,47 +153,92 @@ function buildPopupSignInDeepLinkUrl(): string {
 }
 
 function StepDots({ current }: { current: number }) {
+  const labels = ["Welcome", "Languages", "Workflow", "Ready"]
+
   return (
-    <div style={dotContainerStyle}>
-      {Array.from({ length: TOTAL_STEPS }, (_, i) => (
-        <div
-          key={i}
-          style={{
-            width: i === current ? 24 : 8,
-            height: 8,
-            borderRadius: 4,
-            background: i === current ? BRAND_COLOR : "var(--astra-border)",
-            transition: "all 0.25s ease",
-          }}
-        />
-      ))}
-    </div>
+    <>
+      <div className="astra-onboarding-stepper" aria-label={`Onboarding step ${current + 1} of ${TOTAL_STEPS}`}>
+        {labels.map((label, i) => {
+          const state = i < current ? "complete" : i === current ? "active" : "pending"
+          return (
+            <span key={label} style={{ display: "inline-flex", alignItems: "center", gap: 10 }}>
+              {i > 0 && <span className="astra-onboarding-stepper__line" aria-hidden="true" />}
+              <span className="astra-onboarding-step" data-state={state}>
+                <span className="astra-onboarding-step__badge">{i < current ? "✓" : i + 1}</span>
+                <span className="astra-onboarding-step__label">{label}</span>
+              </span>
+            </span>
+          )
+        })}
+      </div>
+      <div className="astra-onboarding-step-dots" aria-hidden="true">
+        {labels.map((label, i) => (
+          <div key={label} className="astra-onboarding-step-dot" data-state={i < current ? "complete" : i === current ? "active" : "pending"} />
+        ))}
+      </div>
+    </>
+  )
+}
+
+function OnboardingPreview({
+  targetLang,
+  languageLevel,
+  explainMode,
+}: {
+  targetLang: string
+  languageLevel: string
+  explainMode: string
+}) {
+  const targetLabel = TARGET_LANGUAGES.find((lang) => lang.value === targetLang)?.label ?? targetLang
+  const levelLabel = LEVEL_OPTIONS.find((level) => level.value === languageLevel)?.label ?? languageLevel
+  const explainModeLabel = EXPLAIN_MODE_OPTIONS.find((mode) => mode.value === explainMode)?.label ?? explainMode
+
+  return (
+    <aside className="astra-onboarding-panel astra-onboarding-preview-pane" aria-label="Astra live preview">
+      <div className="astra-onboarding-preview-toolbar">
+        <span className="astra-quiet-eyebrow">Live preview</span>
+        <span className="astra-onboarding-preview-host">newyorker.com</span>
+      </div>
+
+      <div className="astra-onboarding-preview-card">
+        <div className="astra-quiet-eyebrow" style={{ marginBottom: 8 }}>Preview article</div>
+        <h2 className="astra-onboarding-preview-title">Why Solitude Is Important for Reading</h2>
+        <div className="astra-onboarding-preview-subtitle">为什么独处对阅读如此重要</div>
+
+        <div className="astra-onboarding-preview-body">
+          <p>
+            Reading well requires a kind of <span className="astra-onboarding-preview-mark">attention</span> that the modern web has quietly <span className="astra-onboarding-preview-mark">eroded</span>.
+          </p>
+          <p className="astra-onboarding-preview-translation">
+            阅读得当需要一种现代网络已悄然侵蚀的专注力。
+          </p>
+          <p>
+            Astra sits underneath the page, adding only what you ask for, never repainting what was already legible.
+          </p>
+          <p className="astra-onboarding-preview-translation">
+            Astra 运行在页面之下，只补充你需要的部分，绝不重绘原本已可读的内容。
+          </p>
+        </div>
+
+        <div className="astra-onboarding-preview-footer">
+          Translation: {targetLabel} · Level: {levelLabel} · Explanation: {explainModeLabel}
+        </div>
+      </div>
+    </aside>
   )
 }
 
 function StepWelcome({ onNext }: { onNext: () => void }) {
   return (
-    <div style={{ textAlign: "center" }}>
+    <div style={{ textAlign: "left" }}>
       <div
-        style={{
-          width: 64,
-          height: 64,
-          borderRadius: 16,
-          background: `linear-gradient(135deg, ${BRAND_COLOR}, var(--astra-brand-hover))`,
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
-          margin: "0 auto 24px auto",
-          fontSize: 28,
-          color: "var(--astra-text-on-brand)",
-          fontWeight: 800,
-          letterSpacing: -1,
-        }}
+        className="astra-onboarding-mark"
+        style={{ marginBottom: 24 }}
       >
         A
       </div>
-      <h1 style={titleStyle}>Astra — AI Language Learning</h1>
-      <p style={taglineStyle}>Not just a translator: turn real webpages into sentence explanations, saved vocabulary, and spaced review.</p>
+      <h1 className="astra-onboarding-title">Astra — AI Language Learning</h1>
+      <p className="astra-onboarding-copy">Not just a translator: turn real webpages into sentence explanations, saved vocabulary, and spaced review.</p>
       <button
         type="button"
         onClick={onNext}
@@ -277,8 +274,8 @@ function StepLanguage({
 }) {
   return (
     <div>
-      <h1 style={{ ...titleStyle, fontSize: 24, marginBottom: 4 }}>Choose Your Languages</h1>
-      <p style={{ ...taglineStyle, marginBottom: 28 }}>
+      <h1 className="astra-onboarding-title" style={{ fontSize: 34, marginBottom: 8 }}>Choose Your Languages</h1>
+      <p className="astra-onboarding-copy" style={{ marginBottom: 28 }}>
         Tell us what you're learning so Astra can package each page into the right practice loop.
       </p>
 
@@ -379,8 +376,8 @@ function StepFeatures({
 
   return (
     <div>
-      <h1 style={{ ...titleStyle, fontSize: 24, marginBottom: 4 }}>How Astra Works</h1>
-      <p style={{ ...taglineStyle, marginBottom: 24 }}>
+      <h1 className="astra-onboarding-title" style={{ fontSize: 34, marginBottom: 8 }}>How Astra Works</h1>
+      <p className="astra-onboarding-copy" style={{ marginBottom: 24 }}>
         A reading-to-review workflow for learners who want progress, not one-off lookup.
       </p>
 
@@ -496,8 +493,8 @@ function StepReady({
 
   return (
     <div>
-      <h1 style={{ ...titleStyle, fontSize: 24, marginBottom: 4 }}>You're All Set!</h1>
-      <p style={{ ...taglineStyle, marginBottom: 24 }}>
+      <h1 className="astra-onboarding-title" style={{ fontSize: 34, marginBottom: 8 }}>You're All Set!</h1>
+      <p className="astra-onboarding-copy" style={{ marginBottom: 24 }}>
         Your first real-page learning loop is ready.
       </p>
 
@@ -756,94 +753,107 @@ export default function OnboardingApp() {
   }
 
   return (
-    <div style={containerStyle}>
-      <div style={cardStyle}>
-        <StepDots current={step} />
-
-        {showIosBootstrapDiagnostics && (
-          <div
-            data-testid="onboarding-ios-bridge-diagnostics"
-            style={{
-              fontSize: 12,
-              color: "var(--astra-text-muted)",
-              textAlign: "left",
-              marginBottom: 20,
-              lineHeight: 1.45,
-            }}
-            className="astra-card"
-          >
-            <div>
-              iOS bridge: {iosBootstrapStatus.bridgeAvailable ? "available" : "unavailable"}
-              {" · "}
-              Last bootstrap: {formatStatusTime(iosBootstrapStatus.status?.lastBootstrapAt ?? null)}
-            </div>
-            <div>
-              Launch path: popup/onboarding → extension bridge → astra-shell://bootstrap → host app
-            </div>
-            {iosBootstrapStatus.history.length > 0 && (
-              <div>
-                Recent bridge events: {iosBootstrapStatus.history.length}
-              </div>
-            )}
-            <div style={{ display: "flex", gap: 8, marginTop: 8, flexWrap: "wrap" }}>
-              <button
-                type="button"
-                onClick={() => { void handleOpenInAstraApp() }}
-                className="astra-btn-primary"
-                style={{ width: "auto", padding: "8px 12px", fontSize: 12 }}
-                disabled={!iosBootstrapStatus.bridgeAvailable}
-              >
-                Open in Astra App
-              </button>
-              <button
-                type="button"
-                onClick={() => { void handleReplayLatestBridgeEvent() }}
-                className="astra-btn-primary"
-                style={{ width: "auto", padding: "8px 12px", fontSize: 12, background: "var(--astra-text-primary)" }}
-                disabled={!iosBootstrapStatus.bridgeAvailable || iosBootstrapStatus.history.length === 0}
-              >
-                Replay last handoff
-              </button>
-            </div>
-            {iosBridgeActionMessage && (
-              <div style={{ marginTop: 8 }}>
-                {iosBridgeActionMessage}
-              </div>
-            )}
-            {iosBootstrapStatus.history.slice(0, 2).map((event) => (
-              <div key={event.sessionId}>
-                · {event.sessionId} ({event.source}) {formatStatusTime(event.issuedAt)}
-              </div>
-            ))}
+    <div className="astra-onboarding-shell">
+      <main className="astra-onboarding-frame">
+        <section className="astra-onboarding-panel astra-onboarding-panel--copy">
+          <div className="astra-onboarding-brand-row">
+            <div className="astra-quiet-wordmark">Astra</div>
+            <span className="astra-onboarding-step-label">Step {step + 1} of {TOTAL_STEPS}</span>
           </div>
-        )}
 
-        <div style={{ transition: "opacity 0.2s ease" }}>
-          {step === 0 && <StepWelcome onNext={() => setStep(1)} />}
-          {step === 1 && (
-            <StepLanguage
-              sourceLang={sourceLang}
-              targetLang={targetLang}
-              languageLevel={languageLevel}
-              explainMode={explainMode}
-              onSourceChange={setSourceLang}
-              onTargetChange={setTargetLang}
-              onLevelChange={setLanguageLevel}
-              onExplainModeChange={setExplainMode}
-              onNext={() => setStep(2)}
-            />
+          <StepDots current={step} />
+
+          {showIosBootstrapDiagnostics && (
+            <div
+              data-testid="onboarding-ios-bridge-diagnostics"
+              style={{
+                fontSize: 12,
+                color: "var(--astra-text-muted)",
+                textAlign: "left",
+                marginBottom: 0,
+                lineHeight: 1.45,
+              }}
+              className="astra-card"
+            >
+              <div>
+                iOS bridge: {iosBootstrapStatus.bridgeAvailable ? "available" : "unavailable"}
+                {" · "}
+                Last bootstrap: {formatStatusTime(iosBootstrapStatus.status?.lastBootstrapAt ?? null)}
+              </div>
+              <div>
+                Launch path: popup/onboarding → extension bridge → astra-shell://bootstrap → host app
+              </div>
+              {iosBootstrapStatus.history.length > 0 && (
+                <div>
+                  Recent bridge events: {iosBootstrapStatus.history.length}
+                </div>
+              )}
+              <div style={{ display: "flex", gap: 8, marginTop: 8, flexWrap: "wrap" }}>
+                <button
+                  type="button"
+                  onClick={() => { void handleOpenInAstraApp() }}
+                  className="astra-btn-primary"
+                  style={{ width: "auto", padding: "8px 12px", fontSize: 12 }}
+                  disabled={!iosBootstrapStatus.bridgeAvailable}
+                >
+                  Open in Astra App
+                </button>
+                <button
+                  type="button"
+                  onClick={() => { void handleReplayLatestBridgeEvent() }}
+                  className="astra-btn-primary"
+                  style={{ width: "auto", padding: "8px 12px", fontSize: 12, background: "var(--astra-text-primary)" }}
+                  disabled={!iosBootstrapStatus.bridgeAvailable || iosBootstrapStatus.history.length === 0}
+                >
+                  Replay last handoff
+                </button>
+              </div>
+              {iosBridgeActionMessage && (
+                <div style={{ marginTop: 8 }}>
+                  {iosBridgeActionMessage}
+                </div>
+              )}
+              {iosBootstrapStatus.history.slice(0, 2).map((event) => (
+                <div key={event.sessionId}>
+                  · {event.sessionId} ({event.source}) {formatStatusTime(event.issuedAt)}
+                </div>
+              ))}
+            </div>
           )}
-          {step === 2 && <StepFeatures copyVariant={learningLoopCopyVariant} onContinue={handleFeaturesContinue} />}
-          {step === 3 && (
-            <StepReady
-              targetLang={targetLang}
-              copyVariant={learningLoopCopyVariant}
-              onComplete={() => void handleComplete()}
-              completing={completing}
-            />
-          )}
-        </div>
-      </div>
+
+          <div className="astra-onboarding-content" style={{ transition: "opacity 0.2s ease" }}>
+            {step === 0 && <StepWelcome onNext={() => setStep(1)} />}
+            {step === 1 && (
+              <StepLanguage
+                sourceLang={sourceLang}
+                targetLang={targetLang}
+                languageLevel={languageLevel}
+                explainMode={explainMode}
+                onSourceChange={setSourceLang}
+                onTargetChange={setTargetLang}
+                onLevelChange={setLanguageLevel}
+                onExplainModeChange={setExplainMode}
+                onNext={() => setStep(2)}
+              />
+            )}
+            {step === 2 && <StepFeatures copyVariant={learningLoopCopyVariant} onContinue={handleFeaturesContinue} />}
+            {step === 3 && (
+              <StepReady
+                targetLang={targetLang}
+                copyVariant={learningLoopCopyVariant}
+                onComplete={() => void handleComplete()}
+                completing={completing}
+              />
+            )}
+          </div>
+        </section>
+
+        <OnboardingPreview
+          targetLang={targetLang}
+          languageLevel={languageLevel}
+          explainMode={explainMode}
+        />
+      </main>
     </div>
   )
 }

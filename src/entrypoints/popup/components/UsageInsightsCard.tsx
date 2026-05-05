@@ -1,8 +1,11 @@
 import { t } from "@/utils/i18n"
 import type { TranslationUsageEvent, TranslationUsageAggregate, TranslationUsageSummary, RequestSource } from "@/utils/storage/translation-usage"
+import type { TranslationCacheStats } from "@/types/messages"
+import { PopupMetricCard } from "./PopupDesignPrimitives"
 
 export interface UsageInsightsCardProps {
   summary: TranslationUsageSummary | null
+  cacheStats?: TranslationCacheStats | null
 }
 
 function formatCompactCount(value: number): string {
@@ -54,16 +57,76 @@ function MetricGrid({ aggregate, label }: { aggregate: TranslationUsageAggregate
 }
 
 function MetricCell({ label, value, color }: { label: string; value: string; color?: string }) {
+  return <PopupMetricCard label={label} value={value} valueColor={color} />
+}
+
+function formatPercent(rate: number): string {
+  return `${Math.round(rate * 100)}%`
+}
+
+function formatBucketLabel(bucketKey: string): string {
+  try {
+    const parsed = JSON.parse(bucketKey) as { languageLevel?: string; routingKey?: string }
+    const parts = [parsed.languageLevel, parsed.routingKey]
+      .filter((value): value is string => Boolean(value && value !== "default"))
+    return parts.length > 0 ? parts.join(" · ") : "default"
+  } catch {
+    return "default"
+  }
+}
+
+function CacheDiagnostics({ stats }: { stats: TranslationCacheStats }) {
+  const topBuckets = stats.buckets.slice(0, 3)
+  const hasActivity = stats.lookups > 0 || stats.count > 0 || stats.writes > 0
+
   return (
-    <div style={{
-      padding: "4px 6px",
-      background: "var(--astra-bg-card)",
-      border: "1px solid var(--astra-border)",
-      borderRadius: 6,
-    }}
+    <div
+      data-testid="translation-cache-diagnostics"
+      style={{
+        marginTop: 12,
+        paddingTop: 10,
+        borderTop: "1px solid var(--astra-border)",
+      }}
     >
-      <div className="astra-tabular" style={{ fontSize: 13, fontWeight: 700, color: color ?? "var(--astra-text-primary)" }}>{value}</div>
-      <div style={{ fontSize: 9, color: "var(--astra-text-hint)", marginTop: 1 }}>{label}</div>
+      <div style={{ fontSize: 12, fontWeight: 700, color: "var(--astra-text-primary)" }}>
+        Translation cache
+      </div>
+      {!hasActivity ? (
+        <div style={{ marginTop: 6, fontSize: 11, color: "var(--astra-text-muted)", lineHeight: 1.45 }}>
+          No cached translations yet. Astra will reuse matching page translation requests for up to 30 days.
+        </div>
+      ) : (
+        <>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(80px, 1fr))", gap: 6, marginTop: 6 }}>
+            <MetricCell label="entries" value={formatCompactCount(stats.count)} />
+            <MetricCell label="hit rate" value={formatPercent(stats.hitRate)} color={stats.hitRate > 0 ? "var(--astra-success)" : undefined} />
+            <MetricCell label="hits / lookups" value={`${formatCompactCount(stats.hits)} / ${formatCompactCount(stats.lookups)}`} />
+            <MetricCell label="writes" value={formatCompactCount(stats.writes)} />
+          </div>
+          {topBuckets.length > 0 && (
+            <div style={{ marginTop: 8, display: "flex", flexDirection: "column", gap: 4 }}>
+              {topBuckets.map((bucket) => (
+                <div
+                  key={bucket.bucketKey}
+                  style={{
+                    display: "flex",
+                    justifyContent: "space-between",
+                    gap: 8,
+                    fontSize: 10,
+                    color: "var(--astra-text-muted)",
+                  }}
+                >
+                  <span>{bucket.providerId} / {bucket.model} · {formatBucketLabel(bucket.bucketKey)}</span>
+                  <span className="astra-tabular">{formatPercent(bucket.hitRate)} · {bucket.hits}/{bucket.lookups}</span>
+                </div>
+              ))}
+            </div>
+          )}
+        </>
+      )}
+      <div style={{ marginTop: 6, fontSize: 10, color: "var(--astra-text-hint)", lineHeight: 1.4 }}>
+        Cache diagnostics show counts only; source text is not displayed here.
+      </div>
     </div>
   )
 }
@@ -102,7 +165,7 @@ function SourceDistribution({ bySource }: { bySource: Partial<Record<RequestSour
   )
 }
 
-export default function UsageInsightsCard({ summary }: UsageInsightsCardProps) {
+export default function UsageInsightsCard({ summary, cacheStats }: UsageInsightsCardProps) {
   if (!summary) return null
 
   const noUsage = summary.session.requests === 0 && summary.today.requests === 0
@@ -163,6 +226,8 @@ export default function UsageInsightsCard({ summary }: UsageInsightsCardProps) {
       <div style={{ marginTop: 8, fontSize: 11, color: "var(--astra-text-hint)", lineHeight: 1.45 }}>
         {t("popup_usageLiveOnly")}
       </div>
+
+      {cacheStats && <CacheDiagnostics stats={cacheStats} />}
     </section>
   )
 }

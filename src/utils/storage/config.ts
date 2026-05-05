@@ -143,6 +143,8 @@ export async function saveConfig(input: AstraConfigInput): Promise<AstraConfig> 
         ...(value.excludeSelectors?.length ? { excludeSelectors: value.excludeSelectors } : {}),
         ...(value.paragraphMinLength != null ? { paragraphMinLength: value.paragraphMinLength } : {}),
         ...(value.customCss ? { customCss: value.customCss } : {}),
+        ...(value.includePathPatterns?.length ? { includePathPatterns: value.includePathPatterns } : {}),
+        ...(value.excludePathPatterns?.length ? { excludePathPatterns: value.excludePathPatterns } : {}),
       }
     })
   }

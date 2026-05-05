@@ -390,6 +390,75 @@ function NextStepBanner({
   )
 }
 
+function StudyProgressCardGroup({
+  studyLoop,
+  pageSavedReviewSummary,
+  canReadArticle,
+  dueCount,
+  onReadArticle,
+  onExplainSentence,
+  onOpenVocabulary,
+  onOpenReview,
+  onReviewPageSavedSentences,
+}: {
+  studyLoop: StudyLoopViewModel
+  pageSavedReviewSummary: { count: number } | null
+  canReadArticle: boolean
+  dueCount: number
+  onReadArticle: () => void
+  onExplainSentence: () => void
+  onOpenVocabulary: () => void
+  onOpenReview: () => void
+  onReviewPageSavedSentences: () => void
+}) {
+  return (
+    <div
+      data-testid="study-progress-card-group"
+      style={{
+        marginTop: 10,
+        padding: "10px 12px",
+        background: "var(--astra-bg-card)",
+        border: "1px solid var(--astra-popup-border-warm)",
+        borderRadius: 10,
+      }}
+    >
+      {studyLoop.currentPage && studyLoop.nextStep && studyLoop.completedSteps.length > 0 && (
+        <div
+          style={{
+            marginBottom: 8,
+            padding: "8px 10px",
+            background: "var(--astra-success-bg)",
+            border: "1px solid var(--astra-success-border)",
+            borderRadius: 8,
+            fontSize: 12,
+            color: "var(--astra-success)",
+            lineHeight: 1.45,
+          }}
+        >
+          {t("popup_studyResumeFromLast")}
+        </div>
+      )}
+      <CurrentPageProgressCard studyLoop={studyLoop} />
+      <PersonalizedStrategyCard studyLoop={studyLoop} />
+      <StudyProgressBar
+        completionPercent={studyLoop.completionPercent}
+        completedSteps={studyLoop.completedSteps}
+      />
+      <NextStepBanner
+        nextStep={studyLoop.nextStep}
+        onReadArticle={onReadArticle}
+        onExplainSentence={onExplainSentence}
+        onOpenVocabulary={onOpenVocabulary}
+        onOpenReview={onOpenReview}
+        onReviewPageSavedSentences={onReviewPageSavedSentences}
+        hasPageSavedReview={!!pageSavedReviewSummary}
+        canReadArticle={canReadArticle}
+        dueCount={dueCount}
+      />
+    </div>
+  )
+}
+
 export default function StudySection({
   currentPageActivity,
   dueCount,
@@ -586,6 +655,20 @@ export default function StudySection({
             {t("popup_deepReadAction")}
           </button>
         </div>
+      )}
+
+      {studyLoop && (
+        <StudyProgressCardGroup
+          studyLoop={studyLoop}
+          pageSavedReviewSummary={pageSavedReviewSummary}
+          canReadArticle={canReadArticle}
+          dueCount={dueCount}
+          onReadArticle={onReadArticle}
+          onExplainSentence={onExplainSentence}
+          onOpenVocabulary={onOpenVocabulary}
+          onOpenReview={onOpenReview}
+          onReviewPageSavedSentences={onReviewPageSavedSentences}
+        />
       )}
 
       {canSavePageAsset && (
@@ -1053,44 +1136,6 @@ export default function StudySection({
             {t("popup_generateDigest")}
           </button>
         </div>
-      )}
-
-      {studyLoop && (
-        <>
-          {studyLoop.currentPage && studyLoop.nextStep && studyLoop.completedSteps.length > 0 && (
-            <div
-              style={{
-                marginTop: 10,
-                padding: "8px 10px",
-                background: "var(--astra-success-bg)",
-                border: "1px solid var(--astra-success-border)",
-                borderRadius: 8,
-                fontSize: 12,
-                color: "var(--astra-success)",
-                lineHeight: 1.45,
-              }}
-            >
-              {t("popup_studyResumeFromLast")}
-            </div>
-          )}
-          <CurrentPageProgressCard studyLoop={studyLoop} />
-          <PersonalizedStrategyCard studyLoop={studyLoop} />
-          <StudyProgressBar
-            completionPercent={studyLoop.completionPercent}
-            completedSteps={studyLoop.completedSteps}
-          />
-          <NextStepBanner
-            nextStep={studyLoop.nextStep}
-            onReadArticle={onReadArticle}
-            onExplainSentence={onExplainSentence}
-            onOpenVocabulary={onOpenVocabulary}
-            onOpenReview={onOpenReview}
-            onReviewPageSavedSentences={onReviewPageSavedSentences}
-            hasPageSavedReview={!!pageSavedReviewSummary}
-            canReadArticle={canReadArticle}
-            dueCount={dueCount}
-          />
-        </>
       )}
 
       {weeklyRoi && <WeeklyRoiSummaryCard weeklyRoi={weeklyRoi} />}

@@ -8,6 +8,7 @@ import {
   isRuntimeSaveConfigRequest,
   isRuntimeTabCommandRequest,
   isRuntimeTranslateBatchRequest,
+  isRuntimeTranslationCacheStatsRequest,
   isRuntimeVideoNoteCreateFromCurrentTabRequest,
   isRuntimeVideoNoteGetJobRequest,
   type ContentVideoNoteSourceResponse,
@@ -30,6 +31,7 @@ import { readPhaseOneCollectionSyncStatus, runPhaseOneCollectionSync } from "@/u
 import {
   cleanExpiredCache,
   getCachedTranslations,
+  getCacheStats,
   setCachedTranslation,
 } from "@/utils/cache/translation-cache"
 import {
@@ -865,6 +867,23 @@ export default defineBackground({
           .catch((error) => {
             sendResponse({
               type: "runtime/learning-continuity-sync:error",
+              error: toTranslationError(error, "UNKNOWN"),
+            } satisfies RuntimeResponse)
+          })
+        return true
+      }
+
+      if (isRuntimeTranslationCacheStatsRequest(message)) {
+        getCacheStats()
+          .then((stats) => {
+            sendResponse({
+              type: "runtime/translation-cache-stats:success",
+              payload: stats,
+            } satisfies RuntimeResponse)
+          })
+          .catch((error) => {
+            sendResponse({
+              type: "runtime/translation-cache-stats:error",
               error: toTranslationError(error, "UNKNOWN"),
             } satisfies RuntimeResponse)
           })
