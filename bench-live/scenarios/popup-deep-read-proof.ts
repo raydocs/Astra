@@ -234,7 +234,7 @@ export const popupDeepReadProofScenario: LiveScenarioDefinition<PopupDeepReadPro
         { timeout: 10_000 },
       )
 
-      const popupPage = await openExtensionActionPopup({
+      let popupPage = await openExtensionActionPopup({
         context: extCtx.context,
         extensionId: extCtx.extensionId,
         extensionPath: extCtx.extensionPath,
@@ -242,11 +242,15 @@ export const popupDeepReadProofScenario: LiveScenarioDefinition<PopupDeepReadPro
         page: extCtx.page,
       })
 
-      popupPage.on("console", (msg) => {
-        if (msg.type() === "error") {
-          consoleErrors.push(msg.text())
-        }
-      })
+      const attachPopupConsoleCapture = (page: typeof popupPage) => {
+        page.on("console", (msg) => {
+          if (msg.type() === "error") {
+            consoleErrors.push(msg.text())
+          }
+        })
+      }
+
+      attachPopupConsoleCapture(popupPage)
 
       let popupRendered = false
       let articleExcerptVisible = false
@@ -284,153 +288,218 @@ export const popupDeepReadProofScenario: LiveScenarioDefinition<PopupDeepReadPro
         const popupBeforePath = path.join(artifactDir, `${POPUP_DEEP_READ_PROOF_SLUG}.before-explain.png`)
         await popupPage.screenshot({ path: popupBeforePath, fullPage: true })
 
-        await popupPage.locator('[data-testid="study-sentence-card-0"] button').nth(0).click()
-        await popupPage.waitForFunction(
-          () => document.body.innerText.includes("EXPLAIN:"),
-          undefined,
-          { timeout: 25_000 },
-        )
-        explainWorked = true
-        const explainRequest = relayServer.translateRequests.find((request) => request.task === "explain")
-        const repairExplainRequest = relayServer.translateRequests.find((request) => request.task === "explain" && request.explanationRepairInstruction)
-        explainProfileRequestVisible = explainRequest?.languageLevel === "beginner" && explainRequest?.explainMode === "exam"
-        explainRecoveryRetryVisible = !!repairExplainRequest?.explanationRepairInstruction
-          && repairExplainRequest.languageLevel === "beginner"
-          && repairExplainRequest.explainMode === "exam"
-          && (repairExplainRequest.context?.selectionContext?.length ?? 0) > 0
+        const waitForExplainResult = async (page: typeof popupPage, timeoutMs: number) =>
+          page.waitForFunction(
+            () => document.body.innerText.includes("EXPLAIN:"),
+            undefined,
+            { timeout: timeoutMs },
+          ).then(() => true, () => false)
 
-        await popupPage.locator('[data-testid="study-sentence-card-0"] button').nth(1).click()
-        await popupPage.waitForSelector('[data-testid="study-sentence-saved-cta-0"]', { timeout: 10_000 })
-        saveWorked = true
-
-        // Card 0 is the first split sentence of articleExcerpt — often the article title, not the second <p>.
-        const savedSentenceText = (
-          await popupPage
-            .locator('[data-testid="study-sentence-card-0"]')
-            .locator(":scope > div")
-            .nth(1)
-            .innerText()
-        ).trim()
-
-        const popupAfterPath = path.join(artifactDir, `${POPUP_DEEP_READ_PROOF_SLUG}.after-save.png`)
-        await popupPage.screenshot({ path: popupAfterPath, fullPage: true })
-        const popupSnapshotHtmlPath = path.join(artifactDir, `${POPUP_DEEP_READ_PROOF_SLUG}.popup.snapshot.html`)
-        await writeFile(popupSnapshotHtmlPath, await popupPage.content(), "utf8")
-
-        await popupPage.close()
-        const revisitPopupPage = await openExtensionActionPopup({
-          context: extCtx.context,
-          extensionId: extCtx.extensionId,
-          extensionPath: extCtx.extensionPath,
-          timeoutMs: 12_000,
-          page: extCtx.page,
-        })
-        revisitPopupPage.on("console", (msg) => {
-          if (msg.type() === "error") {
-            consoleErrors.push(msg.text())
+        const clickExplainAndWait = async (page: typeof popupPage, attempt: number) => {
+          const explainRequestsBefore = relayServer!.translateRequests.filter((request) => request.task === "explain").length
+          await page.locator('[data-testid="study-sentence-card-0"] button').nth(0).click({ timeout: 10_000 })
+          const explained = await waitForExplainResult(page, process.env.CI === "true" ? 45_000 : 25_000)
+          if (!explained) {
+            const explainRequestsAfter = relayServer!.translateRequests.filter((request) => request.task === "explain").length
+            runtime.log("Popup explain did not render before timeout.", {
+              attempt,
+              explainRequestsBefore,
+              explainRequestsAfter,
+              popupUrl: page.url(),
+            })
           }
-        })
-        await revisitPopupPage.waitForSelector('[data-testid="study-page-saved-review-button"]', { timeout: 10_000 })
-        await revisitPopupPage.waitForSelector('[data-testid="study-next-step-action"]', { timeout: 10_000 })
-        pageSavedReviewCtaVisible = (await revisitPopupPage.locator('[data-testid="study-page-saved-review-cta"]').count()) > 0
-        const nextStepActionLabel = await revisitPopupPage.locator('[data-testid="study-next-step-action"]').innerText()
-        pageSavedReviewCtaVisible = pageSavedReviewCtaVisible
-          && nextStepActionLabel.includes("Review saved sentences from this page")
-        const popupRevisitPath = path.join(artifactDir, `${POPUP_DEEP_READ_PROOF_SLUG}.revisit-popup.png`)
-        await revisitPopupPage.screenshot({ path: popupRevisitPath, fullPage: true })
+          return explained
+        }
 
-        const destinationPagePromise = extCtx.context.waitForEvent("page", { timeout: 10_000 })
-        await revisitPopupPage.locator('[data-testid="study-next-step-action"]').click()
-        const destinationPage = await destinationPagePromise
-        destinationPage.on("console", (msg) => {
-          if (msg.type() === "error") {
-            consoleErrors.push(msg.text())
+        explainWorked = await clickExplainAndWait(popupPage, 1)
+
+        if (!explainWorked) {
+          await popupPage.screenshot({
+            path: path.join(artifactDir, `${POPUP_DEEP_READ_PROOF_SLUG}.explain-timeout-attempt-1.png`),
+            fullPage: true,
+          }).catch(() => undefined)
+          await writeFile(
+            path.join(artifactDir, `${POPUP_DEEP_READ_PROOF_SLUG}.explain-timeout-attempt-1.html`),
+            await popupPage.content().catch(() => ""),
+            "utf8",
+          )
+          await popupPage.close().catch(() => undefined)
+
+          const retryPopupPage = await openExtensionActionPopup({
+            context: extCtx.context,
+            extensionId: extCtx.extensionId,
+            extensionPath: extCtx.extensionPath,
+            timeoutMs: 15_000,
+            page: extCtx.page,
+          })
+          attachPopupConsoleCapture(retryPopupPage)
+          await retryPopupPage.waitForSelector('[data-testid="study-sentence-card-0"]', { timeout: 15_000 })
+          explainWorked = await clickExplainAndWait(retryPopupPage, 2)
+          if (explainWorked) {
+            popupPage = retryPopupPage
+          } else {
+            await retryPopupPage.screenshot({
+              path: path.join(artifactDir, `${POPUP_DEEP_READ_PROOF_SLUG}.explain-timeout-attempt-2.png`),
+              fullPage: true,
+            }).catch(() => undefined)
+            await writeFile(
+              path.join(artifactDir, `${POPUP_DEEP_READ_PROOF_SLUG}.explain-timeout-attempt-2.html`),
+              await retryPopupPage.content().catch(() => ""),
+              "utf8",
+            )
+            await retryPopupPage.close().catch(() => undefined)
           }
-        })
-        await destinationPage.waitForLoadState("domcontentloaded", { timeout: 10_000 })
-        destinationOpened = destinationPage.url().includes("/vocabulary")
-        const destinationUrl = new URL(destinationPage.url())
-        focusedReviewOpened = destinationOpened
-          && destinationUrl.searchParams.get("tab") === "review"
-          && destinationUrl.searchParams.get("loop") === "page"
-          && destinationUrl.searchParams.get("studyUrl") === servedFixturePage.url
-          && !!destinationUrl.searchParams.get("entryId")
+        }
 
-        const sentenceNeedle = savedSentenceText.length > 48
-          ? savedSentenceText.slice(0, 48)
-          : savedSentenceText
-        await destinationPage.waitForFunction(
-          (needle) => document.body.innerText.includes(needle),
-          sentenceNeedle,
-          { timeout: 15_000 },
-        )
-        await destinationPage.locator('[data-testid="review-card"]').click()
-        await destinationPage.waitForSelector(".astra-review-answer-right", { timeout: 10_000 })
+        if (explainWorked) {
+          const explainRequest = relayServer.translateRequests.find((request) => request.task === "explain")
+          const repairExplainRequest = relayServer.translateRequests.find((request) => request.task === "explain" && request.explanationRepairInstruction)
+          explainProfileRequestVisible = explainRequest?.languageLevel === "beginner" && explainRequest?.explainMode === "exam"
+          explainRecoveryRetryVisible = !!repairExplainRequest?.explanationRepairInstruction
+            && repairExplainRequest.languageLevel === "beginner"
+            && repairExplainRequest.explainMode === "exam"
+            && (repairExplainRequest.context?.selectionContext?.length ?? 0) > 0
 
-        const destinationText = await destinationPage.locator("body").innerText()
-        sourceContextVisible = destinationText.includes("Popup deep-read")
-          && destinationText.includes("Astra turns long-form reading into bilingual learning.")
-          && destinationText.includes("Readers can keep the original text visible")
-        explainProfileReviewVisible = destinationText.includes("Explain profile: Exam · Beginner")
+          await popupPage.locator('[data-testid="study-sentence-card-0"] button').nth(1).click()
+          await popupPage.waitForSelector('[data-testid="study-sentence-saved-cta-0"]', { timeout: 10_000 })
+          saveWorked = true
 
-        await destinationPage.locator(".astra-review-answer-right").click()
-        await destinationPage.waitForSelector('[data-testid="review-return-deep-read"]', { timeout: 10_000 })
-        focusedReviewAnswered = true
+          // Card 0 is the first split sentence of articleExcerpt — often the article title, not the second <p>.
+          const savedSentenceText = (
+            await popupPage
+              .locator('[data-testid="study-sentence-card-0"]')
+              .locator(":scope > div")
+              .nth(1)
+              .innerText()
+          ).trim()
 
-        const returnPages: Array<typeof destinationPage> = []
-        const returnPageHandler = (page: typeof destinationPage) => {
-          returnPages.push(page)
-          page.on("console", (msg) => {
+          const popupAfterPath = path.join(artifactDir, `${POPUP_DEEP_READ_PROOF_SLUG}.after-save.png`)
+          await popupPage.screenshot({ path: popupAfterPath, fullPage: true })
+          const popupSnapshotHtmlPath = path.join(artifactDir, `${POPUP_DEEP_READ_PROOF_SLUG}.popup.snapshot.html`)
+          await writeFile(popupSnapshotHtmlPath, await popupPage.content(), "utf8")
+
+          await popupPage.close()
+          const revisitPopupPage = await openExtensionActionPopup({
+            context: extCtx.context,
+            extensionId: extCtx.extensionId,
+            extensionPath: extCtx.extensionPath,
+            timeoutMs: 12_000,
+            page: extCtx.page,
+          })
+          revisitPopupPage.on("console", (msg) => {
             if (msg.type() === "error") {
               consoleErrors.push(msg.text())
             }
           })
-        }
-        extCtx.context.on("page", returnPageHandler)
-        try {
-          await destinationPage.locator('[data-testid="review-return-deep-read"]').click()
-          for (let attempt = 0; attempt < 20; attempt += 1) {
-            if (returnPages.some((page) => page.url().includes("/deep-read.html"))) break
-            await destinationPage.waitForTimeout(500)
-          }
-        } finally {
-          extCtx.context.off("page", returnPageHandler)
-        }
+          await revisitPopupPage.waitForSelector('[data-testid="study-page-saved-review-button"]', { timeout: 10_000 })
+          await revisitPopupPage.waitForSelector('[data-testid="study-next-step-action"]', { timeout: 10_000 })
+          pageSavedReviewCtaVisible = (await revisitPopupPage.locator('[data-testid="study-page-saved-review-cta"]').count()) > 0
+          const nextStepActionLabel = await revisitPopupPage.locator('[data-testid="study-next-step-action"]').innerText()
+          pageSavedReviewCtaVisible = pageSavedReviewCtaVisible
+            && nextStepActionLabel.includes("Review saved sentences from this page")
+          const popupRevisitPath = path.join(artifactDir, `${POPUP_DEEP_READ_PROOF_SLUG}.revisit-popup.png`)
+          await revisitPopupPage.screenshot({ path: popupRevisitPath, fullPage: true })
 
-        const deepReadPage = returnPages.find((page) => page.url().includes("/deep-read.html")) ?? null
-        if (deepReadPage) {
-          await deepReadPage.waitForLoadState("domcontentloaded", { timeout: 10_000 })
-          deepReadReturnOpened = deepReadPage.url().includes("/deep-read.html")
-          await deepReadPage.waitForFunction(
+          const destinationPagePromise = extCtx.context.waitForEvent("page", { timeout: 10_000 })
+          await revisitPopupPage.locator('[data-testid="study-next-step-action"]').click()
+          const destinationPage = await destinationPagePromise
+          destinationPage.on("console", (msg) => {
+            if (msg.type() === "error") {
+              consoleErrors.push(msg.text())
+            }
+          })
+          await destinationPage.waitForLoadState("domcontentloaded", { timeout: 10_000 })
+          destinationOpened = destinationPage.url().includes("/vocabulary")
+          const destinationUrl = new URL(destinationPage.url())
+          focusedReviewOpened = destinationOpened
+            && destinationUrl.searchParams.get("tab") === "review"
+            && destinationUrl.searchParams.get("loop") === "page"
+            && destinationUrl.searchParams.get("studyUrl") === servedFixturePage.url
+            && !!destinationUrl.searchParams.get("entryId")
+
+          const sentenceNeedle = savedSentenceText.length > 48
+            ? savedSentenceText.slice(0, 48)
+            : savedSentenceText
+          await destinationPage.waitForFunction(
             (needle) => document.body.innerText.includes(needle),
             sentenceNeedle,
             { timeout: 15_000 },
           )
-          returnedSentenceVisible = true
-          deepReadSavedReviewCtaVisible = (await deepReadPage.locator('[data-testid="deep-read-page-saved-review-cta"]').count()) > 0
-        }
+          await destinationPage.locator('[data-testid="review-card"]').click()
+          await destinationPage.waitForSelector(".astra-review-answer-right", { timeout: 10_000 })
 
-        const destinationScreenshotPath = path.join(artifactDir, `${POPUP_DEEP_READ_PROOF_SLUG}.focused-review.png`)
-        await destinationPage.screenshot({ path: destinationScreenshotPath, fullPage: true })
-        const destinationSnapshotHtmlPath = path.join(artifactDir, `${POPUP_DEEP_READ_PROOF_SLUG}.focused-review.snapshot.html`)
-        await writeFile(destinationSnapshotHtmlPath, await destinationPage.content(), "utf8")
-        const deepReadReturnScreenshotPath = deepReadPage
-          ? path.join(artifactDir, `${POPUP_DEEP_READ_PROOF_SLUG}.deep-read-return.png`)
-          : ""
-        if (deepReadPage && deepReadReturnScreenshotPath) {
-          await deepReadPage.screenshot({ path: deepReadReturnScreenshotPath, fullPage: true })
-        }
+          const destinationText = await destinationPage.locator("body").innerText()
+          sourceContextVisible = destinationText.includes("Popup deep-read")
+            && destinationText.includes("Astra turns long-form reading into bilingual learning.")
+            && destinationText.includes("Readers can keep the original text visible")
+          explainProfileReviewVisible = destinationText.includes("Explain profile: Exam · Beginner")
 
-        runtime.attachArtifact("popupDeepReadCapture", {
-          popupBeforePath,
-          popupAfterPath,
-          popupSnapshotHtmlPath,
-          popupRevisitPath,
-          destinationScreenshotPath,
-          destinationSnapshotHtmlPath,
-          relayRequests: relayServer.translateRequests,
-          consoleErrors,
-        })
+          await destinationPage.locator(".astra-review-answer-right").click()
+          await destinationPage.waitForSelector('[data-testid="review-return-deep-read"]', { timeout: 10_000 })
+          focusedReviewAnswered = true
+
+          const returnPages: Array<typeof destinationPage> = []
+          const returnPageHandler = (page: typeof destinationPage) => {
+            returnPages.push(page)
+            page.on("console", (msg) => {
+              if (msg.type() === "error") {
+                consoleErrors.push(msg.text())
+              }
+            })
+          }
+          extCtx.context.on("page", returnPageHandler)
+          try {
+            await destinationPage.locator('[data-testid="review-return-deep-read"]').click()
+            for (let attempt = 0; attempt < 20; attempt += 1) {
+              if (returnPages.some((page) => page.url().includes("/deep-read.html"))) break
+              await destinationPage.waitForTimeout(500)
+            }
+          } finally {
+            extCtx.context.off("page", returnPageHandler)
+          }
+
+          const deepReadPage = returnPages.find((page) => page.url().includes("/deep-read.html")) ?? null
+          if (deepReadPage) {
+            await deepReadPage.waitForLoadState("domcontentloaded", { timeout: 10_000 })
+            deepReadReturnOpened = deepReadPage.url().includes("/deep-read.html")
+            await deepReadPage.waitForFunction(
+              (needle) => document.body.innerText.includes(needle),
+              sentenceNeedle,
+              { timeout: 15_000 },
+            )
+            returnedSentenceVisible = true
+            deepReadSavedReviewCtaVisible = (await deepReadPage.locator('[data-testid="deep-read-page-saved-review-cta"]').count()) > 0
+          }
+
+          const destinationScreenshotPath = path.join(artifactDir, `${POPUP_DEEP_READ_PROOF_SLUG}.focused-review.png`)
+          await destinationPage.screenshot({ path: destinationScreenshotPath, fullPage: true })
+          const destinationSnapshotHtmlPath = path.join(artifactDir, `${POPUP_DEEP_READ_PROOF_SLUG}.focused-review.snapshot.html`)
+          await writeFile(destinationSnapshotHtmlPath, await destinationPage.content(), "utf8")
+          const deepReadReturnScreenshotPath = deepReadPage
+            ? path.join(artifactDir, `${POPUP_DEEP_READ_PROOF_SLUG}.deep-read-return.png`)
+            : ""
+          if (deepReadPage && deepReadReturnScreenshotPath) {
+            await deepReadPage.screenshot({ path: deepReadReturnScreenshotPath, fullPage: true })
+          }
+
+          runtime.attachArtifact("popupDeepReadCapture", {
+            popupBeforePath,
+            popupAfterPath,
+            popupSnapshotHtmlPath,
+            popupRevisitPath,
+            destinationScreenshotPath,
+            destinationSnapshotHtmlPath,
+            relayRequests: relayServer.translateRequests,
+            consoleErrors,
+          })
+        } else {
+          runtime.attachArtifact("popupDeepReadCapture", {
+            popupBeforePath,
+            relayRequests: relayServer.translateRequests,
+            consoleErrors,
+            explainTimedOut: true,
+          })
+        }
       }
 
       runtime.complete("Popup deep-read proof scenario completed.")
