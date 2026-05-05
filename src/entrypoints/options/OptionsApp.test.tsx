@@ -1257,8 +1257,16 @@ describe("OptionsApp — Sites section", () => {
     await navigateToAbout()
 
     await act(async () => {
-      const revokeButton = Array.from(container.querySelectorAll("button")).find((button) => button.textContent === "Revoke access") as HTMLButtonElement
+      const revokeButton = container.querySelector('[data-testid="continuity-device-list"] .astra-btn-danger') as HTMLButtonElement
       revokeButton.click()
+      await Promise.resolve()
+      await Promise.resolve()
+    })
+
+    await act(async () => {
+      const revokeButtons = Array.from(container.querySelectorAll("button")).filter((button) => button.textContent === "Revoke access")
+      const confirmButton = revokeButtons.at(-1) as HTMLButtonElement
+      confirmButton.click()
       await Promise.resolve()
       await Promise.resolve()
     })
