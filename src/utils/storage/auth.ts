@@ -1,4 +1,4 @@
-import { browser } from "#imports"
+import { browser } from "wxt/browser"
 
 import {
   AstraBrowserFamilySchema,

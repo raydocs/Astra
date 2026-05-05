@@ -475,23 +475,22 @@ export default defineBackground({
           if (info.menuItemId === "astra-translate-image" && info.srcUrl) {
             const imageUrl = info.srcUrl
             void (async () => {
-              const frameId = typeof (info as { frameId?: unknown }).frameId === "number"
-                ? (info as { frameId: number }).frameId
-                : undefined
+              const { frameId: rawFrameId } = info as { frameId?: unknown }
+              const frameId = typeof rawFrameId === "number" ? rawFrameId : undefined
               const captured = await requestImageCaptureFromTab(tab?.id, imageUrl, frameId)
               const baseHandoffInput = {
                 imageUrl,
                 ...(tab?.url ? { pageUrl: tab.url } : {}),
                 ...(tab?.title ? { pageTitle: tab.title } : {}),
               }
-              let handoff = await createImageTranslateHandoff({
+              const handoff = await createImageTranslateHandoff({
                 ...baseHandoffInput,
                 ...(captured ? { captured } : {}),
               }).catch((error) => {
                 if (!captured) throw error
                 return createImageTranslateHandoff(baseHandoffInput)
               })
-              const imageTranslateUrl = `${browser.runtime.getURL("/image-translate.html" as "/popup.html")}?${IMAGE_TRANSLATE_HANDOFF_QUERY_PARAM}=${encodeURIComponent(handoff.token)}`
+              const imageTranslateUrl = `${browser.runtime.getURL("/image-translate.html")}?${IMAGE_TRANSLATE_HANDOFF_QUERY_PARAM}=${encodeURIComponent(handoff.token)}`
               await browser.tabs.create({ url: imageTranslateUrl })
             })().catch(() => {})
             return

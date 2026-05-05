@@ -240,6 +240,8 @@ export function getVocabularySourceSurfaceLabel(
   surface?: VocabularySourceContext["surface"],
 ): string | null {
   switch (surface) {
+    case undefined:
+      return null
     case "popup_deep_read":
       return "Popup deep-read"
     case "selection_toolbar":
