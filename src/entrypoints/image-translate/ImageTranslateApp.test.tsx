@@ -62,6 +62,20 @@ function createPathSummary() {
   ])!
 }
 
+function createImageFetchResponse(body: string, type = "image/svg+xml"): Response {
+  const bytes = new TextEncoder().encode(body)
+  const blob = new Blob([bytes], { type })
+  return {
+    ok: true,
+    status: 200,
+    headers: new Headers({
+      "content-type": type,
+      "content-length": String(bytes.byteLength),
+    }),
+    blob: () => Promise.resolve(blob),
+  } as Response
+}
+
 describe("ImageTranslateApp", () => {
   let container: HTMLDivElement
   let root: ReactDOM.Root
@@ -99,6 +113,7 @@ describe("ImageTranslateApp", () => {
       await Promise.resolve()
       await Promise.resolve()
     })
+    consumeImageTranslateHandoffMock.mockClear()
   })
 
   afterEach(async () => {
@@ -240,10 +255,7 @@ describe("ImageTranslateApp", () => {
         expiresAt: 2,
       },
     })
-    const fetchMock = vi.fn().mockResolvedValue(new Response(
-      new Blob(["<svg><text>Hello Astra</text></svg>"], { type: "image/svg+xml" }),
-      { status: 200, headers: { "content-type": "image/svg+xml" } },
-    ))
+    const fetchMock = vi.fn().mockResolvedValue(createImageFetchResponse("<svg><text>Hello Astra</text></svg>"))
     vi.stubGlobal("fetch", fetchMock)
 
     await remountAt("/image-translate.html?handoff=img_ctx")
@@ -315,10 +327,7 @@ describe("ImageTranslateApp", () => {
         expiresAt: 2,
       },
     })
-    const fetchMock = vi.fn().mockResolvedValue(new Response(
-      new Blob(["<svg><text>Hello Astra</text></svg>"], { type: "image/svg+xml" }),
-      { status: 200, headers: { "content-type": "image/svg+xml" } },
-    ))
+    const fetchMock = vi.fn().mockResolvedValue(createImageFetchResponse("<svg><text>Hello Astra</text></svg>"))
     vi.stubGlobal("fetch", fetchMock)
 
     await remountAt("/image-translate.html?handoff=img_bad_capture")
