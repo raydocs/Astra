@@ -284,7 +284,7 @@ export function buildVocabularySyncRecordMap(
 ): Record<string, SyncedVocabularyEntry> {
   return Object.fromEntries(
     entries.map((entry) => {
-      const synced = buildSyncSafeVocabularyEntry(entry as VocabularyEntry)
+      const synced = buildSyncSafeVocabularyEntry(entry)
       return [synced.id, synced]
     }),
   )
