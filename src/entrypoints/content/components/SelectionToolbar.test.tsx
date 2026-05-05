@@ -90,6 +90,11 @@ describe("SelectionToolbar interaction suppression", () => {
 
   beforeEach(async () => {
     vi.useFakeTimers()
+    readConfigMock.mockReset()
+    translateTextsMock.mockReset()
+    saveVocabularyEntryMock.mockReset()
+    getDueVocabularyCountMock.mockReset()
+    markSessionSaveMock.mockReset()
     document.getElementById(HOST_ID)?.remove()
     document.body.innerHTML = `<main><p id="target">Hello world</p></main>`
 
