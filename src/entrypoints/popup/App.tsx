@@ -1,18 +1,31 @@
 import { useEffect, useMemo, useRef, useState } from "react"
 import { browser } from "#imports"
 import { t } from "@/utils/i18n"
+import {
+  buildLearningLoopAccountContinuityProofMoment,
+  DEFAULT_LEARNING_LOOP_COPY_VARIANT,
+  getLearningLoopCopyVariant,
+  LEARNING_LOOP_COMMERCIAL_SURFACE_COPY,
+  recordLearningLoopEvent,
+  type LearningLoopCopyVariant,
+} from "@/utils/learning-loop-events"
 import type {
   AstraConfig,
+  LanguageLevel,
+  ExplainMode,
   SiteConfig,
+  SubtitleQualityControls,
   TranslationMode,
 } from "@/types/config"
 import type { AstraAccount, AstraDeviceIdentity, AstraSession, AstraUsageSnapshot } from "@/types/auth"
-import { isRuntimeResponse, type PageStudyContext } from "@/types/messages"
+import { isRuntimeResponse, type LearningContinuitySyncStatus, type PageStudyContext } from "@/types/messages"
 import type { TranslationSnapshot } from "@/types/translation"
 import {
   resolveActiveHttpTab,
+  commitLearningContinuitySync,
   getActiveTabStudyContext,
   getActiveTabTranslationState,
+  getLearningContinuitySyncStatus,
   retryActiveTabFailedBlocks,
   saveConfigInBackground,
   startActiveTabTranslation,
@@ -21,11 +34,15 @@ import {
 import { readConfig } from "@/utils/storage/config"
 import {
   DEFAULT_ASTRA_CONFIG,
+  DEFAULT_SUBTITLE_QUALITY_CONTROLS,
   hasResolvedProviderAccess,
   normalizeSiteKey,
+  parseExplanationGlossaryText,
   resolveSiteTranslationSettings,
+  serializeExplanationGlossary,
 } from "@/types/config"
 import { getReadingHistory, type ReadingHistoryEntry } from "@/utils/storage/reading-history"
+import { saveDeepReadSession } from "@/utils/storage/deep-read-session"
 import {
   computeFingerprint,
   getPageDigest,
@@ -35,7 +52,8 @@ import {
 } from "@/utils/storage/page-digests"
 import { generatePageDigest } from "@/utils/reading/assist"
 import { isTtsSupported, speak, splitSentences, stopSpeaking } from "@/utils/tts"
-import { translateTexts } from "@/utils/translate/translate"
+import { translateExplanationWithQualityRetry, translateTexts } from "@/utils/translate/translate"
+import { getMatchedExplanationGlossaryTerms, type MatchedExplanationGlossaryTerm } from "@/utils/translate/explanation-quality"
 import {
   clearAstraSession,
   ensureAstraDeviceIdentity,
@@ -54,29 +72,54 @@ import {
 import {
   getDueVocabularyCount,
   getVocabularyEntries,
-  sanitizeVocabularyUrl,
+  isVocabularyEntryFromStudyUrl,
   saveVocabularyEntry,
+  deriveWeeklyVocabularyRoi,
 } from "@/utils/storage/vocabulary"
-import { buildOwnedReadingVocabularySourceLink, upsertOwnedArticleFromUrl } from "@/utils/storage/owned-reading"
+import {
+  buildOwnedReadingArticleIdentity,
+  buildOwnedReadingVocabularySourceLink,
+  deriveOwnedReadingIdentityFromItem,
+  listOwnedReadingItems,
+  upsertOwnedArticleFromUrl,
+  type OwnedReadingItem,
+} from "@/utils/storage/owned-reading"
+import { buildSentenceAnchor } from "@/utils/sentence-anchor"
+import { openFocusedReview, openPageReviewLoop } from "@/utils/review-link"
 import { getTranslationUsageSummary, type TranslationUsageSummary } from "@/utils/storage/translation-usage"
 import { buildContinuityStatus, type AstraContinuityRemoteSnapshot, type AstraContinuityStatus } from "@/utils/storage/config-sync"
-import { deriveStudyLoopViewModel, getStudyProgress, recordStudyEvent, type StudyLoopViewModel } from "@/utils/storage/study-progress"
+import {
+  deriveStudyLoopPrimerRecommendation,
+  deriveStudyLoopViewModel,
+  getStudyProgress,
+  recordStudyEvent,
+  deriveWeeklyStudyProgressRoi,
+  type PersonalizedTeachingStrategy,
+  type StudyLoopPrimerAction,
+  type StudyLoopViewModel,
+} from "@/utils/storage/study-progress"
 import {
   buildQuotaInfoFromAccountState,
   formatAstraPlanLabel,
   resolveAstraAccountSurfaceSource,
 } from "@/utils/astra/account-surface"
-import TranslationStatusCard from "./components/TranslationStatusCard"
+import TranslationStatusCard, { type SubtitleQualityTrendPoint } from "./components/TranslationStatusCard"
 import SimpleControls from "./components/SimpleControls"
 import QuotaBar from "./components/QuotaBar"
 import SiteSettingsSection from "./components/SiteSettingsSection"
+import SiteRulesExplainabilityPanel, { type SiteRulesQuickFixAction } from "./components/SiteRulesExplainabilityPanel"
+import LearningContinuityCommitCard from "./components/LearningContinuityCommitCard"
+import LearningClosurePrimerCard from "./components/LearningClosurePrimerCard"
 import StudySection, {
+  type PopupPageAssetSaveStatus,
   type PopupSentenceCardViewModel,
   type PopupSentenceExplainStatus,
   type PopupSentenceSaveStatus,
+  type WeeklyLearningRoiViewModel,
 } from "./components/StudySection"
 import UsageInsightsCard from "./components/UsageInsightsCard"
-import { btnPrimary, btnSecondary, btnDisabled, warningStyle, inputStyle, labelStyle } from "./components/styles"
+import { warningStyle, labelStyle } from "./components/styles"
+import { formatExplainProfileLabel, formatGlossaryEvidenceLabel } from "@/utils/storage/vocabulary-core"
 
 async function getActiveSiteKey(): Promise<string | null> {
   const tab = await resolveActiveHttpTab()
@@ -93,6 +136,31 @@ function formatContinuityTimestamp(value: string | null | undefined): string {
   }
 
   return parsed.toLocaleString()
+}
+
+function buildSubtitleDiagnosticsFileName(generatedAt: string): string {
+  const stamp = generatedAt
+    .replace(/[:.]/g, "-")
+    .replace(/Z$/, "z")
+  return `astra-subtitle-qc-diagnostics-${stamp}.json`
+}
+
+function downloadLocalJsonFile(fileName: string, payload: unknown): void {
+  if (typeof URL.createObjectURL !== "function") {
+    throw new Error("Local JSON export is unavailable in this browser.")
+  }
+
+  const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json;charset=utf-8" })
+  const url = URL.createObjectURL(blob)
+
+  try {
+    const anchor = document.createElement("a")
+    anchor.href = url
+    anchor.download = fileName
+    anchor.click()
+  } finally {
+    URL.revokeObjectURL?.(url)
+  }
 }
 
 function isSupportedVideoUrl(url: string | null | undefined): boolean {
@@ -123,10 +191,23 @@ function buildVideoNoteViewerUrl(jobId: string, relayBaseURL: string | null | un
   return `${resolveWebViewerBaseUrl(relayBaseURL)}/#/video-notes?jobId=${encodeURIComponent(jobId)}`
 }
 
+function shouldFocusPopupSignInPanel(): boolean {
+  if (typeof window === "undefined") return false
+  try {
+    return new URLSearchParams(window.location.search).get("focus") === "sign-in"
+  } catch {
+    return false
+  }
+}
+
 interface PopupSentenceState {
   explanationText: string | null
+  explanationLanguageLevel?: LanguageLevel
+  explanationExplainMode?: ExplainMode
+  explanationGlossaryTerms?: MatchedExplanationGlossaryTerm[]
   explainStatus: PopupSentenceExplainStatus
   saveStatus: PopupSentenceSaveStatus
+  savedEntryId?: string
 }
 
 type PopupStudySentenceSource = "article_excerpt" | "content_summary" | "meta_description" | "empty"
@@ -140,6 +221,23 @@ interface PopupStudyDeckState {
   hasStudyText: boolean
 }
 
+interface CurrentPageSavedReviewSummary {
+  studyUrl: string
+  count: number
+  entryId?: string
+}
+
+function hasSavedOwnedArticleForUrl(items: OwnedReadingItem[], url: string): boolean {
+  try {
+    const identity = buildOwnedReadingArticleIdentity(url)
+    return items.some((item) => item.sourceType === "article"
+      && item.status !== "archived"
+      && deriveOwnedReadingIdentityFromItem(item)?.dedupeKey === identity.dedupeKey)
+  } catch {
+    return false
+  }
+}
+
 type PopupSentenceActionLock =
   | { type: "idle"; sentenceId: null }
   | { type: "explaining" | "saving"; sentenceId: string }
@@ -149,7 +247,20 @@ function buildPopupSentenceCardId(index: number, sentence: string): string {
 }
 
 function buildLegacyPopupSentenceSaveKey(sentence: string): string {
-  return `text:${sentence}`
+  return `legacy:${sentence.trim()}`
+}
+
+function buildPersonalizedStrategyTelemetry(strategy: PersonalizedTeachingStrategy | null | undefined) {
+  const eligible = !!strategy
+  return {
+    psarEligible: eligible,
+    personalizedStrategyApplied: eligible,
+    personalizedStrategyId: strategy?.id ?? null,
+    personalizedStrategyLabel: strategy?.label ?? null,
+    personalizedStrategyTrigger: strategy?.trigger ?? null,
+    personalizedStrategyFocusStep: strategy?.focusStep ?? null,
+    personalizedStrategyProgressSignature: strategy?.progressSignature ?? null,
+  }
 }
 
 function createPopupSentenceState(
@@ -320,14 +431,20 @@ export default function App() {
   const [deviceIdentity, setDeviceIdentity] = useState<AstraDeviceIdentity | null>(null)
   const [continuityRemote, setContinuityRemote] = useState<AstraContinuityRemoteSnapshot | null>(null)
   const [continuityStatus, setContinuityStatus] = useState<AstraContinuityStatus | null>(null)
+  const [learningContinuitySyncStatus, setLearningContinuitySyncStatus] = useState<LearningContinuitySyncStatus | null>(null)
+  const [learningContinuityCommitBusy, setLearningContinuityCommitBusy] = useState(false)
   const [authEmail, setAuthEmail] = useState("")
   const [authPassword, setAuthPassword] = useState("")
   const [authBusy, setAuthBusy] = useState(false)
+  const [signInPanelOpen, setSignInPanelOpen] = useState(() => shouldFocusPopupSignInPanel())
+  const [signInFocusRequestTick, setSignInFocusRequestTick] = useState(() => shouldFocusPopupSignInPanel() ? 1 : 0)
   const [recentHistory, setRecentHistory] = useState<ReadingHistoryEntry[]>([])
   const [studyContext, setStudyContext] = useState<PageStudyContext | null>(null)
   const [dueCount, setDueCount] = useState(0)
+  const [learningLoopCopyVariant, setLearningLoopCopyVariantState] = useState<LearningLoopCopyVariant>(DEFAULT_LEARNING_LOOP_COPY_VARIANT)
   const [usageSummary, setUsageSummary] = useState<TranslationUsageSummary | null>(null)
   const [studyLoop, setStudyLoop] = useState<StudyLoopViewModel | null>(null)
+  const [weeklyRoi, setWeeklyRoi] = useState<WeeklyLearningRoiViewModel | null>(null)
   const [pageDigest, setPageDigest] = useState<PageDigestRecord | null>(null)
   const [activePageUrl, setActivePageUrl] = useState<string | null>(null)
   const [digestLoading, setDigestLoading] = useState(false)
@@ -337,6 +454,9 @@ export default function App() {
   const [speakingSentenceId, setSpeakingSentenceId] = useState<string | null>(null)
   const [selectedSentenceIndex, setSelectedSentenceIndex] = useState(0)
   const [currentPageSavedSentenceKeys, setCurrentPageSavedSentenceKeys] = useState<string[]>([])
+  const [currentPageSavedReviewSummary, setCurrentPageSavedReviewSummary] = useState<CurrentPageSavedReviewSummary | null>(null)
+  const [pageAssetSaveStatus, setPageAssetSaveStatus] = useState<PopupPageAssetSaveStatus>("idle")
+  const [pageAssetSaveMessage, setPageAssetSaveMessage] = useState<string | null>(null)
   const [studySpeaking, setStudySpeaking] = useState(false)
   const [iosBootstrapStatus, setIosBootstrapStatus] = useState<{
     bridgeAvailable: boolean
@@ -347,18 +467,58 @@ export default function App() {
   const [videoNoteBusy, setVideoNoteBusy] = useState(false)
   const [videoNoteStatusMessage, setVideoNoteStatusMessage] = useState("")
   const [lastVideoNoteJobId, setLastVideoNoteJobId] = useState<string | null>(null)
+  const [subtitleDiagnosticsExportStatus, setSubtitleDiagnosticsExportStatus] = useState<string | null>(null)
+  const [subtitleQualityTrend, setSubtitleQualityTrend] = useState<SubtitleQualityTrendPoint[]>([])
   const hasUnsavedChangesRef = useRef(false)
   const isMountedRef = useRef(true)
+  const signInPanelRef = useRef<HTMLDetailsElement | null>(null)
+  const signInEmailInputRef = useRef<HTMLInputElement | null>(null)
   const saveSequenceRef = useRef<Promise<void>>(Promise.resolve())
   const saveRevisionRef = useRef(0)
   const siteRuleSaveTimerRef = useRef<number | null>(null)
   const pendingSiteRuleDraftRef = useRef<AstraConfig | null>(null)
   const sentenceDeckRevisionRef = useRef(0)
+  const primerViewEventKeyRef = useRef<string | null>(null)
+  const subtitleQualityTrendKeyRef = useRef<string | null>(null)
 
   const persistedResolvedSite = useMemo(
     () => resolveSiteTranslationSettings(persistedConfig, activeSiteKey),
     [persistedConfig, activeSiteKey],
   )
+
+  const draftResolvedSite = useMemo(
+    () => resolveSiteTranslationSettings(configDraft, activeSiteKey),
+    [configDraft, activeSiteKey],
+  )
+
+  const subtitleQualityControls = configDraft.subtitleQualityControls ?? DEFAULT_SUBTITLE_QUALITY_CONTROLS
+  const subtitleQualityPollIntervalMs = subtitleQualityControls.popupPollIntervalMs
+
+  useEffect(() => {
+    const subtitleQuality = translationState?.subtitleQuality
+    if (!subtitleQuality?.active) {
+      subtitleQualityTrendKeyRef.current = null
+      setSubtitleQualityTrend([])
+      return
+    }
+
+    const trendKey = [
+      subtitleQuality.capturedAt,
+      subtitleQuality.pendingRequestCount,
+      subtitleQuality.cacheSize,
+      subtitleQuality.status,
+    ].join(":")
+    if (subtitleQualityTrendKeyRef.current === trendKey) return
+    subtitleQualityTrendKeyRef.current = trendKey
+
+    const point: SubtitleQualityTrendPoint = {
+      capturedAt: subtitleQuality.capturedAt,
+      freshnessMs: Math.max(0, Date.now() - subtitleQuality.capturedAt),
+      pendingRequestCount: subtitleQuality.pendingRequestCount,
+      cacheSize: subtitleQuality.cacheSize,
+    }
+    setSubtitleQualityTrend((current) => [...current, point].slice(-8))
+  }, [translationState?.subtitleQuality])
 
   const currentDigestFingerprint = useMemo(() => {
     const url = activePageUrl ?? studyContext?.pageUrl
@@ -440,7 +600,16 @@ export default function App() {
         selected: index === selectedSentenceIndex,
         explainStatus: state.explainStatus,
         explanationText: state.explanationText,
+        explanationLanguageLevel: state.explanationLanguageLevel,
+        explanationExplainMode: state.explanationExplainMode,
+        explanationGlossaryTerms: state.explanationGlossaryTerms,
+        explainProfileLabel: formatExplainProfileLabel({
+          languageLevel: state.explanationLanguageLevel ?? configDraft.languageLevel,
+          explainMode: state.explanationExplainMode ?? configDraft.explainMode,
+        }),
+        glossaryEvidenceLabel: formatGlossaryEvidenceLabel(state.explanationGlossaryTerms),
         saveStatus,
+        savedEntryId: state.savedEntryId,
         speaking: speakingSentenceId === id,
       }
     }),
@@ -487,7 +656,7 @@ export default function App() {
   }
 
   const refreshAll = async () => {
-    const [config, siteKey, device, storedSession, history, currentDueCount, studyContextResponse, usage, studyStore, vocabularyEntries, iosStatus] = await Promise.all([
+    const [config, siteKey, device, storedSession, history, currentDueCount, studyContextResponse, usage, studyStore, vocabularyEntries, iosStatus, continuitySync, ownedReadingItems] = await Promise.all([
       readConfig(),
       getActiveSiteKey(),
       ensureAstraDeviceIdentity(),
@@ -499,23 +668,50 @@ export default function App() {
       getStudyProgress(),
       getVocabularyEntries(),
       fetchIosBootstrapRuntimeStatus(),
+      getLearningContinuitySyncStatus(),
+      listOwnedReadingItems(),
     ])
     setRecentHistory(history.slice(0, 3))
     setDueCount(currentDueCount)
     setStudyContext(studyContextResponse.ok ? studyContextResponse.context : null)
     setUsageSummary(usage)
     setIosBootstrapStatus(iosStatus)
+    const phaseOneStatus = continuitySync.ok ? continuitySync.status : null
+    setLearningContinuitySyncStatus(phaseOneStatus)
 
     // Derive study loop from the http(s) tab we treat as "current reading" (popup-as-tab safe).
     const activeHttp = await resolveActiveHttpTab()
     const currentUrl = activeHttp?.url
     setActivePageUrl(currentUrl ?? null)
     setStudyLoop(deriveStudyLoopViewModel(studyStore, currentUrl))
-    const currentStudyUrl = sanitizeVocabularyUrl(currentUrl ?? (studyContextResponse.ok ? studyContextResponse.context.pageUrl : undefined))
+    const weeklyStudyRoi = deriveWeeklyStudyProgressRoi(studyStore)
+    setWeeklyRoi({
+      study: weeklyStudyRoi,
+      vocabulary: deriveWeeklyVocabularyRoi(vocabularyEntries, {
+        windowStartAt: weeklyStudyRoi.window.startAt,
+        windowEndAt: weeklyStudyRoi.window.endAt,
+      }),
+      generatedAt: Date.now(),
+    })
+    const currentStudyUrl = currentUrl ?? (studyContextResponse.ok ? studyContextResponse.context.pageUrl : undefined)
+    const pageAlreadyAssetized = currentStudyUrl ? hasSavedOwnedArticleForUrl(ownedReadingItems, currentStudyUrl) : false
+    setPageAssetSaveStatus(pageAlreadyAssetized ? "saved" : "idle")
+    setPageAssetSaveMessage(pageAlreadyAssetized ? t("popup_contentAssetizationAlreadySaved") : null)
+    const currentPageSavedEntries = currentStudyUrl
+      ? vocabularyEntries.filter((entry) => isVocabularyEntryFromStudyUrl(entry, currentStudyUrl))
+      : []
+    setCurrentPageSavedReviewSummary(
+      currentStudyUrl && currentPageSavedEntries.length > 0
+        ? {
+            studyUrl: currentStudyUrl,
+            count: currentPageSavedEntries.length,
+            entryId: currentPageSavedEntries[0]?.id,
+          }
+        : null,
+    )
     setCurrentPageSavedSentenceKeys(
       currentStudyUrl
-        ? Array.from(new Set(vocabularyEntries
-          .filter((entry) => sanitizeVocabularyUrl(entry.url) === currentStudyUrl)
+        ? Array.from(new Set(currentPageSavedEntries
           .flatMap((entry) => {
             const popupSentenceIndex = entry.sourceContext?.surface === "popup_deep_read"
               ? entry.sourceContext.sentenceIndex
@@ -604,6 +800,7 @@ export default function App() {
       session,
       device,
       remote,
+      phaseOne: phaseOneStatus,
     }))
 
     await refreshTranslationState()
@@ -617,18 +814,38 @@ export default function App() {
   }, [])
 
   useEffect(() => {
+    void getLearningLoopCopyVariant().then((variant) => {
+      if (isMountedRef.current) {
+        setLearningLoopCopyVariantState(variant)
+      }
+    })
+  }, [])
+
+  useEffect(() => {
     if (!deviceIdentity) return
     setContinuityStatus(buildContinuityStatus({
       config: persistedConfig,
       session: authSession,
       device: deviceIdentity,
       remote: continuityRemote,
+      phaseOne: learningContinuitySyncStatus,
     }))
-  }, [authSession, continuityRemote, deviceIdentity, persistedConfig])
+  }, [authSession, continuityRemote, deviceIdentity, learningContinuitySyncStatus, persistedConfig])
 
   useEffect(() => () => {
     stopSpeaking()
   }, [])
+
+  useEffect(() => {
+    if (!signInPanelOpen) return undefined
+
+    const timer = window.setTimeout(() => {
+      signInPanelRef.current?.scrollIntoView?.({ block: "center", behavior: "smooth" })
+      signInEmailInputRef.current?.focus()
+    }, 0)
+
+    return () => window.clearTimeout(timer)
+  }, [signInFocusRequestTick, signInPanelOpen])
 
   const handleGenerateDigest = async () => {
     if (!studyContext) return
@@ -669,6 +886,23 @@ export default function App() {
     setStudyLoop(deriveStudyLoopViewModel(studyStore, url))
   }
 
+  const triggerLearningContinuitySync = async (reason: string, options: { surfaceError?: boolean } = {}) => {
+    setLearningContinuityCommitBusy(true)
+    try {
+      const result = await commitLearningContinuitySync(reason)
+      if (result.status && isMountedRef.current) {
+        setLearningContinuitySyncStatus(result.status)
+      }
+      if (!result.ok && options.surfaceError && isMountedRef.current) {
+        setStatusMessage(result.error.message)
+      }
+    } finally {
+      if (isMountedRef.current) {
+        setLearningContinuityCommitBusy(false)
+      }
+    }
+  }
+
   const buildStudyRecordMeta = () => {
     const url = activePageUrl ?? studyContext?.pageUrl
     if (!url) return null
@@ -695,7 +929,7 @@ export default function App() {
 
     for (const step of steps) {
       await recordStudyEvent({
-        url: meta.url,
+        url: meta?.url,
         hostname: meta.hostname,
         title: meta.title,
         step,
@@ -780,27 +1014,53 @@ export default function App() {
     }))
 
     try {
-      const result = await translateTexts({
-        texts: [targetSentence],
+      const matchedGlossaryTerms = getMatchedExplanationGlossaryTerms({
+        source: targetSentence,
+        glossaryTerms: configDraft.explanationGlossary,
+      })
+      const serializedExplanationGlossary = serializeExplanationGlossary(configDraft.explanationGlossary)
+      const result = await translateExplanationWithQualityRetry({
+        source: targetSentence,
         targetLang: configDraft.targetLang,
-        context: studyContext
-          ? { ...studyContext, selectionContext: targetSentence }
-          : { selectionContext: targetSentence },
-        task: "explain",
+        context: {
+          ...(studyContext
+            ? { ...studyContext, selectionContext: targetSentence }
+            : { selectionContext: targetSentence }),
+          ...(serializedExplanationGlossary
+            ? { explanationGlossary: serializedExplanationGlossary }
+            : {}),
+        },
+        languageLevel: configDraft.languageLevel,
+        explainMode: configDraft.explainMode,
+        requiredGlossaryTerms: matchedGlossaryTerms,
       })
 
-      const text = result.ok
-        ? (result.translations[0] ?? "")
-        : `Warning: ${result.error.message}`
+      const explanationAccepted = result.ok
+      const text = result.ok ? result.text : `Warning: ${result.message}`
 
       if (sentenceDeckRevisionRef.current === deckRevision) {
         setSentenceStateById((current) => patchPopupSentenceState(current, targetSentenceId, {
-          explainStatus: result.ok ? "explained" : "idle",
+          explainStatus: explanationAccepted ? "explained" : "idle",
           explanationText: text,
+          ...(explanationAccepted
+            ? {
+                explanationLanguageLevel: configDraft.languageLevel,
+                explanationExplainMode: configDraft.explainMode,
+                explanationGlossaryTerms: matchedGlossaryTerms,
+              }
+            : {}),
         }))
       }
 
-      if (result.ok) {
+      if (explanationAccepted) {
+        recordLearningLoopEvent("sentence_explained", {
+          pageUrl: meta?.url,
+          sentenceIndex: targetIndex,
+          sentenceHash: buildSentenceAnchor(targetSentence, targetIndex)?.sentenceHash,
+          source: "popup_deep_read",
+          variant: learningLoopCopyVariant,
+          ...buildPersonalizedStrategyTelemetry(studyLoop?.personalizedStrategy),
+        })
         await recordStudySteps(["explain"], meta)
       }
     } catch (error) {
@@ -837,10 +1097,12 @@ export default function App() {
         title: studyContext?.pageTitle ?? meta.hostname ?? targetSentence,
         status: "saved",
       })
+      setPageAssetSaveStatus("saved")
+      setPageAssetSaveMessage(t("popup_contentAssetizationSavedHint"))
 
-      await saveVocabularyEntry({
+      const savedEntry = await saveVocabularyEntry({
         text: targetSentence,
-        explanation: currentCard?.explanationText ?? undefined,
+        explanation: currentCard?.explainStatus === "explained" ? currentCard.explanationText ?? undefined : undefined,
         context: popupStudyDeck.sentenceSourceText || undefined,
         sourceContext: {
           surface: "popup_deep_read",
@@ -850,11 +1112,25 @@ export default function App() {
           contentSummary: studyContext?.contentSummary,
           articleExcerpt: studyContext?.articleExcerpt,
           sentenceText: targetSentence,
+          sentenceHash: buildSentenceAnchor(targetSentence, targetIndex)?.sentenceHash,
           sentenceIndex: targetIndex,
+          languageLevel: currentCard?.explanationLanguageLevel ?? configDraft.languageLevel,
+          explainMode: currentCard?.explanationExplainMode ?? configDraft.explainMode,
+          ...(currentCard?.explanationGlossaryTerms && currentCard.explanationGlossaryTerms.length > 0
+            ? { matchedGlossaryTerms: currentCard.explanationGlossaryTerms }
+            : {}),
           ...buildOwnedReadingVocabularySourceLink(ownedReadingItem),
         },
         url: meta.url,
         hostname: meta.hostname,
+      })
+      recordLearningLoopEvent("sentence_saved", {
+        pageUrl: meta.url,
+        sentenceIndex: targetIndex,
+        sentenceHash: buildSentenceAnchor(targetSentence, targetIndex)?.sentenceHash,
+        source: "popup_deep_read",
+        variant: learningLoopCopyVariant,
+        ...buildPersonalizedStrategyTelemetry(studyLoop?.personalizedStrategy),
       })
       await recordStudySteps(["vocab_save"], meta)
       const nextDueCount = await getDueVocabularyCount()
@@ -862,20 +1138,78 @@ export default function App() {
       if (sentenceDeckRevisionRef.current === deckRevision) {
         setSentenceStateById((current) => patchPopupSentenceState(current, targetSentenceId, {
           saveStatus: "saved",
+          savedEntryId: savedEntry.id,
         }))
         setCurrentPageSavedSentenceKeys((current) => {
           const nextKeys = new Set(current)
           nextKeys.add(targetSentenceId)
           return Array.from(nextKeys)
         })
+        setCurrentPageSavedReviewSummary((current) => ({
+          studyUrl: current?.studyUrl ?? meta.url,
+          count: (current?.count ?? 0) + 1,
+          entryId: current?.entryId ?? savedEntry.id,
+        }))
       }
       setDueCount(nextDueCount)
+      void triggerLearningContinuitySync("popup-save")
     } catch {
       if (sentenceDeckRevisionRef.current === deckRevision) {
         setSentenceStateById((current) => patchPopupSentenceState(current, targetSentenceId, {
           saveStatus: "idle",
         }))
       }
+    }
+  }
+
+  const handleReviewSavedSentence = (sentenceIndex: number) => {
+    const target = resolveSentenceTarget(sentenceIndex)
+    const savedEntryId = target
+      ? sentenceCardById.get(target.targetSentenceId)?.savedEntryId
+      : undefined
+
+    if (savedEntryId) {
+      const meta = buildStudyRecordMeta()
+      if (meta?.url) {
+        void openPageReviewLoop(meta.url, savedEntryId)
+        return
+      }
+
+      void openFocusedReview(savedEntryId)
+      return
+    }
+
+    openReviewPage()
+  }
+
+  const handleReviewCurrentPageSavedSentences = () => {
+    if (!currentPageSavedReviewSummary?.studyUrl) {
+      openReviewPage()
+      return
+    }
+
+    void openPageReviewLoop(currentPageSavedReviewSummary.studyUrl, currentPageSavedReviewSummary.entryId)
+  }
+
+  const handleSaveCurrentPageAsset = async () => {
+    const meta = buildStudyRecordMeta()
+    if (!meta || pageAssetSaveStatus === "saving" || pageAssetSaveStatus === "saved") return
+
+    setPageAssetSaveStatus("saving")
+    setPageAssetSaveMessage(null)
+
+    try {
+      await upsertOwnedArticleFromUrl({
+        url: meta.url,
+        title: meta.title,
+        status: "saved",
+      })
+      setPageAssetSaveStatus("saved")
+      setPageAssetSaveMessage(t("popup_contentAssetizationSavedHint"))
+      void triggerLearningContinuitySync("popup-content-assetization")
+    } catch (error) {
+      setPageAssetSaveStatus("error")
+      setPageAssetSaveMessage(error instanceof Error ? error.message : t("popup_contentAssetizationSaveError"))
     }
   }
 
@@ -945,6 +1279,37 @@ export default function App() {
     setSpeakingSentenceId(null)
     setStudySpeaking(started)
   }
+
+  useEffect(() => {
+    if (!translationState?.subtitleQuality?.active) return undefined
+
+    let stopped = false
+    let timer: number | null = null
+
+    const schedule = () => {
+      if (!stopped) {
+        timer = window.setTimeout(poll, subtitleQualityPollIntervalMs)
+      }
+    }
+
+    const poll = () => {
+      if (document.visibilityState === "hidden") {
+        schedule()
+        return
+      }
+
+      void refreshTranslationState().finally(schedule)
+    }
+
+    schedule()
+
+    return () => {
+      stopped = true
+      if (timer !== null) {
+        window.clearTimeout(timer)
+      }
+    }
+  }, [translationState?.subtitleQuality?.active, subtitleQualityPollIntervalMs])
 
   useEffect(() => {
     const handleWindowFocus = () => {
@@ -1033,6 +1398,8 @@ export default function App() {
           contentScope: nextDraft.contentScope,
           inputTranslation: nextDraft.inputTranslation,
           languageLevel: nextDraft.languageLevel,
+          explainMode: nextDraft.explainMode,
+          explanationGlossary: nextDraft.explanationGlossary,
           privacyMode: nextDraft.privacyMode,
           provider: {
             id: nextDraft.provider.id,
@@ -1042,6 +1409,7 @@ export default function App() {
             model: nextDraft.provider.model,
           },
           presentation: nextDraft.presentation,
+          subtitleQualityControls: nextDraft.subtitleQualityControls ?? DEFAULT_SUBTITLE_QUALITY_CONTROLS,
           sites: nextDraft.sites,
           customActions: nextDraft.customActions,
         })
@@ -1126,6 +1494,11 @@ export default function App() {
         ...configDraft.presentation,
         ...patch.presentation,
       },
+      subtitleQualityControls: {
+        ...DEFAULT_SUBTITLE_QUALITY_CONTROLS,
+        ...(configDraft.subtitleQualityControls ?? {}),
+        ...(patch.subtitleQualityControls ?? {}),
+      },
       sites: patch.sites ?? configDraft.sites,
       customActions: patch.customActions ?? configDraft.customActions,
     }
@@ -1156,6 +1529,21 @@ export default function App() {
     })
   }
 
+  const handleSiteRulesQuickFix = (action: SiteRulesQuickFixAction) => {
+    handleSiteRuleChange((siteRule) => {
+      const nextRule: SiteConfig = { ...siteRule }
+
+      if (action === "clear-include-selectors") {
+        delete nextRule.selectors
+      }
+      if (action === "clear-exclude-selectors") {
+        delete nextRule.excludeSelectors
+      }
+
+      return nextRule
+    })
+  }
+
   const handleTargetLangChange = (lang: string) => {
     setConfigDraft((current) => ({ ...current, targetLang: lang }))
     void handleSaveConfig({ targetLang: lang })
@@ -1172,6 +1560,85 @@ export default function App() {
   const handleConfigChange = (patch: Partial<AstraConfig>) => {
     setConfigDraft((current) => ({ ...current, ...patch }))
     void handleSaveConfig(patch)
+  }
+
+  const persistSubtitleQualityControlsPatch = async (
+    patch: Partial<SubtitleQualityControls>,
+    nextControls: SubtitleQualityControls,
+  ) => {
+    const revision = ++saveRevisionRef.current
+
+    const runPersist = async () => {
+      try {
+        const saveResult = await saveConfigInBackground({ subtitleQualityControls: patch })
+        if (!saveResult.ok) {
+          throw new Error(saveResult.error.message)
+        }
+
+        if (revision !== saveRevisionRef.current) return
+        const savedControls = saveResult.config.subtitleQualityControls ?? nextControls
+        const normalizedControls = {
+          ...savedControls,
+          ...nextControls,
+        }
+        if (isMountedRef.current) {
+          setConfigDraft((current) => ({ ...current, subtitleQualityControls: normalizedControls }))
+          setPersistedConfig((current) => ({ ...current, subtitleQualityControls: normalizedControls }))
+        }
+        hasUnsavedChangesRef.current = false
+      } catch (error) {
+        if (revision !== saveRevisionRef.current) return
+        if (isMountedRef.current) {
+          setStatusMessage(error instanceof Error ? error.message : "Failed to save Subtitle QC settings")
+        }
+      }
+    }
+
+    const pending = saveSequenceRef.current.catch(() => undefined).then(runPersist)
+    saveSequenceRef.current = pending.then(() => undefined, () => undefined)
+    await pending
+  }
+
+  const handleSubtitleQualityControlsChange = (patch: Partial<SubtitleQualityControls>) => {
+    const nextControls = {
+      ...DEFAULT_SUBTITLE_QUALITY_CONTROLS,
+      ...subtitleQualityControls,
+      ...patch,
+    }
+    setConfigDraft((current) => ({
+      ...current,
+      subtitleQualityControls: nextControls,
+    }))
+    void persistSubtitleQualityControlsPatch(patch, nextControls)
+  }
+
+  const handleExportSubtitleDiagnostics = () => {
+    const generatedAt = new Date().toISOString()
+    const payload = {
+      schema: "astra.subtitle-qc.local-diagnostics.v1",
+      generatedAt,
+      localOnly: true,
+      popup: {
+        phase: currentPhase,
+        targetLang: translationState?.targetLang ?? persistedResolvedSite.targetLang,
+        presentation: currentPresentation,
+        hostname: currentSite.hostname,
+        siteEnabled: statusSiteEnabled,
+        contentAvailable,
+        progress: currentProgress ?? null,
+        lastError: translationState?.lastError ?? null,
+      },
+      subtitleQuality: translationState?.subtitleQuality ?? null,
+      subtitleQualityControls: subtitleQualityControls satisfies SubtitleQualityControls,
+      runtimeDiagnostics: translationState?.diagnostics ?? null,
+    }
+
+    try {
+      downloadLocalJsonFile(buildSubtitleDiagnosticsFileName(generatedAt), payload)
+      setSubtitleDiagnosticsExportStatus("Diagnostics JSON exported locally.")
+    } catch (error) {
+      setSubtitleDiagnosticsExportStatus(error instanceof Error ? error.message : "Diagnostics export failed.")
+    }
   }
 
   const startTranslation = async (contentScope: "page" | "article") => {
@@ -1206,11 +1673,22 @@ export default function App() {
     }
   }
 
-  const translateArticle = async () => {
-    const started = await startTranslation("article")
-    if (started) {
-      await recordStudySteps(["read", "guided_read"])
+  const openDeepReadPage = () => {
+    if (studyContext) {
+      void saveDeepReadSession({
+        context: studyContext,
+        selectedSentenceIndex,
+      })
+      recordLearningLoopEvent("deep_read_opened", {
+        source: "popup",
+        pageUrl: studyContext.pageUrl,
+        sentenceIndex: selectedSentenceIndex,
+        sentenceHash: buildSentenceAnchor(studySentences[selectedSentenceIndex] ?? "", selectedSentenceIndex)?.sentenceHash,
+        variant: learningLoopCopyVariant,
+        ...buildPersonalizedStrategyTelemetry(studyLoop?.personalizedStrategy),
+      })
     }
+    void browser.tabs.create({ url: browser.runtime.getURL("/deep-read.html" as "/popup.html") })
   }
 
   const removeTranslation = async () => {
@@ -1292,6 +1770,10 @@ export default function App() {
   const remoteReadingHistoryCollection = continuityStatus?.remote.readingHistoryCollection ?? null
   const remoteStudyProgressCollection = continuityStatus?.remote.studyProgressCollection ?? null
   const remoteCurrentDevice = continuityStatus?.remote.currentDevice ?? null
+  const phaseOneSyncStatus = learningContinuitySyncStatus ?? continuityStatus?.sync.phaseOne ?? null
+  const phaseOneSyncInFlight = !!phaseOneSyncStatus && "inFlight" in phaseOneSyncStatus && phaseOneSyncStatus.inFlight
+  const phaseOneSyncQueued = !!phaseOneSyncStatus && "queued" in phaseOneSyncStatus && phaseOneSyncStatus.queued
+  const phaseOneSyncLastError = phaseOneSyncStatus && "lastError" in phaseOneSyncStatus ? phaseOneSyncStatus.lastError : null
 
   const hydrateAccountState = async (
     session: AstraSession,
@@ -1346,6 +1828,7 @@ export default function App() {
         session: persistedSession,
         device: activeDevice,
         remote,
+        phaseOne: learningContinuitySyncStatus,
       }))
       setAuthPassword("")
       setStatusMessage("")
@@ -1375,6 +1858,7 @@ export default function App() {
       setAuthAccount(null)
       setAuthUsage(null)
       setContinuityRemote(null)
+      setLearningContinuitySyncStatus(null)
       setAuthPassword("")
       if (deviceIdentity) {
         setContinuityStatus(buildContinuityStatus({
@@ -1382,11 +1866,17 @@ export default function App() {
           session: null,
           device: deviceIdentity,
           remote: null,
+          phaseOne: null,
         }))
       }
       setAuthBusy(false)
       await refreshTranslationState()
     }
+  }
+
+  const focusSignInPanel = () => {
+    setSignInPanelOpen(true)
+    setSignInFocusRequestTick((current) => current + 1)
   }
 
   const openReviewPage = () => {
@@ -1397,6 +1887,20 @@ export default function App() {
 
   const openVocabularyPage = () => {
     void browser.tabs.create({ url: browser.runtime.getURL("/vocabulary.html" as "/popup.html") })
+  }
+
+  const openReadingQueuePage = () => {
+    void browser.tabs.create({
+      url: `${browser.runtime.getURL("/vocabulary.html" as "/popup.html")}?tab=reading`,
+    })
+  }
+
+  const openImageTranslatePage = () => {
+    void browser.tabs.create({ url: browser.runtime.getURL("/image-translate.html" as "/popup.html") })
+  }
+
+  const openDocumentIntakePage = () => {
+    void browser.tabs.create({ url: browser.runtime.getURL("/document-intake.html" as "/popup.html") })
   }
 
   const openUrlInTab = (url: string) => {
@@ -1498,26 +2002,112 @@ export default function App() {
     ? recentHistory.find((entry) => entry.url === studyContext.pageUrl) ?? null
     : null
   const studyReady = popupStudyDeck.hasStudyText || !!currentPageHistory
+  const canExplainPrimerSentence = studySentences.length > 0
+    && sentenceActionLock.type === "idle"
+    && !studyActionRunningId
   const shouldShowSignIn = !isAuthenticatedSession
+  const accountContinuityCopy = LEARNING_LOOP_COMMERCIAL_SURFACE_COPY.accountContinuity
+  const accountContinuityAuthHydrated = continuityStatus !== null
+  const accountContinuityAuthState = isAuthenticatedSession ? "signed_in" : "signed_out"
+  const isAccountContinuitySignedIn = accountContinuityAuthState === "signed_in"
+  const accountContinuityProofMoment = buildLearningLoopAccountContinuityProofMoment("popup", {
+    dueReviewCount: dueCount,
+    savedSentenceCount: currentPageSavedReviewSummary?.count ?? studyLoop?.currentCounts.vocabSaved,
+    pagesStudiedToday: studyLoop?.dailyStats.pagesStudied,
+    sentencesExplainedToday: studyLoop?.dailyStats.sentencesExplained,
+    vocabSavedToday: studyLoop?.dailyStats.vocabSaved,
+    vocabReviewedToday: studyLoop?.dailyStats.vocabReviewed,
+  }, { authState: accountContinuityAuthState })
+  const primerPageUrl = activePageUrl ?? studyContext?.pageUrl ?? null
+  const primerRecommendation = useMemo(() => deriveStudyLoopPrimerRecommendation({
+    nextStep: studyLoop?.nextStep ?? "read",
+    dueCount,
+    canTranslatePage: !translateDisabled,
+    canReadArticle: studyReady && !translateDisabled,
+    canExplainSentence: canExplainPrimerSentence,
+    canOpenReview: true,
+  }), [
+    canExplainPrimerSentence,
+    dueCount,
+    studyLoop?.nextStep,
+    studyReady,
+    translateDisabled,
+  ])
+  const primerViewEventKey = `${learningLoopCopyVariant}:${primerPageUrl ?? "unknown"}:${primerRecommendation.recommendedAction ?? "none"}`
+
+  useEffect(() => {
+    if (primerViewEventKeyRef.current === primerViewEventKey) return
+    primerViewEventKeyRef.current = primerViewEventKey
+    recordLearningLoopEvent("popup_primer_viewed", {
+      source: "popup",
+      variant: learningLoopCopyVariant,
+      pageUrl: primerPageUrl,
+      dueCount,
+      sentenceCount: studySentences.length,
+      canTranslatePage: !translateDisabled,
+      canReadArticle: studyReady && !translateDisabled,
+      canExplainSentence: canExplainPrimerSentence,
+      nextStep: primerRecommendation.nextStep,
+      recommendedAction: primerRecommendation.recommendedAction,
+      recommendationReason: primerRecommendation.reason,
+      actionableActionCount: primerRecommendation.actionableActionCount,
+      actionableActions: primerRecommendation.actionableActions,
+      hasActionableRecommendation: primerRecommendation.recommendedAction !== null,
+      ...buildPersonalizedStrategyTelemetry(studyLoop?.personalizedStrategy),
+    })
+  }, [
+    canExplainPrimerSentence,
+    dueCount,
+    learningLoopCopyVariant,
+    primerPageUrl,
+    primerRecommendation,
+    primerViewEventKey,
+    studyReady,
+    studySentences.length,
+    translateDisabled,
+  ])
+
+  const recordPopupPrimerCtaClick = (action: StudyLoopPrimerAction) => {
+    recordLearningLoopEvent("popup_primer_cta_clicked", {
+      source: "popup",
+      action,
+      variant: learningLoopCopyVariant,
+      pageUrl: primerPageUrl,
+      dueCount,
+      sentenceCount: studySentences.length,
+      nextStep: primerRecommendation.nextStep,
+      recommendedAction: primerRecommendation.recommendedAction,
+      recommendationReason: primerRecommendation.reason,
+      actionableActionCount: primerRecommendation.actionableActionCount,
+      actionableActions: primerRecommendation.actionableActions,
+      clickedRecommendedAction: action === primerRecommendation.recommendedAction,
+      hasActionableRecommendation: primerRecommendation.recommendedAction !== null,
+      ...buildPersonalizedStrategyTelemetry(studyLoop?.personalizedStrategy),
+    })
+  }
 
   return (
-    <div style={{ width: "100%", maxWidth: 400, minWidth: 280, padding: 16, fontFamily: "system-ui, sans-serif", boxSizing: "border-box" }}>
+    <div style={{
+      width: "100%",
+      maxWidth: 400,
+      minWidth: 280,
+      padding: 16,
+      fontFamily: "system-ui, sans-serif",
+      boxSizing: "border-box",
+      background: "linear-gradient(180deg, var(--astra-popup-bg-soft) 0%, var(--astra-popup-bg-subtle) 42%, var(--astra-bg-primary) 100%)",
+      border: "1px solid var(--astra-popup-border-warm)",
+      borderRadius: 14,
+      color: "var(--astra-text-primary)",
+    }}>
       {/* Header */}
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
-        <h2 style={{ margin: 0, fontSize: 18, display: "flex", alignItems: "center", gap: 8 }}>
+        <h2 style={{ margin: 0, fontSize: 18, display: "flex", alignItems: "center", gap: 8, color: "var(--astra-popup-text-warm)" }}>
           Astra
         </h2>
         <button
           type="button"
           onClick={() => void browser.tabs.create({ url: browser.runtime.getURL("/options.html" as "/popup.html") })}
-          style={{
-            background: "none",
-            border: "none",
-            fontSize: 18,
-            cursor: "pointer",
-            color: "#64748b",
-            padding: 4,
-          }}
+          className="astra-popup-icon-btn"
           title="Settings"
         >
           &#9881;
@@ -1530,14 +2120,8 @@ export default function App() {
           onClick={() => {
             void translate()
           }}
-          style={{
-            ...btnPrimary,
-            width: "100%",
-            padding: "10px 12px",
-            fontSize: 15,
-            fontWeight: 600,
-            ...(translateDisabled ? btnDisabled : {}),
-          }}
+          className="astra-btn-primary"
+          style={{ width: "100%", padding: "10px 12px", fontSize: 15, fontWeight: 600 }}
           disabled={translateDisabled}
         >
           {t("popup_translateThisPage")}
@@ -1547,210 +2131,41 @@ export default function App() {
           onClick={() => {
             void removeTranslation()
           }}
-          style={{
-            ...btnSecondary,
-            width: "100%",
-            padding: "10px 12px",
-            fontSize: 15,
-            fontWeight: 600,
-            ...(removeDisabled ? btnDisabled : {}),
-          }}
+          className="astra-btn-secondary"
+          style={{ width: "100%", padding: "10px 12px", fontSize: 15, fontWeight: 600 }}
           disabled={removeDisabled}
         >
           {t("popup_stopTranslation")}
         </button>
       )}
 
-      <div style={{ marginTop: 8 }}>
-        <button
-          type="button"
-          onClick={() => { void handleCreateVideoNoteFromCurrentTab() }}
-          style={{
-            ...btnSecondary,
-            width: "100%",
-            padding: "8px 10px",
-            fontSize: 13,
-            fontWeight: 600,
-            ...(canCreateVideoNote ? {} : btnDisabled),
-          }}
-          disabled={!canCreateVideoNote}
-        >
-          {videoNoteBusy ? "Creating video note…" : "Create video note from current tab"}
-        </button>
-        {lastVideoNoteJobId && (
-          <button
-            type="button"
-            onClick={handleOpenLastVideoNote}
-            style={{
-              ...btnSecondary,
-              width: "100%",
-              marginTop: 6,
-              padding: "8px 10px",
-              fontSize: 12,
-            }}
-          >
-            Open last video note
-          </button>
-        )}
-        <div style={{ fontSize: 11, color: "#64748b", marginTop: 4 }}>
-          {isSupportedVideoTab
-            ? "Supported video tab detected."
-            : "Open a YouTube or Bilibili tab to enable video-note creation."}
-        </div>
-        {videoNoteStatusMessage && (
-          <div style={{ ...warningStyle, marginTop: 6 }}>
-            {videoNoteStatusMessage}
-          </div>
-        )}
+      <div style={{ marginTop: 8, display: "flex", alignItems: "center", gap: 6, fontSize: 12, color: "var(--astra-popup-text-warm)" }}>
+        <span style={{
+          display: "inline-block",
+          width: 8,
+          height: 8,
+          borderRadius: "50%",
+          background: isAuthenticatedSession ? "var(--astra-success)" : continuityStatus?.device.ready ? "var(--astra-accent-warm)" : "var(--astra-text-decorative)",
+        }} />
+        <span>
+          {sessionStatusLabel}
+          {" · "}
+          {planLabel}
+        </span>
       </div>
 
-      {/* Status + Quota section */}
-      <div style={{
-        marginTop: 12,
-        background: "#f8fafc",
-        border: "1px solid #e2e8f0",
-        borderRadius: 8,
-        padding: 10,
-      }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12, color: "#334155" }}>
-          <span style={{
-            display: "inline-block",
-            width: 8,
-            height: 8,
-            borderRadius: "50%",
-            background: isAuthenticatedSession ? "#22c55e" : continuityStatus?.device.ready ? "#6366f1" : "#94a3b8",
-          }} />
-          <span>
-            {sessionStatusLabel}
-            {" · "}
-            {planLabel}
-          </span>
-        </div>
-        <QuotaBar quota={quotaInfo} />
-        {wordsTranslated > 0 && (
-          <div style={{ fontSize: 11, color: "#94a3b8", marginTop: 4 }}>
-            {t("popup_wordsTranslatedToday", wordsTranslated.toLocaleString())}
-          </div>
-        )}
-        <div style={{ fontSize: 11, color: "#64748b", marginTop: 4, lineHeight: 1.45 }}>
-          {accountSourceNote}
-        </div>
-        <div style={{ fontSize: 11, color: "#64748b", marginTop: 6, lineHeight: 1.45 }}>
-          <div>
-            iOS bridge: {iosBootstrapStatus.bridgeAvailable ? "available" : "unavailable"}
-            {iosBootstrapStatus.status?.lastBootstrapAt
-              ? ` · Last bootstrap ${formatContinuityTimestamp(iosBootstrapStatus.status.lastBootstrapAt)}`
-              : " · No bootstrap yet"}
-          </div>
-          <div>
-            Launch path: popup/onboarding → extension bridge → astra-shell://bootstrap → host app handoff
-          </div>
-          {iosBootstrapStatus.status?.lastSessionId && (
-            <div>
-              Last iOS session: {iosBootstrapStatus.status.lastSessionId}
-            </div>
-          )}
-          {iosBootstrapStatus.history.length > 0 && (
-            <div>
-              Recent bridge events: {iosBootstrapStatus.history.length}
-            </div>
-          )}
-          <div style={{ display: "flex", gap: 6, marginTop: 6 }}>
-            <button
-              type="button"
-              onClick={() => { void handleOpenInAstraApp() }}
-              style={{
-                ...btnSecondary,
-                fontSize: 11,
-                padding: "4px 8px",
-                ...(iosBootstrapStatus.bridgeAvailable ? {} : btnDisabled),
-              }}
-              disabled={!iosBootstrapStatus.bridgeAvailable}
-            >
-              Open in Astra App
-            </button>
-            <button
-              type="button"
-              onClick={() => { void handleReplayLatestBridgeEvent() }}
-              style={{
-                ...btnSecondary,
-                fontSize: 11,
-                padding: "4px 8px",
-                ...((!iosBootstrapStatus.bridgeAvailable || iosBootstrapStatus.history.length === 0) ? btnDisabled : {}),
-              }}
-              disabled={!iosBootstrapStatus.bridgeAvailable || iosBootstrapStatus.history.length === 0}
-            >
-              Replay last handoff
-            </button>
-          </div>
-          {iosBridgeActionMessage && (
-            <div>
-              {iosBridgeActionMessage}
-            </div>
-          )}
-          {iosBootstrapStatus.history.slice(0, 3).map((event) => (
-            <div key={event.sessionId}>
-              · {event.sessionId} ({event.source}) {formatContinuityTimestamp(event.issuedAt)}
-            </div>
-          ))}
-        </div>
-        {continuityStatus && (
-          <div style={{ fontSize: 11, color: "#64748b", marginTop: 6, lineHeight: 1.45 }}>
-            <div>
-              Device: {deviceIdentity?.label ?? "Preparing device identity"}
-            </div>
-            {isAuthenticatedSession && (
-              continuityStatus.remote.available
-                ? (
-                    <>
-                      <div>
-                        Astra continuity · {continuityStatus.remote.deviceCount} device{continuityStatus.remote.deviceCount === 1 ? "" : "s"} · {continuityStatus.remote.activeDeviceCount} active
-                      </div>
-                      {remoteCurrentDevice && (
-                        <div>
-                          Current device: {remoteCurrentDevice.status} · Last seen {formatContinuityTimestamp(remoteCurrentDevice.lastSeenAt)} · Last sync {formatContinuityTimestamp(remoteCurrentDevice.lastSyncAt)}
-                        </div>
-                      )}
-                      {remoteConfigCollection && (
-                        <div>
-                          Config bootstrap: {remoteConfigCollection.enabled ? "enabled" : "disabled"} · Cursor {remoteConfigCollection.bootstrapCursor ?? "none"}
-                          {remoteConfigCollection.hasPull ? ` · Latest pull ${remoteConfigCollection.deltaCount} delta${remoteConfigCollection.deltaCount === 1 ? "" : "s"}` : ""}
-                        </div>
-                      )}
-                    </>
-                  )
-                : continuityStatus.remote.error
-                  ? (
-                      <div>
-                        Continuity check: {continuityStatus.remote.error}
-                      </div>
-                    )
-                  : null
-            )}
-            {remoteReadingHistoryCollection && (
-              <div>
-                Reading history sync: {remoteReadingHistoryCollection.enabled ? "enabled" : "off"} · {remoteReadingHistoryCollection.enabled ? `Cursor ${remoteReadingHistoryCollection.bootstrapCursor ?? "none"}` : "Optional"}
-              </div>
-            )}
-            {remoteStudyProgressCollection && (
-              <div>
-                Study progress sync: {remoteStudyProgressCollection.enabled ? "enabled" : "off"} · {remoteStudyProgressCollection.enabled ? `Cursor ${remoteStudyProgressCollection.bootstrapCursor ?? "none"}` : "Optional"} · Daily stats stay local
-              </div>
-            )}
-            <div>
-              Config continuity ready · Optional collections available in Settings
-            </div>
-            {localOnlyLabel && (
-              <div>
-                Local only: {localOnlyLabel}
-              </div>
-            )}
-          </div>
-        )}
-      </div>
+      {isAuthenticatedSession && (
+        <LearningContinuityCommitCard
+          status={learningContinuitySyncStatus}
+          syncInFlight={learningContinuityCommitBusy}
+          onSyncNow={() => {
+            void triggerLearningContinuitySync("popup-continuity-card", { surfaceError: true })
+          }}
+        />
+      )}
 
       {/* Translation Status Card (shown when active) */}
-      {currentPhase !== "idle" && (
+      {(currentPhase !== "idle" || translationState?.subtitleQuality?.active) && (
         <div style={{ marginTop: 12 }}>
           <TranslationStatusCard
             phase={currentPhase}
@@ -1760,6 +2175,12 @@ export default function App() {
             progress={currentProgress ?? null}
             lastError={translationState?.lastError ?? null}
             siteEnabled={statusSiteEnabled}
+            subtitleQuality={translationState?.subtitleQuality ?? null}
+            subtitleQualityControls={subtitleQualityControls}
+            subtitleQualityTrend={subtitleQualityTrend}
+            onSubtitleQualityControlsChange={handleSubtitleQualityControlsChange}
+            onSubtitleDiagnosticsExport={handleExportSubtitleDiagnostics}
+            subtitleDiagnosticsExportStatus={subtitleDiagnosticsExportStatus}
             onRetryFailed={() => {
               void retryActiveTabFailedBlocks().then((response) => {
                 if (response.ok) {
@@ -1771,18 +2192,123 @@ export default function App() {
         </div>
       )}
 
+      {accountContinuityAuthHydrated && (
+        <div
+          data-testid="popup-account-continuity-card"
+          style={{
+            marginTop: 12,
+            marginBottom: 8,
+            padding: "10px 12px",
+            background: "var(--astra-bg-primary)",
+            border: "1px solid var(--astra-border-strong)",
+            borderRadius: 10,
+          }}
+        >
+          <div style={{ fontSize: 11, fontWeight: 800, color: "var(--astra-text-secondary)", textTransform: "uppercase", letterSpacing: "0.04em" }}>
+            {accountContinuityCopy.eyebrow}
+          </div>
+          <div style={{ fontSize: 13, fontWeight: 800, color: "var(--astra-text-primary)", marginTop: 4 }}>
+            {isAccountContinuitySignedIn ? accountContinuityCopy.connectedTitle : accountContinuityCopy.title}
+          </div>
+          <div style={{ fontSize: 12, color: "var(--astra-text-secondary)", lineHeight: 1.45, marginTop: 4 }}>
+            {isAccountContinuitySignedIn ? accountContinuityCopy.connectedSummary : accountContinuityCopy.summary}
+          </div>
+          <div data-testid="popup-account-continuity-proof-moment" style={{ fontSize: 11, color: "var(--astra-text-secondary)", lineHeight: 1.45, marginTop: 6, fontWeight: 700 }}>
+            {accountContinuityProofMoment}
+          </div>
+          <div style={{ fontSize: 11, color: "var(--astra-text-muted)", lineHeight: 1.45, marginTop: 6 }}>
+            {accountContinuityCopy.boundary}
+          </div>
+          {!isAccountContinuitySignedIn && (
+            <>
+              <button
+                type="button"
+                data-testid="popup-account-continuity-sign-in-cta"
+                className="astra-btn-primary"
+                style={{ width: "100%", marginTop: 8, padding: "8px 10px", fontSize: 12 }}
+                onClick={focusSignInPanel}
+              >
+                {accountContinuityCopy.cta}
+              </button>
+              <div style={{ fontSize: 11, color: "var(--astra-text-muted)", lineHeight: 1.45, marginTop: 6 }}>
+                {accountContinuityCopy.ctaHelper}
+              </div>
+            </>
+          )}
+        </div>
+      )}
+
+      <LearningClosurePrimerCard
+        canTranslatePage={!translateDisabled}
+        canReadArticle={studyReady && !translateDisabled}
+        canExplainSentence={canExplainPrimerSentence}
+        dueCount={dueCount}
+        sentenceCount={studySentences.length}
+        copyVariant={learningLoopCopyVariant}
+        recommendedAction={primerRecommendation.recommendedAction}
+        onTranslatePage={() => {
+          recordPopupPrimerCtaClick("translate_page")
+          void translate()
+        }}
+        onReadArticle={() => {
+          recordPopupPrimerCtaClick("open_deep_read")
+          openDeepReadPage()
+        }}
+        onExplainSentence={() => {
+          recordPopupPrimerCtaClick("explain_sentence")
+          void handleExplainSentence(selectedSentenceIndex)
+        }}
+        onOpenReview={() => {
+          recordPopupPrimerCtaClick("open_review")
+          openReviewPage()
+        }}
+      />
+
       {/* Target Language + Translation Mode */}
       <div style={{ marginTop: 12 }}>
         <SimpleControls
           targetLang={configDraft.targetLang}
           translationMode={configDraft.presentation.mode}
           languageLevel={configDraft.languageLevel}
+          explainMode={configDraft.explainMode}
+          explanationGlossaryText={serializeExplanationGlossary(configDraft.explanationGlossary)}
           onTargetLangChange={handleTargetLangChange}
           onModeChange={handleModeChange}
           onLanguageLevelChange={(level) => {
             handleConfigChange({ languageLevel: level })
           }}
+          onExplainModeChange={(mode) => {
+            handleConfigChange({ explainMode: mode })
+          }}
+          onExplanationGlossaryChange={(value) => {
+            handleConfigChange({ explanationGlossary: parseExplanationGlossaryText(value) })
+          }}
         />
+        <label htmlFor="popup-global-font-size" style={{ ...labelStyle, marginTop: 8 }}>{t("label_translationFontSize")}</label>
+        <input
+          id="popup-global-font-size"
+          data-testid="popup-global-font-size-input"
+          type="range"
+          min={0.5}
+          max={2}
+          step={0.05}
+          value={configDraft.presentation.fontSize}
+          onChange={(event) => {
+            const value = Number.parseFloat(event.target.value)
+            if (!Number.isFinite(value)) return
+            handleConfigChange({
+              presentation: {
+                ...configDraft.presentation,
+                fontSize: Math.min(2, Math.max(0.5, value)),
+              },
+            })
+          }}
+          className="astra-input"
+          style={{ padding: 0 }}
+        />
+        <div style={{ fontSize: 11, color: "var(--astra-text-muted)", marginTop: 2 }}>
+          {t("label_translationFontSizeValue", configDraft.presentation.fontSize.toFixed(2))}
+        </div>
       </div>
 
       <StudySection
@@ -1791,7 +2317,14 @@ export default function App() {
         recentHistory={recentHistory}
         studyContext={studyContext}
         canReadArticle={studyReady && !translateDisabled}
+        showAccountContinuityNudge={accountContinuityAuthHydrated}
+        accountContinuityAuthState={accountContinuityAuthState}
+        onOpenAccountContinuitySignIn={focusSignInPanel}
         studyLoop={studyLoop}
+        weeklyRoi={weeklyRoi}
+        pageSavedReviewSummary={currentPageSavedReviewSummary}
+        pageAssetSaveStatus={pageAssetSaveStatus}
+        pageAssetSaveMessage={pageAssetSaveMessage}
         pageDigest={pageDigest}
         digestStale={digestStale}
         digestLoading={digestLoading}
@@ -1811,92 +2344,299 @@ export default function App() {
         onSelectSentence={(index) => { handleSelectSentence(index) }}
         onRunStudyAction={(actionId) => { void handleRunStudyAction(actionId) }}
         onSaveSentence={(sentenceIndex) => { void handleSaveSentence(sentenceIndex) }}
+        onReviewSavedSentence={(sentenceIndex) => { handleReviewSavedSentence(sentenceIndex) }}
+        onReviewPageSavedSentences={handleReviewCurrentPageSavedSentences}
+        onSavePageAsset={() => { void handleSaveCurrentPageAsset() }}
         onOpenHistoryEntry={openUrlInTab}
         onOpenReview={openReviewPage}
         onOpenVocabulary={openVocabularyPage}
+        onOpenReadingQueue={openReadingQueuePage}
         onReadArticle={() => {
-          void translateArticle()
+          openDeepReadPage()
         }}
         onExplainSentence={(sentenceIndex) => {
           void handleExplainSentence(sentenceIndex)
         }}
       />
 
-      <UsageInsightsCard summary={usageSummary} />
+      <details style={{ marginTop: 12 }}>
+        <summary className="astra-cursor-pointer" style={{ fontSize: 13, color: "var(--astra-accent-warm-hover)" }}>
+          More tools & diagnostics
+        </summary>
 
-      {activeSiteKey && (
-        <div style={{ marginTop: 12 }}>
-          <SiteSettingsSection
-            activeSiteKey={activeSiteKey}
-            rawSiteRule={configDraft.sites[activeSiteKey]}
-            globalConfig={{
-              targetLang: configDraft.targetLang,
-              hoverTrigger: configDraft.hoverTrigger,
-              presentation: configDraft.presentation,
-              contentScope: configDraft.contentScope,
-            }}
-            onSiteRuleChange={handleSiteRuleChange}
-          />
+        <div style={{ marginTop: 8 }}>
+          <button
+            type="button"
+            onClick={openImageTranslatePage}
+            className="astra-btn-secondary"
+            style={{ width: "100%", padding: "8px 10px", fontSize: 13, fontWeight: 600, marginBottom: 8 }}
+          >
+            Open Image/OCR Translation Beta
+          </button>
+          <div style={{ fontSize: 11, color: "var(--astra-text-muted)", marginBottom: 8, lineHeight: 1.45 }}>
+            Upload or paste an image for extracted-text translation. Overlay preview is approximate; compare rows remain available.
+          </div>
+          <button
+            type="button"
+            onClick={openDocumentIntakePage}
+            className="astra-btn-secondary"
+            style={{ width: "100%", padding: "8px 10px", fontSize: 13, fontWeight: 600, marginBottom: 8 }}
+          >
+            Open Document Intake Hub
+          </button>
+          <div style={{ fontSize: 11, color: "var(--astra-text-muted)", marginBottom: 8, lineHeight: 1.45 }}>
+            Route PDF, EPUB, SRT, or VTT files to existing readers and keep a Reading queue row. A short-lived local handoff can open the reader automatically; expired or oversized files fall back to manual reselect. File bytes stay local and are never synced.
+          </div>
+          <button
+            type="button"
+            onClick={() => { void handleCreateVideoNoteFromCurrentTab() }}
+            className="astra-btn-secondary"
+            style={{ width: "100%", padding: "8px 10px", fontSize: 13, fontWeight: 600 }}
+            disabled={!canCreateVideoNote}
+          >
+            {videoNoteBusy ? "Creating video note…" : "Create video note from current tab"}
+          </button>
+          {lastVideoNoteJobId && (
+            <button
+              type="button"
+              onClick={handleOpenLastVideoNote}
+              className="astra-btn-secondary"
+              style={{ width: "100%", marginTop: 6, padding: "8px 10px", fontSize: 12 }}
+            >
+              Open last video note
+            </button>
+          )}
+          <div style={{ fontSize: 11, color: "var(--astra-text-muted)", marginTop: 4 }}>
+            {isSupportedVideoTab
+              ? "Supported video tab detected."
+              : "Open a YouTube or Bilibili tab to enable video-note creation."}
+          </div>
+          {videoNoteStatusMessage && (
+            <div role="status" aria-live="polite" style={{ ...warningStyle, marginTop: 6 }}>
+              {videoNoteStatusMessage}
+            </div>
+          )}
         </div>
-      )}
+
+        <div style={{
+          marginTop: 10,
+          background: "var(--astra-popup-bg-subtle)",
+          border: "1px solid var(--astra-popup-border-warm)",
+          borderRadius: 8,
+          padding: 10,
+        }}>
+          <QuotaBar quota={quotaInfo} />
+          {wordsTranslated > 0 && (
+            <div style={{ fontSize: 11, color: "var(--astra-text-hint)", marginTop: 4 }}>
+              {t("popup_wordsTranslatedToday", wordsTranslated.toLocaleString())}
+            </div>
+          )}
+          <div style={{ fontSize: 11, color: "var(--astra-text-muted)", marginTop: 4, lineHeight: 1.45 }}>
+            {accountSourceNote}
+          </div>
+          <div style={{ fontSize: 11, color: "var(--astra-text-muted)", marginTop: 6, lineHeight: 1.45 }}>
+            <div>
+              iOS bridge: {iosBootstrapStatus.bridgeAvailable ? "available" : "unavailable"}
+              {iosBootstrapStatus.status?.lastBootstrapAt
+                ? ` · Last bootstrap ${formatContinuityTimestamp(iosBootstrapStatus.status.lastBootstrapAt)}`
+                : " · No bootstrap yet"}
+            </div>
+            <div>
+              Launch path: popup/onboarding → extension bridge → astra-shell://bootstrap → host app handoff
+            </div>
+            {iosBootstrapStatus.status?.lastSessionId && (
+              <div>
+                Last iOS session: {iosBootstrapStatus.status.lastSessionId}
+              </div>
+            )}
+            {iosBootstrapStatus.history.length > 0 && (
+              <div>
+                Recent bridge events: {iosBootstrapStatus.history.length}
+              </div>
+            )}
+            <div style={{ display: "flex", gap: 6, marginTop: 6 }}>
+              <button
+                type="button"
+                onClick={() => { void handleOpenInAstraApp() }}
+                className="astra-btn-secondary"
+                style={{ fontSize: 11, padding: "4px 8px" }}
+                disabled={!iosBootstrapStatus.bridgeAvailable}
+              >
+                Open in Astra App
+              </button>
+              <button
+                type="button"
+                onClick={() => { void handleReplayLatestBridgeEvent() }}
+                className="astra-btn-secondary"
+                style={{ fontSize: 11, padding: "4px 8px" }}
+                disabled={!iosBootstrapStatus.bridgeAvailable || iosBootstrapStatus.history.length === 0}
+              >
+                Replay last handoff
+              </button>
+            </div>
+            {iosBridgeActionMessage && (
+              <div role="status" aria-live="polite">
+                {iosBridgeActionMessage}
+              </div>
+            )}
+            {iosBootstrapStatus.history.slice(0, 3).map((event) => (
+              <div key={event.sessionId}>
+                · {event.sessionId} ({event.source}) {formatContinuityTimestamp(event.issuedAt)}
+              </div>
+            ))}
+          </div>
+          {continuityStatus && (
+            <div style={{ fontSize: 11, color: "var(--astra-text-muted)", marginTop: 6, lineHeight: 1.45 }}>
+              <div>
+                Device: {deviceIdentity?.label ?? "Preparing device identity"}
+              </div>
+              {isAuthenticatedSession && (
+                continuityStatus.remote.available
+                  ? (
+                      <>
+                        <div>
+                          Astra continuity · {continuityStatus.remote.deviceCount} device{continuityStatus.remote.deviceCount === 1 ? "" : "s"} · {continuityStatus.remote.activeDeviceCount} active
+                        </div>
+                        {remoteCurrentDevice && (
+                          <div>
+                            Current device: {remoteCurrentDevice.status} · Last seen {formatContinuityTimestamp(remoteCurrentDevice.lastSeenAt)} · Last sync {formatContinuityTimestamp(remoteCurrentDevice.lastSyncAt)}
+                          </div>
+                        )}
+                        {remoteConfigCollection && (
+                          <div>
+                            Config bootstrap: {remoteConfigCollection.enabled ? "enabled" : "disabled"} · Cursor {remoteConfigCollection.bootstrapCursor ?? "none"}
+                            {remoteConfigCollection.hasPull ? ` · Latest pull ${remoteConfigCollection.deltaCount} delta${remoteConfigCollection.deltaCount === 1 ? "" : "s"}` : ""}
+                          </div>
+                        )}
+                      </>
+                    )
+                  : continuityStatus.remote.error
+                    ? (
+                        <div>
+                          Continuity check: {continuityStatus.remote.error}
+                        </div>
+                      )
+                    : null
+              )}
+              {remoteReadingHistoryCollection && (
+                <div>
+                  Reading history sync: {remoteReadingHistoryCollection.enabled ? "enabled" : "off"} · {remoteReadingHistoryCollection.enabled ? `Cursor ${remoteReadingHistoryCollection.bootstrapCursor ?? "none"}` : "Optional"}
+                </div>
+              )}
+              {remoteStudyProgressCollection && (
+                <div>
+                  Study progress sync: {remoteStudyProgressCollection.enabled ? "enabled" : "off"} · {remoteStudyProgressCollection.enabled ? `Cursor ${remoteStudyProgressCollection.bootstrapCursor ?? "none"}` : "Optional"} · Daily stats stay local
+                </div>
+              )}
+              {phaseOneSyncStatus && (
+                <div data-testid="learning-continuity-sync-status">
+                  Learning continuity commit: {phaseOneSyncInFlight ? "syncing" : phaseOneSyncLastError || phaseOneSyncStatus.stateLastError ? "needs retry" : phaseOneSyncStatus.stateLastSuccessAt ? "synced" : "not yet"}
+                  {phaseOneSyncStatus.stateLastSuccessAt ? ` · Last success ${formatContinuityTimestamp(phaseOneSyncStatus.stateLastSuccessAt)}` : ""}
+                  {phaseOneSyncQueued ? " · queued" : ""}
+                </div>
+              )}
+              <div>
+                Config, vocabulary, reading history, and study progress continuity ready · SRS schedule fields stay local
+              </div>
+              {localOnlyLabel && (
+                <div>
+                  Local only: {localOnlyLabel}
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+
+        <div style={{ marginTop: 12 }}>
+          <UsageInsightsCard summary={usageSummary} />
+        </div>
+
+        {activeSiteKey && (
+          <div style={{ marginTop: 12 }}>
+            <SiteRulesExplainabilityPanel
+              activeSiteKey={activeSiteKey}
+              rawSiteRule={configDraft.sites[activeSiteKey]}
+              resolvedSite={draftResolvedSite}
+              translationState={translationState}
+              contentAvailable={contentAvailable}
+              providerReady={providerReady}
+              statusMessage={statusMessage}
+              onQuickFix={handleSiteRulesQuickFix}
+            />
+            <div style={{ marginTop: 10 }}>
+              <SiteSettingsSection
+                activeSiteKey={activeSiteKey}
+                rawSiteRule={configDraft.sites[activeSiteKey]}
+                globalConfig={{
+                  targetLang: configDraft.targetLang,
+                  hoverTrigger: configDraft.hoverTrigger,
+                  presentation: configDraft.presentation,
+                  contentScope: configDraft.contentScope,
+                }}
+                onSiteRuleChange={handleSiteRuleChange}
+              />
+            </div>
+          </div>
+        )}
+      </details>
 
       {/* Auth section (simplified) */}
       {shouldShowSignIn && (
-        <details style={{ marginTop: 4, marginBottom: 8 }}>
-          <summary style={{ cursor: "pointer", fontSize: 13, color: "#6366f1" }}>
-            {t("popup_signInToAstra")}
-          </summary>
-          <div style={{ marginTop: 8 }}>
-            <label style={labelStyle}>{t("label_email")}</label>
-            <input
-              type="email"
-              value={authEmail}
-              onChange={(e) => setAuthEmail(e.target.value)}
-              placeholder="you@example.com"
-              style={inputStyle}
-            />
-            <label style={labelStyle}>{t("label_password")}</label>
-            <input
-              type="password"
-              value={authPassword}
-              onChange={(e) => setAuthPassword(e.target.value)}
-              placeholder="••••••••"
-              style={inputStyle}
-            />
-            <button
-              onClick={() => {
-                void handleSignIn()
-              }}
-              style={{
-                ...btnPrimary,
-                width: "100%",
-                marginTop: 8,
-                ...(authBusy || authEmail.trim().length === 0 || authPassword.length === 0 ? btnDisabled : {}),
-              }}
-              disabled={authBusy || authEmail.trim().length === 0 || authPassword.length === 0}
-            >
-              {t("popup_signIn")}
-            </button>
-          </div>
-        </details>
+        <>
+          <details
+            ref={signInPanelRef}
+            data-testid="popup-sign-in-panel"
+            open={signInPanelOpen}
+            onToggle={(event) => setSignInPanelOpen(event.currentTarget.open)}
+            style={{ marginTop: 4, marginBottom: 8 }}
+          >
+            <summary className="astra-cursor-pointer" style={{ fontSize: 13, color: "var(--astra-accent-warm-hover)" }}>
+              {t("popup_signInToAstra")}
+            </summary>
+            <div style={{ marginTop: 8 }}>
+              <label htmlFor="popup-sign-in-email" style={labelStyle}>{t("label_email")}</label>
+              <input
+                id="popup-sign-in-email"
+                ref={signInEmailInputRef}
+                type="email"
+                value={authEmail}
+                onChange={(e) => setAuthEmail(e.target.value)}
+                placeholder="you@example.com"
+                className="astra-input"
+              />
+              <label htmlFor="popup-sign-in-password" style={labelStyle}>{t("label_password")}</label>
+              <input
+                id="popup-sign-in-password"
+                type="password"
+                value={authPassword}
+                onChange={(e) => setAuthPassword(e.target.value)}
+                placeholder="••••••••"
+                className="astra-input"
+              />
+              <button
+                onClick={() => {
+                  void handleSignIn()
+                }}
+                className="astra-btn-primary"
+                style={{ width: "100%", marginTop: 8 }}
+                disabled={authBusy || authEmail.trim().length === 0 || authPassword.length === 0}
+              >
+                {t("popup_signIn")}
+              </button>
+            </div>
+          </details>
+        </>
       )}
 
       {isAuthenticatedSession && authSession && (
-        <div style={{ fontSize: 12, color: "#64748b", marginTop: 4, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+        <div style={{ fontSize: 12, color: "var(--astra-text-muted)", marginTop: 4, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
           <span>{authAccount?.email ?? authSession.email}</span>
           <button
             onClick={() => {
               void handleSignOut()
             }}
-            style={{
-              background: "none",
-              border: "none",
-              color: "#6366f1",
-              fontSize: 11,
-              cursor: "pointer",
-              textDecoration: "underline",
-              ...(authBusy ? btnDisabled : {}),
-            }}
+            className="astra-btn-link"
+            style={{ color: "var(--astra-accent-warm-hover)" }}
             disabled={authBusy}
           >
             {t("popup_signOut")}
@@ -1905,13 +2645,13 @@ export default function App() {
       )}
 
       {!isAuthenticatedSession && authSession?.identityMode === "anonymous" && (
-        <div style={{ fontSize: 11, color: "#64748b", marginTop: 4 }}>
+        <div style={{ fontSize: 11, color: "var(--astra-text-muted)", marginTop: 4 }}>
           This device is using a local Astra guest session. Sign in later to attach plan, quota, and continuity state.
         </div>
       )}
 
       {statusMessage && (
-        <div style={warningStyle}>
+        <div role="status" aria-live="polite" style={warningStyle}>
           {statusMessage}
         </div>
       )}
@@ -1921,26 +2661,29 @@ export default function App() {
         <button
           type="button"
           onClick={() => void browser.tabs.create({ url: browser.runtime.getURL("/options.html" as "/popup.html") })}
-          style={{ background: "none", border: "none", color: "#6366f1", fontSize: 11, cursor: "pointer", textDecoration: "underline" }}
+          className="astra-btn-link"
+          style={{ color: "var(--astra-accent-warm-hover)" }}
         >
           {t("popup_settings")}
         </button>
         <button
           type="button"
           onClick={openVocabularyPage}
-          style={{ background: "none", border: "none", color: "#6366f1", fontSize: 11, cursor: "pointer", textDecoration: "underline" }}
+          className="astra-btn-link"
+          style={{ color: "var(--astra-accent-warm-hover)" }}
         >
           {t("popup_vocabulary")}
         </button>
         <button
           type="button"
           onClick={openReviewPage}
-          style={{ background: "none", border: "none", color: "#6366f1", fontSize: 11, cursor: "pointer", textDecoration: "underline" }}
+          className="astra-btn-link"
+          style={{ color: "var(--astra-accent-warm-hover)" }}
         >
           {t("popup_review")}
         </button>
       </div>
-      <div style={{ fontSize: 11, color: "#94a3b8", textAlign: "center", marginTop: 4 }}>
+      <div style={{ fontSize: 11, color: "var(--astra-popup-text-warm-strong)", textAlign: "center", marginTop: 4 }}>
         Astra v0.1.0
       </div>
     </div>

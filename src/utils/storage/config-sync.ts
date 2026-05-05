@@ -47,6 +47,16 @@ import {
   type SyncedReadingHistoryEntry,
 } from "./reading-history"
 import {
+  SyncedOwnedReadingItemSchema,
+  applyOwnedReadingSyncMutations,
+  buildOwnedReadingSyncRecordMap,
+  listOwnedReadingItems,
+  readSyncSafeOwnedReadingItems,
+  replaceOwnedReadingItems,
+  type OwnedReadingItem,
+  type SyncedOwnedReadingItem,
+} from "./owned-reading"
+import {
   SyncedStudyPageProgressSchema,
   applyStudyProgressSyncMutations,
   buildStudyProgressSyncRecordMap,
@@ -55,6 +65,15 @@ import {
   replaceStudyProgressPages,
   type SyncedStudyPageProgress,
 } from "./study-progress"
+import {
+  DeepReadSessionRecordSchema,
+  applyDeepReadSessionSyncMutations,
+  buildDeepReadSessionSyncRecordMap,
+  readSyncSafeDeepReadSessions,
+  replaceDeepReadSessions,
+  type DeepReadSessionRecord,
+  type SyncedDeepReadSessionRecord,
+} from "./deep-read-session"
 import {
   SyncedVocabularyEntrySchema,
   VOCABULARY_STORAGE_KEY,
@@ -73,6 +92,8 @@ interface AstraBackup {
   vocabulary: unknown[]
   readingHistory: unknown[]
 }
+
+type ConfigCollectionShadowRecord = AstraConfigSyncRecord | SyncedOwnedReadingItem | SyncedDeepReadSessionRecord
 
 interface ContinuityCollectionStatus {
   enabled: boolean
@@ -102,6 +123,7 @@ export interface AstraContinuityStatus {
     deferredCollections: AstraSyncCollection[]
     syncSafeConfig: AstraSyncedConfig
     localOnly: AstraConfigContinuitySummary
+    phaseOne: AstraPhaseOneSyncLocalStatus
   }
   remote: {
     available: boolean
@@ -147,13 +169,26 @@ export interface AstraPhaseOneSyncResult {
   rejected: number
 }
 
+export interface AstraPhaseOneSyncLocalStatus {
+  accountEmail: string | null
+  stateLastRunAt: string | null
+  stateLastSuccessAt: string | null
+  stateLastError: string | null
+  cursors: {
+    config: string | null
+    vocabulary: string | null
+    reading_history: string | null
+    study_progress: string | null
+  }
+}
+
 interface AstraPhaseOneSyncState {
   version: 1
   accountEmail: string | null
   collections: {
     config: {
       cursor: string | null
-      shadow: Record<string, AstraConfigSyncRecord>
+      shadow: Record<string, ConfigCollectionShadowRecord>
     }
     vocabulary: {
       cursor: string | null
@@ -178,6 +213,13 @@ const SYNC_SCHEMA_VERSION = 1
 const CONFIG_SYNC_OPTIONS = { includeManagedRelayBaseURL: true } as const
 const DEFAULT_CONFIG_RECORD_MAP = buildConfigSyncRecordMap(DEFAULT_ASTRA_CONFIG, CONFIG_SYNC_OPTIONS)
 const DEFAULT_CONFIG_GLOBAL_RECORD = DEFAULT_CONFIG_RECORD_MAP[CONFIG_SYNC_GLOBAL_RECORD_ID]
+const OWNED_READING_CONFIG_RECORD_PREFIX = "__owned_reading_metadata_v1__:"
+const DEEP_READ_SESSION_CONFIG_RECORD_PREFIX = "__deep_read_session_v1__:"
+const ConfigCollectionShadowRecordSchema = z.union([
+  AstraConfigSyncRecordSchema,
+  SyncedOwnedReadingItemSchema,
+  DeepReadSessionRecordSchema,
+])
 
 const PhaseOneSyncStateSchema = z.object({
   version: z.literal(1).default(1),
@@ -185,7 +227,7 @@ const PhaseOneSyncStateSchema = z.object({
   collections: z.object({
     config: z.object({
       cursor: z.string().trim().min(1).nullable().default(null),
-      shadow: z.record(z.string(), AstraConfigSyncRecordSchema).default({}),
+      shadow: z.record(z.string(), ConfigCollectionShadowRecordSchema).default({}),
     }).default({
       cursor: null,
       shadow: {},
@@ -269,6 +311,30 @@ async function readPhaseOneSyncState(accountEmail: string): Promise<AstraPhaseOn
   return normalizeSyncState(stored[ASTRA_PHASE_ONE_SYNC_STATE_STORAGE_KEY], accountEmail)
 }
 
+function buildPhaseOneSyncLocalStatus(state: AstraPhaseOneSyncState | null): AstraPhaseOneSyncLocalStatus {
+  return {
+    accountEmail: state?.accountEmail ?? null,
+    stateLastRunAt: state?.lastRunAt ?? null,
+    stateLastSuccessAt: state?.lastSuccessAt ?? null,
+    stateLastError: state?.lastError ?? null,
+    cursors: {
+      config: state?.collections.config.cursor ?? null,
+      vocabulary: state?.collections.vocabulary.cursor ?? null,
+      reading_history: state?.collections.reading_history.cursor ?? null,
+      study_progress: state?.collections.study_progress.cursor ?? null,
+    },
+  }
+}
+
+export async function readPhaseOneCollectionSyncStatus(): Promise<AstraPhaseOneSyncLocalStatus> {
+  const session = await readAstraSession()
+  if (!session || session.identityMode !== "authenticated") {
+    return buildPhaseOneSyncLocalStatus(null)
+  }
+
+  return buildPhaseOneSyncLocalStatus(await readPhaseOneSyncState(session.email))
+}
+
 async function writePhaseOneSyncState(state: AstraPhaseOneSyncState): Promise<void> {
   const normalized = PhaseOneSyncStateSchema.parse(state)
   await browser.storage.local.set({
@@ -296,6 +362,117 @@ function buildContinuityCollectionStatus(
 
 function createClientMutationId(collection: "config" | "vocabulary" | "reading_history" | "study_progress", recordId: string, operation: "upsert" | "delete"): string {
   return `${collection}:${recordId}:${operation}:${Date.now().toString(36)}:${Math.random().toString(36).slice(2, 10)}`
+}
+
+function isOwnedReadingConfigRecordId(recordId: string): boolean {
+  return recordId.startsWith(OWNED_READING_CONFIG_RECORD_PREFIX)
+}
+
+function buildOwnedReadingConfigRecordId(itemId: string): string {
+  return `${OWNED_READING_CONFIG_RECORD_PREFIX}${itemId}`
+}
+
+function parseOwnedReadingConfigRecordId(recordId: string): string {
+  return isOwnedReadingConfigRecordId(recordId)
+    ? recordId.slice(OWNED_READING_CONFIG_RECORD_PREFIX.length)
+    : recordId
+}
+
+function buildOwnedReadingConfigRecordMap(
+  records: Record<string, SyncedOwnedReadingItem>,
+): Record<string, SyncedOwnedReadingItem> {
+  return Object.fromEntries(
+    Object.entries(records).map(([recordId, payload]) => [
+      buildOwnedReadingConfigRecordId(recordId),
+      payload,
+    ]),
+  )
+}
+
+function isDeepReadSessionConfigRecordId(recordId: string): boolean {
+  return recordId.startsWith(DEEP_READ_SESSION_CONFIG_RECORD_PREFIX)
+}
+
+function buildDeepReadSessionConfigRecordId(pageUrl: string): string {
+  return `${DEEP_READ_SESSION_CONFIG_RECORD_PREFIX}${encodeURIComponent(pageUrl)}`
+}
+
+function parseDeepReadSessionConfigRecordId(recordId: string): string {
+  const encoded = isDeepReadSessionConfigRecordId(recordId)
+    ? recordId.slice(DEEP_READ_SESSION_CONFIG_RECORD_PREFIX.length)
+    : recordId
+  try {
+    return decodeURIComponent(encoded)
+  } catch {
+    return encoded
+  }
+}
+
+function isPrivateConfigRecordId(recordId: string): boolean {
+  return isOwnedReadingConfigRecordId(recordId) || isDeepReadSessionConfigRecordId(recordId)
+}
+
+function buildDeepReadSessionConfigRecordMap(
+  records: Record<string, SyncedDeepReadSessionRecord>,
+): Record<string, SyncedDeepReadSessionRecord> {
+  return Object.fromEntries(
+    Object.entries(records).map(([recordId, payload]) => [
+      buildDeepReadSessionConfigRecordId(recordId),
+      payload,
+    ]),
+  )
+}
+
+function filterConfigSyncShadow(
+  shadow: Record<string, ConfigCollectionShadowRecord>,
+): Record<string, AstraConfigSyncRecord> {
+  return Object.fromEntries(
+    Object.entries(shadow)
+      .filter(([recordId]) => !isPrivateConfigRecordId(recordId))
+      .map(([recordId, payload]) => [recordId, AstraConfigSyncRecordSchema.parse(payload)]),
+  )
+}
+
+function filterOwnedReadingConfigShadow(
+  shadow: Record<string, ConfigCollectionShadowRecord>,
+): Record<string, SyncedOwnedReadingItem> {
+  return Object.fromEntries(
+    Object.entries(shadow)
+      .filter(([recordId]) => isOwnedReadingConfigRecordId(recordId))
+      .map(([recordId, payload]) => [recordId, SyncedOwnedReadingItemSchema.parse(payload)]),
+  )
+}
+
+function buildOwnedReadingShadowByItemId(
+  shadow: Record<string, ConfigCollectionShadowRecord>,
+): Record<string, SyncedOwnedReadingItem> {
+  return Object.fromEntries(
+    Object.entries(filterOwnedReadingConfigShadow(shadow)).map(([recordId, payload]) => [
+      parseOwnedReadingConfigRecordId(recordId),
+      payload,
+    ]),
+  )
+}
+
+function filterDeepReadSessionConfigShadow(
+  shadow: Record<string, ConfigCollectionShadowRecord>,
+): Record<string, SyncedDeepReadSessionRecord> {
+  return Object.fromEntries(
+    Object.entries(shadow)
+      .filter(([recordId]) => isDeepReadSessionConfigRecordId(recordId))
+      .map(([recordId, payload]) => [recordId, DeepReadSessionRecordSchema.parse(payload)]),
+  )
+}
+
+function buildDeepReadSessionShadowByPageUrl(
+  shadow: Record<string, ConfigCollectionShadowRecord>,
+): Record<string, SyncedDeepReadSessionRecord> {
+  return Object.fromEntries(
+    Object.entries(filterDeepReadSessionConfigShadow(shadow)).map(([recordId, payload]) => [
+      parseDeepReadSessionConfigRecordId(recordId),
+      payload,
+    ]),
+  )
 }
 
 function diffRecordMaps<T>(params: {
@@ -346,6 +523,8 @@ function buildContinuityLocalOnlySummary(config: AstraConfig): AstraConfigContin
     ...configSummary,
     localOnlyFields: [
       ...configSummary.localOnlyFields,
+      "owned_reading.localFileBytes",
+      "owned_reading.localFileHandles",
       "study_progress.dailyStats",
       "vocabulary.srsBox",
       "vocabulary.nextReviewAt",
@@ -392,7 +571,55 @@ function buildConfigPushMutations(params: {
   return diffRecordMaps({
     collection: "config",
     current: buildConfigSyncRecordMap(params.config, CONFIG_SYNC_OPTIONS),
-    shadow: params.state.collections.config.shadow,
+    shadow: filterConfigSyncShadow(params.state.collections.config.shadow),
+    deviceId: params.deviceId,
+    nowIso: params.nowIso,
+  })
+}
+
+function buildOwnedReadingConfigPushMutations(params: {
+  ownedReadingShadow: Record<string, SyncedOwnedReadingItem>
+  ownedReadingRecords: Record<string, SyncedOwnedReadingItem>
+  bootstrap: AstraSyncBootstrap
+  state: AstraPhaseOneSyncState
+  deviceId: string
+  nowIso: string
+}): AstraSyncMutationInput[] {
+  const isInitialBootstrap = !params.state.collections.config.cursor
+    && Object.keys(params.state.collections.config.shadow).length === 0
+
+  if (isInitialBootstrap && params.bootstrap.collections.config.cursor) {
+    return []
+  }
+
+  return diffRecordMaps({
+    collection: "config",
+    current: buildOwnedReadingConfigRecordMap(params.ownedReadingRecords),
+    shadow: params.ownedReadingShadow,
+    deviceId: params.deviceId,
+    nowIso: params.nowIso,
+  })
+}
+
+function buildDeepReadSessionConfigPushMutations(params: {
+  deepReadSessionShadow: Record<string, SyncedDeepReadSessionRecord>
+  deepReadSessionRecords: Record<string, SyncedDeepReadSessionRecord>
+  bootstrap: AstraSyncBootstrap
+  state: AstraPhaseOneSyncState
+  deviceId: string
+  nowIso: string
+}): AstraSyncMutationInput[] {
+  const isInitialBootstrap = !params.state.collections.config.cursor
+    && Object.keys(params.state.collections.config.shadow).length === 0
+
+  if (isInitialBootstrap && params.bootstrap.collections.config.cursor) {
+    return []
+  }
+
+  return diffRecordMaps({
+    collection: "config",
+    current: buildDeepReadSessionConfigRecordMap(params.deepReadSessionRecords),
+    shadow: params.deepReadSessionShadow,
     deviceId: params.deviceId,
     nowIso: params.nowIso,
   })
@@ -481,10 +708,10 @@ function buildStudyProgressPushMutations(params: {
   })
 }
 
-function applyConfigShadowMutation(
-  shadow: Record<string, AstraConfigSyncRecord>,
+function applyConfigCollectionShadowMutation(
+  shadow: Record<string, ConfigCollectionShadowRecord>,
   mutation: Pick<AstraSyncPullResponse["deltas"]["config"][number], "recordId" | "operation" | "payload">,
-): Record<string, AstraConfigSyncRecord> {
+): Record<string, ConfigCollectionShadowRecord> {
   const nextShadow = { ...shadow }
 
   if (mutation.operation === "delete") {
@@ -492,7 +719,11 @@ function applyConfigShadowMutation(
     return nextShadow
   }
 
-  nextShadow[mutation.recordId] = AstraConfigSyncRecordSchema.parse(mutation.payload)
+  nextShadow[mutation.recordId] = isOwnedReadingConfigRecordId(mutation.recordId)
+    ? SyncedOwnedReadingItemSchema.parse(mutation.payload)
+    : isDeepReadSessionConfigRecordId(mutation.recordId)
+      ? DeepReadSessionRecordSchema.parse(mutation.payload)
+      : AstraConfigSyncRecordSchema.parse(mutation.payload)
   return nextShadow
 }
 
@@ -542,10 +773,85 @@ function applyStudyProgressShadowMutation(
 }
 
 function buildConfigShadowFromRepair(records: Array<{ recordId: string; payload: unknown }>): Record<string, AstraConfigSyncRecord> {
+  return Object.fromEntries(
+    records
+      .filter((record) => !isPrivateConfigRecordId(record.recordId))
+      .map((record) => [
+        record.recordId,
+        AstraConfigSyncRecordSchema.parse(record.payload),
+      ]),
+  )
+}
+
+function buildConfigCollectionShadowFromRepair(records: Array<{ recordId: string; payload: unknown }>): Record<string, ConfigCollectionShadowRecord> {
   return Object.fromEntries(records.map((record) => [
     record.recordId,
-    AstraConfigSyncRecordSchema.parse(record.payload),
+    isOwnedReadingConfigRecordId(record.recordId)
+      ? SyncedOwnedReadingItemSchema.parse(record.payload)
+      : isDeepReadSessionConfigRecordId(record.recordId)
+        ? DeepReadSessionRecordSchema.parse(record.payload)
+        : AstraConfigSyncRecordSchema.parse(record.payload),
   ]))
+}
+
+function buildOwnedReadingMutationsFromConfigRecords(
+  records: Array<{ recordId: string; payload: unknown }>,
+) {
+  return records
+    .filter((record) => isOwnedReadingConfigRecordId(record.recordId))
+    .map((record) => ({
+      recordId: parseOwnedReadingConfigRecordId(record.recordId),
+      operation: "upsert" as const,
+      payload: record.payload,
+    }))
+}
+
+function reconcileOwnedReadingItemsAfterRepair(params: {
+  currentItems: OwnedReadingItem[]
+  previousShadow: Record<string, ConfigCollectionShadowRecord>
+  repairedConfigRecords: Array<{ recordId: string; payload: unknown }>
+}) {
+  const repairedMutations = buildOwnedReadingMutationsFromConfigRecords(params.repairedConfigRecords)
+  const repairedRemoteIds = new Set(repairedMutations.map((mutation) => mutation.recordId))
+  const previousShadowByItemId = buildOwnedReadingShadowByItemId(params.previousShadow)
+  const mergedItems = applyOwnedReadingSyncMutations(params.currentItems, repairedMutations)
+
+  return mergedItems.filter((item) => {
+    if (repairedRemoteIds.has(item.id)) return true
+    const previousShadow = previousShadowByItemId[item.id]
+    if (!previousShadow) return true
+    return (item.updatedAt ?? item.openedAt) > previousShadow.updatedAt
+  })
+}
+
+function buildDeepReadSessionMutationsFromConfigRecords(
+  records: Array<{ recordId: string; payload: unknown }>,
+) {
+  return records
+    .filter((record) => isDeepReadSessionConfigRecordId(record.recordId))
+    .map((record) => ({
+      recordId: parseDeepReadSessionConfigRecordId(record.recordId),
+      operation: "upsert" as const,
+      payload: record.payload,
+    }))
+}
+
+function reconcileDeepReadSessionsAfterRepair(params: {
+  currentSessions: DeepReadSessionRecord[]
+  previousShadow: Record<string, ConfigCollectionShadowRecord>
+  repairedConfigRecords: Array<{ recordId: string; payload: unknown }>
+}) {
+  const repairedMutations = buildDeepReadSessionMutationsFromConfigRecords(params.repairedConfigRecords)
+  const repairedRemoteIds = new Set(repairedMutations.map((mutation) => mutation.recordId))
+  const previousShadowByPageUrl = buildDeepReadSessionShadowByPageUrl(params.previousShadow)
+  const mergedSessions = applyDeepReadSessionSyncMutations(params.currentSessions, repairedMutations)
+
+  return mergedSessions.filter((session) => {
+    if (repairedRemoteIds.has(session.pageUrl)) return true
+    const previousShadow = previousShadowByPageUrl[session.pageUrl]
+    if (!previousShadow) return true
+    return session.updatedAt > previousShadow.updatedAt
+  })
 }
 
 function buildVocabularyShadowFromRepair(records: Array<{ recordId: string; payload: unknown }>): Record<string, SyncedVocabularyEntry> {
@@ -576,6 +882,21 @@ async function applyRepairRecovery(params: {
   repair: Awaited<ReturnType<typeof repairAstraSyncState>>
 }): Promise<AstraPhaseOneSyncState> {
   const repairedConfigRecordMap = buildConfigShadowFromRepair(params.repair.collections.config.records)
+  const repairedConfigCollectionShadow = buildConfigCollectionShadowFromRepair(params.repair.collections.config.records)
+  const [currentOwnedReadingItems, currentDeepReadSessions] = await Promise.all([
+    listOwnedReadingItems(),
+    readSyncSafeDeepReadSessions(),
+  ])
+  const repairedOwnedReadingItems = reconcileOwnedReadingItemsAfterRepair({
+    currentItems: currentOwnedReadingItems,
+    previousShadow: params.state.collections.config.shadow,
+    repairedConfigRecords: params.repair.collections.config.records,
+  })
+  const repairedDeepReadSessions = reconcileDeepReadSessionsAfterRepair({
+    currentSessions: currentDeepReadSessions,
+    previousShadow: params.state.collections.config.shadow,
+    repairedConfigRecords: params.repair.collections.config.records,
+  })
   const repairedConfig = applyConfigSyncMutations(
     DEFAULT_ASTRA_CONFIG,
     Object.entries(repairedConfigRecordMap).map(([recordId, payload]) => ({
@@ -600,6 +921,8 @@ async function applyRepairRecovery(params: {
     replaceStudyProgressPages(params.repair.collections.study_progress.records.map((record) =>
       SyncedStudyPageProgressSchema.parse(record.payload)
     )),
+    replaceOwnedReadingItems(repairedOwnedReadingItems),
+    replaceDeepReadSessions(repairedDeepReadSessions),
   ])
 
   return {
@@ -608,7 +931,7 @@ async function applyRepairRecovery(params: {
     collections: {
       config: {
         cursor: params.repair.collections.config.latestCursor,
-        shadow: repairedConfigRecordMap,
+        shadow: repairedConfigCollectionShadow,
       },
       vocabulary: {
         cursor: params.repair.collections.vocabulary.latestCursor,
@@ -697,6 +1020,7 @@ export function buildContinuityStatus(params: {
   session: AstraSession | null
   device: AstraDeviceIdentity | null
   remote?: AstraContinuityRemoteSnapshot | null
+  phaseOne?: AstraPhaseOneSyncLocalStatus | null
 }): AstraContinuityStatus {
   const sessionState = !params.session
     ? "signed-out"
@@ -735,6 +1059,7 @@ export function buildContinuityStatus(params: {
       deferredCollections: DEFERRED_CONTINUITY_COLLECTIONS,
       syncSafeConfig: buildSyncSafeConfig(params.config),
       localOnly: buildContinuityLocalOnlySummary(params.config),
+      phaseOne: params.phaseOne ?? buildPhaseOneSyncLocalStatus(null),
     },
     remote: {
       available: remoteDevices.length > 0 || !!params.remote?.bootstrap || !!params.remote?.pull,
@@ -809,12 +1134,14 @@ export async function runPhaseOneCollectionSync(): Promise<AstraPhaseOneSyncResu
     }
   }
 
-  const [state, config, vocabularySyncEntries, readingHistorySyncEntries, studyProgressSyncEntries, bootstrap] = await Promise.all([
+  const [state, config, vocabularySyncEntries, readingHistorySyncEntries, studyProgressSyncEntries, ownedReadingSyncEntries, deepReadSessionSyncEntries, bootstrap] = await Promise.all([
     readPhaseOneSyncState(session.email),
     readConfig(),
     readSyncSafeVocabularyEntries(),
     readSyncSafeReadingHistory(),
     readSyncSafeStudyProgressPages(),
+    readSyncSafeOwnedReadingItems(),
+    readSyncSafeDeepReadSessions(),
     fetchAstraSyncBootstrap({
       baseURL,
       sessionToken: session.sessionToken,
@@ -832,11 +1159,33 @@ export async function runPhaseOneCollectionSync(): Promise<AstraPhaseOneSyncResu
   const vocabularyRecords = buildVocabularySyncRecordMap(vocabularySyncEntries)
   const readingHistoryRecords = buildReadingHistorySyncRecordMap(readingHistorySyncEntries)
   const studyProgressRecords = buildStudyProgressSyncRecordMap(studyProgressSyncEntries)
+  const ownedReadingRecords = buildOwnedReadingSyncRecordMap(ownedReadingSyncEntries)
+  const deepReadSessionRecords = buildDeepReadSessionSyncRecordMap(deepReadSessionSyncEntries)
   const configMutations = bootstrap.collections.config.enabled
     ? buildConfigPushMutations({
         config,
         state,
         bootstrap,
+        deviceId: device.deviceId,
+        nowIso,
+      })
+    : []
+  const ownedReadingConfigMutations = bootstrap.collections.config.enabled
+    ? buildOwnedReadingConfigPushMutations({
+        ownedReadingShadow: filterOwnedReadingConfigShadow(state.collections.config.shadow),
+        ownedReadingRecords,
+        bootstrap,
+        state,
+        deviceId: device.deviceId,
+        nowIso,
+      })
+    : []
+  const deepReadSessionConfigMutations = bootstrap.collections.config.enabled
+    ? buildDeepReadSessionConfigPushMutations({
+        deepReadSessionShadow: filterDeepReadSessionConfigShadow(state.collections.config.shadow),
+        deepReadSessionRecords,
+        bootstrap,
+        state,
         deviceId: device.deviceId,
         nowIso,
       })
@@ -869,7 +1218,7 @@ export async function runPhaseOneCollectionSync(): Promise<AstraPhaseOneSyncResu
         nowIso,
       })
     : []
-  const pushMutations = [...configMutations, ...vocabularyMutations, ...readingHistoryMutations, ...studyProgressMutations]
+  const pushMutations = [...configMutations, ...ownedReadingConfigMutations, ...deepReadSessionConfigMutations, ...vocabularyMutations, ...readingHistoryMutations, ...studyProgressMutations]
 
   let rejected = 0
   if (pushMutations.length > 0) {
@@ -933,7 +1282,7 @@ export async function runPhaseOneCollectionSync(): Promise<AstraPhaseOneSyncResu
       skipped: false,
       reason: "synced",
       pushed: {
-        config: configMutations.length,
+        config: configMutations.length + ownedReadingConfigMutations.length + deepReadSessionConfigMutations.length,
         vocabulary: vocabularyMutations.length,
         reading_history: readingHistoryMutations.length,
         study_progress: studyProgressMutations.length,
@@ -949,6 +1298,9 @@ export async function runPhaseOneCollectionSync(): Promise<AstraPhaseOneSyncResu
   }
 
   const configDeltas = pull.deltas.config
+  const appConfigDeltas = configDeltas.filter((delta) => !isPrivateConfigRecordId(delta.recordId))
+  const ownedReadingConfigDeltas = configDeltas.filter((delta) => isOwnedReadingConfigRecordId(delta.recordId))
+  const deepReadSessionConfigDeltas = configDeltas.filter((delta) => isDeepReadSessionConfigRecordId(delta.recordId))
   const vocabularyDeltas = pull.deltas.vocabulary
   const readingHistoryDeltas = bootstrap.collections.reading_history.enabled
     ? pull.deltas.reading_history
@@ -957,23 +1309,49 @@ export async function runPhaseOneCollectionSync(): Promise<AstraPhaseOneSyncResu
     ? pull.deltas.study_progress
     : []
 
-  const [latestConfig, latestVocabularyEntries, latestReadingHistoryEntries, latestStudyProgress] = await Promise.all([
+  const [latestConfig, latestVocabularyEntries, latestReadingHistoryEntries, latestStudyProgress, latestOwnedReadingItems, latestDeepReadSessions] = await Promise.all([
     readConfig(),
     getVocabularyEntries(),
     getReadingHistory(),
     getStudyProgress(),
+    listOwnedReadingItems(),
+    readSyncSafeDeepReadSessions(),
   ])
 
-  if (configDeltas.length > 0) {
+  if (appConfigDeltas.length > 0) {
     const nextConfig = applyConfigSyncMutations(
       latestConfig,
-      configDeltas.map((delta) => ({
+      appConfigDeltas.map((delta) => ({
         recordId: delta.recordId,
         operation: delta.operation,
         payload: delta.payload,
       })),
     )
     await replaceConfig(nextConfig)
+  }
+
+  if (ownedReadingConfigDeltas.length > 0) {
+    const nextOwnedReadingItems = applyOwnedReadingSyncMutations(
+      latestOwnedReadingItems,
+      ownedReadingConfigDeltas.map((delta) => ({
+        recordId: parseOwnedReadingConfigRecordId(delta.recordId),
+        operation: delta.operation,
+        payload: delta.payload,
+      })),
+    )
+    await replaceOwnedReadingItems(nextOwnedReadingItems)
+  }
+
+  if (deepReadSessionConfigDeltas.length > 0) {
+    const nextDeepReadSessions = applyDeepReadSessionSyncMutations(
+      latestDeepReadSessions,
+      deepReadSessionConfigDeltas.map((delta) => ({
+        recordId: parseDeepReadSessionConfigRecordId(delta.recordId),
+        operation: delta.operation,
+        payload: delta.payload,
+      })),
+    )
+    await replaceDeepReadSessions(nextDeepReadSessions)
   }
 
   if (vocabularyDeltas.length > 0) {
@@ -1014,7 +1392,7 @@ export async function runPhaseOneCollectionSync(): Promise<AstraPhaseOneSyncResu
 
   let configShadow = state.collections.config.shadow
   for (const delta of configDeltas) {
-    configShadow = applyConfigShadowMutation(configShadow, delta)
+    configShadow = applyConfigCollectionShadowMutation(configShadow, delta)
   }
 
   let vocabularyShadow = state.collections.vocabulary.shadow
@@ -1069,7 +1447,7 @@ export async function runPhaseOneCollectionSync(): Promise<AstraPhaseOneSyncResu
     skipped: false,
     reason: "synced",
     pushed: {
-      config: configMutations.length,
+      config: configMutations.length + ownedReadingConfigMutations.length + deepReadSessionConfigMutations.length,
       vocabulary: vocabularyMutations.length,
       reading_history: readingHistoryMutations.length,
       study_progress: studyProgressMutations.length,

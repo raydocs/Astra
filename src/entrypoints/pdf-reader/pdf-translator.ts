@@ -3,6 +3,12 @@
  */
 
 import { browser } from "#imports"
+import {
+  createTranslationPathMarker,
+  summarizeTranslationPathMarkers,
+  type TranslationPathMarker,
+  type TranslationPathSummary,
+} from "@/utils/providers/routing-metadata"
 import type { RuntimeResponse } from "@/types/messages"
 import type { PdfPage } from "./pdf-extractor"
 
@@ -10,6 +16,11 @@ export interface TranslatedBlock {
   sourceIndex: number
   sourceText: string
   translation: string
+}
+
+export interface PdfPageTranslationResult {
+  translations: TranslatedBlock[]
+  pathSummary?: TranslationPathSummary
 }
 
 const BATCH_SIZE = 8
@@ -24,8 +35,9 @@ async function getTargetLang(): Promise<string> {
   }
 }
 
-export async function translatePdfPage(page: PdfPage): Promise<TranslatedBlock[]> {
+export async function translatePdfPage(page: PdfPage): Promise<PdfPageTranslationResult> {
   const results: TranslatedBlock[] = []
+  const pathMarkers: TranslationPathMarker[] = []
   const textsToTranslate = page.blocks.filter((b) => b.text.length >= 5)
 
   const targetLang = await getTargetLang()
@@ -44,6 +56,10 @@ export async function translatePdfPage(page: PdfPage): Promise<TranslatedBlock[]
       })
 
       if (response.type === "runtime/translate-batch:success") {
+        if (response.payload.metadata) {
+          pathMarkers.push(createTranslationPathMarker(response.payload.metadata))
+        }
+
         batch.forEach((block, j) => {
           const blockIndex = page.blocks.indexOf(block)
           results.push({
@@ -58,5 +74,10 @@ export async function translatePdfPage(page: PdfPage): Promise<TranslatedBlock[]
     }
   }
 
-  return results
+  const pathSummary = summarizeTranslationPathMarkers(pathMarkers)
+
+  return {
+    translations: results,
+    ...(pathSummary ? { pathSummary } : {}),
+  }
 }

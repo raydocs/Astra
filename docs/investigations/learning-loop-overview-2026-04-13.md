@@ -1,6 +1,6 @@
 # Learning loop overview (Month 2 baseline)
 
-_Last updated: 2026-04-14 (`M2-F-05` evidence sync)_
+_Last updated: 2026-04-15 (`M2-F-06` fresh required-lane replay + evidence sync)_
 
 This document satisfies **§11 Month 2** “learning-loop overview (or equivalent single page)” and anchors the Month 2 evidence pack.
 
@@ -18,16 +18,16 @@ This document satisfies **§11 Month 2** “learning-loop overview (or equivalen
 |------|--------|---------|
 | `implemented` | **Yes** | popup / vocab / review / progress / revisit code paths landed |
 | `proved` | **Yes** | `month-2-evidence-registry-2026-04-14.md` |
-| `gate-ready` | **No** | `learning-loop` lane is still optional in release policy |
-| `closeout verdict` | **`pass-with-carry`** | `month-2-closeout-2026-04-14.md` |
+| `gate-ready` | **Yes** | `learning-loop` now runs as a required lane in `CI / live-browser` |
+| `closeout verdict` | **`pass`** | `month-2-closeout-2026-04-14.md` |
 
 ## Proof surfaces (browser-backed)
 
 | Layer | Command / artifact |
 |--------|---------------------|
-| Popup deep-read | `CI=true pnpm bench:live -- --scenario bench-live/popup-deep-read-proof` → `bench-live-results/live-20260414T105144-ub96nh/` |
-| Vocabulary SRS | `CI=true pnpm bench:live -- --scenario bench-live/vocabulary-srs-smoke` → `bench-live-results/live-20260414T105149-vaksxe/` |
-| Revisit v1 | `CI=true pnpm bench:live -- --scenario bench-live/learning-loop-revisit-smoke` → `bench-live-results/live-20260414T105152-9boxuy/` |
+| Popup deep-read | `CI=true pnpm bench:live -- --scenario bench-live/popup-deep-read-proof` → `bench-live-results/live-20260415T104021-y8rb0n/` |
+| Vocabulary SRS | `CI=true pnpm bench:live -- --scenario bench-live/vocabulary-srs-smoke` → `bench-live-results/live-20260415T104027-zap15i/` |
+| Revisit v1 | `CI=true pnpm bench:live -- --scenario bench-live/learning-loop-revisit-smoke` → `bench-live-results/live-20260415T104030-y9lm8o/` |
 | Chained learning loop | `CI=true pnpm bench:live:lane:learning-loop` → same three run ids above |
 
 Artifact root when running the live driver: `bench-live-results/<run-id>/`.
@@ -56,8 +56,8 @@ Contract and boundaries: `learning-loop-navigation-matrix-2026-04-14.md`.
 
 ## Required vs optional gates
 
-- **Required CI today**: `source-core`, `extension-core` (includes `bench-live/vocabulary-srs-smoke`); see `docs/release-readiness-checklist.md`.
-- **Named `learning-loop` lane**: fresh and credible, but still **optional / manual** until CI ownership and gate policy are upgraded.
+- **Required CI today**: `source-core`, `extension-core`, and `learning-loop`; see `docs/release-readiness-checklist.md`.
+- **Named `learning-loop` lane**: fresh, credible, and now a first-class required live-browser gate with the same artifact discipline as the other release-facing lanes.
 
 ## Links
 

@@ -3,6 +3,12 @@
  */
 
 import { requestTranslationBatch } from "@/utils/extension/messages"
+import {
+  createTranslationPathMarker,
+  summarizeTranslationPathMarkers,
+  type TranslationPathMarker,
+  type TranslationPathSummary,
+} from "@/utils/providers/routing-metadata"
 import type {
   TranslationPlaceholderFormat,
   TranslationRequestContext,
@@ -14,6 +20,13 @@ import {
   type TranslationError,
 } from "@/types/translation"
 import { validateTranslationBatch } from "./quality-check"
+import {
+  buildExplanationRepairInstruction,
+  validateExplanationQuality,
+  type ExplanationQualityFailure,
+  type ExplanationQualityGlossaryTerm,
+} from "./explanation-quality"
+import type { ExplainMode, LanguageLevel } from "@/types/config"
 
 export interface TranslateRequest {
   texts: string[]
@@ -23,11 +36,37 @@ export interface TranslateRequest {
   task?: TranslationTask
   customSystemPrompt?: string
   placeholderFormat?: TranslationPlaceholderFormat
+  languageLevel?: LanguageLevel
+  explainMode?: ExplainMode
+  explanationRepairInstruction?: string
 }
+
+export interface TranslateExplanationWithQualityRetryRequest extends Omit<TranslateRequest, "texts" | "task"> {
+  source: string
+  requiredGlossaryTerms?: ExplanationQualityGlossaryTerm[]
+}
+
+export interface TranslateExplanationWithQualityRetrySuccess {
+  ok: true
+  text: string
+  retried: boolean
+}
+
+export interface TranslateExplanationWithQualityRetryFailure {
+  ok: false
+  message: string
+  retried: boolean
+  quality?: ExplanationQualityFailure
+}
+
+export type TranslateExplanationWithQualityRetryResult =
+  | TranslateExplanationWithQualityRetrySuccess
+  | TranslateExplanationWithQualityRetryFailure
 
 export interface TranslateResponse {
   ok: true
   translations: string[]
+  pathSummary?: TranslationPathSummary
 }
 
 export interface TranslateErrorResponse {
@@ -141,6 +180,9 @@ export async function translateTexts(
     task = "translate",
     customSystemPrompt,
     placeholderFormat,
+    languageLevel,
+    explainMode,
+    explanationRepairInstruction,
   } = request
 
   if (texts.length === 0) {
@@ -161,6 +203,9 @@ export async function translateTexts(
         ...(task !== "translate" ? { task } : {}),
         ...(customSystemPrompt ? { customSystemPrompt } : {}),
         ...(placeholderFormat ? { placeholderFormat } : {}),
+        ...(task === "explain" && languageLevel ? { languageLevel } : {}),
+        ...(task === "explain" && explainMode ? { explainMode } : {}),
+        ...(task === "explain" && explanationRepairInstruction ? { explanationRepairInstruction } : {}),
       })
     } catch (error) {
       return {
@@ -172,6 +217,7 @@ export async function translateTexts(
 
   const batchResults = await withConcurrency(tasks, MAX_CONCURRENCY)
   const translations = Array.from({ length: texts.length }, () => "")
+  const pathMarkers: TranslationPathMarker[] = []
 
   for (const [index, batchResult] of batchResults.entries()) {
     const batch = batches[index]
@@ -188,6 +234,10 @@ export async function translateTexts(
           "Translation batch response length did not match the request.",
         ),
       }
+    }
+
+    if (batchResult.metadata) {
+      pathMarkers.push(createTranslationPathMarker(batchResult.metadata))
     }
 
     batch.originalIndices.forEach((originalIndex, translationIndex) => {
@@ -220,5 +270,58 @@ export async function translateTexts(
     // Quality check failure is non-fatal — never block the translation pipeline.
   }
 
-  return { ok: true, translations }
+  const pathSummary = summarizeTranslationPathMarkers(pathMarkers)
+
+  return {
+    ok: true,
+    translations,
+    ...(pathSummary ? { pathSummary } : {}),
+  }
+}
+
+export async function translateExplanationWithQualityRetry({
+  source,
+  requiredGlossaryTerms = [],
+  ...request
+}: TranslateExplanationWithQualityRetryRequest): Promise<TranslateExplanationWithQualityRetryResult> {
+  const baseRequest: TranslateRequest = {
+    ...request,
+    texts: [source],
+    task: "explain",
+  }
+
+  const firstResult = await translateTexts(baseRequest)
+  if (!firstResult.ok) {
+    return { ok: false, message: firstResult.error.message, retried: false }
+  }
+
+  const firstText = firstResult.translations[0] ?? ""
+  const firstQuality = validateExplanationQuality({
+    source,
+    explanation: firstText,
+    requiredGlossaryTerms,
+  })
+  if (firstQuality.ok) {
+    return { ok: true, text: firstText, retried: false }
+  }
+
+  const retryResult = await translateTexts({
+    ...baseRequest,
+    explanationRepairInstruction: buildExplanationRepairInstruction(firstQuality),
+  })
+  if (!retryResult.ok) {
+    return { ok: false, message: retryResult.error.message, retried: true, quality: firstQuality }
+  }
+
+  const retryText = retryResult.translations[0] ?? ""
+  const retryQuality = validateExplanationQuality({
+    source,
+    explanation: retryText,
+    requiredGlossaryTerms,
+  })
+  if (!retryQuality.ok) {
+    return { ok: false, message: retryQuality.message, retried: true, quality: retryQuality }
+  }
+
+  return { ok: true, text: retryText, retried: true }
 }

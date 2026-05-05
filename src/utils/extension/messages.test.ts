@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest"
 
 import type { AstraConfig } from "@/types/config"
 import { DEFAULT_ASTRA_CONFIG } from "@/types/config"
-import { getActiveTabStudyContext, saveConfigInBackground } from "./messages"
+import { commitLearningContinuitySync, getActiveTabStudyContext, getLearningContinuitySyncStatus, saveConfigInBackground } from "./messages"
 
 function getMockBrowser() {
   return (globalThis as { __ASTRA_TEST_BROWSER__?: any }).__ASTRA_TEST_BROWSER__
@@ -77,6 +77,70 @@ describe("extension message helpers", () => {
         message: "Received an invalid config save response.",
       },
     })
+  })
+
+  it("commits learning continuity sync through the background", async () => {
+    const browser = getMockBrowser()
+    browser.runtime.sendMessage.mockResolvedValue({
+      type: "runtime/learning-continuity-sync:success",
+      payload: {
+        result: null,
+        status: {
+          inFlight: false,
+          queued: false,
+          lastReason: "selection-save",
+          lastStartedAt: null,
+          lastFinishedAt: null,
+          lastResult: null,
+          lastError: null,
+          accountEmail: "user@example.com",
+          stateLastRunAt: null,
+          stateLastSuccessAt: "2026-04-09T01:00:00.000Z",
+          stateLastError: null,
+          cursors: { config: null, vocabulary: "voc-1", reading_history: null, study_progress: "progress-1" },
+        },
+      },
+    })
+
+    const result = await commitLearningContinuitySync("selection-save")
+
+    expect(browser.runtime.sendMessage).toHaveBeenCalledWith({
+      type: "runtime/learning-continuity-sync",
+      reason: "selection-save",
+    })
+    expect(result.ok).toBe(true)
+    expect(result.ok ? result.status.stateLastSuccessAt : null).toBe("2026-04-09T01:00:00.000Z")
+  })
+
+  it("reads learning continuity sync status through the background", async () => {
+    const browser = getMockBrowser()
+    browser.runtime.sendMessage.mockResolvedValue({
+      type: "runtime/learning-continuity-sync-status:success",
+      payload: {
+        status: {
+          inFlight: true,
+          queued: true,
+          lastReason: "review-answer",
+          lastStartedAt: "2026-04-09T01:00:00.000Z",
+          lastFinishedAt: null,
+          lastResult: null,
+          lastError: null,
+          accountEmail: "user@example.com",
+          stateLastRunAt: "2026-04-09T01:00:00.000Z",
+          stateLastSuccessAt: null,
+          stateLastError: null,
+          cursors: { config: null, vocabulary: null, reading_history: null, study_progress: null },
+        },
+      },
+    })
+
+    const result = await getLearningContinuitySyncStatus()
+
+    expect(browser.runtime.sendMessage).toHaveBeenCalledWith({
+      type: "runtime/learning-continuity-sync-status",
+    })
+    expect(result.ok).toBe(true)
+    expect(result.ok ? result.status.inFlight : false).toBe(true)
   })
 
   it("requests study context from the top frame of the active tab", async () => {

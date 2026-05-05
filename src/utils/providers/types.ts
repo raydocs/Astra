@@ -14,6 +14,8 @@ export interface ProviderTranslationRequest {
   customSystemPrompt?: string
   placeholderFormat?: TranslationPlaceholderFormat
   languageLevel?: "beginner" | "intermediate" | "advanced"
+  explainMode?: "beginner" | "exam" | "deep"
+  explanationRepairInstruction?: string
 }
 
 export type ConfiguredProvider = AstraConfig["provider"]

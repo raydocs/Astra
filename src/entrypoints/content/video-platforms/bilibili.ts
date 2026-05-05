@@ -1,3 +1,4 @@
+import { playerCaptionWindowRenderingRule } from "./rendering-rules"
 import type { VideoPlatformConfig } from "./types"
 import type { VideoNoteTranscriptCapture, VideoTranscriptSegment } from "@/types/video-notes"
 
@@ -128,6 +129,7 @@ export const bilibiliPlatform: VideoPlatformConfig = {
   id: "bilibili",
   hostnames: ["www.bilibili.com"],
   preferTextTracks: true,
+  subtitleRendering: playerCaptionWindowRenderingRule("bilibili"),
   captionContainerSelector: BILIBILI_CAPTION_CONTAINER_SELECTOR,
   captionSegmentSelector: BILIBILI_CAPTION_TEXT_SELECTOR,
   isVideoPage: () =>

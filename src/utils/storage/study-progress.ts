@@ -63,9 +63,62 @@ export interface StudyProgressSyncMutationLike {
 
 export const STUDY_PROGRESS_STORAGE_KEY = "astra.study_progress.v1"
 const MAX_PAGES = 50
+const WEEKLY_ROI_DEFAULT_DAYS = 7
+const DAY_MS = 24 * 60 * 60 * 1000
 
 /** First-step events that mean the user studied this page in the reading loop (SRS-only review is excluded). */
 const FIRST_STEP_COUNTS_PAGE_STUDIED = new Set<StudyStep>(["read", "guided_read", "explain", "vocab_save"])
+
+export interface WeeklyRoiWindow {
+  startAt: number
+  endAt: number
+  days: number
+}
+
+export interface WeeklyRoiWindowOptions {
+  now?: number
+  days?: number
+}
+
+export interface WeeklyStudyProgressRoiOptions extends WeeklyRoiWindowOptions {
+  minInputMinutesPerPage?: number
+  maxInputMinutesPerPage?: number
+}
+
+export interface WeeklyStudyProgressRoiSummary {
+  window: WeeklyRoiWindow
+  activePageCount: number
+  completedLoopCount: number
+  inputMinutes: number
+  sentencesExplained: number
+  vocabSaved: number
+  vocabReviewed: number
+}
+
+export function deriveWeeklyRoiWindow(options: WeeklyRoiWindowOptions = {}): WeeklyRoiWindow {
+  const endAt = options.now ?? Date.now()
+  const days = Math.max(1, Math.floor(options.days ?? WEEKLY_ROI_DEFAULT_DAYS))
+  return {
+    startAt: endAt - (days * DAY_MS),
+    endAt,
+    days,
+  }
+}
+
+function isTimestampInWeeklyRoiWindow(value: number | null | undefined, window: WeeklyRoiWindow): boolean {
+  return typeof value === "number" && Number.isFinite(value) && value >= window.startAt && value <= window.endAt
+}
+
+function estimateWeeklyInputMinutes(
+  page: StudyPageProgress,
+  options: Required<Pick<WeeklyStudyProgressRoiOptions, "minInputMinutesPerPage" | "maxInputMinutesPerPage">>,
+): number {
+  const rawMinutes = Math.ceil(Math.max(0, page.lastActivityAt - page.startedAt) / 60_000)
+  return Math.min(
+    options.maxInputMinutesPerPage,
+    Math.max(options.minInputMinutesPerPage, rawMinutes),
+  )
+}
 
 function todayKey(): string {
   const d = new Date()
@@ -291,10 +344,84 @@ export interface StudyLoopPageSummary {
   completionPercent: number
 }
 
+export type PersonalizedTeachingStrategyId =
+  | "start_with_context"
+  | "guided_sentence_scan"
+  | "explain_before_saving"
+  | "save_explained_sentence"
+  | "review_saved_context"
+  | "loop_complete_reflection"
+  | "daily_balance_review"
+
+export type PersonalizedTeachingStrategyTrigger =
+  | "page_not_started"
+  | "guided_read_next"
+  | "explain_next"
+  | "explained_more_than_saved"
+  | "saved_more_than_reviewed"
+  | "page_loop_complete"
+  | "daily_activity_no_page"
+
+export interface PersonalizedTeachingStrategy {
+  id: PersonalizedTeachingStrategyId
+  label: string
+  hint: string
+  focusStep: StudyStep | null
+  trigger: PersonalizedTeachingStrategyTrigger
+  progressSignature: string
+  evidence: string
+}
+
+export type StudyLoopPrimerAction = "translate_page" | "open_deep_read" | "explain_sentence" | "open_review"
+
+export type StudyLoopPrimerRecommendationReason =
+  | "next_step_read"
+  | "next_step_guided_read"
+  | "next_step_explain"
+  | "next_step_vocab_save"
+  | "next_step_vocab_review"
+  | "due_review"
+  | "fallback_first_available"
+  | "no_actionable_action"
+
+export interface StudyLoopPrimerRecommendationInput {
+  nextStep: StudyStep | null | undefined
+  dueCount: number
+  canTranslatePage: boolean
+  canReadArticle: boolean
+  canExplainSentence: boolean
+  canOpenReview?: boolean
+}
+
+export interface StudyLoopPrimerRecommendation {
+  recommendedAction: StudyLoopPrimerAction | null
+  reason: StudyLoopPrimerRecommendationReason
+  actionableActions: StudyLoopPrimerAction[]
+  actionableActionCount: number
+  nextStep: StudyStep | null
+}
+
+const PRIMER_ACTION_BY_NEXT_STEP: Record<StudyStep, StudyLoopPrimerAction> = {
+  read: "translate_page",
+  guided_read: "open_deep_read",
+  explain: "explain_sentence",
+  vocab_save: "open_deep_read",
+  vocab_review: "open_review",
+}
+
+const PRIMER_REASON_BY_NEXT_STEP: Record<StudyStep, StudyLoopPrimerRecommendationReason> = {
+  read: "next_step_read",
+  guided_read: "next_step_guided_read",
+  explain: "next_step_explain",
+  vocab_save: "next_step_vocab_save",
+  vocab_review: "next_step_vocab_review",
+}
+
 export interface StudyLoopViewModel extends StudyLoopPageSummary {
   currentPage: StudyPageProgress | null
   dailyStats: StudyProgressStore["dailyStats"]
   recentPages: StudyPageProgress[]
+  personalizedStrategy: PersonalizedTeachingStrategy | null
 }
 
 export function deriveStudyLoopPageCounts(page: StudyPageProgress | null | undefined): StudyLoopPageCounts {
@@ -329,6 +456,157 @@ export function deriveStudyLoopPageSummary(
   }
 }
 
+function buildStrategyProgressSignature(
+  summary: StudyLoopPageSummary,
+): string {
+  const steps = summary.completedSteps.length > 0 ? summary.completedSteps.join(">") : "none"
+  return `${steps}|next:${summary.nextStep ?? "complete"}|e:${summary.currentCounts.sentencesExplained}|s:${summary.currentCounts.vocabSaved}|r:${summary.currentCounts.vocabReviewed}|pct:${summary.completionPercent}`
+}
+
+function hasDailyStudyActivity(dailyStats: StudyProgressStore["dailyStats"]): boolean {
+  return dailyStats.pagesStudied > 0
+    || dailyStats.sentencesExplained > 0
+    || dailyStats.vocabSaved > 0
+    || dailyStats.vocabReviewed > 0
+}
+
+export function derivePersonalizedTeachingStrategy(
+  page: StudyPageProgress | null | undefined,
+  summary: StudyLoopPageSummary,
+  dailyStats: StudyProgressStore["dailyStats"],
+): PersonalizedTeachingStrategy | null {
+  const progressSignature = buildStrategyProgressSignature(summary)
+
+  if (!page) {
+    if (!hasDailyStudyActivity(dailyStats)) return null
+    return {
+      id: "daily_balance_review",
+      label: "Balance today’s practice",
+      hint: "You already have study activity today; use the next card or page to keep reading, saving, and review balanced.",
+      focusStep: "vocab_review",
+      trigger: "daily_activity_no_page",
+      progressSignature,
+      evidence: `${dailyStats.pagesStudied} pages · ${dailyStats.sentencesExplained} explained · ${dailyStats.vocabSaved} saved · ${dailyStats.vocabReviewed} reviewed today`,
+    }
+  }
+
+  if (!summary.nextStep) {
+    return {
+      id: "loop_complete_reflection",
+      label: "Close with a quick reflection",
+      hint: "This page has completed the full read → explain → save → review loop; revisit the source or start the next page when ready.",
+      focusStep: null,
+      trigger: "page_loop_complete",
+      progressSignature,
+      evidence: `${summary.completionPercent}% complete on this page`,
+    }
+  }
+
+  if (summary.nextStep === "read") {
+    return {
+      id: "start_with_context",
+      label: "Start with page context",
+      hint: "Translate or skim the page first so later sentence explanations stay anchored to the article.",
+      focusStep: "read",
+      trigger: "page_not_started",
+      progressSignature,
+      evidence: "No durable study steps recorded for this page yet",
+    }
+  }
+
+  if (summary.nextStep === "guided_read") {
+    return {
+      id: "guided_sentence_scan",
+      label: "Scan before drilling",
+      hint: "Open Deep Read and choose one sentence worth explaining instead of jumping straight to review.",
+      focusStep: "guided_read",
+      trigger: "guided_read_next",
+      progressSignature,
+      evidence: `${summary.completedSteps.length} of ${STUDY_STEPS_ORDER.length} loop steps complete`,
+    }
+  }
+
+  if (summary.nextStep === "explain") {
+    return {
+      id: "explain_before_saving",
+      label: "Explain one sentence next",
+      hint: "Ask for a sentence-level explanation before saving so the future review card carries meaning, not just a lookup.",
+      focusStep: "explain",
+      trigger: "explain_next",
+      progressSignature,
+      evidence: `${summary.currentCounts.sentencesExplained} explained · ${summary.currentCounts.vocabSaved} saved`,
+    }
+  }
+
+  if (summary.nextStep === "vocab_save") {
+    return {
+      id: "save_explained_sentence",
+      label: "Save the explained sentence",
+      hint: "You have explanation momentum on this page; save one useful sentence so review can reinforce it later.",
+      focusStep: "vocab_save",
+      trigger: summary.currentCounts.sentencesExplained > summary.currentCounts.vocabSaved ? "explained_more_than_saved" : "explain_next",
+      progressSignature,
+      evidence: `${summary.currentCounts.sentencesExplained} explained · ${summary.currentCounts.vocabSaved} saved`,
+    }
+  }
+
+  return {
+    id: "review_saved_context",
+    label: "Review this page’s saved context",
+    hint: "Finish the loop by reviewing at least one saved card from this page while the source context is still fresh.",
+    focusStep: "vocab_review",
+    trigger: "saved_more_than_reviewed",
+    progressSignature,
+    evidence: `${summary.currentCounts.vocabSaved} saved · ${summary.currentCounts.vocabReviewed} reviewed`,
+  }
+}
+
+export function deriveStudyLoopPrimerRecommendation(
+  input: StudyLoopPrimerRecommendationInput,
+): StudyLoopPrimerRecommendation {
+  const nextStep = input.nextStep ?? null
+  const canOpenReview = input.canOpenReview !== false
+  const actionableActions: StudyLoopPrimerAction[] = []
+
+  if (input.canTranslatePage) actionableActions.push("translate_page")
+  if (input.canReadArticle) actionableActions.push("open_deep_read")
+  if (input.canExplainSentence) actionableActions.push("explain_sentence")
+  if (canOpenReview) actionableActions.push("open_review")
+
+  const actionableSet = new Set(actionableActions)
+  const nextStepAction = nextStep ? PRIMER_ACTION_BY_NEXT_STEP[nextStep] : null
+
+  if (nextStep && nextStepAction && actionableSet.has(nextStepAction)) {
+    return {
+      recommendedAction: nextStepAction,
+      reason: PRIMER_REASON_BY_NEXT_STEP[nextStep],
+      actionableActions,
+      actionableActionCount: actionableActions.length,
+      nextStep,
+    }
+  }
+
+  if (input.dueCount > 0 && actionableSet.has("open_review")) {
+    return {
+      recommendedAction: "open_review",
+      reason: "due_review",
+      actionableActions,
+      actionableActionCount: actionableActions.length,
+      nextStep,
+    }
+  }
+
+  const fallbackAction = actionableActions[0] ?? null
+
+  return {
+    recommendedAction: fallbackAction,
+    reason: fallbackAction ? "fallback_first_available" : "no_actionable_action",
+    actionableActions,
+    actionableActionCount: actionableActions.length,
+    nextStep,
+  }
+}
+
 export function deriveStudyLoopViewModel(
   store: StudyProgressStore,
   currentUrl?: string,
@@ -336,12 +614,37 @@ export function deriveStudyLoopViewModel(
   const currentPage = currentUrl
     ? store.pages.find((p) => p.url === buildStudyProgressRecordId(currentUrl)) ?? null
     : null
+  const pageSummary = deriveStudyLoopPageSummary(currentPage)
 
   return {
     currentPage,
-    ...deriveStudyLoopPageSummary(currentPage),
+    ...pageSummary,
     dailyStats: store.dailyStats,
     recentPages: store.pages.slice(0, 5),
+    personalizedStrategy: derivePersonalizedTeachingStrategy(currentPage, pageSummary, store.dailyStats),
+  }
+}
+
+export function deriveWeeklyStudyProgressRoi(
+  store: Pick<StudyProgressStore, "pages">,
+  options: WeeklyStudyProgressRoiOptions = {},
+): WeeklyStudyProgressRoiSummary {
+  const window = deriveWeeklyRoiWindow(options)
+  const inputOptions = {
+    minInputMinutesPerPage: options.minInputMinutesPerPage ?? 1,
+    maxInputMinutesPerPage: options.maxInputMinutesPerPage ?? 45,
+  }
+  const activePages = normalizeStudyPages(store.pages)
+    .filter((page) => isTimestampInWeeklyRoiWindow(page.lastActivityAt, window))
+
+  return {
+    window,
+    activePageCount: activePages.length,
+    completedLoopCount: activePages.filter((page) => STUDY_STEPS_ORDER.every((step) => page.completedSteps.includes(step))).length,
+    inputMinutes: activePages.reduce((total, page) => total + estimateWeeklyInputMinutes(page, inputOptions), 0),
+    sentencesExplained: activePages.reduce((total, page) => total + page.sentencesExplained, 0),
+    vocabSaved: activePages.reduce((total, page) => total + page.vocabSaved, 0),
+    vocabReviewed: activePages.reduce((total, page) => total + page.vocabReviewed, 0),
   }
 }
 

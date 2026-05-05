@@ -1,8 +1,12 @@
 import { articleExtractionDocsScenario } from "./article-extraction-docs"
 import { dynamicContentAppendScenario } from "./dynamic-content-append"
+import { documentIntakeBasicScenario } from "./document-intake-basic"
+import { documentIntakeLocalFileHandoffScenario } from "./document-intake-local-file-handoff"
 import { epubReaderBasicScenario } from "./epub-reader-basic"
 import { frameCoordinationBasicScenario } from "./frame-coordination-basic"
 import { hoverTranslationBasicScenario } from "./hover-translation-basic"
+import { imageTranslationBetaBasicScenario } from "./image-translation-beta-basic"
+import { imageTranslationContextMenuHandoffScenario } from "./image-translation-context-menu-handoff"
 import { inputTranslationBasicScenario } from "./input-translation-basic"
 import { inputTranslationFieldMatrixScenario } from "./input-translation-field-matrix"
 import { interactionPriorityBasicScenario } from "./interaction-priority-basic"
@@ -17,10 +21,12 @@ import { privacyModePageTranslationSourceScenario } from "./privacy-mode-page-tr
 import { pdfReaderBasicScenario } from "./pdf-reader-basic"
 import { placeholderScenario } from "./placeholder"
 import { siteAutomationAutostartScenario } from "./site-automation-autostart"
+import { siteRulesExplainabilityBasicScenario } from "./site-rules-explainability-basic"
 import { onboardingSmokeScenario } from "./onboarding-smoke"
 import { popupDeepReadProofScenario } from "./popup-deep-read-proof"
 import { vocabularySrsSmokeScenario } from "./vocabulary-srs-smoke"
 import { learningLoopRevisitSmokeScenario } from "./learning-loop-revisit-smoke"
+import { learningContinuitySyncProofScenario } from "./learning-continuity-sync-proof"
 import { bilibiliSubtitleBasicScenario } from "./bilibili-subtitle-basic"
 import { youtubeSubtitleBasicScenario } from "./youtube-subtitle-basic"
 import { subtitleBasicScenario } from "./subtitle-basic"
@@ -29,10 +35,14 @@ import { subtitleLearningChainSmokeScenario } from "./subtitle-learning-chain-sm
 
 export { articleExtractionDocsScenario } from "./article-extraction-docs"
 export { dynamicContentAppendScenario } from "./dynamic-content-append"
+export { documentIntakeBasicScenario } from "./document-intake-basic"
+export { documentIntakeLocalFileHandoffScenario } from "./document-intake-local-file-handoff"
 export { epubReaderBasicScenario } from "./epub-reader-basic"
 export { fixturePlaywrightSmokeScenario } from "./fixture-playwright-smoke"
 export { frameCoordinationBasicScenario } from "./frame-coordination-basic"
 export { hoverTranslationBasicScenario } from "./hover-translation-basic"
+export { imageTranslationBetaBasicScenario } from "./image-translation-beta-basic"
+export { imageTranslationContextMenuHandoffScenario } from "./image-translation-context-menu-handoff"
 export { inputTranslationBasicScenario } from "./input-translation-basic"
 export { inputTranslationFieldMatrixScenario } from "./input-translation-field-matrix"
 export { interactionPriorityBasicScenario } from "./interaction-priority-basic"
@@ -47,6 +57,7 @@ export { privacyModePageTranslationSourceScenario } from "./privacy-mode-page-tr
 export { pdfReaderBasicScenario } from "./pdf-reader-basic"
 export { placeholderScenario } from "./placeholder"
 export { siteAutomationAutostartScenario } from "./site-automation-autostart"
+export { siteRulesExplainabilityBasicScenario } from "./site-rules-explainability-basic"
 export { bilibiliSubtitleBasicScenario } from "./bilibili-subtitle-basic"
 export { youtubeSubtitleBasicScenario } from "./youtube-subtitle-basic"
 export { subtitleBasicScenario } from "./subtitle-basic"
@@ -57,6 +68,7 @@ export { popupDeepReadProofScenario } from "./popup-deep-read-proof"
 export { popupDeepReadSmokeScenario } from "./popup-deep-read-smoke"
 export { vocabularySrsSmokeScenario } from "./vocabulary-srs-smoke"
 export { learningLoopRevisitSmokeScenario } from "./learning-loop-revisit-smoke"
+export { learningContinuitySyncProofScenario } from "./learning-continuity-sync-proof"
 export const liveScenarios = [
   pageTranslationArticleBasicSourceScenario,
   pageTranslationArticleBasicSourceTranslationOnlyScenario,
@@ -66,9 +78,13 @@ export const liveScenarios = [
   pageTranslationFormsAndNavSourceScenario,
   pageTranslationNestedBlocksSourceScenario,
   pdfReaderBasicScenario,
+  documentIntakeBasicScenario,
+  documentIntakeLocalFileHandoffScenario,
   interactionPriorityBasicScenario,
   frameCoordinationBasicScenario,
   hoverTranslationBasicScenario,
+  imageTranslationBetaBasicScenario,
+  imageTranslationContextMenuHandoffScenario,
   selectionExplainBasicScenario,
   inputTranslationBasicScenario,
   inputTranslationFieldMatrixScenario,
@@ -79,11 +95,13 @@ export const liveScenarios = [
   subtitleLearningChainSmokeScenario,
   epubReaderBasicScenario,
   siteAutomationAutostartScenario,
+  siteRulesExplainabilityBasicScenario,
   articleExtractionDocsScenario,
   dynamicContentAppendScenario,
   onboardingSmokeScenario,
   popupDeepReadProofScenario,
   vocabularySrsSmokeScenario,
   learningLoopRevisitSmokeScenario,
+  learningContinuitySyncProofScenario,
   placeholderScenario,
 ]

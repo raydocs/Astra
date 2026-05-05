@@ -35,6 +35,9 @@ interface RelayTranslateRequest {
   }
   task?: string
   customSystemPrompt?: string
+  languageLevel?: string
+  explainMode?: string
+  explanationRepairInstruction?: string
 }
 
 interface PopupDeepReadProofExecution extends LiveScenarioExecution {
@@ -44,8 +47,17 @@ interface PopupDeepReadProofExecution extends LiveScenarioExecution {
     sentenceDeckPresent: boolean
     explainWorked: boolean
     saveWorked: boolean
+    pageSavedReviewCtaVisible: boolean
     destinationOpened: boolean
+    focusedReviewOpened: boolean
+    focusedReviewAnswered: boolean
+    deepReadReturnOpened: boolean
+    deepReadSavedReviewCtaVisible: boolean
+    returnedSentenceVisible: boolean
     sourceContextVisible: boolean
+    explainProfileRequestVisible: boolean
+    explainRecoveryRetryVisible: boolean
+    explainProfileReviewVisible: boolean
     consoleErrors: string[]
     relayRequestCount: number
   }
@@ -77,7 +89,9 @@ async function createPopupDeepReadRelayServer() {
 
         const sourceText = payload.texts?.[0]?.trim() ?? ""
         const responseText = payload.task === "explain"
-          ? `EXPLAIN:${sourceText}`
+          ? payload.explanationRepairInstruction
+            ? "EXPLAIN: This repaired explanation introduces the article's reading workflow and shows why visible context helps learners connect meaning, vocabulary, and review practice."
+            : sourceText
           : `ZH:${sourceText}`
 
         res.writeHead(200, {
@@ -166,6 +180,7 @@ export const popupDeepReadProofScenario: LiveScenarioDefinition<PopupDeepReadPro
         inputTranslation: "disabled",
         inputTranslationMode: "replace",
         languageLevel: "beginner",
+        explainMode: "exam",
         privacyMode: false,
         provider: {
           id: "openai",
@@ -238,8 +253,17 @@ export const popupDeepReadProofScenario: LiveScenarioDefinition<PopupDeepReadPro
       let sentenceDeckPresent = false
       let explainWorked = false
       let saveWorked = false
+      let pageSavedReviewCtaVisible = false
       let destinationOpened = false
+      let focusedReviewOpened = false
+      let focusedReviewAnswered = false
+      let deepReadReturnOpened = false
+      let deepReadSavedReviewCtaVisible = false
+      let returnedSentenceVisible = false
       let sourceContextVisible = false
+      let explainProfileRequestVisible = false
+      let explainRecoveryRetryVisible = false
+      let explainProfileReviewVisible = false
 
       try {
         await popupPage.waitForSelector('[data-testid="study-sentence-card-0"]', { timeout: 10_000 })
@@ -267,6 +291,13 @@ export const popupDeepReadProofScenario: LiveScenarioDefinition<PopupDeepReadPro
           { timeout: 25_000 },
         )
         explainWorked = true
+        const explainRequest = relayServer.translateRequests.find((request) => request.task === "explain")
+        const repairExplainRequest = relayServer.translateRequests.find((request) => request.task === "explain" && request.explanationRepairInstruction)
+        explainProfileRequestVisible = explainRequest?.languageLevel === "beginner" && explainRequest?.explainMode === "exam"
+        explainRecoveryRetryVisible = !!repairExplainRequest?.explanationRepairInstruction
+          && repairExplainRequest.languageLevel === "beginner"
+          && repairExplainRequest.explainMode === "exam"
+          && (repairExplainRequest.context?.selectionContext?.length ?? 0) > 0
 
         await popupPage.locator('[data-testid="study-sentence-card-0"] button').nth(1).click()
         await popupPage.waitForSelector('[data-testid="study-sentence-saved-cta-0"]', { timeout: 10_000 })
@@ -286,8 +317,30 @@ export const popupDeepReadProofScenario: LiveScenarioDefinition<PopupDeepReadPro
         const popupSnapshotHtmlPath = path.join(artifactDir, `${POPUP_DEEP_READ_PROOF_SLUG}.popup.snapshot.html`)
         await writeFile(popupSnapshotHtmlPath, await popupPage.content(), "utf8")
 
+        await popupPage.close()
+        const revisitPopupPage = await openExtensionActionPopup({
+          context: extCtx.context,
+          extensionId: extCtx.extensionId,
+          extensionPath: extCtx.extensionPath,
+          timeoutMs: 12_000,
+          page: extCtx.page,
+        })
+        revisitPopupPage.on("console", (msg) => {
+          if (msg.type() === "error") {
+            consoleErrors.push(msg.text())
+          }
+        })
+        await revisitPopupPage.waitForSelector('[data-testid="study-page-saved-review-button"]', { timeout: 10_000 })
+        await revisitPopupPage.waitForSelector('[data-testid="study-next-step-action"]', { timeout: 10_000 })
+        pageSavedReviewCtaVisible = (await revisitPopupPage.locator('[data-testid="study-page-saved-review-cta"]').count()) > 0
+        const nextStepActionLabel = await revisitPopupPage.locator('[data-testid="study-next-step-action"]').innerText()
+        pageSavedReviewCtaVisible = pageSavedReviewCtaVisible
+          && nextStepActionLabel.includes("Review saved sentences from this page")
+        const popupRevisitPath = path.join(artifactDir, `${POPUP_DEEP_READ_PROOF_SLUG}.revisit-popup.png`)
+        await revisitPopupPage.screenshot({ path: popupRevisitPath, fullPage: true })
+
         const destinationPagePromise = extCtx.context.waitForEvent("page", { timeout: 10_000 })
-        await popupPage.locator('[data-testid="study-sentence-open-vocabulary-0"]').click()
+        await revisitPopupPage.locator('[data-testid="study-next-step-action"]').click()
         const destinationPage = await destinationPagePromise
         destinationPage.on("console", (msg) => {
           if (msg.type() === "error") {
@@ -295,12 +348,13 @@ export const popupDeepReadProofScenario: LiveScenarioDefinition<PopupDeepReadPro
           }
         })
         await destinationPage.waitForLoadState("domcontentloaded", { timeout: 10_000 })
-        await destinationPage.waitForFunction(
-          () => document.body.innerText.includes("Popup deep-read"),
-          undefined,
-          { timeout: 10_000 },
-        )
         destinationOpened = destinationPage.url().includes("/vocabulary")
+        const destinationUrl = new URL(destinationPage.url())
+        focusedReviewOpened = destinationOpened
+          && destinationUrl.searchParams.get("tab") === "review"
+          && destinationUrl.searchParams.get("loop") === "page"
+          && destinationUrl.searchParams.get("studyUrl") === servedFixturePage.url
+          && !!destinationUrl.searchParams.get("entryId")
 
         const sentenceNeedle = savedSentenceText.length > 48
           ? savedSentenceText.slice(0, 48)
@@ -310,23 +364,68 @@ export const popupDeepReadProofScenario: LiveScenarioDefinition<PopupDeepReadPro
           sentenceNeedle,
           { timeout: 15_000 },
         )
-        await destinationPage.getByText(sentenceNeedle, { exact: false }).first().click()
+        await destinationPage.locator('[data-testid="review-card"]').click()
+        await destinationPage.waitForSelector(".astra-review-answer-right", { timeout: 10_000 })
 
         const destinationText = await destinationPage.locator("body").innerText()
         sourceContextVisible = destinationText.includes("Popup deep-read")
           && destinationText.includes("Astra turns long-form reading into bilingual learning.")
           && destinationText.includes("Readers can keep the original text visible")
-          && destinationText.includes("Source context")
+        explainProfileReviewVisible = destinationText.includes("Explain profile: Exam · Beginner")
 
-        const destinationScreenshotPath = path.join(artifactDir, `${POPUP_DEEP_READ_PROOF_SLUG}.vocabulary.png`)
+        await destinationPage.locator(".astra-review-answer-right").click()
+        await destinationPage.waitForSelector('[data-testid="review-return-deep-read"]', { timeout: 10_000 })
+        focusedReviewAnswered = true
+
+        const returnPages: Array<typeof destinationPage> = []
+        const returnPageHandler = (page: typeof destinationPage) => {
+          returnPages.push(page)
+          page.on("console", (msg) => {
+            if (msg.type() === "error") {
+              consoleErrors.push(msg.text())
+            }
+          })
+        }
+        extCtx.context.on("page", returnPageHandler)
+        try {
+          await destinationPage.locator('[data-testid="review-return-deep-read"]').click()
+          for (let attempt = 0; attempt < 20; attempt += 1) {
+            if (returnPages.some((page) => page.url().includes("/deep-read.html"))) break
+            await destinationPage.waitForTimeout(500)
+          }
+        } finally {
+          extCtx.context.off("page", returnPageHandler)
+        }
+
+        const deepReadPage = returnPages.find((page) => page.url().includes("/deep-read.html")) ?? null
+        if (deepReadPage) {
+          await deepReadPage.waitForLoadState("domcontentloaded", { timeout: 10_000 })
+          deepReadReturnOpened = deepReadPage.url().includes("/deep-read.html")
+          await deepReadPage.waitForFunction(
+            (needle) => document.body.innerText.includes(needle),
+            sentenceNeedle,
+            { timeout: 15_000 },
+          )
+          returnedSentenceVisible = true
+          deepReadSavedReviewCtaVisible = (await deepReadPage.locator('[data-testid="deep-read-page-saved-review-cta"]').count()) > 0
+        }
+
+        const destinationScreenshotPath = path.join(artifactDir, `${POPUP_DEEP_READ_PROOF_SLUG}.focused-review.png`)
         await destinationPage.screenshot({ path: destinationScreenshotPath, fullPage: true })
-        const destinationSnapshotHtmlPath = path.join(artifactDir, `${POPUP_DEEP_READ_PROOF_SLUG}.vocabulary.snapshot.html`)
+        const destinationSnapshotHtmlPath = path.join(artifactDir, `${POPUP_DEEP_READ_PROOF_SLUG}.focused-review.snapshot.html`)
         await writeFile(destinationSnapshotHtmlPath, await destinationPage.content(), "utf8")
+        const deepReadReturnScreenshotPath = deepReadPage
+          ? path.join(artifactDir, `${POPUP_DEEP_READ_PROOF_SLUG}.deep-read-return.png`)
+          : ""
+        if (deepReadPage && deepReadReturnScreenshotPath) {
+          await deepReadPage.screenshot({ path: deepReadReturnScreenshotPath, fullPage: true })
+        }
 
         runtime.attachArtifact("popupDeepReadCapture", {
           popupBeforePath,
           popupAfterPath,
           popupSnapshotHtmlPath,
+          popupRevisitPath,
           destinationScreenshotPath,
           destinationSnapshotHtmlPath,
           relayRequests: relayServer.translateRequests,
@@ -343,8 +442,17 @@ export const popupDeepReadProofScenario: LiveScenarioDefinition<PopupDeepReadPro
         sentenceDeckPresent,
         explainWorked,
         saveWorked,
+        pageSavedReviewCtaVisible,
         destinationOpened,
+        focusedReviewOpened,
+        focusedReviewAnswered,
+        deepReadReturnOpened,
+        deepReadSavedReviewCtaVisible,
+        returnedSentenceVisible,
         sourceContextVisible,
+        explainProfileRequestVisible,
+        explainRecoveryRetryVisible,
+        explainProfileReviewVisible,
         consoleErrors,
         relayRequestCount: relayServer.translateRequests.length,
       }
@@ -360,8 +468,17 @@ export const popupDeepReadProofScenario: LiveScenarioDefinition<PopupDeepReadPro
           `Sentence deck present: ${sentenceDeckPresent}`,
           `Explain worked: ${explainWorked}`,
           `Save worked: ${saveWorked}`,
+          `Page saved review CTA visible on popup revisit: ${pageSavedReviewCtaVisible}`,
           `Destination opened: ${destinationOpened}`,
+          `Focused review opened: ${focusedReviewOpened}`,
+          `Focused review answered: ${focusedReviewAnswered}`,
+          `Deep Read return opened: ${deepReadReturnOpened}`,
+          `Deep Read saved review CTA visible: ${deepReadSavedReviewCtaVisible}`,
+          `Returned sentence visible: ${returnedSentenceVisible}`,
           `Source context visible: ${sourceContextVisible}`,
+          `Explain profile request visible: ${explainProfileRequestVisible}`,
+          `Explain recovery retry visible: ${explainRecoveryRetryVisible}`,
+          `Explain profile review visible: ${explainProfileReviewVisible}`,
           `Relay request count: ${relayServer.translateRequests.length}`,
           `Console errors: ${consoleErrors.length}`,
         ],
@@ -395,8 +512,17 @@ export const popupDeepReadProofScenario: LiveScenarioDefinition<PopupDeepReadPro
             sentenceDeckPresent: false,
             explainWorked: false,
             saveWorked: false,
+            pageSavedReviewCtaVisible: false,
             destinationOpened: false,
+            focusedReviewOpened: false,
+            focusedReviewAnswered: false,
+            deepReadReturnOpened: false,
+            deepReadSavedReviewCtaVisible: false,
+            returnedSentenceVisible: false,
             sourceContextVisible: false,
+            explainProfileRequestVisible: false,
+            explainRecoveryRetryVisible: false,
+            explainProfileReviewVisible: false,
             consoleErrors: [],
             relayRequestCount: 0,
           },
@@ -420,8 +546,17 @@ export const popupDeepReadProofScenario: LiveScenarioDefinition<PopupDeepReadPro
             sentenceDeckPresent: false,
             explainWorked: false,
             saveWorked: false,
+            pageSavedReviewCtaVisible: false,
             destinationOpened: false,
+            focusedReviewOpened: false,
+            focusedReviewAnswered: false,
+            deepReadReturnOpened: false,
+            deepReadSavedReviewCtaVisible: false,
+            returnedSentenceVisible: false,
             sourceContextVisible: false,
+            explainProfileRequestVisible: false,
+            explainRecoveryRetryVisible: false,
+            explainProfileReviewVisible: false,
             consoleErrors: [],
             relayRequestCount: 0,
           },
@@ -443,8 +578,17 @@ export const popupDeepReadProofScenario: LiveScenarioDefinition<PopupDeepReadPro
       sentenceDeckPresent: false,
       explainWorked: false,
       saveWorked: false,
+      pageSavedReviewCtaVisible: false,
       destinationOpened: false,
+      focusedReviewOpened: false,
+      focusedReviewAnswered: false,
+      deepReadReturnOpened: false,
+      deepReadSavedReviewCtaVisible: false,
+      returnedSentenceVisible: false,
       sourceContextVisible: false,
+      explainProfileRequestVisible: false,
+      explainRecoveryRetryVisible: false,
+      explainProfileReviewVisible: false,
       consoleErrors: [],
       relayRequestCount: 0,
     }
@@ -471,13 +615,45 @@ export const popupDeepReadProofScenario: LiveScenarioDefinition<PopupDeepReadPro
       issues.push("Popup sentence save did not complete.")
       nextActions.push("Check popup save flow and vocabulary storage wiring.")
     }
+    if (!popupDeepRead.pageSavedReviewCtaVisible) {
+      issues.push("Popup revisit did not show the durable page saved-sentences review CTA.")
+      nextActions.push("Check popup current-page vocabulary matching and StudySection page CTA rendering.")
+    }
     if (!popupDeepRead.destinationOpened) {
       issues.push("Popup save CTA did not open the vocabulary surface.")
       nextActions.push("Check popup save CTA wiring to vocabulary tabs.")
     }
+    if (!popupDeepRead.focusedReviewOpened) {
+      issues.push("Saved CTA did not open page-scoped saved-sentence review.")
+      nextActions.push("Check popup save CTA wiring to vocabulary page-loop contract.")
+    }
+    if (!popupDeepRead.focusedReviewAnswered) {
+      issues.push("Focused saved-sentence review was not answered.")
+      nextActions.push("Check ReviewMode focused session completion.")
+    }
+    if (!popupDeepRead.deepReadReturnOpened || !popupDeepRead.returnedSentenceVisible) {
+      issues.push("Focused review did not return to the saved sentence in Deep Read.")
+      nextActions.push("Check ReviewMode return CTA and sentence-anchor deep-read link.")
+    }
+    if (!popupDeepRead.deepReadSavedReviewCtaVisible) {
+      issues.push("Deep Read revisit did not show the page-level saved review CTA.")
+      nextActions.push("Check DeepReadApp persisted vocabulary lookup and saved summary rendering.")
+    }
     if (!popupDeepRead.sourceContextVisible) {
       issues.push("Saved popup source context was not visible in vocabulary.")
       nextActions.push("Check vocabulary rendering of sourceContext metadata.")
+    }
+    if (!popupDeepRead.explainProfileRequestVisible) {
+      issues.push("Popup explain request did not carry the canonical explain profile.")
+      nextActions.push("Check popup explain payload and relay provider routing.")
+    }
+    if (!popupDeepRead.explainRecoveryRetryVisible) {
+      issues.push("Popup explain recovery retry did not carry repair instruction plus original profile/context.")
+      nextActions.push("Check explanation quality retry payload and popup explain retry path.")
+    }
+    if (!popupDeepRead.explainProfileReviewVisible) {
+      issues.push("Saved popup explain profile was not visible in review.")
+      nextActions.push("Check vocabulary sourceContext persistence and ReviewMode rendering.")
     }
     if (popupDeepRead.consoleErrors.length > 0) {
       issues.push(`${popupDeepRead.consoleErrors.length} console error(s) were captured.`)
@@ -489,8 +665,17 @@ export const popupDeepReadProofScenario: LiveScenarioDefinition<PopupDeepReadPro
       && popupDeepRead.sentenceDeckPresent
       && popupDeepRead.explainWorked
       && popupDeepRead.saveWorked
+      && popupDeepRead.pageSavedReviewCtaVisible
       && popupDeepRead.destinationOpened
+      && popupDeepRead.focusedReviewOpened
+      && popupDeepRead.focusedReviewAnswered
+      && popupDeepRead.deepReadReturnOpened
+      && popupDeepRead.deepReadSavedReviewCtaVisible
+      && popupDeepRead.returnedSentenceVisible
       && popupDeepRead.sourceContextVisible
+      && popupDeepRead.explainProfileRequestVisible
+      && popupDeepRead.explainRecoveryRetryVisible
+      && popupDeepRead.explainProfileReviewVisible
       && popupDeepRead.consoleErrors.length === 0
 
     const scenario: LiveScenarioMetadata = {
@@ -509,8 +694,8 @@ export const popupDeepReadProofScenario: LiveScenarioDefinition<PopupDeepReadPro
       pass,
       score: pass ? 100 : popupDeepRead.popupRendered ? 50 : 0,
       summary: pass
-        ? "Popup deep-read proof passed: popup explain/save flowed into visible vocabulary source context."
-        : "Popup deep-read proof failed: popup explain/save/vocabulary join-up is incomplete.",
+        ? "Popup deep-read proof passed: popup explain/save flowed into page-scoped review and returned to Deep Read sentence context."
+        : "Popup deep-read proof failed: popup explain/save/page-review/deep-read join-up is incomplete.",
       issues,
       nextActions,
       notes: execution.notes ?? [],

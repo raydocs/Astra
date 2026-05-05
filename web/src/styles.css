@@ -1,30 +1,51 @@
+@import "@/assets/astra-style1-tokens.css";
+
 :root {
   color-scheme: dark;
   font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", "Helvetica Neue", Arial, sans-serif;
-  
-  /* Apple Design Variables - Dark Mode Focus for "Pro" aesthetic */
-  --bg-primary: #000000;
-  --bg-secondary: #1C1C1E;
-  --bg-tertiary: #2C2C2E;
-  --bg-glass: rgba(28, 28, 30, 0.65);
-  
-  --label-primary: #FFFFFF;
-  --label-secondary: rgba(235, 235, 245, 0.6);
-  --label-tertiary: rgba(235, 235, 245, 0.3);
-  
-  --separator: rgba(84, 84, 88, 0.35);
-  --border-radius-xl: 20px;
-  --border-radius-lg: 14px;
-  --border-radius-md: 10px;
-  --border-radius-sm: 8px;
 
-  --accent-blue: #0A84FF;
-  --accent-green: #30D158;
-  --accent-red: #FF453A;
+  /* Web compatibility variables bridge to shared Style 1 semantics. */
+  --bg-primary: var(--astra-style-bg-app);
+  --bg-secondary: var(--astra-style-bg-surface);
+  --bg-tertiary: var(--astra-style-bg-elevated);
+  --bg-subtle: var(--astra-style-bg-subtle);
+  --bg-hover: var(--astra-style-bg-hover);
+  --bg-glass: color-mix(in srgb, var(--astra-style-bg-surface) 72%, transparent);
   
-  --shadow-sm: 0 2px 8px rgba(0, 0, 0, 0.24);
-  --shadow-lg: 0 8px 32px rgba(0, 0, 0, 0.32);
-  --shadow-glow: 0 4px 24px rgba(10, 132, 255, 0.15);
+  --label-primary: var(--astra-style-text-primary);
+  --label-secondary: var(--astra-style-text-secondary);
+  --label-tertiary: var(--astra-style-text-muted);
+  --label-inverse: var(--astra-style-text-inverse);
+  
+  --separator: var(--astra-style-border-subtle);
+  --separator-strong: var(--astra-style-border-strong);
+  --border-radius-xl: var(--astra-style-radius-xl);
+  --border-radius-lg: var(--astra-style-radius-lg);
+  --border-radius-md: var(--astra-style-radius-md);
+  --border-radius-sm: var(--astra-style-radius-sm);
+
+  --accent-blue: var(--astra-style-accent-primary);
+  --accent-green: var(--astra-style-success);
+  --accent-red: var(--astra-style-danger);
+  --accent-warning: var(--astra-style-warning);
+  --accent-muted: var(--astra-style-accent-muted);
+  --success-bg: var(--astra-style-success-bg);
+  --success-border: var(--astra-style-success-border);
+  --warning-bg: var(--astra-style-warning-bg);
+  --warning-border: var(--astra-style-warning-border);
+  --danger-bg: var(--astra-style-danger-bg);
+  --danger-border: var(--astra-style-danger-border);
+  
+  --shadow-sm: var(--astra-style-shadow-sm);
+  --shadow-md: var(--astra-style-shadow-md);
+  --shadow-lg: var(--astra-style-shadow-lg);
+  --shadow-glow: 0 4px 24px color-mix(in srgb, var(--astra-style-accent-primary) 18%, transparent);
+  --focus-ring: var(--astra-style-focus-ring);
+  --surface-highlight: color-mix(in srgb, var(--astra-style-text-primary) 10%, transparent);
+  --surface-highlight-strong: color-mix(in srgb, var(--astra-style-text-primary) 25%, transparent);
+  --body-glow-primary: color-mix(in srgb, var(--astra-style-accent-primary) 12%, transparent);
+  --body-glow-success: color-mix(in srgb, var(--astra-style-success) 8%, transparent);
+  --web-on-accent: var(--label-inverse);
   
   font-synthesis: none;
   text-rendering: optimizeLegibility;
@@ -38,6 +59,16 @@
   letter-spacing: -0.01em;
 }
 
+[data-astra-theme="light"] {
+  color-scheme: light;
+  --web-on-accent: var(--label-inverse);
+}
+
+[data-astra-theme="dark"] {
+  color-scheme: dark;
+  --web-on-accent: var(--label-primary);
+}
+
 * {
   box-sizing: border-box;
 }
@@ -49,10 +80,10 @@ html, body, #root {
 
 body {
   background: var(--bg-primary);
-  /* A subtle environmental glow to avoid harsh pure black */
+  /* A subtle environmental glow to soften the app background. */
   background-image: 
-    radial-gradient(ellipse at 80% -20%, rgba(10, 132, 255, 0.12), transparent 40%),
-    radial-gradient(ellipse at -20% 120%, rgba(48, 209, 88, 0.08), transparent 40%);
+    radial-gradient(ellipse at 80% -20%, var(--body-glow-primary), transparent 40%),
+    radial-gradient(ellipse at -20% 120%, var(--body-glow-success), transparent 40%);
   background-attachment: fixed;
 }
 
@@ -119,12 +150,12 @@ button {
   display: grid;
   place-items: center;
   border-radius: var(--border-radius-sm);
-  background: linear-gradient(180deg, #1C1C1E 0%, #2C2C2E 100%);
+  background: linear-gradient(180deg, var(--bg-tertiary) 0%, var(--bg-subtle) 100%);
   border: 1px solid var(--separator);
   font-size: 1.1rem;
   font-weight: 700;
   color: var(--label-primary);
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.1);
+  box-shadow: inset 0 1px 0 var(--surface-highlight);
 }
 
 .brand-title {
@@ -171,7 +202,7 @@ button {
 }
 
 .nav-item.is-active {
-  background: rgba(10, 132, 255, 0.15);
+  background: var(--accent-muted);
   color: var(--accent-blue);
 }
 
@@ -252,12 +283,12 @@ button {
 
 .button.primary {
   background: var(--accent-blue);
-  color: white;
+  color: var(--web-on-accent);
   box-shadow: var(--shadow-glow);
 }
 
 .button.primary:hover {
-  background: #0071E3; /* Slightly darker blue */
+  background: var(--astra-style-accent-primary-hover);
 }
 
 .button.secondary {
@@ -267,16 +298,16 @@ button {
 }
 
 .button.secondary:hover {
-  background: rgba(255, 255, 255, 0.1);
+  background: var(--bg-hover);
 }
 
 .button.danger {
-  background: rgba(255, 69, 58, 0.15);
+  background: var(--danger-bg);
   color: var(--accent-red);
 }
 
 .button.danger:hover {
-  background: rgba(255, 69, 58, 0.25);
+  background: color-mix(in srgb, var(--danger-bg) 72%, var(--accent-red));
 }
 
 .button.ghost,
@@ -326,15 +357,15 @@ button {
 }
 
 .card:hover {
-  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.4);
+  box-shadow: var(--shadow-md);
 }
 
 .card.hero {
   display: grid;
   grid-template-columns: 1.5fr 1fr;
   gap: 2rem;
-  background: linear-gradient(135deg, var(--bg-secondary) 0%, #151517 100%);
-  border-top: 1px solid rgba(255,255,255,0.1);
+  background: linear-gradient(135deg, var(--bg-secondary) 0%, var(--bg-tertiary) 100%);
+  border-top: 1px solid var(--surface-highlight);
 }
 
 .hero h2,
@@ -412,9 +443,9 @@ button {
 }
 
 .status-pill.success {
-  background: rgba(48, 209, 88, 0.15);
+  background: var(--success-bg);
   color: var(--accent-green);
-  border-color: rgba(48, 209, 88, 0.2);
+  border-color: var(--success-border);
 }
 
 .status-pill.muted {
@@ -432,12 +463,12 @@ button {
   border: 1px solid var(--separator);
 }
 .callout.success {
-  background: rgba(48, 209, 88, 0.1);
-  border-color: rgba(48, 209, 88, 0.2);
+  background: var(--success-bg);
+  border-color: var(--success-border);
 }
 .callout.warning {
-  background: rgba(255, 159, 10, 0.1);
-  border-color: rgba(255, 159, 10, 0.2);
+  background: var(--warning-bg);
+  border-color: var(--warning-border);
 }
 
 .subtle {
@@ -515,7 +546,7 @@ button {
 .field select:focus {
   outline: none;
   border-color: var(--accent-blue);
-  box-shadow: 0 0 0 3px rgba(10, 132, 255, 0.2);
+  box-shadow: var(--focus-ring);
 }
 
 .field textarea {
@@ -552,16 +583,16 @@ button {
   text-align: center;
   gap: 0.5rem;
   padding: 3rem 2rem;
-  border: 2px dashed rgba(255, 255, 255, 0.15);
+  border: 2px dashed var(--separator-strong);
   border-radius: var(--border-radius-xl);
-  background: rgba(255, 255, 255, 0.03);
+  background: color-mix(in srgb, var(--bg-secondary) 60%, transparent);
   margin-bottom: 1.5rem;
   transition: all 0.2s ease;
 }
 
 .dropzone:hover {
-  background: rgba(255, 255, 255, 0.05);
-  border-color: rgba(255, 255, 255, 0.25);
+  background: var(--bg-glass);
+  border-color: var(--surface-highlight-strong);
 }
 
 .dropzone.is-loading {
@@ -701,12 +732,12 @@ button {
 }
 
 .reader-nav-item:hover:not(.is-active) {
-  background: rgba(255,255,255,0.05);
+  background: var(--bg-hover);
 }
 
 .reader-content {
   padding: 2.5rem 3rem;
-  background: #000000; /* Richer reading context */
+  background: var(--bg-primary);
   border: 1px solid var(--separator);
 }
 
@@ -725,7 +756,7 @@ button {
   overflow-y: auto;
   font-size: 1.15rem;
   line-height: 1.6;
-  color: #E5E5EA; /* Subtle off-white for reading comfort */
+  color: var(--label-secondary);
   padding-right: 1.5rem;
 }
 

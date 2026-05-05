@@ -497,6 +497,9 @@
   "popup_studySavedContinue": {
     "message": "接下来可前往词库或复习。"
   },
+  "review_actionReviewThisSentenceNow": {
+    "message": "现在复习这一句"
+  },
   "popup_studyStatPages": {
     "message": "$1 页",
     "placeholders": {
@@ -880,5 +883,29 @@
   },
   "omnibox_defaultSuggestion": {
     "message": "翻译：%s"
+  },
+  "learningSavedHint": {
+    "message": "打开词汇表或直接进入复习，让这条表达继续留在学习循环里。"
+  },
+  "popup_studyPageSavedReviewTitle": {
+    "message": "本页已保存的句子"
+  },
+  "popup_studyPageSavedReviewHint": {
+    "message": "本页已有 $1 条保存句子，可随时进入复习。",
+    "placeholders": {
+      "1": { "content": "$1" }
+    }
+  },
+  "popup_studyPageSavedReviewAction": {
+    "message": "复习本页保存的句子"
+  },
+  "review_returnToDeepReadSentence": {
+    "message": "回到深读中的这一句"
+  },
+  "review_resumeReadingThisPage": {
+    "message": "继续阅读这一页"
+  },
+  "review_focusedCompleteTitle": {
+    "message": "这一句已复习完成"
   }
 }

@@ -5,9 +5,15 @@
 import fs from "node:fs"
 import path from "node:path"
 
-import * as esbuild from "esbuild"
-
 const ROOT = path.resolve(".output/safari-mv3")
+
+type EsbuildModule = {
+  transform(code: string, options: {
+    minify: boolean
+    legalComments: "none"
+    target: string
+  }): Promise<{ code: string }>
+}
 
 function listJsFiles(dir: string): string[] {
   const out: string[] = []
@@ -23,6 +29,8 @@ function listJsFiles(dir: string): string[] {
 }
 
 async function canonicalize(file: string) {
+  const esbuildModuleId = process.env.ASTRA_ESBUILD_MODULE_ID ?? "esbuild"
+  const esbuild = await import(esbuildModuleId) as EsbuildModule
   const code = fs.readFileSync(file, "utf8")
   const result = await esbuild.transform(code, {
     minify: true,

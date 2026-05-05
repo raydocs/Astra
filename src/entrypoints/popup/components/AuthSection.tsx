@@ -1,6 +1,6 @@
 import type { AstraAccount, AstraPlan, AstraSession, AstraUsageSnapshot } from "@/types/auth"
 import { t } from "@/utils/i18n"
-import { btnDisabled, btnPrimary, btnSecondary, inputStyle, labelStyle, statusCardStyle } from "./styles"
+import { labelStyle } from "./styles"
 
 export interface AuthSectionProps {
   session: AstraSession | null
@@ -52,34 +52,34 @@ export default function AuthSection({
 
   return (
     <details open style={{ marginBottom: 12 }}>
-      <summary style={{ cursor: "pointer", fontSize: 13, color: "#6366f1" }}>
+      <summary className="astra-cursor-pointer" style={{ fontSize: 13, color: "var(--astra-accent-warm-hover)" }}>
         {t("popup_astraAccount")}
       </summary>
       <div style={{ marginTop: 8 }}>
         {isAuthenticatedSession && session ? (
-          <div style={statusCardStyle}>
-            <div style={{ fontSize: 13, color: "#0f172a", fontWeight: 600 }}>{resolvedAccount?.email ?? session.email}</div>
-            <div style={{ fontSize: 12, color: "#475569", marginTop: 4 }}>
+          <div className="astra-card">
+            <div style={{ fontSize: 13, color: "var(--astra-text-primary)", fontWeight: 600 }}>{resolvedAccount?.email ?? session.email}</div>
+            <div style={{ fontSize: 12, color: "var(--astra-text-secondary)", marginTop: 4 }}>
               {t("popup_currentPlan")}：{resolvedAccount?.plan ?? session.plan}
               {" · "}
               {t("popup_planStatus")}：{resolvedAccount?.subscriptionStatus ?? session.subscriptionStatus}
               {" · "}
               Providers：{resolvedAccount?.providerEntitlements.join(", ") ?? session.providerEntitlements.join(", ")}
             </div>
-            <div style={{ fontSize: 12, color: "#64748b", marginTop: 4 }}>
+            <div style={{ fontSize: 12, color: "var(--astra-text-muted)", marginTop: 4 }}>
               Account：{resolvedAccount?.id ?? "loading"}
               {" · "}
               Relay：{resolvedAccount?.relayBaseURL ?? session.relayBaseURL}
             </div>
-            <div style={{ fontSize: 12, color: "#64748b", marginTop: 4 }}>
+            <div style={{ fontSize: 12, color: "var(--astra-text-muted)", marginTop: 4 }}>
               Billing：{resolvedAccount?.billingEmail ?? session.email}
             </div>
-            <div style={{ fontSize: 12, color: "#64748b", marginTop: 4 }}>
+            <div style={{ fontSize: 12, color: "var(--astra-text-muted)", marginTop: 4 }}>
               {t("popup_todayRequests")}：{resolvedUsage?.usage.dailyRequestsUsed ?? session.usage.dailyRequestsUsed}/{resolvedUsage?.quota.dailyRequestsLimit ?? session.quota.dailyRequestsLimit}
               {" · "}
               {t("popup_todayCharacters")}：{resolvedUsage?.usage.dailyCharactersUsed ?? session.usage.dailyCharactersUsed}/{resolvedUsage?.quota.dailyCharactersLimit ?? session.quota.dailyCharactersLimit}
             </div>
-            <div style={{ fontSize: 12, color: "#64748b", marginTop: 4 }}>
+            <div style={{ fontSize: 12, color: "var(--astra-text-muted)", marginTop: 4 }}>
               {t("popup_remainingRequests")}：{resolvedUsage?.quota.remainingDailyRequests ?? session.quota.remainingDailyRequests}
               {" · "}
               {t("popup_remainingCharacters")}：{resolvedUsage?.quota.remainingDailyCharacters ?? session.quota.remainingDailyCharacters}
@@ -87,17 +87,17 @@ export default function AuthSection({
               {t("popup_perMinuteLimit")}：{resolvedUsage?.quota.requestsPerMinuteLimit ?? session.quota.requestsPerMinuteLimit}
             </div>
             {resolvedUsage?.usage.lastRequestAt && (
-              <div style={{ fontSize: 12, color: "#64748b", marginTop: 4 }}>
+              <div style={{ fontSize: 12, color: "var(--astra-text-muted)", marginTop: 4 }}>
                 {t("popup_lastCall")}：{resolvedUsage.usage.lastRequestAt}
               </div>
             )}
             {resolvedUsage?.generatedAt && (
-              <div style={{ fontSize: 12, color: "#64748b", marginTop: 4 }}>
+              <div style={{ fontSize: 12, color: "var(--astra-text-muted)", marginTop: 4 }}>
                 {t("popup_usageRefreshTime")}：{resolvedUsage.generatedAt}
               </div>
             )}
             {resolvedUsage?.usage.recentEvents.length ? (
-              <div style={{ fontSize: 12, color: "#64748b", marginTop: 6 }}>
+              <div style={{ fontSize: 12, color: "var(--astra-text-muted)", marginTop: 6 }}>
                 {t("popup_recentUsage")}：
                 {resolvedUsage.usage.recentEvents.slice(0, 3).map((event) => (
                   <div key={`${event.timestamp}-${event.provider}`} style={{ marginTop: 2 }}>
@@ -107,13 +107,13 @@ export default function AuthSection({
               </div>
             ) : null}
             {session.sessionId && (
-              <div style={{ fontSize: 12, color: "#64748b", marginTop: 4 }}>
+              <div style={{ fontSize: 12, color: "var(--astra-text-muted)", marginTop: 4 }}>
                 Session：{session.sessionId}
                 {session.deviceId ? ` · Device ${session.deviceId}` : ""}
               </div>
             )}
             {session.expiresAt && (
-              <div style={{ fontSize: 12, color: "#64748b", marginTop: 4 }}>
+              <div style={{ fontSize: 12, color: "var(--astra-text-muted)", marginTop: 4 }}>
                 {t("popup_expiresAt")}：{session.expiresAt}
               </div>
             )}
@@ -121,26 +121,28 @@ export default function AuthSection({
         ) : (
           <>
             {session?.identityMode === "anonymous" && (
-              <div style={{ ...statusCardStyle, fontSize: 12, color: "#475569", marginBottom: 10 }}>
+              <div className="astra-card" style={{ fontSize: 12, color: "var(--astra-text-secondary)", marginBottom: 10 }}>
                 This device has a guest Astra session. Sign in to attach continuity to your account.
               </div>
             )}
-            <label style={labelStyle}>{t("label_email")}</label>
+            <label htmlFor="popup-auth-email" style={labelStyle}>{t("label_email")}</label>
             <input
+              id="popup-auth-email"
               type="email"
               value={email}
               onChange={(event) => onEmailChange(event.target.value)}
               placeholder="you@example.com"
-              style={inputStyle}
+              className="astra-input"
             />
 
-            <label style={labelStyle}>{t("label_password")}</label>
+            <label htmlFor="popup-auth-password" style={labelStyle}>{t("label_password")}</label>
             <input
+              id="popup-auth-password"
               type="password"
               value={password}
               onChange={(event) => onPasswordChange(event.target.value)}
               placeholder="••••••••"
-              style={inputStyle}
+              className="astra-input"
             />
           </>
         )}
@@ -151,7 +153,8 @@ export default function AuthSection({
               {resolvedAccount?.plan !== "pro" && (
                 <button
                   onClick={() => onOpenCheckout("pro")}
-                  style={{ ...btnPrimary, ...(busy ? btnDisabled : {}) }}
+                  className="astra-btn-primary"
+                  style={{ flex: 1 }}
                   disabled={busy}
                 >
                   {t("popup_upgradeToPro")}
@@ -159,28 +162,32 @@ export default function AuthSection({
               )}
               <button
                 onClick={onOpenPortal}
-                style={{ ...btnSecondary, ...(busy ? btnDisabled : {}) }}
+                className="astra-btn-secondary"
+                style={{ flex: 1 }}
                 disabled={busy}
               >
                 {t("popup_manageSubscription")}
               </button>
               <button
                 onClick={() => onChangePlan("free")}
-                style={{ ...btnSecondary, ...(busy || resolvedAccount?.plan === "free" ? btnDisabled : {}) }}
+                className="astra-btn-secondary"
+                style={{ flex: 1 }}
                 disabled={busy || resolvedAccount?.plan === "free"}
               >
                 {t("popup_switchToFree")}
               </button>
               <button
                 onClick={() => onChangePlan("pro")}
-                style={{ ...btnPrimary, ...(busy || resolvedAccount?.plan === "pro" ? btnDisabled : {}) }}
+                className="astra-btn-primary"
+                style={{ flex: 1 }}
                 disabled={busy || resolvedAccount?.plan === "pro"}
               >
                 {t("popup_switchToPro")}
               </button>
               <button
                 onClick={onSignOut}
-                style={{ ...btnSecondary, ...(busy ? btnDisabled : {}) }}
+                className="astra-btn-secondary"
+                style={{ flex: 1 }}
                 disabled={busy}
               >
                 {t("popup_signOut")}
@@ -189,7 +196,8 @@ export default function AuthSection({
           ) : (
             <button
               onClick={onSignIn}
-              style={{ ...btnPrimary, ...(busy ? btnDisabled : {}) }}
+              className="astra-btn-primary"
+              style={{ flex: 1 }}
               disabled={busy || email.trim().length === 0 || password.length === 0}
             >
               {t("popup_signInToAstra")}

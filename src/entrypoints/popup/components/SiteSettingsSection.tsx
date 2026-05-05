@@ -9,7 +9,7 @@ import type {
 } from "@/types/config"
 import { t } from "@/utils/i18n"
 import { exportSingleSiteRule, importSiteRules } from "@/utils/storage/site-rules"
-import { labelStyle, inputStyle, checkboxRowStyle, warningStyle, btnSecondary } from "./styles"
+import { labelStyle, checkboxRowStyle, warningStyle } from "./styles"
 import { browser } from "#imports"
 import type { ContentDetectArticleResponse } from "@/types/messages"
 
@@ -33,7 +33,6 @@ const HOVER_TRIGGER_OPTIONS = [
 ] as const
 
 const textareaStyle: React.CSSProperties = {
-  ...inputStyle,
   minHeight: 72,
   resize: "vertical",
   fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace",
@@ -41,14 +40,16 @@ const textareaStyle: React.CSSProperties = {
 }
 
 const cssEditorStyle: React.CSSProperties = {
-  ...inputStyle,
+  display: "block",
+  width: "100%",
+  boxSizing: "border-box" as const,
   minHeight: 80,
   resize: "vertical",
   fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace",
   fontSize: 12,
-  background: "#1e293b",
-  color: "#e2e8f0",
-  border: "1px solid #334155",
+  background: "var(--astra-code-bg)",
+  color: "var(--astra-code-text)",
+  border: "1px solid var(--astra-code-border)",
   borderRadius: 6,
   padding: "8px 10px",
   lineHeight: 1.5,
@@ -124,6 +125,9 @@ export default function SiteSettingsSection({
   const siteHoverTriggerValue = rawSiteRule?.hoverTrigger ?? INHERIT_VALUE
   const siteModeValue = rawSiteRule?.presentation?.mode ?? INHERIT_VALUE
   const siteThemeValue = rawSiteRule?.presentation?.theme ?? INHERIT_VALUE
+  const siteFontSizeValue = rawSiteRule?.presentation?.fontSize != null
+    ? String(rawSiteRule.presentation.fontSize)
+    : ""
   const advancedConfigured = hasAdvancedRules(rawSiteRule)
   const [selectorsValue, setSelectorsValue] = useState(() => toMultilineValue(rawSiteRule?.selectors))
   const [excludeSelectorsValue, setExcludeSelectorsValue] = useState(() => toMultilineValue(rawSiteRule?.excludeSelectors))
@@ -173,13 +177,14 @@ export default function SiteSettingsSection({
 
   return (
     <details open style={{ marginBottom: 12 }}>
-      <summary style={{ cursor: "pointer", fontSize: 13, color: "#6366f1" }}>
+      <summary className="astra-cursor-pointer" style={{ fontSize: 13, color: "var(--astra-accent-warm-hover)" }}>
         {t("popup_currentSite")}
       </summary>
       <div style={{ marginTop: 8 }}>
-        <div style={{ fontSize: 12, color: "#64748b", marginBottom: 8 }}>{activeSiteKey}</div>
-        <label style={checkboxRowStyle}>
+        <div style={{ fontSize: 12, color: "var(--astra-text-muted)", marginBottom: 8 }}>{activeSiteKey}</div>
+        <label htmlFor="site-enable-astra-checkbox" style={checkboxRowStyle}>
           <input
+            id="site-enable-astra-checkbox"
             type="checkbox"
             checked={rawSiteRule?.enabled ?? true}
             onChange={(e) => onSiteRuleChange((siteRule) => ({
@@ -189,8 +194,9 @@ export default function SiteSettingsSection({
           />
           <span>{t("label_enableAstra")}</span>
         </label>
-        <label style={checkboxRowStyle}>
+        <label htmlFor="site-auto-translate-checkbox" style={checkboxRowStyle}>
           <input
+            id="site-auto-translate-checkbox"
             type="checkbox"
             checked={rawSiteRule?.alwaysTranslate ?? false}
             onChange={(e) => onSiteRuleChange((siteRule) => ({
@@ -202,8 +208,9 @@ export default function SiteSettingsSection({
           <span>{t("label_autoTranslate")}</span>
         </label>
 
-        <label style={labelStyle}>{t("label_siteTargetLang")}</label>
+        <label htmlFor="site-target-language" style={labelStyle}>{t("label_siteTargetLang")}</label>
         <select
+          id="site-target-language"
           value={siteTargetLangValue}
           onChange={(e) => onSiteRuleChange((siteRule) => {
             const nextSiteRule: SiteConfig = {
@@ -219,7 +226,7 @@ export default function SiteSettingsSection({
 
             return nextSiteRule
           })}
-          style={inputStyle}
+          className="astra-input"
         >
           <option value={INHERIT_VALUE}>{t("label_inheritGlobal", globalConfig.targetLang)}</option>
           {LANGUAGE_OPTIONS.map((option) => (
@@ -227,8 +234,9 @@ export default function SiteSettingsSection({
           ))}
         </select>
 
-        <label style={labelStyle}>{t("label_siteHoverTrigger")}</label>
+        <label htmlFor="site-hover-trigger" style={labelStyle}>{t("label_siteHoverTrigger")}</label>
         <select
+          id="site-hover-trigger"
           value={siteHoverTriggerValue}
           onChange={(e) => onSiteRuleChange((siteRule) => {
             const nextSiteRule: SiteConfig = {
@@ -244,7 +252,7 @@ export default function SiteSettingsSection({
 
             return nextSiteRule
           })}
-          style={inputStyle}
+          className="astra-input"
         >
           <option value={INHERIT_VALUE}>{t("label_inheritGlobal", getHoverTriggerLabel(globalConfig.hoverTrigger))}</option>
           {HOVER_TRIGGER_OPTIONS.map((option) => (
@@ -252,8 +260,9 @@ export default function SiteSettingsSection({
           ))}
         </select>
 
-        <label style={labelStyle}>{t("label_siteTranslationMode")}</label>
+        <label htmlFor="site-translation-mode" style={labelStyle}>{t("label_siteTranslationMode")}</label>
         <select
+          id="site-translation-mode"
           value={siteModeValue}
           onChange={(e) => onSiteRuleChange((siteRule) => {
             const nextPresentation = { ...(siteRule.presentation ?? {}) }
@@ -270,15 +279,16 @@ export default function SiteSettingsSection({
                 : { presentation: undefined }),
             }
           })}
-          style={inputStyle}
+          className="astra-input"
         >
           <option value={INHERIT_VALUE}>{t("label_inheritGlobal", globalConfig.presentation.mode)}</option>
           <option value="bilingual">{t("modeBilingual")}</option>
           <option value="translation-only">{t("modeTranslationOnly")}</option>
         </select>
 
-        <label style={labelStyle}>{t("label_siteTranslationTheme")}</label>
+        <label htmlFor="site-translation-theme" style={labelStyle}>{t("label_siteTranslationTheme")}</label>
         <select
+          id="site-translation-theme"
           value={siteThemeValue}
           onChange={(e) => onSiteRuleChange((siteRule) => {
             const nextPresentation = { ...(siteRule.presentation ?? {}) }
@@ -295,16 +305,54 @@ export default function SiteSettingsSection({
                 : { presentation: undefined }),
             }
           })}
-          style={inputStyle}
+          className="astra-input"
         >
           <option value={INHERIT_VALUE}>{t("label_inheritGlobal", globalConfig.presentation.theme)}</option>
           <option value="default">{t("themeDefault")}</option>
           <option value="underline">{t("themeUnderline")}</option>
           <option value="highlight">{t("themeHighlight")}</option>
+          <option value="mask">{t("themeMask")}</option>
         </select>
 
-        <label style={labelStyle}>{t("label_siteTranslationScope")}</label>
+        <label htmlFor="site-translation-font-size" style={labelStyle}>{t("label_siteTranslationFontSize")}</label>
+        <input
+          id="site-translation-font-size"
+          data-testid="site-font-size-input"
+          type="number"
+          min={0.5}
+          max={2}
+          step={0.05}
+          value={siteFontSizeValue}
+          onChange={(e) => onSiteRuleChange((siteRule) => {
+            const nextPresentation = { ...(siteRule.presentation ?? {}) }
+            const raw = e.target.value.trim()
+
+            if (!raw) {
+              delete nextPresentation.fontSize
+            } else {
+              const parsed = Number.parseFloat(raw)
+              if (Number.isFinite(parsed)) {
+                nextPresentation.fontSize = Math.min(2, Math.max(0.5, parsed))
+              }
+            }
+
+            return {
+              ...siteRule,
+              ...(Object.keys(nextPresentation).length > 0
+                ? { presentation: nextPresentation }
+                : { presentation: undefined }),
+            }
+          })}
+          placeholder={String(globalConfig.presentation.fontSize)}
+          className="astra-input"
+        />
+        <div style={{ fontSize: 11, color: "var(--astra-text-muted)", marginTop: 4 }}>
+          {t("label_inheritGlobal", String(globalConfig.presentation.fontSize))}
+        </div>
+
+        <label htmlFor="site-translation-scope" style={labelStyle}>{t("label_siteTranslationScope")}</label>
         <select
+          id="site-translation-scope"
           value={rawSiteRule?.contentScope ?? INHERIT_VALUE}
           onChange={(e) => onSiteRuleChange((siteRule) => {
             const nextSiteRule: SiteConfig = {
@@ -320,7 +368,7 @@ export default function SiteSettingsSection({
 
             return nextSiteRule
           })}
-          style={inputStyle}
+          className="astra-input"
         >
           <option value={INHERIT_VALUE}>{t("label_inheritGlobal", globalConfig.contentScope === "article" ? t("scopeArticle") : t("scopePage"))}</option>
           <option value="page">{t("scopePage")}</option>
@@ -331,7 +379,8 @@ export default function SiteSettingsSection({
           <button
             data-testid="site-export-rule-btn"
             type="button"
-            style={{ ...btnSecondary, flex: "none", padding: "4px 10px", fontSize: 11 }}
+            className="astra-btn-secondary"
+            style={{ flex: "none", padding: "4px 10px", fontSize: 11 }}
             onClick={() => {
               const siteConfig: SiteConfig = rawSiteRule ?? { enabled: true, alwaysTranslate: false }
               const json = exportSingleSiteRule(activeSiteKey, siteConfig)
@@ -346,7 +395,8 @@ export default function SiteSettingsSection({
           <button
             data-testid="site-import-rule-btn"
             type="button"
-            style={{ ...btnSecondary, flex: "none", padding: "4px 10px", fontSize: 11 }}
+            className="astra-btn-secondary"
+            style={{ flex: "none", padding: "4px 10px", fontSize: 11 }}
             onClick={async () => {
               try {
                 const text = await navigator.clipboard.readText()
@@ -357,6 +407,8 @@ export default function SiteSettingsSection({
                   inputTranslation: "enabled" as const,
                   inputTranslationMode: "replace" as const,
                   languageLevel: "intermediate" as const,
+                  explainMode: "deep" as const,
+                  explanationGlossary: [],
                   privacyMode: false,
                   provider: { id: "openai" as const, accessToken: "", apiKey: "", model: "gpt-5.4-nano" },
                   tts: { enabled: true, engine: "browser" as const, rate: 0.9, pitch: 1.0, highlightSentences: true },
@@ -388,28 +440,28 @@ export default function SiteSettingsSection({
           </button>
         </div>
         {ruleStatus && (
-          <div data-testid="site-rule-status" style={{ fontSize: 11, color: "#059669", marginTop: 4 }}>{ruleStatus}</div>
+          <div data-testid="site-rule-status" style={{ fontSize: 11, color: "var(--astra-success)", marginTop: 4 }}>{ruleStatus}</div>
         )}
 
         <details data-testid="site-advanced-rules" style={{ marginTop: 12 }}>
-          <summary style={{ cursor: "pointer", fontSize: 12, color: "#475569", display: "flex", alignItems: "center", gap: 6 }}>
+          <summary className="astra-cursor-pointer" style={{ fontSize: 12, color: "var(--astra-text-secondary)", display: "flex", alignItems: "center", gap: 6 }}>
             {t("label_siteAdvancedRules")}
             {advancedConfigured && (
-              <span style={{ fontSize: 11, color: "#059669", background: "#ecfdf5", padding: "2px 6px", borderRadius: 999 }}>
+              <span style={{ fontSize: 11, color: "var(--astra-success)", background: "var(--astra-success-bg)", padding: "2px 6px", borderRadius: 999 }}>
                 {t("label_advanced")}
               </span>
             )}
           </summary>
           <div style={{ marginTop: 10 }}>
             <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
-              <label style={{ ...labelStyle, marginBottom: 0, marginTop: 0, flex: 1 }}>{t("label_siteIncludeSelectors")}</label>
+              <label htmlFor="site-selectors-input" style={{ ...labelStyle, marginBottom: 0, marginTop: 0, flex: 1 }}>{t("label_siteIncludeSelectors")}</label>
               <button
                 data-testid="site-detect-article-btn"
                 type="button"
                 onClick={() => void handleDetectArticle()}
                 disabled={detectingArticle || !(rawSiteRule?.enabled ?? true)}
+                className="astra-btn-secondary"
                 style={{
-                  ...btnSecondary,
                   flex: "none",
                   padding: "3px 8px",
                   fontSize: 11,
@@ -420,6 +472,7 @@ export default function SiteSettingsSection({
               </button>
             </div>
             <textarea
+              id="site-selectors-input"
               data-testid="site-selectors-input"
               value={selectorsValue}
               onChange={(e) => {
@@ -444,16 +497,18 @@ export default function SiteSettingsSection({
                 })
               }}
               placeholder={`article\n.content`}
+              className="astra-input"
               style={textareaStyle}
               disabled={!(rawSiteRule?.enabled ?? true)}
             />
-            <div style={{ fontSize: 11, color: "#94a3b8", marginTop: 4 }}>{t("hint_siteSelectorsPerLine")}</div>
+            <div style={{ fontSize: 11, color: "var(--astra-text-muted)", marginTop: 4 }}>{t("hint_siteSelectorsPerLine")}</div>
             {selectorsError && (
               <div data-testid="site-selectors-error" style={warningStyle}>{selectorsError}</div>
             )}
 
-            <label style={labelStyle}>{t("label_siteExcludeSelectors")}</label>
+            <label htmlFor="site-exclude-selectors-input" style={labelStyle}>{t("label_siteExcludeSelectors")}</label>
             <textarea
+              id="site-exclude-selectors-input"
               data-testid="site-exclude-selectors-input"
               value={excludeSelectorsValue}
               onChange={(e) => {
@@ -478,17 +533,18 @@ export default function SiteSettingsSection({
                 })
               }}
               placeholder={`.comments\naside`}
+              className="astra-input"
               style={textareaStyle}
               disabled={!(rawSiteRule?.enabled ?? true)}
             />
-            <div style={{ fontSize: 11, color: "#94a3b8", marginTop: 4 }}>{t("hint_siteSelectorsPerLine")}</div>
+            <div style={{ fontSize: 11, color: "var(--astra-text-muted)", marginTop: 4 }}>{t("hint_siteSelectorsPerLine")}</div>
             {excludeSelectorsError && (
               <div data-testid="site-exclude-selectors-error" style={warningStyle}>{excludeSelectorsError}</div>
             )}
 
-            <label style={labelStyle}>
+            <label htmlFor="site-paragraph-min-length-input" style={labelStyle}>
               {t("label_siteParagraphMinLength")}
-              <span style={{ marginLeft: 8, fontSize: 11, color: "#94a3b8" }}>
+              <span style={{ marginLeft: 8, fontSize: 11, color: "var(--astra-text-hint)" }}>
                 {getParagraphLengthLabel(rawSiteRule?.paragraphMinLength)}
               </span>
             </label>
@@ -510,25 +566,27 @@ export default function SiteSettingsSection({
                   }
                   return nextSiteRule
                 })}
-                style={{ flex: 1, cursor: "pointer" }}
+                className="astra-cursor-pointer"
+                style={{ flex: 1 }}
                 disabled={!(rawSiteRule?.enabled ?? true)}
               />
-              <span style={{ fontSize: 12, color: "#64748b", minWidth: 24, textAlign: "right" }}>
+              <span style={{ fontSize: 12, color: "var(--astra-text-muted)", minWidth: 24, textAlign: "right" }}>
                 {paragraphSliderValue}
               </span>
             </div>
-            <div style={{ display: "flex", justifyContent: "space-between", fontSize: 10, color: "#94a3b8", marginTop: 2 }}>
+            <div style={{ display: "flex", justifyContent: "space-between", fontSize: 10, color: "var(--astra-text-hint)", marginTop: 2 }}>
               {PARAGRAPH_SLIDER_LABELS.map((mark) => (
                 <span key={mark.value}>{mark.label}</span>
               ))}
             </div>
-            <div style={{ fontSize: 11, color: "#94a3b8", marginTop: 4 }}>{t("hint_siteParagraphMinLength")}</div>
+            <div style={{ fontSize: 11, color: "var(--astra-text-hint)", marginTop: 4 }}>{t("hint_siteParagraphMinLength")}</div>
 
-            <label style={{ ...labelStyle, display: "flex", alignItems: "center", gap: 6, marginTop: 12 }}>
+            <label htmlFor="site-custom-css-input" style={{ ...labelStyle, display: "flex", alignItems: "center", gap: 6, marginTop: 12 }}>
               {t("label_siteCustomCss")}
-              <span style={{ fontSize: 10, color: "#94a3b8", fontWeight: 400 }}>{t("label_preview")}</span>
+              <span style={{ fontSize: 10, color: "var(--astra-text-hint)", fontWeight: 400 }}>{t("label_preview")}</span>
             </label>
             <textarea
+              id="site-custom-css-input"
               data-testid="site-custom-css-input"
               value={customCssValue}
               onChange={(e) => {
@@ -545,11 +603,12 @@ export default function SiteSettingsSection({
                 })
               }}
               placeholder={`.sidebar { display: none; }\n.content { max-width: 100%; }`}
+              className="astra-input"
               style={cssEditorStyle}
               disabled={!(rawSiteRule?.enabled ?? true)}
               maxLength={5000}
             />
-            <div style={{ fontSize: 11, color: "#94a3b8", marginTop: 4 }}>{t("hint_siteCustomCss")}</div>
+            <div style={{ fontSize: 11, color: "var(--astra-text-muted)", marginTop: 4 }}>{t("hint_siteCustomCss")}</div>
           </div>
         </details>
       </div>

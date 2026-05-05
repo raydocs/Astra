@@ -7,6 +7,7 @@ const {
   saveConfigMock,
   getCacheStatsMock,
   clearTranslationCacheMock,
+  getRecentEventsMock,
   isTtsSupportedMock,
   listVoicesMock,
   exportConfigMock,
@@ -27,6 +28,7 @@ const {
   saveConfigMock: vi.fn(),
   getCacheStatsMock: vi.fn(),
   clearTranslationCacheMock: vi.fn(),
+  getRecentEventsMock: vi.fn(),
   isTtsSupportedMock: vi.fn(),
   listVoicesMock: vi.fn(),
   exportConfigMock: vi.fn(),
@@ -53,6 +55,14 @@ vi.mock("@/utils/cache/translation-cache", () => ({
   getCacheStats: getCacheStatsMock,
   clearTranslationCache: clearTranslationCacheMock,
 }))
+
+vi.mock("@/utils/telemetry", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/utils/telemetry")>()
+  return {
+    ...actual,
+    getRecentEvents: getRecentEventsMock,
+  }
+})
 
 vi.mock("@/utils/tts", () => ({
   isTtsSupported: isTtsSupportedMock,
@@ -88,8 +98,48 @@ vi.mock("@/utils/astra/account", () => ({
   updateAstraSyncCollectionPreference: updateAstraSyncCollectionPreferenceMock,
 }))
 
-vi.mock("#imports", () => ({
-  browser: {
+vi.mock("#imports", () => {
+  const localStorage: Record<string, unknown> = {}
+  const getStorageSubset = (keys?: string | string[]) => {
+    if (typeof keys === "string") return { [keys]: localStorage[keys] }
+    if (Array.isArray(keys)) return Object.fromEntries(keys.map((key) => [key, localStorage[key]]))
+    return { ...localStorage }
+  }
+
+  return {
+    browser: {
+    i18n: {
+      getMessage: (key: string, substitutions?: string | string[]) => {
+        const dict: Record<string, string> = {
+          options_learningLoopTitle: "Learning loop activity",
+          options_learningLoopHint: "Local-only diagnostics for the popup → Deep Read → vocabulary/review funnel on this device.",
+          options_learningLoopLoading: "Loading learning loop activity...",
+          options_learningLoopEmpty: "No learning loop events yet on this device.",
+          options_learningLoopUnavailable: "Learning loop diagnostics unavailable",
+          options_learningLoopUnknownEvent: "Unknown learning loop event",
+          options_learningLoopEventDeepReadOpened: "Deep Read opened",
+          options_learningLoopEventSentenceExplained: "Sentence explained",
+          options_learningLoopEventSentenceSaved: "Sentence saved",
+          options_learningLoopEventReviewAnswered: "Review answered",
+          options_learningLoopEventReturnedToSource: "Returned to source",
+          options_learningLoopEventResumedReading: "Resumed reading",
+          options_learningLoopJustNow: "just now",
+          options_learningLoopRelativeMinute: "1 minute ago",
+          options_learningLoopRelativeMinutes: "$1 minutes ago",
+          options_learningLoopRelativeHour: "1 hour ago",
+          options_learningLoopRelativeHours: "$1 hours ago",
+          options_learningLoopRelativeDay: "1 day ago",
+          options_learningLoopRelativeDays: "$1 days ago",
+        }
+        const template = dict[key] ?? key
+        const values = Array.isArray(substitutions)
+          ? substitutions
+          : substitutions !== undefined
+            ? [substitutions]
+            : []
+        return values.reduce((message, value, index) => message.replace(`$${index + 1}`, String(value)), template)
+      },
+    },
     runtime: {
       getManifest: () => ({ version: "0.0.1-test" }),
       getURL: (path: string) => `chrome-extension://test${path}`,
@@ -99,12 +149,22 @@ vi.mock("#imports", () => ({
     },
     storage: {
       local: {
+        get: vi.fn((keys?: string | string[]) => Promise.resolve(getStorageSubset(keys))),
+        set: vi.fn((values: Record<string, unknown>) => {
+          Object.assign(localStorage, values)
+          return Promise.resolve()
+        }),
         getBytesInUse: vi.fn(() => Promise.resolve(0)),
-        remove: vi.fn(() => Promise.resolve()),
+        remove: vi.fn((keys?: string | string[]) => {
+          const keysToRemove = Array.isArray(keys) ? keys : keys ? [keys] : []
+          for (const key of keysToRemove) delete localStorage[key]
+          return Promise.resolve()
+        }),
       },
     },
   },
-}))
+  }
+})
 
 import type { AstraConfig } from "@/types/config"
 import { DEFAULT_ASTRA_CONFIG } from "@/types/config"
@@ -318,6 +378,7 @@ describe("OptionsApp — Sites section", () => {
       }],
     })
     clearTranslationCacheMock.mockResolvedValue(undefined)
+    getRecentEventsMock.mockResolvedValue([])
     exportConfigMock.mockResolvedValue('{"_astraBackup":true}')
     importConfigMock.mockResolvedValue(undefined)
     downloadConfigFileMock.mockImplementation(() => {})
@@ -421,6 +482,14 @@ describe("OptionsApp — Sites section", () => {
     throw new Error("Timed out waiting for value")
   }
 
+  function getFieldInputByLabel(labelText: string): HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement {
+    const label = Array.from(container.querySelectorAll("label"))
+      .find((candidate) => candidate.textContent === labelText)
+    const field = label?.parentElement?.querySelector("input, select, textarea") as HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement | null
+    if (!field) throw new Error(`Field "${labelText}" not found`)
+    return field
+  }
+
   it("navigates to the Sites section and shows empty state", async () => {
     await navigateToSites()
     expect(container.textContent).toContain("Sites")
@@ -449,7 +518,7 @@ describe("OptionsApp — Sites section", () => {
     expect(labelTexts).toContain("Hover trigger override")
   })
 
-  it("shows new override fields: content scope, presentation mode, theme", async () => {
+  it("shows new override fields: content scope, presentation mode, theme, font size, and translation color", async () => {
     await navigateToSites()
     await addSite("demo.example.com")
 
@@ -457,8 +526,62 @@ describe("OptionsApp — Sites section", () => {
     const labelTexts = labels.map((l) => l.textContent)
 
     expect(labelTexts).toContain("Content scope override")
+    expect(labelTexts).toContain("Provider override")
+    expect(labelTexts).toContain("Model override")
     expect(labelTexts).toContain("Presentation mode override")
     expect(labelTexts).toContain("Theme override")
+    expect(labelTexts).toContain("Font size override")
+    expect(labelTexts).toContain("Translation color override")
+  })
+
+  it("persists per-site provider and model overrides", async () => {
+    await navigateToSites()
+    await addSite("provider-save.example.com")
+
+    await setValue(getFieldInputByLabel("Provider override"), "gemini")
+    await setValue(getFieldInputByLabel("Model override"), "gemini-3.1-pro")
+
+    await act(async () => {
+      clickButton("Save settings")
+      await Promise.resolve()
+      await Promise.resolve()
+    })
+
+    expect(saveConfigMock).toHaveBeenCalledWith(expect.objectContaining({
+      sites: expect.objectContaining({
+        "provider-save.example.com": expect.objectContaining({
+          provider: {
+            id: "gemini",
+            model: "gemini-3.1-pro",
+          },
+        }),
+      }),
+    }))
+  })
+
+  it("persists per-site font size and translation color overrides", async () => {
+    await navigateToSites()
+    await addSite("style-save.example.com")
+
+    await setValue(getFieldInputByLabel("Font size override"), "1.1")
+    await setValue(getFieldInputByLabel("Translation color override"), "#22c55e")
+
+    await act(async () => {
+      clickButton("Save settings")
+      await Promise.resolve()
+      await Promise.resolve()
+    })
+
+    expect(saveConfigMock).toHaveBeenCalledWith(expect.objectContaining({
+      sites: expect.objectContaining({
+        "style-save.example.com": expect.objectContaining({
+          presentation: expect.objectContaining({
+            fontSize: 1.1,
+            translationColor: "#22c55e",
+          }),
+        }),
+      }),
+    }))
   })
 
   it("persists TTS settings from the general section", async () => {
@@ -602,6 +725,132 @@ describe("OptionsApp — Sites section", () => {
     expect(container.textContent).toContain("5 lookups")
     expect(container.textContent).toContain("60% hit rate")
     expect(container.textContent).toContain("openai/gpt-5.4-nano")
+  })
+
+  it("shows learning loop telemetry in the vocabulary section", async () => {
+    const now = Date.now()
+    getRecentEventsMock.mockResolvedValue([
+      {
+        id: "event-1",
+        type: "feature_usage",
+        timestamp: now - 2 * 60 * 1000,
+        data: {
+          feature: "learning_loop",
+          event: "sentence_saved",
+          hostname: "example.com",
+          source: "popup",
+        },
+      },
+      {
+        id: "event-2",
+        type: "feature_usage",
+        timestamp: now - 5 * 60 * 1000,
+        data: {
+          feature: "learning_loop",
+          event: "deep_read_opened",
+          pageTitle: "Astra article",
+          source: "live_context",
+        },
+      },
+    ])
+
+    await act(async () => {
+      clickButton("Vocabulary")
+      await Promise.resolve()
+      await Promise.resolve()
+    })
+
+    expect(container.textContent).toContain("Learning loop activity")
+    expect(container.textContent).toContain("Sentence saved 1")
+    expect(container.textContent).toContain("Deep Read opened 1")
+    expect(container.textContent).toContain("Sentence saved · example.com · popup")
+    expect(container.textContent).toContain("Deep Read opened · Astra article · live_context")
+    expect(container.textContent).toContain("2 minutes ago")
+  })
+
+  it("shows local A/B learning-loop funnel results in Diagnostics", async () => {
+    const now = Date.now()
+    getRecentEventsMock.mockResolvedValue([
+      {
+        id: "loop-view",
+        type: "feature_usage",
+        timestamp: now - 1000,
+        data: { feature: "learning_loop", event: "popup_primer_viewed", variant: "loop_first" },
+      },
+      {
+        id: "loop-cta",
+        type: "feature_usage",
+        timestamp: now - 900,
+        data: { feature: "learning_loop", event: "popup_primer_cta_clicked", variant: "loop_first" },
+      },
+      {
+        id: "loop-deep-read",
+        type: "feature_usage",
+        timestamp: now - 800,
+        data: { feature: "learning_loop", event: "deep_read_opened", variant: "loop_first" },
+      },
+      {
+        id: "loop-explained",
+        type: "feature_usage",
+        timestamp: now - 700,
+        data: { feature: "learning_loop", event: "sentence_explained", variant: "loop_first" },
+      },
+      {
+        id: "loop-saved",
+        type: "feature_usage",
+        timestamp: now - 600,
+        data: { feature: "learning_loop", event: "sentence_saved", variant: "loop_first" },
+      },
+      {
+        id: "outcome-view",
+        type: "feature_usage",
+        timestamp: now - 500,
+        data: { feature: "learning_loop", event: "popup_primer_viewed", variant: "outcome_first" },
+      },
+      {
+        id: "outcome-cta",
+        type: "feature_usage",
+        timestamp: now - 400,
+        data: { feature: "learning_loop", event: "popup_primer_cta_clicked", variant: "outcome_first" },
+      },
+      {
+        id: "legacy-save",
+        type: "feature_usage",
+        timestamp: now - 300,
+        data: { feature: "learning_loop", event: "sentence_saved" },
+      },
+    ])
+
+    await act(async () => {
+      clickButton("Diagnostics")
+      await Promise.resolve()
+      await Promise.resolve()
+      await Promise.resolve()
+    })
+
+    const card = container.querySelector('[data-testid="learning-loop-funnel-card"]')
+    const loopFirst = container.querySelector('[data-testid="learning-loop-funnel-loop_first"]')
+    const outcomeFirst = container.querySelector('[data-testid="learning-loop-funnel-outcome_first"]')
+    const unknown = container.querySelector('[data-testid="learning-loop-funnel-unknown"]')
+
+    expect(getRecentEventsMock).toHaveBeenCalledWith(200)
+    expect(card?.textContent).toContain("Local A/B learning funnel")
+    expect(card?.textContent).toContain("8 local funnel events")
+    expect(card?.textContent).toContain("No backend or schema migration is required")
+    const autoSelection = container.querySelector('[data-testid="learning-loop-auto-selection-status"]')
+    expect(autoSelection?.textContent).toContain("Auto-selection: Collecting samples")
+    expect(autoSelection?.textContent).toContain("Guardrails: 3 views/variant")
+    expect(autoSelection?.textContent).toContain("Loop first: 1/3 views")
+    expect(autoSelection?.textContent).toContain("Outcome first: 1/3 views")
+    expect(loopFirst?.textContent).toContain("Loop first")
+    expect(loopFirst?.textContent).toContain("Views 1 · CTA 1 · Deep Read 1 · Explained 1 · Saved 1 · Reviewed 0")
+    expect(loopFirst?.textContent).toContain("CTA/view 100%")
+    expect(loopFirst?.textContent).toContain("Save/explain 100%")
+    expect(outcomeFirst?.textContent).toContain("Outcome first")
+    expect(outcomeFirst?.textContent).toContain("Views 1 · CTA 1 · Deep Read 0 · Explained 0 · Saved 0 · Reviewed 0")
+    expect(outcomeFirst?.textContent).toContain("Save/explain n/a")
+    expect(unknown?.textContent).toContain("Unknown variant")
+    expect(unknown?.textContent).toContain("Saved 1")
   })
 
   it("clears translation cache from the vocabulary section", async () => {

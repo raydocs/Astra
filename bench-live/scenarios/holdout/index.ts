@@ -1,5 +1,6 @@
 import { epubReaderLongChapterHoldoutScenario } from "./epub-reader-long-chapter"
 import { hoverTranslationMovingTargetsHoldoutScenario } from "./hover-translation-moving-targets"
+import { imageOcrOverlayRobustnessHoldoutScenario } from "./image-ocr-overlay-robustness-holdout"
 import { interactionStressHoldoutScenario } from "./interaction-stress"
 import { pageTranslationDenseInlineRichTextSourceHoldoutScenario } from "./page-translation-dense-inline-rich-text-source"
 import { pageTranslationFeedCardChurnHoldoutScenario } from "./page-translation-feed-card-churn"
@@ -22,6 +23,7 @@ import { backgroundRoutedDirectRelayFallbackPageTranslationSourceHoldoutScenario
 
 export { epubReaderLongChapterHoldoutScenario } from "./epub-reader-long-chapter"
 export { hoverTranslationMovingTargetsHoldoutScenario } from "./hover-translation-moving-targets"
+export { imageOcrOverlayRobustnessHoldoutScenario } from "./image-ocr-overlay-robustness-holdout"
 export { interactionStressHoldoutScenario } from "./interaction-stress"
 export { pageTranslationDenseInlineRichTextSourceHoldoutScenario } from "./page-translation-dense-inline-rich-text-source"
 export { pageTranslationFeedCardChurnHoldoutScenario } from "./page-translation-feed-card-churn"
@@ -53,6 +55,7 @@ export { backgroundRoutedDirectRelayFallbackPageTranslationSourceHoldoutScenario
 export const holdoutScenarios = [
   epubReaderLongChapterHoldoutScenario,
   hoverTranslationMovingTargetsHoldoutScenario,
+  imageOcrOverlayRobustnessHoldoutScenario,
   interactionStressHoldoutScenario,
   pageTranslationDenseInlineRichTextSourceHoldoutScenario,
   pageTranslationFeedCardChurnHoldoutScenario,

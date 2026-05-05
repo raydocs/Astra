@@ -11,8 +11,14 @@ import { sleep } from "../../sleep"
 import type { LiveScenarioDefinition, LiveScenarioExecution } from "../../evaluator"
 import { buildLiveInteractionPriorityEvaluation } from "../helpers/interaction-priority"
 
+interface LiveStressDiagnostics {
+  label: string
+  orderedLines: string[]
+}
+
 interface LiveInteractionStressExecution extends LiveScenarioExecution {
   interactionPriority: InteractionPriorityExecution
+  stressDiagnostics: LiveStressDiagnostics
   stressMetrics: {
     totalInteractiveElements: number
     buttonClickResults: boolean[]
@@ -34,6 +40,43 @@ const ASTRA_HOSTS = {
   inputTranslate: "astra-input-translate-host",
   floatBall: "astra-float-ball-host",
 } as const
+
+function formatBoolean(value: boolean) {
+  return value ? "true" : "false"
+}
+
+function sortedPipe(values: string[]) {
+  const sorted = [...new Set(values.map((value) => value.trim()).filter(Boolean))].sort()
+  return sorted.length > 0 ? sorted.join("|") : "none"
+}
+
+function buildInteractionStressDiagnostics(params: {
+  interactionPriority: InteractionPriorityExecution
+  stressMetrics: LiveInteractionStressExecution["stressMetrics"]
+  submitClickable: boolean
+  allButtonsPassed: boolean
+  allInputsPassed: boolean
+  artifactLabels: string[]
+}): LiveStressDiagnostics {
+  const buttonCount = params.stressMetrics.buttonClickResults.length
+  const inputCount = params.stressMetrics.nestedFormInputResults.length
+  const buttonsPassed = params.stressMetrics.buttonClickResults.filter(Boolean).length
+  const inputsPassed = params.stressMetrics.nestedFormInputResults.filter(Boolean).length
+
+  return {
+    label: "LSIR deterministic interaction-stress diagnostics",
+    orderedLines: [
+      "LSIR[01] scenario=bench-live/holdout/interaction-stress",
+      "LSIR[02] target=interaction-priority",
+      `LSIR[03] interactions=buttons:${buttonsPassed}/${buttonCount},inputs:${inputsPassed}/${inputCount},submit:${formatBoolean(params.submitClickable)},iframe:${formatBoolean(params.stressMetrics.iframeInteractable)}`,
+      `LSIR[04] churn=domMutationSurvived:${formatBoolean(params.stressMetrics.domMutationSurvived)},totalInteractiveElements:${params.stressMetrics.totalInteractiveElements}`,
+      `LSIR[05] overlays=mounted:${sortedPipe(params.interactionPriority.mountedHosts)},visible:${sortedPipe(params.interactionPriority.visibleHosts)}`,
+      `LSIR[06] suppression=hoverSuppressed:${formatBoolean(params.interactionPriority.hoverSuppressed)},hoverRequests:${params.interactionPriority.hoverRequestCount},toggleCommands:${params.interactionPriority.toggleCommandCount}`,
+      `LSIR[07] artifacts=${params.artifactLabels.length > 0 ? params.artifactLabels.join(",") : "none"}`,
+      `LSIR[08] verdict-signals=allButtonsPassed:${formatBoolean(params.allButtonsPassed)},allInputsPassed:${formatBoolean(params.allInputsPassed)},domMutationSurvived:${formatBoolean(params.stressMetrics.domMutationSurvived)}`,
+    ],
+  }
+}
 
 /**
  * Holdout scenario: Harder interaction-priority stress test.
@@ -438,6 +481,23 @@ export const interactionStressHoldoutScenario: LiveScenarioDefinition<LiveIntera
         ],
       }
 
+      const stressMetrics: LiveInteractionStressExecution["stressMetrics"] = {
+        totalInteractiveElements: capture.totalInteractiveElements,
+        buttonClickResults: capture.buttonClickResults,
+        nestedFormInputResults: capture.nestedFormInputResults,
+        iframeInteractable: capture.iframeInteractable,
+        domMutationSurvived: capture.domMutationSurvived,
+        overlayElementCount: capture.mountedHosts.length,
+      }
+      const stressDiagnostics = buildInteractionStressDiagnostics({
+        interactionPriority,
+        stressMetrics,
+        submitClickable: capture.submitClickable,
+        allButtonsPassed,
+        allInputsPassed,
+        artifactLabels: ["baselineScreenshotPath", "stressScreenshotPath", "snapshotHtmlPath"],
+      })
+
       runtime.complete("Interaction-stress holdout scenario completed.")
       const snapshot = runtime.snapshot()
 
@@ -466,19 +526,41 @@ export const interactionStressHoldoutScenario: LiveScenarioDefinition<LiveIntera
         startedAt: snapshot.startedAt,
         finishedAt: snapshot.finishedAt,
         interactionPriority,
-        stressMetrics: {
-          totalInteractiveElements: capture.totalInteractiveElements,
-          buttonClickResults: capture.buttonClickResults,
-          nestedFormInputResults: capture.nestedFormInputResults,
-          iframeInteractable: capture.iframeInteractable,
-          domMutationSurvived: capture.domMutationSurvived,
-          overlayElementCount: capture.mountedHosts.length,
-        },
+        stressDiagnostics,
+        stressMetrics,
       }
     } catch (error) {
       if (error instanceof LiveBrowserUnavailableError) {
         runtime.skip(error.message)
         const snapshot = runtime.snapshot()
+        const interactionPriority: InteractionPriorityExecution = {
+          hoverSuppressed: false,
+          hoverRequestCount: 0,
+          toggleCommandCount: 0,
+          selectionToolbarVisible: false,
+          hoverOverlayVisible: false,
+          inputOverlayVisible: false,
+          floatBallMounted: false,
+          visibleHosts: [],
+          mountedHosts: [],
+          notes: ["browser-unavailable"],
+        }
+        const stressMetrics: LiveInteractionStressExecution["stressMetrics"] = {
+          totalInteractiveElements: 0,
+          buttonClickResults: [],
+          nestedFormInputResults: [],
+          iframeInteractable: false,
+          domMutationSurvived: false,
+          overlayElementCount: 0,
+        }
+        const stressDiagnostics = buildInteractionStressDiagnostics({
+          interactionPriority,
+          stressMetrics,
+          submitClickable: false,
+          allButtonsPassed: false,
+          allInputsPassed: false,
+          artifactLabels: [],
+        })
         return {
           status: snapshot.status,
           summary:
@@ -491,26 +573,9 @@ export const interactionStressHoldoutScenario: LiveScenarioDefinition<LiveIntera
           runtime: snapshot,
           startedAt: snapshot.startedAt,
           finishedAt: snapshot.finishedAt,
-          interactionPriority: {
-            hoverSuppressed: false,
-            hoverRequestCount: 0,
-            toggleCommandCount: 0,
-            selectionToolbarVisible: false,
-            hoverOverlayVisible: false,
-            inputOverlayVisible: false,
-            floatBallMounted: false,
-            visibleHosts: [],
-            mountedHosts: [],
-            notes: ["browser-unavailable"],
-          },
-          stressMetrics: {
-            totalInteractiveElements: 0,
-            buttonClickResults: [],
-            nestedFormInputResults: [],
-            iframeInteractable: false,
-            domMutationSurvived: false,
-            overlayElementCount: 0,
-          },
+          interactionPriority,
+          stressDiagnostics,
+          stressMetrics,
         }
       }
 

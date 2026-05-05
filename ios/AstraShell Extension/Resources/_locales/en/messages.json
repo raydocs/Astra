@@ -497,6 +497,9 @@
   "popup_studySavedContinue": {
     "message": "Continue in Vocabulary or Review."
   },
+  "review_actionReviewThisSentenceNow": {
+    "message": "Review this sentence now"
+  },
   "popup_studyStatPages": {
     "message": "$1 pages",
     "placeholders": {
@@ -572,26 +575,14 @@
   "popup_studyStatReviewedLabel": {
     "message": "Reviews graded"
   },
-  "popup_revisitJustNow": {
-    "message": "just now"
+  "review_returnToDeepReadSentence": {
+    "message": "Return to this sentence in Deep Read"
   },
-  "popup_revisitMinutesAgo": {
-    "message": "$1 min ago",
-    "placeholders": {
-      "1": { "content": "$1" }
-    }
+  "review_resumeReadingThisPage": {
+    "message": "Resume reading this page"
   },
-  "popup_revisitHoursAgo": {
-    "message": "$1 h ago",
-    "placeholders": {
-      "1": { "content": "$1" }
-    }
-  },
-  "popup_revisitDaysAgo": {
-    "message": "$1 d ago",
-    "placeholders": {
-      "1": { "content": "$1" }
-    }
+  "review_focusedCompleteTitle": {
+    "message": "Sentence review complete"
   },
 
   "popup_usageMetricRequests": {
@@ -880,5 +871,20 @@
   },
   "omnibox_defaultSuggestion": {
     "message": "Translate: %s"
+  },
+  "learningSavedHint": {
+    "message": "Open vocabulary or jump into review to keep this phrase active."
+  },
+  "popup_studyPageSavedReviewTitle": {
+    "message": "Saved sentences on this page"
+  },
+  "popup_studyPageSavedReviewHint": {
+    "message": "$1 saved sentence(s) from this page can be reviewed anytime.",
+    "placeholders": {
+      "1": { "content": "$1" }
+    }
+  },
+  "popup_studyPageSavedReviewAction": {
+    "message": "Review saved sentences from this page"
   }
 }

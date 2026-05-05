@@ -34,6 +34,7 @@ export function serializeTranslationRequestContext(
     contentSummary: context?.contentSummary?.trim() || "",
     selectionContext: context?.selectionContext?.trim() || "",
     terminologyGlossary: context?.terminologyGlossary?.trim() || "",
+    explanationGlossary: context?.explanationGlossary?.trim() || "",
   })
 }
 

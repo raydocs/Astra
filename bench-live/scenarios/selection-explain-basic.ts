@@ -34,6 +34,7 @@ interface RelayTranslateRequest {
   task?: string
   customSystemPrompt?: string
   languageLevel?: string
+  explainMode?: string
 }
 
 interface SelectionExplainCapture {
@@ -213,6 +214,8 @@ export const selectionExplainBasicScenario: LiveScenarioDefinition<LiveSelection
         requestCount: selectionServer.translateRequests.length,
         requestTask: request?.task ?? null,
         requestSelectionContext: request?.context?.selectionContext ?? null,
+        requestLanguageLevel: request?.languageLevel ?? null,
+        requestExplainMode: request?.explainMode ?? null,
         resultText: capture.execution.resultText,
         clipboardWrites: [],
         buttonLabels: capture.execution.buttonLabels,
@@ -231,6 +234,8 @@ export const selectionExplainBasicScenario: LiveScenarioDefinition<LiveSelection
         requestCount: selectionServer.translateRequests.length,
         requestTask: request?.task ?? null,
         requestSelectionContext: request?.context?.selectionContext ?? null,
+        requestLanguageLevel: request?.languageLevel ?? null,
+        requestExplainMode: request?.explainMode ?? null,
         selectedText: capture.execution.selectedText,
         consoleErrors: capture.consoleErrors,
       })
@@ -294,8 +299,9 @@ export const selectionExplainBasicScenario: LiveScenarioDefinition<LiveSelection
       expected: {
         expectedTask: "explain",
         requireContext: true,
+        requireExplainProfile: true,
       },
-      successSummary: "Live selection explain passed: one explain request carried context and rendered the contextual result in a real browser toolbar.",
+      successSummary: "Live selection explain passed: one explain request carried context/profile and rendered the contextual result in a real browser toolbar.",
       failureSummary: "Live selection explain failed: the request, context, or rendered result diverged from the selection explain contract.",
       extraIssues: consoleErrors,
     })

@@ -1,11 +1,5 @@
 import { readAstraSession } from "@/utils/storage/auth"
-
-export interface QuotaInfo {
-  used: number
-  limit: number
-  plan: "free" | "pro" | "custom"
-  resetsAt: string
-}
+import type { QuotaInfo } from "@/utils/astra/quota-types"
 
 function defaultQuota(): QuotaInfo {
   return { used: 0, limit: 200_000, plan: "free", resetsAt: "" }

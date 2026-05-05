@@ -2,7 +2,7 @@
  * Astra Subtitle Translator — translate SRT/VTT/ASS files with bilingual export.
  */
 
-import { useState, useCallback, useRef, useEffect } from "react"
+import { useState, useCallback, useEffect } from "react"
 import { browser } from "#imports"
 import type { RuntimeResponse } from "@/types/messages"
 import { buildOwnedReadingVocabularySourceLink, upsertOwnedSubtitleFileFromImport } from "@/utils/storage/owned-reading"
@@ -22,10 +22,25 @@ import {
 } from "./subtitle-parser"
 import { translateTexts } from "@/utils/translate/translate"
 import { saveVocabularyEntry } from "@/utils/storage/vocabulary"
+import {
+  consumeDocumentFileHandoff,
+  describeDocumentFileHandoffFailure,
+  DOCUMENT_FILE_HANDOFF_FAILURE_QUERY_PARAM,
+  DOCUMENT_FILE_HANDOFF_QUERY_PARAM,
+  readDocumentFileText,
+  type DocumentFileHandoffFailureReason,
+} from "@/utils/reading/document-file-handoff"
 
 type Phase = "idle" | "parsed" | "translating" | "done" | "error"
 
 const BATCH_SIZE = 15
+
+function coerceHandoffFailureReason(value: string | null): DocumentFileHandoffFailureReason | null {
+  if (value === "invalid" || value === "missing" || value === "expired" || value === "oversize" || value === "corrupt" || value === "storage_error") {
+    return value
+  }
+  return null
+}
 
 async function getTargetLang(): Promise<string> {
   try {
@@ -51,11 +66,28 @@ export function SubtitleReaderApp() {
   const [explanations, setExplanations] = useState<Record<number, string>>({})
   const [savingIndex, setSavingIndex] = useState<number | null>(null)
   const [savedRowKeys, setSavedRowKeys] = useState<Set<string>>(() => new Set())
-  const fileInputRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
-    const hint = new URLSearchParams(window.location.search).get("reopenHint")
-    if (hint) {
+    const params = new URLSearchParams(window.location.search)
+    const hint = params.get("reopenHint")
+    const handoffToken = params.get(DOCUMENT_FILE_HANDOFF_QUERY_PARAM)
+    const handoffFailure = coerceHandoffFailureReason(params.get(DOCUMENT_FILE_HANDOFF_FAILURE_QUERY_PARAM))
+
+    if (handoffToken) {
+      void consumeDocumentFileHandoff(handoffToken, "subtitle").then((result) => {
+        if (result.ok) {
+          setReopenBanner(`Opened ${result.file.name} from Document Intake local handoff. File bytes stayed on this device and were not synced.`)
+          void loadFile(result.file)
+          return
+        }
+        setReopenBanner(describeDocumentFileHandoffFailure(result.reason, hint))
+      })
+      return
+    }
+
+    if (handoffFailure) {
+      setReopenBanner(describeDocumentFileHandoffFailure(handoffFailure, hint))
+    } else if (hint) {
       setReopenBanner(decodeURIComponent(hint))
     }
   }, [])
@@ -67,7 +99,7 @@ export function SubtitleReaderApp() {
 
   const loadFile = async (file: File) => {
     try {
-      const text = await file.text()
+      const text = await readDocumentFileText(file)
       setError(null)
       setExplanations({})
       setSavedRowKeys(new Set())
@@ -270,7 +302,7 @@ export function SubtitleReaderApp() {
   }, [])
 
   return (
-    <div style={containerStyle}>
+    <div className="astra-container astra-container--wide" style={containerStyle}>
       <header style={headerStyle}>
         <h1 style={{ margin: 0, fontSize: 18, color: "#6366f1" }}>Astra File Translator</h1>
         {fileName && (
@@ -298,23 +330,34 @@ export function SubtitleReaderApp() {
       )}
 
       {phase === "idle" && (
-        <div
-          style={dropZoneStyle}
+        <label
+          htmlFor="astra-subtitle-reader-file-input"
+          className="astra-drop-zone-cursor astra-reader-drop-zone"
           onDragOver={(e) => e.preventDefault()}
           onDrop={handleFileDrop}
-          onClick={() => fileInputRef.current?.click()}
         >
           <input
-            ref={fileInputRef}
+            id="astra-subtitle-reader-file-input"
             type="file"
             accept=".srt,.vtt,.ass,.ssa,.md,.txt,.html"
             onChange={handleFileSelect}
             style={{ display: "none" }}
           />
-          <div style={{ fontSize: 48, marginBottom: 16 }}>FILE</div>
-          <div style={{ fontSize: 16, color: "#334155" }}>Drop a file here or click to select</div>
-          <div style={{ fontSize: 13, color: "#94a3b8", marginTop: 8 }}>Supports SRT, VTT, ASS, Markdown, TXT, and HTML</div>
-        </div>
+          <div className="astra-reader-drop-zone__content">
+            <div className="astra-reader-drop-zone__icon" aria-hidden="true">FILE</div>
+            <div className="astra-reader-drop-zone__eyebrow">Subtitle and text translation</div>
+            <div className="astra-reader-drop-zone__title">Drop a file here</div>
+            <div className="astra-reader-drop-zone__description">
+              or click to select. Translate subtitles, Markdown, TXT, or HTML into a bilingual study file.
+            </div>
+            <div className="astra-reader-drop-zone__chips" aria-label="Supported file types">
+              <span className="astra-reader-drop-zone__chip">SRT</span>
+              <span className="astra-reader-drop-zone__chip">VTT</span>
+              <span className="astra-reader-drop-zone__chip">ASS</span>
+              <span className="astra-reader-drop-zone__chip">MD/TXT/HTML</span>
+            </div>
+          </div>
+        </label>
       )}
 
       {phase === "error" && (
@@ -326,7 +369,7 @@ export function SubtitleReaderApp() {
           <div style={{ fontSize: 14, color: "#334155", marginBottom: 16 }}>
             Parsed {itemCount} {isDocument ? "paragraphs" : "cues"} from {formatLabel(fileFormat)} file
           </div>
-          <button type="button" onClick={() => void startTranslation()} style={btnStyle}>
+          <button type="button" onClick={() => void startTranslation()} className="astra-btn-primary">
             Translate All
           </button>
         </div>
@@ -344,16 +387,18 @@ export function SubtitleReaderApp() {
             <>
               <div style={{ display: "flex", gap: 8, marginBottom: savedRowKeys.size > 0 ? 12 : 16 }}>
                 {isDocument ? (
-                  <button type="button" onClick={() => handleExport("md")} style={btnStyle}>Export Markdown</button>
+                  <button type="button" onClick={() => handleExport("md")} className="astra-btn-primary">Export Markdown</button>
                 ) : (
                   <>
-                    <button type="button" onClick={() => handleExport("srt")} style={btnStyle}>Export SRT</button>
-                    <button type="button" onClick={() => handleExport("vtt")} style={btnStyle}>Export VTT</button>
+                    <button type="button" onClick={() => handleExport("srt")} className="astra-btn-primary">Export SRT</button>
+                    <button type="button" onClick={() => handleExport("vtt")} className="astra-btn-primary">Export VTT</button>
                   </>
                 )}
               </div>
               {savedRowKeys.size > 0 && (
                 <div
+                  role="status"
+                  aria-live="polite"
                   data-role="subtitle-learning-chain"
                   style={{
                     marginBottom: 16,
@@ -370,9 +415,9 @@ export function SubtitleReaderApp() {
                     {savedRowKeys.size} saved {savedRowKeys.size === 1 ? "row is" : "rows are"} now available in Vocabulary, Review, and Reading queue revisit.
                   </div>
                   <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                    <button type="button" onClick={() => openLearningSurface("list")} style={smallBtnStyle}>Open Vocabulary</button>
-                    <button type="button" onClick={() => openLearningSurface("review")} style={smallBtnStyle}>Start Review</button>
-                    <button type="button" onClick={() => openLearningSurface("reading")} style={smallBtnStyle}>Open Reading Queue</button>
+                    <button type="button" onClick={() => openLearningSurface("list")} className="astra-btn-primary" style={{ padding: "4px 10px", fontSize: 12 }}>Open Vocabulary</button>
+                    <button type="button" onClick={() => openLearningSurface("review")} className="astra-btn-primary" style={{ padding: "4px 10px", fontSize: 12 }}>Start Review</button>
+                    <button type="button" onClick={() => openLearningSurface("reading")} className="astra-btn-primary" style={{ padding: "4px 10px", fontSize: 12 }}>Open Reading Queue</button>
                   </div>
                 </div>
               )}
@@ -405,7 +450,7 @@ export function SubtitleReaderApp() {
                               type="button"
                               onClick={() => void handleExplainRow(i, entry.text)}
                               disabled={explainingIndex !== null}
-                              style={smallBtnStyle}
+                              className="astra-btn-primary" style={{ padding: "4px 10px", fontSize: 12 }}
                             >
                               {explainingIndex === i ? "…" : "Explain"}
                             </button>
@@ -413,7 +458,7 @@ export function SubtitleReaderApp() {
                               type="button"
                               onClick={() => void handleSaveRow(i, entry.text)}
                               disabled={savingIndex !== null || savedRowKeys.has(rowSaveKey(i, entry.text))}
-                              style={smallBtnStyle}
+                              className="astra-btn-primary" style={{ padding: "4px 10px", fontSize: 12 }}
                             >
                               {savedRowKeys.has(rowSaveKey(i, entry.text)) ? "Saved" : savingIndex === i ? "…" : "Save"}
                             </button>
@@ -458,7 +503,7 @@ export function SubtitleReaderApp() {
                               type="button"
                               onClick={() => void handleExplainRow(i, cue.text)}
                               disabled={explainingIndex !== null}
-                              style={smallBtnStyle}
+                              className="astra-btn-primary" style={{ padding: "4px 10px", fontSize: 12 }}
                             >
                               {explainingIndex === i ? "…" : "Explain"}
                             </button>
@@ -466,7 +511,7 @@ export function SubtitleReaderApp() {
                               type="button"
                               onClick={() => void handleSaveRow(i, cue.text)}
                               disabled={savingIndex !== null || savedRowKeys.has(rowSaveKey(i, cue.text))}
-                              style={smallBtnStyle}
+                              className="astra-btn-primary" style={{ padding: "4px 10px", fontSize: 12 }}
                             >
                               {savedRowKeys.has(rowSaveKey(i, cue.text)) ? "Saved" : savingIndex === i ? "…" : "Save"}
                             </button>
@@ -490,7 +535,6 @@ export function SubtitleReaderApp() {
 
 const containerStyle: React.CSSProperties = {
   fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif',
-  maxWidth: 1000,
   margin: "0 auto",
   padding: 16,
 }
@@ -504,30 +548,8 @@ const headerStyle: React.CSSProperties = {
   marginBottom: 16,
 }
 
-const dropZoneStyle: React.CSSProperties = {
-  border: "2px dashed #cbd5e1",
-  borderRadius: 12,
-  padding: "64px 24px",
-  textAlign: "center",
-  cursor: "pointer",
-}
-
-const btnStyle: React.CSSProperties = {
-  background: "#6366f1",
-  color: "#fff",
-  border: "none",
-  borderRadius: 6,
-  padding: "8px 20px",
-  fontSize: 14,
-  fontWeight: 600,
-  cursor: "pointer",
-}
-
-const smallBtnStyle: React.CSSProperties = {
-  ...btnStyle,
-  padding: "4px 10px",
-  fontSize: 12,
-}
+// btnStyle — now using className="astra-btn-primary"
+// smallBtnStyle — now using className="astra-btn-primary" + style override
 
 const explainBoxStyle: React.CSSProperties = {
   maxWidth: 280,

@@ -6,7 +6,9 @@ import { ASTRA_CONFIG_STORAGE_KEY } from "./config"
 import { VOCABULARY_STORAGE_KEY } from "./vocabulary"
 import { READING_HISTORY_STORAGE_KEY } from "./reading-history"
 import { STUDY_PROGRESS_STORAGE_KEY } from "./study-progress"
-import { buildContinuityStatus, exportConfig, importConfig, runPhaseOneCollectionSync } from "./config-sync"
+import { OWNED_READING_STORAGE_KEY } from "./owned-reading"
+import { DEEP_READ_SESSION_STORAGE_KEY } from "./deep-read-session"
+import { buildContinuityStatus, exportConfig, importConfig, readPhaseOneCollectionSyncStatus, runPhaseOneCollectionSync } from "./config-sync"
 import { createMockBrowser, setMockBrowser } from "../../../test/utils/mockBrowser"
 
 const {
@@ -121,7 +123,48 @@ describe("config-sync", () => {
     expect(status.sync.deferredCollections).toEqual([])
     expect(status.sync.localOnly.localOnlyFields).toContain("study_progress.dailyStats")
     expect(status.sync.localOnly.localOnlyFields).toContain("vocabulary.srsBox")
+    expect(status.sync.localOnly.localOnlyFields).toContain("vocabulary.nextReviewAt")
+    expect(status.sync.phaseOne.stateLastSuccessAt).toBeNull()
     expect(status.remote.available).toBe(false)
+  })
+
+  it("reads persisted phase-one sync status for authenticated continuity", async () => {
+    setMockBrowser(createMockBrowser({
+      [ASTRA_AUTH_STORAGE_KEY]: {
+        version: 1,
+        sessionToken: "astra-session",
+        sessionId: "sess-123",
+        deviceId: "device-123",
+        identityMode: "authenticated",
+        relayBaseURL: "https://astra.example/v1",
+        email: "user@example.com",
+        plan: "pro",
+        subscriptionStatus: "active",
+        providerEntitlements: ["openai", "gemini"],
+      },
+      "astra.sync.phase1.v1": {
+        version: 1,
+        accountEmail: "user@example.com",
+        collections: {
+          config: { cursor: "cfg-1", shadow: {} },
+          vocabulary: { cursor: "voc-2", shadow: {} },
+          reading_history: { cursor: "hist-3", shadow: {} },
+          study_progress: { cursor: "progress-4", shadow: {} },
+        },
+        lastRunAt: "2026-04-09T01:00:00.000Z",
+        lastSuccessAt: "2026-04-09T01:00:10.000Z",
+        lastError: null,
+      },
+    }))
+
+    const status = await readPhaseOneCollectionSyncStatus()
+
+    expect(status).toMatchObject({
+      accountEmail: "user@example.com",
+      stateLastRunAt: "2026-04-09T01:00:00.000Z",
+      stateLastSuccessAt: "2026-04-09T01:00:10.000Z",
+      cursors: { vocabulary: "voc-2", study_progress: "progress-4" },
+    })
   })
 
   it("summarizes remote device and config continuity status", () => {
@@ -576,6 +619,501 @@ describe("config-sync", () => {
       ])
     })
 
+    it("pushes owned-reading metadata through private config records without local file bytes", async () => {
+      setMockBrowser(createMockBrowser({
+        [OWNED_READING_STORAGE_KEY]: {
+          version: 1,
+          items: [{
+            id: "or_pdf_astra-local%3A%2F%2Fpdf%2Flocal.pdf",
+            sourceType: "pdf",
+            title: "local.pdf",
+            sourceUrl: null,
+            localUri: "astra-local://pdf/local.pdf",
+            reopenHint: "Choose the same file in the PDF reader: local.pdf",
+            openedAt: 1000,
+            updatedAt: 1000,
+            status: "in_progress",
+            readingHistoryRecordId: null,
+            studyProgressRecordId: null,
+          }],
+        },
+        [ASTRA_AUTH_STORAGE_KEY]: {
+          version: 1,
+          sessionToken: "astra-session",
+          sessionId: "sess-1",
+          deviceId: "device-123",
+          identityMode: "authenticated",
+          relayBaseURL: "https://astra.example/v1",
+          email: "user@example.com",
+          plan: "pro",
+          subscriptionStatus: "active",
+          providerEntitlements: ["openai", "gemini"],
+          quota: { dailyRequestsLimit: 0, dailyCharactersLimit: 0, requestsPerMinuteLimit: 0, remainingDailyRequests: 0, remainingDailyCharacters: 0 },
+          usage: { totalRequests: 0, totalCharacters: 0, dailyRequestsUsed: 0, dailyCharactersUsed: 0, lastRequestAt: null, recentEvents: [] },
+          issuedAt: null,
+          expiresAt: null,
+        },
+        [ASTRA_DEVICE_STORAGE_KEY]: {
+          version: 1,
+          deviceId: "device-123",
+          label: "Chrome on macOS",
+          platform: "macos",
+          browserFamily: "chrome",
+          appKind: "extension",
+          appVersion: "0.1.0-test",
+          createdAt: "2026-04-09T00:00:00.000Z",
+          updatedAt: "2026-04-09T00:00:00.000Z",
+        },
+      }))
+
+      fetchAstraSyncBootstrapMock.mockResolvedValue({
+        serverTime: "2026-04-09T01:00:00.000Z",
+        deviceId: "device-123",
+        collections: {
+          config: { enabled: true, defaultEnabled: true, cursor: null },
+          vocabulary: { enabled: true, defaultEnabled: true, cursor: null },
+          reading_history: { enabled: false, defaultEnabled: false, cursor: null },
+          study_progress: { enabled: false, defaultEnabled: false, cursor: null },
+        },
+        limits: { maxMutationsPerRequest: 200 },
+        transport: { deviceHeader: "X-Astra-Device-Id", idempotencyKey: "clientMutationId", cursorMode: "per-collection" },
+      })
+      pushAstraSyncMutationsMock.mockResolvedValue({
+        serverTime: "2026-04-09T01:00:30.000Z",
+        accepted: [],
+        rejected: [],
+        nextCursors: { config: "cfg-1", vocabulary: null, reading_history: null, study_progress: null },
+      })
+      pullAstraSyncDeltasMock.mockResolvedValue({
+        serverTime: "2026-04-09T01:00:40.000Z",
+        deltas: { config: [], vocabulary: [], reading_history: [], study_progress: [] },
+        nextCursors: { config: "cfg-1", vocabulary: null, reading_history: null, study_progress: null },
+      })
+
+      const result = await runPhaseOneCollectionSync()
+
+      expect(result.pushed.config).toBe(1)
+      expect(pushAstraSyncMutationsMock).toHaveBeenCalledWith(expect.objectContaining({
+        mutations: [expect.objectContaining({
+          collection: "config",
+          recordId: expect.stringContaining("__owned_reading_metadata_v1__:or_pdf_"),
+          operation: "upsert",
+          payload: expect.objectContaining({
+            id: "or_pdf_astra-local%3A%2F%2Fpdf%2Flocal.pdf",
+            localUri: "astra-local://pdf/local.pdf",
+            reopenHint: expect.stringContaining("local.pdf"),
+            updatedAt: 1000,
+          }),
+        })],
+      }))
+      expect(JSON.stringify(pushAstraSyncMutationsMock.mock.calls[0]?.[0].mutations[0]?.payload)).not.toMatch(/bytes|blob|handle|arrayBuffer/i)
+    })
+
+    it("pulls owned-reading metadata from private config records while preserving normal config sync", async () => {
+      const browser = setMockBrowser(createMockBrowser({
+        [ASTRA_CONFIG_STORAGE_KEY]: { ...DEFAULT_ASTRA_CONFIG },
+        [OWNED_READING_STORAGE_KEY]: {
+          version: 1,
+          items: [{
+            id: "or_epub_astra-local%3A%2F%2Fepub%2Fbook.epub",
+            sourceType: "epub",
+            title: "Local stale",
+            sourceUrl: null,
+            localUri: "astra-local://epub/book.epub",
+            reopenHint: "Choose the same file in the ePub reader: book.epub",
+            openedAt: 1000,
+            updatedAt: 1000,
+            status: "saved",
+            readingHistoryRecordId: null,
+            studyProgressRecordId: null,
+          }],
+        },
+        [ASTRA_AUTH_STORAGE_KEY]: {
+          version: 1,
+          sessionToken: "astra-session",
+          sessionId: "sess-1",
+          deviceId: "device-123",
+          identityMode: "authenticated",
+          relayBaseURL: "https://astra.example/v1",
+          email: "user@example.com",
+          plan: "pro",
+          subscriptionStatus: "active",
+          providerEntitlements: ["openai", "gemini"],
+          quota: { dailyRequestsLimit: 0, dailyCharactersLimit: 0, requestsPerMinuteLimit: 0, remainingDailyRequests: 0, remainingDailyCharacters: 0 },
+          usage: { totalRequests: 0, totalCharacters: 0, dailyRequestsUsed: 0, dailyCharactersUsed: 0, lastRequestAt: null, recentEvents: [] },
+          issuedAt: null,
+          expiresAt: null,
+        },
+        [ASTRA_DEVICE_STORAGE_KEY]: {
+          version: 1,
+          deviceId: "device-123",
+          label: "Chrome on macOS",
+          platform: "macos",
+          browserFamily: "chrome",
+          appKind: "extension",
+          appVersion: "0.1.0-test",
+          createdAt: "2026-04-09T00:00:00.000Z",
+          updatedAt: "2026-04-09T00:00:00.000Z",
+        },
+      })) as ReturnType<typeof createMockBrowser>
+
+      fetchAstraSyncBootstrapMock.mockResolvedValue({
+        serverTime: "2026-04-09T01:00:00.000Z",
+        deviceId: "device-123",
+        collections: {
+          config: { enabled: true, defaultEnabled: true, cursor: "cfg-1" },
+          vocabulary: { enabled: true, defaultEnabled: true, cursor: null },
+          reading_history: { enabled: false, defaultEnabled: false, cursor: null },
+          study_progress: { enabled: false, defaultEnabled: false, cursor: null },
+        },
+        limits: { maxMutationsPerRequest: 200 },
+        transport: { deviceHeader: "X-Astra-Device-Id", idempotencyKey: "clientMutationId", cursorMode: "per-collection" },
+      })
+      pullAstraSyncDeltasMock.mockResolvedValue({
+        serverTime: "2026-04-09T01:00:40.000Z",
+        deltas: {
+          config: [
+            {
+              collection: "config",
+              schemaVersion: 1,
+              recordId: "global",
+              operation: "upsert",
+              clientMutationId: "mut-config-1",
+              deviceId: "device-remote",
+              clientUpdatedAt: "2026-04-09T01:00:30.000Z",
+              payload: { kind: "global", config: { targetLang: "ja" } },
+              ownerId: "usr_demo",
+              email: "user@example.com",
+              serverMutationId: "srv-c1",
+              serverUpdatedAt: "2026-04-09T01:00:35.000Z",
+              cursor: "cfg-2",
+            },
+            {
+              collection: "config",
+              schemaVersion: 1,
+              recordId: "__owned_reading_metadata_v1__:or_epub_astra-local%3A%2F%2Fepub%2Fbook.epub",
+              operation: "upsert",
+              clientMutationId: "mut-owned-1",
+              deviceId: "device-remote",
+              clientUpdatedAt: "2026-04-09T01:00:30.000Z",
+              payload: {
+                id: "or_epub_astra-local%3A%2F%2Fepub%2Fbook.epub",
+                sourceType: "epub",
+                title: "Remote fresh",
+                sourceUrl: null,
+                localUri: "astra-local://epub/book.epub",
+                reopenHint: "Choose the same file in the ePub reader: book.epub",
+                openedAt: 2000,
+                updatedAt: 2000,
+                status: "in_progress",
+                readingHistoryRecordId: null,
+                studyProgressRecordId: null,
+              },
+              ownerId: "usr_demo",
+              email: "user@example.com",
+              serverMutationId: "srv-o1",
+              serverUpdatedAt: "2026-04-09T01:00:35.000Z",
+              cursor: "cfg-3",
+            },
+          ],
+          vocabulary: [],
+          reading_history: [],
+          study_progress: [],
+        },
+        nextCursors: { config: "cfg-3", vocabulary: null, reading_history: null, study_progress: null },
+      })
+
+      const result = await runPhaseOneCollectionSync()
+
+      expect(result.pulled.config).toBe(2)
+      expect(browser.__storage[ASTRA_CONFIG_STORAGE_KEY]).toMatchObject({ targetLang: "ja" })
+      expect(browser.__storage[OWNED_READING_STORAGE_KEY]).toMatchObject({
+        items: [expect.objectContaining({
+          id: "or_epub_astra-local%3A%2F%2Fepub%2Fbook.epub",
+          title: "Remote fresh",
+          status: "in_progress",
+          updatedAt: 2000,
+        })],
+      })
+    })
+
+    it("pushes deep-read sessions through private config records", async () => {
+      setMockBrowser(createMockBrowser({
+        [DEEP_READ_SESSION_STORAGE_KEY]: {
+          sessions: [{
+            pageUrl: "https://example.com/article?utm=1#top",
+            pageTitle: "Example article",
+            hostname: "example.com",
+            sentences: ["Intro.", "Resume here."],
+            selectedSentenceAnchor: {
+              sentenceText: "Resume here.",
+              sentenceHash: "fnv1a:resume",
+              sentenceIndex: 1,
+            },
+            selectedSentenceIndex: 1,
+            updatedAt: 2000,
+          }],
+        },
+        [ASTRA_AUTH_STORAGE_KEY]: {
+          version: 1,
+          sessionToken: "astra-session",
+          sessionId: "sess-1",
+          deviceId: "device-123",
+          identityMode: "authenticated",
+          relayBaseURL: "https://astra.example/v1",
+          email: "user@example.com",
+          plan: "pro",
+          subscriptionStatus: "active",
+          providerEntitlements: ["openai", "gemini"],
+          quota: { dailyRequestsLimit: 0, dailyCharactersLimit: 0, requestsPerMinuteLimit: 0, remainingDailyRequests: 0, remainingDailyCharacters: 0 },
+          usage: { totalRequests: 0, totalCharacters: 0, dailyRequestsUsed: 0, dailyCharactersUsed: 0, lastRequestAt: null, recentEvents: [] },
+          issuedAt: null,
+          expiresAt: null,
+        },
+        [ASTRA_DEVICE_STORAGE_KEY]: {
+          version: 1,
+          deviceId: "device-123",
+          label: "Chrome on macOS",
+          platform: "macos",
+          browserFamily: "chrome",
+          appKind: "extension",
+          appVersion: "0.1.0-test",
+          createdAt: "2026-04-09T00:00:00.000Z",
+          updatedAt: "2026-04-09T00:00:00.000Z",
+        },
+      }))
+
+      fetchAstraSyncBootstrapMock.mockResolvedValue({
+        serverTime: "2026-04-09T01:00:00.000Z",
+        deviceId: "device-123",
+        collections: {
+          config: { enabled: true, defaultEnabled: true, cursor: null },
+          vocabulary: { enabled: false, defaultEnabled: false, cursor: null },
+          reading_history: { enabled: false, defaultEnabled: false, cursor: null },
+          study_progress: { enabled: false, defaultEnabled: false, cursor: null },
+        },
+        limits: { maxMutationsPerRequest: 200 },
+        transport: { deviceHeader: "X-Astra-Device-Id", idempotencyKey: "clientMutationId", cursorMode: "per-collection" },
+      })
+      pushAstraSyncMutationsMock.mockResolvedValue({
+        serverTime: "2026-04-09T01:00:30.000Z",
+        accepted: [],
+        rejected: [],
+        nextCursors: { config: "cfg-1", vocabulary: null, reading_history: null, study_progress: null },
+      })
+      pullAstraSyncDeltasMock.mockResolvedValue({
+        serverTime: "2026-04-09T01:00:40.000Z",
+        deltas: { config: [], vocabulary: [], reading_history: [], study_progress: [] },
+        nextCursors: { config: "cfg-1", vocabulary: null, reading_history: null, study_progress: null },
+      })
+
+      const result = await runPhaseOneCollectionSync()
+
+      expect(result.pushed.config).toBe(1)
+      expect(pushAstraSyncMutationsMock).toHaveBeenCalledWith(expect.objectContaining({
+        mutations: [expect.objectContaining({
+          collection: "config",
+          recordId: "__deep_read_session_v1__:https%3A%2F%2Fexample.com%2Farticle",
+          operation: "upsert",
+          payload: expect.objectContaining({
+            pageUrl: "https://example.com/article",
+            selectedSentenceIndex: 1,
+            selectedSentenceAnchor: expect.objectContaining({ sentenceHash: "fnv1a:resume" }),
+            updatedAt: 2000,
+          }),
+        })],
+      }))
+    })
+
+    it("pulls deep-read sessions from private config records", async () => {
+      const browser = setMockBrowser(createMockBrowser({
+        [ASTRA_AUTH_STORAGE_KEY]: {
+          version: 1,
+          sessionToken: "astra-session",
+          sessionId: "sess-1",
+          deviceId: "device-123",
+          identityMode: "authenticated",
+          relayBaseURL: "https://astra.example/v1",
+          email: "user@example.com",
+          plan: "pro",
+          subscriptionStatus: "active",
+          providerEntitlements: ["openai", "gemini"],
+          quota: { dailyRequestsLimit: 0, dailyCharactersLimit: 0, requestsPerMinuteLimit: 0, remainingDailyRequests: 0, remainingDailyCharacters: 0 },
+          usage: { totalRequests: 0, totalCharacters: 0, dailyRequestsUsed: 0, dailyCharactersUsed: 0, lastRequestAt: null, recentEvents: [] },
+          issuedAt: null,
+          expiresAt: null,
+        },
+        [ASTRA_DEVICE_STORAGE_KEY]: {
+          version: 1,
+          deviceId: "device-123",
+          label: "Chrome on macOS",
+          platform: "macos",
+          browserFamily: "chrome",
+          appKind: "extension",
+          appVersion: "0.1.0-test",
+          createdAt: "2026-04-09T00:00:00.000Z",
+          updatedAt: "2026-04-09T00:00:00.000Z",
+        },
+      })) as ReturnType<typeof createMockBrowser>
+
+      fetchAstraSyncBootstrapMock.mockResolvedValue({
+        serverTime: "2026-04-09T01:00:00.000Z",
+        deviceId: "device-123",
+        collections: {
+          config: { enabled: true, defaultEnabled: true, cursor: "cfg-1" },
+          vocabulary: { enabled: false, defaultEnabled: false, cursor: null },
+          reading_history: { enabled: false, defaultEnabled: false, cursor: null },
+          study_progress: { enabled: false, defaultEnabled: false, cursor: null },
+        },
+        limits: { maxMutationsPerRequest: 200 },
+        transport: { deviceHeader: "X-Astra-Device-Id", idempotencyKey: "clientMutationId", cursorMode: "per-collection" },
+      })
+      pullAstraSyncDeltasMock.mockResolvedValue({
+        serverTime: "2026-04-09T01:00:40.000Z",
+        deltas: {
+          config: [{
+            collection: "config",
+            schemaVersion: 1,
+            recordId: "__deep_read_session_v1__:https%3A%2F%2Fexample.com%2Farticle",
+            operation: "upsert",
+            clientMutationId: "mut-deep-1",
+            deviceId: "device-remote",
+            clientUpdatedAt: "2026-04-09T01:00:30.000Z",
+            payload: {
+              pageUrl: "https://example.com/article",
+              pageTitle: "Remote article",
+              hostname: "example.com",
+              sentences: ["Intro.", "Remote resume."],
+              selectedSentenceAnchor: { sentenceText: "Remote resume.", sentenceHash: "fnv1a:remote", sentenceIndex: 1 },
+              selectedSentenceIndex: 1,
+              updatedAt: 3000,
+            },
+            ownerId: "usr_demo",
+            email: "user@example.com",
+            serverMutationId: "srv-deep-1",
+            serverUpdatedAt: "2026-04-09T01:00:35.000Z",
+            cursor: "cfg-2",
+          }],
+          vocabulary: [],
+          reading_history: [],
+          study_progress: [],
+        },
+        nextCursors: { config: "cfg-2", vocabulary: null, reading_history: null, study_progress: null },
+      })
+
+      const result = await runPhaseOneCollectionSync()
+
+      expect(result.pulled.config).toBe(1)
+      expect(browser.__storage[DEEP_READ_SESSION_STORAGE_KEY]).toMatchObject({
+        sessions: [expect.objectContaining({
+          pageUrl: "https://example.com/article",
+          pageTitle: "Remote article",
+          selectedSentenceIndex: 1,
+          selectedSentenceAnchor: expect.objectContaining({ sentenceHash: "fnv1a:remote" }),
+          updatedAt: 3000,
+        })],
+      })
+    })
+
+    it("emits private config deletes for owned-reading rows removed after a synced shadow", async () => {
+      setMockBrowser(createMockBrowser({
+        [OWNED_READING_STORAGE_KEY]: { version: 1, items: [] },
+        "astra.sync.phase1.v1": {
+          version: 1,
+          accountEmail: "user@example.com",
+          collections: {
+            config: {
+              cursor: "cfg-1",
+              shadow: {
+                "__owned_reading_metadata_v1__:or_article_deleted": {
+                  id: "or_article_deleted",
+                  sourceType: "article",
+                  title: "Deleted",
+                  sourceUrl: "https://example.com/deleted",
+                  localUri: null,
+                  openedAt: 1000,
+                  updatedAt: 1000,
+                  status: "saved",
+                  readingHistoryRecordId: "https://example.com/deleted",
+                  studyProgressRecordId: "https://example.com/deleted",
+                },
+              },
+            },
+            vocabulary: { cursor: null, shadow: {} },
+            reading_history: { cursor: null, shadow: {} },
+            study_progress: { cursor: null, shadow: {} },
+          },
+          lastRunAt: "2026-04-09T01:00:00.000Z",
+          lastSuccessAt: "2026-04-09T01:00:00.000Z",
+          lastError: null,
+        },
+        [ASTRA_AUTH_STORAGE_KEY]: {
+          version: 1,
+          sessionToken: "astra-session",
+          sessionId: "sess-1",
+          deviceId: "device-123",
+          identityMode: "authenticated",
+          relayBaseURL: "https://astra.example/v1",
+          email: "user@example.com",
+          plan: "pro",
+          subscriptionStatus: "active",
+          providerEntitlements: ["openai", "gemini"],
+          quota: { dailyRequestsLimit: 0, dailyCharactersLimit: 0, requestsPerMinuteLimit: 0, remainingDailyRequests: 0, remainingDailyCharacters: 0 },
+          usage: { totalRequests: 0, totalCharacters: 0, dailyRequestsUsed: 0, dailyCharactersUsed: 0, lastRequestAt: null, recentEvents: [] },
+          issuedAt: null,
+          expiresAt: null,
+        },
+        [ASTRA_DEVICE_STORAGE_KEY]: {
+          version: 1,
+          deviceId: "device-123",
+          label: "Chrome on macOS",
+          platform: "macos",
+          browserFamily: "chrome",
+          appKind: "extension",
+          appVersion: "0.1.0-test",
+          createdAt: "2026-04-09T00:00:00.000Z",
+          updatedAt: "2026-04-09T00:00:00.000Z",
+        },
+      }))
+
+      fetchAstraSyncBootstrapMock.mockResolvedValue({
+        serverTime: "2026-04-09T01:00:00.000Z",
+        deviceId: "device-123",
+        collections: {
+          config: { enabled: true, defaultEnabled: true, cursor: "cfg-1" },
+          vocabulary: { enabled: true, defaultEnabled: true, cursor: null },
+          reading_history: { enabled: false, defaultEnabled: false, cursor: null },
+          study_progress: { enabled: false, defaultEnabled: false, cursor: null },
+        },
+        limits: { maxMutationsPerRequest: 200 },
+        transport: { deviceHeader: "X-Astra-Device-Id", idempotencyKey: "clientMutationId", cursorMode: "per-collection" },
+      })
+      pushAstraSyncMutationsMock.mockResolvedValue({
+        serverTime: "2026-04-09T01:00:30.000Z",
+        accepted: [],
+        rejected: [],
+        nextCursors: { config: "cfg-2", vocabulary: null, reading_history: null, study_progress: null },
+      })
+      pullAstraSyncDeltasMock.mockResolvedValue({
+        serverTime: "2026-04-09T01:00:40.000Z",
+        deltas: { config: [], vocabulary: [], reading_history: [], study_progress: [] },
+        nextCursors: { config: "cfg-2", vocabulary: null, reading_history: null, study_progress: null },
+      })
+
+      await runPhaseOneCollectionSync()
+
+      expect(pushAstraSyncMutationsMock).toHaveBeenCalledWith(expect.objectContaining({
+        mutations: expect.arrayContaining([
+          expect.objectContaining({
+            collection: "config",
+            recordId: "__owned_reading_metadata_v1__:or_article_deleted",
+            operation: "delete",
+            payload: null,
+          }),
+        ]),
+      }))
+    })
+
     it("ignores pulled study progress deltas when the optional collection is disabled", async () => {
       const browser = setMockBrowser(createMockBrowser({
         [STUDY_PROGRESS_STORAGE_KEY]: {
@@ -860,6 +1398,70 @@ describe("config-sync", () => {
             vocabReviewed: 0,
           },
         },
+        [OWNED_READING_STORAGE_KEY]: {
+          version: 1,
+          items: [{
+            id: "or_article_repair_deleted",
+            sourceType: "article",
+            title: "Repair deleted",
+            sourceUrl: "https://example.com/repair-deleted",
+            localUri: null,
+            openedAt: 1000,
+            updatedAt: 1000,
+            status: "saved",
+            readingHistoryRecordId: "https://example.com/repair-deleted",
+            studyProgressRecordId: "https://example.com/repair-deleted",
+          }],
+        },
+        [DEEP_READ_SESSION_STORAGE_KEY]: {
+          sessions: [{
+            pageUrl: "https://example.com/local-only",
+            pageTitle: "Local only newer",
+            hostname: "example.com",
+            sentences: ["Local only."],
+            selectedSentenceAnchor: { sentenceText: "Local only.", sentenceHash: "fnv1a:local", sentenceIndex: 0 },
+            selectedSentenceIndex: 0,
+            updatedAt: 3000,
+          }],
+        },
+        "astra.sync.phase1.v1": {
+          version: 1,
+          accountEmail: "user@example.com",
+          collections: {
+            config: {
+              cursor: "cfg-1",
+              shadow: {
+                "__owned_reading_metadata_v1__:or_article_repair_deleted": {
+                  id: "or_article_repair_deleted",
+                  sourceType: "article",
+                  title: "Repair deleted",
+                  sourceUrl: "https://example.com/repair-deleted",
+                  localUri: null,
+                  openedAt: 1000,
+                  updatedAt: 1000,
+                  status: "saved",
+                  readingHistoryRecordId: "https://example.com/repair-deleted",
+                  studyProgressRecordId: "https://example.com/repair-deleted",
+                },
+                "__deep_read_session_v1__:https%3A%2F%2Fexample.com%2Flocal-only": {
+                  pageUrl: "https://example.com/local-only",
+                  pageTitle: "Local only old shadow",
+                  hostname: "example.com",
+                  sentences: ["Local only."],
+                  selectedSentenceAnchor: { sentenceText: "Local only.", sentenceHash: "fnv1a:local", sentenceIndex: 0 },
+                  selectedSentenceIndex: 0,
+                  updatedAt: 1000,
+                },
+              },
+            },
+            vocabulary: { cursor: "voc-1", shadow: {} },
+            reading_history: { cursor: "hist-1", shadow: {} },
+            study_progress: { cursor: "progress-1", shadow: {} },
+          },
+          lastRunAt: "2026-04-09T00:59:00.000Z",
+          lastSuccessAt: "2026-04-09T00:59:00.000Z",
+          lastError: null,
+        },
         [ASTRA_AUTH_STORAGE_KEY]: {
           version: 1,
           sessionToken: "astra-session",
@@ -944,6 +1546,21 @@ describe("config-sync", () => {
               lastDeviceId: "device-remote",
               lastServerUpdatedAt: "2026-04-09T01:00:35.000Z",
               cursor: "cfg-4",
+            }, {
+              recordId: "__deep_read_session_v1__:https%3A%2F%2Fexample.com%2Fremote",
+              payload: {
+                pageUrl: "https://example.com/remote",
+                pageTitle: "Remote repaired",
+                hostname: "example.com",
+                sentences: ["Remote repaired."],
+                selectedSentenceAnchor: { sentenceText: "Remote repaired.", sentenceHash: "fnv1a:remote-repair", sentenceIndex: 0 },
+                selectedSentenceIndex: 0,
+                updatedAt: 4000,
+              },
+              lastClientMutationId: "cfg-5",
+              lastDeviceId: "device-remote",
+              lastServerUpdatedAt: "2026-04-09T01:00:36.000Z",
+              cursor: "cfg-5",
             }],
           },
           vocabulary: {
@@ -1010,7 +1627,7 @@ describe("config-sync", () => {
       const result = await runPhaseOneCollectionSync()
 
       expect(result.skipped).toBe(false)
-      expect(result.pulled).toEqual({ config: 1, vocabulary: 1, reading_history: 1, study_progress: 1 })
+      expect(result.pulled).toEqual({ config: 2, vocabulary: 1, reading_history: 1, study_progress: 1 })
       expect(repairAstraSyncStateMock).toHaveBeenCalledWith(expect.objectContaining({
         deviceId: "device-123",
         request: { collections: ["config", "vocabulary", "reading_history", "study_progress"] },
@@ -1029,6 +1646,15 @@ describe("config-sync", () => {
         pages: [expect.objectContaining({ url: "https://example.com/fresh" })],
         dailyStats: expect.objectContaining({ pagesStudied: 1, sentencesExplained: 3 }),
       }))
+      expect(browser.__storage[OWNED_READING_STORAGE_KEY]).toEqual(expect.objectContaining({
+        items: [],
+      }))
+      expect(browser.__storage[DEEP_READ_SESSION_STORAGE_KEY]).toEqual({
+        sessions: [
+          expect.objectContaining({ pageUrl: "https://example.com/remote", pageTitle: "Remote repaired", updatedAt: 4000 }),
+          expect.objectContaining({ pageUrl: "https://example.com/local-only", pageTitle: "Local only newer", updatedAt: 3000 }),
+        ],
+      })
     })
 
     it("chunks push batches to the server-advertised mutation limit", async () => {

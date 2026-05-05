@@ -748,6 +748,8 @@ export async function runSourceBackedPageTranslation(params: {
       inputTranslation: "disabled",
       inputTranslationMode: "replace",
       languageLevel: "intermediate",
+      explainMode: "deep",
+      explanationGlossary: [],
       privacyMode: params.privacyMode ?? false,
       provider: {
         id: "openai",
@@ -893,6 +895,8 @@ export async function runSourceBackedSiteRuleUpdateAutomation(params: {
       inputTranslation: "disabled",
       inputTranslationMode: "replace",
       languageLevel: "intermediate",
+      explainMode: "deep",
+      explanationGlossary: [],
       privacyMode: false,
       provider: {
         id: "openai",
@@ -1090,6 +1094,8 @@ export async function runSourceBackedProviderSwitchAutomation(params: {
       inputTranslation: "disabled",
       inputTranslationMode: "replace",
       languageLevel: "intermediate",
+      explainMode: "deep",
+      explanationGlossary: [],
       privacyMode: false,
       provider: {
         id: "openai",
@@ -1313,6 +1319,8 @@ export async function runSourceBackedBackgroundRelayOnlyPageTranslation(params: 
       inputTranslation: "disabled",
       inputTranslationMode: "replace",
       languageLevel: "intermediate",
+      explainMode: "deep",
+      explanationGlossary: [],
       privacyMode: false,
       provider: {
         id: "openai",
@@ -1476,6 +1484,8 @@ export async function runSourceBackedBackgroundDirectSuccessPageTranslation(para
       inputTranslation: "disabled",
       inputTranslationMode: "replace",
       languageLevel: "intermediate",
+      explainMode: "deep",
+      explanationGlossary: [],
       privacyMode: false,
       provider: {
         id: "openai",
@@ -1645,6 +1655,8 @@ export async function runSourceBackedBackgroundDirectRelayFallbackPageTranslatio
       inputTranslation: "disabled",
       inputTranslationMode: "replace",
       languageLevel: "intermediate",
+      explainMode: "deep",
+      explanationGlossary: [],
       privacyMode: false,
       provider: {
         id: "openai",
@@ -1814,6 +1826,8 @@ export async function runSourceBackedProviderAndSiteRuleUpdateAutomation(params:
       inputTranslation: "disabled",
       inputTranslationMode: "replace",
       languageLevel: "intermediate",
+      explainMode: "deep",
+      explanationGlossary: [],
       privacyMode: false,
       provider: {
         id: "openai",
@@ -2055,6 +2069,8 @@ export async function runSourceBackedSpaNavigationAutomation(params: {
       inputTranslation: "disabled",
       inputTranslationMode: "replace",
       languageLevel: "intermediate",
+      explainMode: "deep",
+      explanationGlossary: [],
       privacyMode: false,
       provider: {
         id: "openai",
@@ -2239,6 +2255,8 @@ export async function runSourceBackedRapidSpaNavigationAutomation(params: {
       inputTranslation: "disabled",
       inputTranslationMode: "replace",
       languageLevel: "intermediate",
+      explainMode: "deep",
+      explanationGlossary: [],
       privacyMode: false,
       provider: {
         id: "openai",

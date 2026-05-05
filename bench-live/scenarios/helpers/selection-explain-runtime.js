@@ -91,6 +91,10 @@
     target.dispatchEvent(new MouseEvent("mouseup", { bubbles: true, button: 0 }))
 
     let latestResult = ""
+    const explainProfile = {
+      languageLevel: "beginner",
+      explainMode: "exam",
+    }
     async function runExplain() {
       const response = await fetch(relayUrl, {
         method: "POST",
@@ -103,6 +107,8 @@
           texts: [selectedText],
           targetLang: "zh-CN",
           task: "explain",
+          languageLevel: explainProfile.languageLevel,
+          explainMode: explainProfile.explainMode,
           context: {
             pageTitle: document.title,
             pageUrl: window.location.href,
@@ -118,7 +124,7 @@
 
       const payload = await response.json()
       latestResult = normalizeText(payload?.translations?.[0] ?? "")
-      toolbar.result.textContent = latestResult
+      toolbar.result.textContent = `Explain profile: Exam · Beginner\n${latestResult}`
       return latestResult
     }
 

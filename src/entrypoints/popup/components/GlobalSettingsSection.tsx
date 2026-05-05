@@ -10,7 +10,7 @@ import type {
 import { getDefaultProviderModel } from "@/types/config"
 import { browser } from "#imports"
 import { useState } from "react"
-import { labelStyle, inputStyle } from "./styles"
+import { labelStyle } from "./styles"
 import { t } from "@/utils/i18n"
 
 const LANGUAGE_OPTIONS = [
@@ -90,12 +90,13 @@ export default function GlobalSettingsSection({
 
   return (
     <details open style={{ marginBottom: 12 }}>
-      <summary style={{ cursor: "pointer", fontSize: 13, color: "#6366f1" }}>
+      <summary className="astra-cursor-pointer" style={{ fontSize: 13, color: "var(--astra-accent-warm-hover)" }}>
         ⚙ {t("settingsTitle")}
       </summary>
       <div style={{ marginTop: 8 }}>
-        <label style={labelStyle}>{t("providerLabel")}</label>
+        <label htmlFor="popup-provider-select" style={labelStyle}>{t("providerLabel")}</label>
         <select
+          id="popup-provider-select"
           value={config.provider.id}
           onChange={(e) => {
             const providerId = e.target.value as ProviderId
@@ -104,22 +105,23 @@ export default function GlobalSettingsSection({
               model: getDefaultProviderModel(providerId),
             })
           }}
-          style={inputStyle}
+          className="astra-input"
         >
           {PROVIDER_OPTIONS.map((option) => (
             <option key={option.value} value={option.value}>{option.label}</option>
           ))}
         </select>
 
-        <label style={labelStyle}>{t("apiKeyLabel")}</label>
+        <label htmlFor="popup-provider-api-key" style={labelStyle}>{t("apiKeyLabel")}</label>
         <input
+          id="popup-provider-api-key"
           type="password"
           value={config.provider.apiKey ?? ""}
           onChange={(e) => onProviderChange({ apiKey: e.target.value })}
           placeholder={config.provider.id === "gemini" ? "AIzaSy..." : "sk-..."}
-          style={inputStyle}
+          className="astra-input"
         />
-        <div style={{ fontSize: 11, color: "#94a3b8", marginTop: 2 }}>
+        <div style={{ fontSize: 11, color: "var(--astra-text-muted)", marginTop: 2 }}>
           {t("label_apiKeyDirectConnect", config.provider.id === "gemini" ? "Google" : "OpenAI")}
         </div>
 
@@ -133,94 +135,124 @@ export default function GlobalSettingsSection({
             padding: "4px 12px",
             fontSize: 11,
             fontWeight: 600,
-            border: "1px solid #e2e8f0",
+            border: "1px solid var(--astra-border)",
             borderRadius: 4,
             cursor: testStatus === "testing" ? "wait" : "pointer",
-            background: testStatus === "success" ? "#10b981" : testStatus === "error" ? "#f59e0b" : "#fff",
-            color: testStatus === "success" || testStatus === "error" ? "#fff" : "#334155",
+            background: testStatus === "success" ? "var(--astra-success)" : testStatus === "error" ? "var(--astra-warning)" : "var(--astra-bg-card)",
+            color: testStatus === "success" || testStatus === "error" ? "var(--astra-bg-card)" : "var(--astra-text-secondary)",
           }}
         >
           {testStatus === "testing" ? "Testing..." : testStatus === "success" ? "Connected!" : testStatus === "error" ? "Failed" : "Test Connection"}
         </button>
         {testStatus === "error" && testError && (
-          <div style={{ fontSize: 11, color: "#b45309", marginBottom: 6 }}>{testError}</div>
+          <div style={{ fontSize: 11, color: "var(--astra-warning)", marginBottom: 6 }}>{testError}</div>
         )}
 
-        <label style={labelStyle}>{t("relayUrlLabel")}</label>
+        <label htmlFor="popup-provider-relay-url" style={labelStyle}>{t("relayUrlLabel")}</label>
         <input
+          id="popup-provider-relay-url"
           value={config.provider.relayBaseURL ?? ""}
           onChange={(e) => onProviderChange({ relayBaseURL: e.target.value })}
           placeholder="https://api.astra.example/v1"
-          style={inputStyle}
+          className="astra-input"
         />
 
-        <label style={labelStyle}>{t("modelLabel")}</label>
+        <label htmlFor="popup-provider-model" style={labelStyle}>{t("modelLabel")}</label>
         <input
+          id="popup-provider-model"
           value={config.provider.model}
           onChange={(e) => onProviderChange({ model: e.target.value })}
           placeholder={getDefaultProviderModel(config.provider.id)}
-          style={inputStyle}
+          className="astra-input"
         />
 
-        <label style={labelStyle}>{t("targetLangLabel")}</label>
+        <label htmlFor="popup-target-language" style={labelStyle}>{t("targetLangLabel")}</label>
         <select
+          id="popup-target-language"
           value={config.targetLang}
           onChange={(e) => onTargetLangChange(e.target.value)}
-          style={inputStyle}
+          className="astra-input"
         >
           {LANGUAGE_OPTIONS.map((option) => (
             <option key={option.value} value={option.value}>{option.label}</option>
           ))}
         </select>
 
-        <label style={labelStyle}>{t("hoverTriggerLabel")}</label>
+        <label htmlFor="popup-hover-trigger" style={labelStyle}>{t("hoverTriggerLabel")}</label>
         <select
+          id="popup-hover-trigger"
           value={config.hoverTrigger}
           onChange={(e) => onHoverTriggerChange(e.target.value as HoverTrigger)}
-          style={inputStyle}
+          className="astra-input"
         >
           {HOVER_TRIGGER_OPTIONS.map((option) => (
             <option key={option.value} value={option.value}>{t(option.labelKey)}</option>
           ))}
         </select>
 
-        <label style={labelStyle}>{t("label_languageLevel")}</label>
+        <label htmlFor="popup-language-level" style={labelStyle}>{t("label_languageLevel")}</label>
         <select
+          id="popup-language-level"
           value={config.languageLevel}
           onChange={(e) => onLanguageLevelChange(e.target.value as LanguageLevel)}
-          style={inputStyle}
+          className="astra-input"
         >
           {LANGUAGE_LEVEL_OPTIONS.map((option) => (
             <option key={option.value} value={option.value}>{t(option.labelKey)}</option>
           ))}
         </select>
 
-        <label style={labelStyle}>{t("translationModeLabel")}</label>
+        <label htmlFor="popup-translation-mode" style={labelStyle}>{t("translationModeLabel")}</label>
         <select
+          id="popup-translation-mode"
           value={config.presentation.mode}
           onChange={(e) => onPresentationChange({ mode: e.target.value as TranslationMode })}
-          style={inputStyle}
+          className="astra-input"
         >
           <option value="bilingual">{t("modeBilingual")}</option>
           <option value="translation-only">{t("modeTranslationOnly")}</option>
         </select>
 
-        <label style={labelStyle}>{t("translationThemeLabel")}</label>
+        <label htmlFor="popup-translation-theme" style={labelStyle}>{t("translationThemeLabel")}</label>
         <select
+          id="popup-translation-theme"
           value={config.presentation.theme}
           onChange={(e) => onPresentationChange({ theme: e.target.value as TranslationTheme })}
-          style={inputStyle}
+          className="astra-input"
         >
           <option value="default">{t("themeDefault")}</option>
           <option value="underline">{t("themeUnderline")}</option>
           <option value="highlight">{t("themeHighlight")}</option>
+          <option value="mask">{t("themeMask")}</option>
         </select>
 
-        <label style={labelStyle}>{t("scopeLabel")}</label>
+        <label htmlFor="popup-translation-font-size" style={labelStyle}>{t("label_translationFontSize")}</label>
+        <input
+          id="popup-translation-font-size"
+          data-testid="global-font-size-input"
+          type="range"
+          min={0.5}
+          max={2}
+          step={0.05}
+          value={config.presentation.fontSize}
+          onChange={(e) => {
+            const value = Number.parseFloat(e.target.value)
+            if (!Number.isFinite(value)) return
+            onPresentationChange({ fontSize: Math.max(0.5, Math.min(2, value)) })
+          }}
+          className="astra-input"
+          style={{ padding: 0 }}
+        />
+        <div style={{ fontSize: 11, color: "var(--astra-text-decorative)", marginTop: 2 }}>
+          {t("label_translationFontSizeValue", config.presentation.fontSize.toFixed(2))}
+        </div>
+
+        <label htmlFor="popup-content-scope" style={labelStyle}>{t("scopeLabel")}</label>
         <select
+          id="popup-content-scope"
           value={config.contentScope}
           onChange={(e) => onContentScopeChange(e.target.value as ContentScope)}
-          style={inputStyle}
+          className="astra-input"
         >
           <option value="page">{t("scopePage")}</option>
           <option value="article">{t("scopeArticle")}</option>

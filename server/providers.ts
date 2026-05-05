@@ -31,7 +31,7 @@ function systemPromptForTask(task: RelayTranslateRequest["task"]) {
   }
 
   if (task === "explain") {
-    return "You are an expert bilingual reading coach. Explain source texts clearly and naturally while preserving nuance."
+    return "You are an expert bilingual reading coach. Explain source texts clearly and naturally while preserving nuance, and honor any learner profile instructions in the user prompt."
   }
 
   return "You are a professional translator. Preserve meaning, tone, and formatting while producing natural target-language output."

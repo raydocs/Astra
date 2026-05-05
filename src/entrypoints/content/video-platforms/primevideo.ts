@@ -1,9 +1,11 @@
+import { playerCaptionWindowRenderingRule } from "./rendering-rules"
 import type { VideoPlatformConfig } from "./types"
 
 export const primevideoPlatform: VideoPlatformConfig = {
   id: "primevideo",
   hostnames: ["www.primevideo.com", "www.amazon.com"],
   preferTextTracks: true,
+  subtitleRendering: playerCaptionWindowRenderingRule("primevideo"),
   // Amazon Prime Video uses SDK caption overlays or generic caption containers
   captionContainerSelector: [
     ".atvwebplayersdk-captions-text",

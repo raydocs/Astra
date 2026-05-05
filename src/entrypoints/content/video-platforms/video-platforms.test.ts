@@ -24,12 +24,92 @@ vi.mock("@/utils/translate/translate", () => ({
 import { DEFAULT_ASTRA_CONFIG } from "@/types/config"
 import {
   clearVideoSubtitleCache,
+  getSupportedPlatformIds,
+  getSupportedPlatformRenderingRules,
   isVideoPage,
   startVideoSubtitleTranslation,
   stopVideoSubtitleTranslation,
 } from "./index"
+import { createTextTrackDomPlatform } from "./onboarding-template"
+import { courseOverlayRenderingRule, playerCaptionWindowRenderingRule } from "./rendering-rules"
 
 const originalFetch = globalThis.fetch
+
+const P0_PLATFORM_IDS = [
+  "youtube",
+  "bilibili",
+  "netflix",
+  "primevideo",
+  "disneyplus",
+  "udemy",
+  "coursera",
+  "vimeo",
+  "ted",
+  "khanacademy",
+] as const
+
+const EXPECTED_RENDERING_RULES = {
+  youtube: {
+    ruleId: "youtube-native-caption-line",
+    surface: "player-overlay",
+    insertionPoint: "native-caption-line",
+    className: "astra-video-subtitle--youtube",
+  },
+  bilibili: {
+    ruleId: "bilibili-native-caption-window",
+    surface: "player-overlay",
+    insertionPoint: "native-caption-window",
+    className: "astra-video-subtitle--bilibili",
+  },
+  netflix: {
+    ruleId: "netflix-native-caption-window",
+    surface: "player-overlay",
+    insertionPoint: "native-caption-window",
+    className: "astra-video-subtitle--netflix",
+  },
+  primevideo: {
+    ruleId: "primevideo-native-caption-window",
+    surface: "player-overlay",
+    insertionPoint: "native-caption-window",
+    className: "astra-video-subtitle--primevideo",
+  },
+  disneyplus: {
+    ruleId: "disneyplus-native-caption-window",
+    surface: "player-overlay",
+    insertionPoint: "native-caption-window",
+    className: "astra-video-subtitle--disneyplus",
+  },
+  udemy: {
+    ruleId: "udemy-course-overlay",
+    surface: "course-overlay",
+    insertionPoint: "native-caption-window",
+    className: "astra-video-subtitle--udemy",
+  },
+  coursera: {
+    ruleId: "coursera-course-overlay",
+    surface: "course-overlay",
+    insertionPoint: "native-caption-window",
+    className: "astra-video-subtitle--coursera",
+  },
+  vimeo: {
+    ruleId: "vimeo-native-caption-window",
+    surface: "player-overlay",
+    insertionPoint: "native-caption-window",
+    className: "astra-video-subtitle--vimeo",
+  },
+  ted: {
+    ruleId: "ted-native-caption-window",
+    surface: "player-overlay",
+    insertionPoint: "native-caption-window",
+    className: "astra-video-subtitle--ted",
+  },
+  khanacademy: {
+    ruleId: "khanacademy-course-overlay",
+    surface: "course-overlay",
+    insertionPoint: "native-caption-window",
+    className: "astra-video-subtitle--khanacademy",
+  },
+} as const
 
 function setLocation(hostname: string, pathname: string) {
   Object.defineProperty(window, "location", {
@@ -199,6 +279,118 @@ describe("video platform subtitle translation", () => {
     expect(isVideoPage()).toBe(true)
   })
 
+  it("detects Vimeo video pages", () => {
+    setLocation("vimeo.com", "/123456789")
+    expect(isVideoPage()).toBe(true)
+
+    setLocation("player.vimeo.com", "/video/123456789")
+    expect(isVideoPage()).toBe(true)
+
+    setLocation("vimeo.com", "/")
+    expect(isVideoPage()).toBe(false)
+  })
+
+  it("detects TED video pages", () => {
+    setLocation("www.ted.com", "/talks/sir_ken_robinson_do_schools_kill_creativity")
+    expect(isVideoPage()).toBe(true)
+
+    setLocation("embed.ted.com", "/talks/sir_ken_robinson_do_schools_kill_creativity")
+    expect(isVideoPage()).toBe(true)
+
+    setLocation("www.ted.com", "/")
+    expect(isVideoPage()).toBe(false)
+  })
+
+  it("detects Khan Academy video pages", () => {
+    setLocation("www.khanacademy.org", "/math/algebra/x2f8bb11595b61c86:foundation-algebra/v/introduction-to-algebra")
+    expect(isVideoPage()).toBe(true)
+
+    setLocation("khanacademy.org", "/computing/computer-programming/programming/video/programming-basics")
+    expect(isVideoPage()).toBe(true)
+
+    setLocation("www.khanacademy.org", "/math/algebra")
+    expect(isVideoPage()).toBe(false)
+  })
+
+  it("reports the P0 supported-platform PCP set at 10/10", () => {
+    const supportedP0 = P0_PLATFORM_IDS.filter((id) => getSupportedPlatformIds().includes(id))
+
+    expect(supportedP0).toContain("vimeo")
+    expect(supportedP0).toContain("ted")
+    expect(supportedP0).toContain("khanacademy")
+    expect(supportedP0).toHaveLength(10)
+  })
+
+  it("reports explicit P0 subtitle rendering-rule SRQP coverage at 10/10", () => {
+    const renderingRules = new Map(
+      getSupportedPlatformRenderingRules().map(({ id, subtitleRendering }) => [id, subtitleRendering]),
+    )
+
+    const coveredP0 = P0_PLATFORM_IDS.filter((id) => {
+      const rule = renderingRules.get(id)
+      return !!rule?.ruleId && !!rule.surface && !!rule.insertionPoint && !!rule.className
+    })
+
+    expect(coveredP0).toHaveLength(10)
+    for (const id of P0_PLATFORM_IDS) {
+      expect(renderingRules.get(id)).toEqual(expect.objectContaining({
+        ...EXPECTED_RENDERING_RULES[id],
+        nativeCuePolicy: "preserve-native",
+      }))
+    }
+  })
+
+  it("enforces onboarding-template subtitleRendering.ruleId coupling to platform id", () => {
+    const baseOptions = {
+      id: "templateprobe",
+      hostnames: ["templateprobe.example"],
+      captionContainerSelector: ".captions",
+      isVideoPage: () => true,
+    }
+
+    expect(createTextTrackDomPlatform(baseOptions).subtitleRendering.ruleId).toBe(
+      "templateprobe-native-caption-window",
+    )
+    expect(createTextTrackDomPlatform({
+      ...baseOptions,
+      subtitleRendering: courseOverlayRenderingRule("templateprobe"),
+    }).subtitleRendering.ruleId).toBe("templateprobe-course-overlay")
+    expect(() => createTextTrackDomPlatform({
+      ...baseOptions,
+      subtitleRendering: playerCaptionWindowRenderingRule("otherprobe"),
+    })).toThrow(/templateprobe-.*otherprobe-native-caption-window/)
+  })
+
+  it.each([
+    ["youtube", "www.youtube.com", "/watch", '<div class="ytp-caption-window-container"><div class="ytp-caption-window-bottom"><span class="ytp-caption-segment">Hello YouTube</span></div></div>'],
+    ["bilibili", "www.bilibili.com", "/video/BV1234567", '<div class="bpx-player-subtitle-panel"><span class="bpx-player-subtitle-panel-text">Hello Bilibili</span></div>'],
+    ["netflix", "www.netflix.com", "/watch/12345", '<div class="player-timedtext-text-container"><span>Hello Netflix</span></div>'],
+    ["primevideo", "www.primevideo.com", "/detail/0ABC", '<div class="atvwebplayersdk-captions-text"><span>Hello Prime</span></div>'],
+    ["disneyplus", "www.disneyplus.com", "/video/abc123", '<div class="player-timedtext-text-container"><span>Hello Disney</span></div>'],
+    ["udemy", "www.udemy.com", "/course/demo/learn/lecture/123", '<div class="captions-display--captions-container"><span>Hello Udemy</span></div>'],
+    ["coursera", "www.coursera.org", "/learn/demo/lecture/abc", '<div class="rc-VideoTranscript"><span>Hello Coursera</span></div>'],
+    ["vimeo", "vimeo.com", "/123456789", '<div class="vp-captions"><span>Hello Vimeo</span></div>'],
+    ["ted", "www.ted.com", "/talks/sir_ken_robinson_do_schools_kill_creativity", '<div class="ted-player__captions"><span>Hello TED</span></div>'],
+    ["khanacademy", "www.khanacademy.org", "/math/algebra/x2f8bb11595b61c86:foundation-algebra/v/introduction-to-algebra", '<div class="khanacademy-video-captions"><span>Hello Khan</span></div>'],
+  ] as const)("applies %s subtitle rendering metadata at runtime", async (id, hostname, pathname, html) => {
+    setLocation(hostname, pathname)
+    document.body.innerHTML = html
+
+    await startVideoSubtitleTranslation()
+    await flushPromises(6)
+
+    const expected = EXPECTED_RENDERING_RULES[id]
+    const subtitle = document.querySelector<HTMLElement>(".astra-video-subtitle")
+    expect(subtitle?.textContent).toBe("翻译结果")
+    expect(subtitle?.dataset.astraRenderRuleId).toBe(expected.ruleId)
+    expect(subtitle?.dataset.astraRenderSurface).toBe(expected.surface)
+    expect(subtitle?.dataset.astraRenderInsertionPoint).toBe(expected.insertionPoint)
+    expect(subtitle?.dataset.astraNativeCuePolicy).toBe("preserve-native")
+    expect(subtitle?.classList.contains(expected.className)).toBe(true)
+    expect(subtitle?.style.getPropertyValue("--astra-caption-max-width")).not.toBe("")
+    expect(subtitle?.style.getPropertyValue("--astra-caption-text-align")).toBe("center")
+  })
+
   it("returns false for non-video pages", () => {
     setLocation("www.youtube.com", "/")
     expect(isVideoPage()).toBe(false)
@@ -217,8 +409,8 @@ describe("video platform subtitle translation", () => {
     fetchMock.mockResolvedValue({
       ok: true,
       text: async () => timedTextJson([
-        { startMs: 0, durationMs: 900, text: "Hello world" },
-        { startMs: 1200, durationMs: 900, text: "Second cue" },
+        { startMs: 0, durationMs: 1000, text: "Hello world" },
+        { startMs: 1200, durationMs: 1000, text: "Second cue" },
       ]),
     } as Response)
 
@@ -235,7 +427,72 @@ describe("video platform subtitle translation", () => {
     expect(container.dataset.astraCaptionPipeline).toBe("youtube-hybrid")
     expect(container.dataset.astraCaptionSource).toBe("timedtext")
     expect(container.dataset.astraCaptionStatus).toBe("ready")
-    expect(document.querySelector(".astra-video-subtitle")?.textContent).toBe("[translated] Hello world")
+    const subtitle = document.querySelector<HTMLElement>(".astra-video-subtitle")
+    expect(subtitle?.textContent).toBe("[translated] Hello world")
+    expect(subtitle?.dataset.astraPresentationMode).toBe("bilingual")
+    expect(subtitle?.dataset.astraPresentationTheme).toBe("default")
+    expect(subtitle?.style.getPropertyValue("--astra-caption-font-size")).toBe("")
+    expect(subtitle?.style.getPropertyValue("--astra-caption-color")).toBe("")
+  })
+
+  it("applies global presentation overrides to video subtitle spans", async () => {
+    readConfigMock.mockResolvedValue({
+      ...DEFAULT_ASTRA_CONFIG,
+      presentation: {
+        ...DEFAULT_ASTRA_CONFIG.presentation,
+        mode: "translation-only",
+        theme: "highlight",
+        fontSize: 1.1,
+        translationColor: "#22c55e",
+      },
+    })
+    setLocation("www.youtube.com", "/watch")
+    appendYouTubeFixture("Hello world")
+
+    await startVideoSubtitleTranslation()
+    await flushPromises(6)
+
+    const subtitle = document.querySelector<HTMLElement>(".astra-video-subtitle")
+    expect(subtitle?.textContent).toBe("翻译结果")
+    expect(subtitle?.dataset.astraPresentationMode).toBe("translation-only")
+    expect(subtitle?.dataset.astraPresentationTheme).toBe("highlight")
+    expect(subtitle?.style.getPropertyValue("--astra-caption-font-size")).toBe("1.1em")
+    expect(subtitle?.style.getPropertyValue("--astra-caption-color")).toBe("#22c55e")
+  })
+
+  it("lets site-specific presentation override global video subtitle styling", async () => {
+    readConfigMock.mockResolvedValue({
+      ...DEFAULT_ASTRA_CONFIG,
+      presentation: {
+        ...DEFAULT_ASTRA_CONFIG.presentation,
+        theme: "underline",
+        fontSize: 1.05,
+        translationColor: "#111827",
+      },
+      sites: {
+        "www.youtube.com": {
+          enabled: true,
+          alwaysTranslate: false,
+          presentation: {
+            mode: "translation-only",
+            theme: "highlight",
+            fontSize: 1.25,
+            translationColor: "#f97316",
+          },
+        },
+      },
+    })
+    setLocation("www.youtube.com", "/watch")
+    appendYouTubeFixture("Hello world")
+
+    await startVideoSubtitleTranslation()
+    await flushPromises(6)
+
+    const subtitle = document.querySelector<HTMLElement>(".astra-video-subtitle")
+    expect(subtitle?.dataset.astraPresentationMode).toBe("translation-only")
+    expect(subtitle?.dataset.astraPresentationTheme).toBe("highlight")
+    expect(subtitle?.style.getPropertyValue("--astra-caption-font-size")).toBe("1.25em")
+    expect(subtitle?.style.getPropertyValue("--astra-caption-color")).toBe("#f97316")
   })
 
   it("prefers authored YouTube tracks over ASR and target-language tracks", async () => {
@@ -529,6 +786,164 @@ describe("video platform subtitle translation", () => {
     resolveSecond?.({ ok: true, text: "新翻译" })
     await flushPromises(4)
     expect(document.querySelector(".astra-video-subtitle")?.textContent).toBe("新翻译")
+  })
+
+  it("uses layered textTrack pipeline for Vimeo before DOM fallback", async () => {
+    setLocation("vimeo.com", "/123456789")
+    document.body.innerHTML = `
+      <div class="vp-video-wrapper">
+        <video id="vimeo-video"></video>
+        <div class="vp-captions"></div>
+      </div>
+    `
+    const video = document.getElementById("vimeo-video") as HTMLVideoElement
+    Object.defineProperty(video, "currentTime", {
+      configurable: true,
+      writable: true,
+      value: 0.2,
+    })
+    attachTextTracks(video, [makeTextTrack({
+      language: "en",
+      cues: [
+        { startTime: 0, endTime: 1, text: "Hello Vimeo" },
+        { startTime: 1.2, endTime: 2.2, text: "Second Vimeo cue" },
+      ],
+    })])
+
+    await startVideoSubtitleTranslation()
+    await flushPromises(8)
+
+    expect(translateTextsMock).toHaveBeenCalledWith(expect.objectContaining({
+      texts: ["Hello Vimeo", "Second Vimeo cue"],
+      targetLang: DEFAULT_ASTRA_CONFIG.targetLang,
+      task: "translate",
+    }))
+    expect(document.querySelector(".vp-captions .astra-video-subtitle")?.textContent).toBe("[translated] Hello Vimeo")
+    expect(document.querySelector(".vp-captions")?.getAttribute("data-astra-caption-source")).toBe("text-track")
+  })
+
+  it("uses layered textTrack pipeline for TED before DOM fallback", async () => {
+    setLocation("www.ted.com", "/talks/sir_ken_robinson_do_schools_kill_creativity")
+    document.body.innerHTML = `
+      <div class="ted-player">
+        <video id="ted-video"></video>
+        <div class="ted-player__captions"></div>
+      </div>
+    `
+    const video = document.getElementById("ted-video") as HTMLVideoElement
+    Object.defineProperty(video, "currentTime", {
+      configurable: true,
+      writable: true,
+      value: 0.2,
+    })
+    attachTextTracks(video, [makeTextTrack({
+      language: "en",
+      cues: [
+        { startTime: 0, endTime: 1, text: "Hello TED" },
+        { startTime: 1.2, endTime: 2.2, text: "Second TED cue" },
+      ],
+    })])
+
+    await startVideoSubtitleTranslation()
+    await flushPromises(8)
+
+    expect(translateTextsMock).toHaveBeenCalledWith(expect.objectContaining({
+      texts: ["Hello TED", "Second TED cue"],
+      targetLang: DEFAULT_ASTRA_CONFIG.targetLang,
+      task: "translate",
+    }))
+    expect(document.querySelector(".ted-player__captions .astra-video-subtitle")?.textContent).toBe("[translated] Hello TED")
+    expect(document.querySelector(".ted-player__captions")?.getAttribute("data-astra-caption-source")).toBe("text-track")
+  })
+
+  it("uses layered textTrack pipeline for Khan Academy before DOM fallback", async () => {
+    setLocation("www.khanacademy.org", "/math/algebra/x2f8bb11595b61c86:foundation-algebra/v/introduction-to-algebra")
+    document.body.innerHTML = `
+      <div class="ka-video-player">
+        <video id="khan-video"></video>
+        <div class="khanacademy-video-captions"></div>
+      </div>
+    `
+    const video = document.getElementById("khan-video") as HTMLVideoElement
+    Object.defineProperty(video, "currentTime", {
+      configurable: true,
+      writable: true,
+      value: 0.2,
+    })
+    attachTextTracks(video, [makeTextTrack({
+      language: "en",
+      cues: [
+        { startTime: 0, endTime: 1, text: "Hello Khan" },
+        { startTime: 1.2, endTime: 2.2, text: "Second Khan cue" },
+      ],
+    })])
+
+    await startVideoSubtitleTranslation()
+    await flushPromises(8)
+
+    expect(translateTextsMock).toHaveBeenCalledWith(expect.objectContaining({
+      texts: ["Hello Khan", "Second Khan cue"],
+      targetLang: DEFAULT_ASTRA_CONFIG.targetLang,
+      task: "translate",
+    }))
+    expect(document.querySelector(".khanacademy-video-captions .astra-video-subtitle")?.textContent).toBe("[translated] Hello Khan")
+    expect(document.querySelector(".khanacademy-video-captions")?.getAttribute("data-astra-caption-source")).toBe("text-track")
+  })
+
+  it("falls back to DOM translation for TED captions", async () => {
+    setLocation("www.ted.com", "/talks/sir_ken_robinson_do_schools_kill_creativity")
+    document.body.innerHTML = `
+      <div class="ted-player__captions">
+        <span>Hello TED</span>
+        <span>Hello TED</span>
+      </div>
+    `
+
+    await startVideoSubtitleTranslation()
+    await flushPromises(4)
+
+    expect(runInlineActionMock).toHaveBeenCalledWith(expect.objectContaining({
+      text: "Hello TED",
+      task: "translate",
+    }))
+    expect(document.querySelector(".ted-player__captions .astra-video-subtitle")?.textContent).toBe("翻译结果")
+  })
+
+  it("falls back to DOM translation for Vimeo captions", async () => {
+    setLocation("vimeo.com", "/123456789")
+    document.body.innerHTML = `
+      <div class="vp-captions">
+        <span>Hello Vimeo</span>
+      </div>
+    `
+
+    await startVideoSubtitleTranslation()
+    await flushPromises(4)
+
+    expect(runInlineActionMock).toHaveBeenCalledWith(expect.objectContaining({
+      text: "Hello Vimeo",
+      task: "translate",
+    }))
+    expect(document.querySelector(".vp-captions .astra-video-subtitle")?.textContent).toBe("翻译结果")
+  })
+
+  it("falls back to DOM translation for Khan Academy captions", async () => {
+    setLocation("www.khanacademy.org", "/math/algebra/x2f8bb11595b61c86:foundation-algebra/v/introduction-to-algebra")
+    document.body.innerHTML = `
+      <div class="khanacademy-video-captions">
+        <span>Hello Khan</span>
+        <span>Hello Khan</span>
+      </div>
+    `
+
+    await startVideoSubtitleTranslation()
+    await flushPromises(4)
+
+    expect(runInlineActionMock).toHaveBeenCalledWith(expect.objectContaining({
+      text: "Hello Khan",
+      task: "translate",
+    }))
+    expect(document.querySelector(".khanacademy-video-captions .astra-video-subtitle")?.textContent).toBe("翻译结果")
   })
 
   it("uses layered textTrack pipeline for Bilibili before DOM fallback", async () => {

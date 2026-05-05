@@ -106,6 +106,21 @@ describe("inject helpers", () => {
     expect(el.textContent).toContain("Fresh text")
   })
 
+  it("applies the mask theme class while preserving translation wrapper classes", () => {
+    const el = document.createElement("p")
+    el.textContent = "Original text"
+    document.body.appendChild(el)
+
+    injectTranslation(el, "Masked text", { mode: "bilingual", theme: "mask" })
+
+    const wrapper = el.querySelector("[data-astra-translation='1']") as HTMLElement
+    expect(wrapper).not.toBeNull()
+    expect(wrapper.classList.contains("notranslate")).toBe(true)
+    expect(wrapper.classList.contains("astra-translation")).toBe(true)
+    expect(wrapper.classList.contains("astra-mode-bilingual")).toBe(true)
+    expect(wrapper.classList.contains("astra-theme-mask")).toBe(true)
+  })
+
   it("accepts DocumentFragment translation content", () => {
     document.body.innerHTML = `<p id="target">Hello world</p>`
     const target = document.getElementById("target") as HTMLElement

@@ -40,14 +40,14 @@ function getSourceLabel(source: RequestSource): string {
 function MetricGrid({ aggregate, label }: { aggregate: TranslationUsageAggregate; label: string }) {
   return (
     <div style={{ marginTop: 8 }}>
-      <div style={{ fontSize: 11, fontWeight: 600, color: "#475569", marginBottom: 4 }}>{label}</div>
+      <div style={{ fontSize: 11, fontWeight: 600, color: "var(--astra-text-secondary)", marginBottom: 4 }}>{label}</div>
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(80px, 1fr))", gap: 6 }}>
         <MetricCell label={t("popup_usageMetricRequests")} value={aggregate.requests.toString()} />
         <MetricCell label={t("popup_usageMetricTokensIn")} value={formatCompactCount(aggregate.estimatedInputTokens)} />
         <MetricCell label={t("popup_usageMetricEstCost")} value={formatCost(aggregate.estimatedCostUsd)} />
         <MetricCell label={t("popup_usageMetricChars")} value={formatCompactCount(aggregate.chars)} />
-        <MetricCell label={t("popup_usageMetricFallbacks")} value={aggregate.fallbackRequests.toString()} color={aggregate.fallbackRequests > 0 ? "#d97706" : undefined} />
-        <MetricCell label={t("popup_usageMetricFailed")} value={aggregate.failedRequests.toString()} color={aggregate.failedRequests > 0 ? "#dc2626" : undefined} />
+        <MetricCell label={t("popup_usageMetricFallbacks")} value={aggregate.fallbackRequests.toString()} color={aggregate.fallbackRequests > 0 ? "var(--astra-warning)" : undefined} />
+        <MetricCell label={t("popup_usageMetricFailed")} value={aggregate.failedRequests.toString()} color={aggregate.failedRequests > 0 ? "var(--astra-danger)" : undefined} />
       </div>
     </div>
   )
@@ -57,13 +57,13 @@ function MetricCell({ label, value, color }: { label: string; value: string; col
   return (
     <div style={{
       padding: "4px 6px",
-      background: "#fff",
-      border: "1px solid #f1f5f9",
+      background: "var(--astra-bg-card)",
+      border: "1px solid var(--astra-border)",
       borderRadius: 6,
     }}
     >
-      <div style={{ fontSize: 13, fontWeight: 700, color: color ?? "#0f172a" }}>{value}</div>
-      <div style={{ fontSize: 9, color: "#94a3b8", marginTop: 1 }}>{label}</div>
+      <div className="astra-tabular" style={{ fontSize: 13, fontWeight: 700, color: color ?? "var(--astra-text-primary)" }}>{value}</div>
+      <div style={{ fontSize: 9, color: "var(--astra-text-hint)", marginTop: 1 }}>{label}</div>
     </div>
   )
 }
@@ -75,17 +75,17 @@ function SourceDistribution({ bySource }: { bySource: Partial<Record<RequestSour
 
   return (
     <div style={{ marginTop: 8 }}>
-      <div style={{ fontSize: 11, fontWeight: 600, color: "#475569", marginBottom: 4 }}>{t("popup_usageBySource")}</div>
+      <div style={{ fontSize: 11, fontWeight: 600, color: "var(--astra-text-secondary)", marginBottom: 4 }}>{t("popup_usageBySource")}</div>
       <div style={{ display: "flex", gap: 2, height: 6, borderRadius: 3, overflow: "hidden" }}>
         {entries.map(([source, count]) => (
           <div
             key={source}
             style={{
               flex: count,
-              background: source === "page-translation" ? "#6366f1"
-                : source === "selection" ? "#2563eb"
-                  : source === "hover" ? "#0ea5e9"
-                    : "#94a3b8",
+              background: source === "page-translation" ? "var(--astra-accent-warm)"
+                : source === "selection" ? "var(--astra-accent-warm-hover)"
+                  : source === "hover" ? "var(--astra-accent-warm)"
+                    : "var(--astra-text-hint)",
             }}
             title={`${getSourceLabel(source)}: ${count} (${Math.round((count / total) * 100)}%)`}
           />
@@ -93,8 +93,8 @@ function SourceDistribution({ bySource }: { bySource: Partial<Record<RequestSour
       </div>
       <div style={{ display: "flex", gap: 8, marginTop: 4, flexWrap: "wrap" }}>
         {entries.map(([source, count]) => (
-          <span key={source} style={{ fontSize: 10, color: "#64748b" }}>
-            {getSourceLabel(source)} {count}
+          <span key={source} style={{ fontSize: 10, color: "var(--astra-text-muted)" }}>
+            {getSourceLabel(source)} <span className="astra-tabular">{count}</span>
           </span>
         ))}
       </div>
@@ -110,18 +110,18 @@ export default function UsageInsightsCard({ summary }: UsageInsightsCardProps) {
   return (
     <section style={{
       marginTop: 12,
-      background: "#f8fafc",
-      border: "1px solid #e2e8f0",
+      background: "var(--astra-bg-primary)",
+      border: "1px solid var(--astra-border)",
       borderRadius: 10,
       padding: 12,
     }}
     >
-      <div style={{ fontSize: 14, fontWeight: 700, color: "#0f172a" }}>
+      <div style={{ fontSize: 14, fontWeight: 700, color: "var(--astra-text-primary)" }}>
         {t("popup_usageTitle")}
       </div>
 
       {noUsage ? (
-        <div style={{ marginTop: 8, fontSize: 12, color: "#64748b", lineHeight: 1.5 }}>
+        <div style={{ marginTop: 8, fontSize: 12, color: "var(--astra-text-muted)", lineHeight: 1.5 }}>
           {t("popup_usageEmpty")}
         </div>
       ) : (
@@ -132,7 +132,7 @@ export default function UsageInsightsCard({ summary }: UsageInsightsCardProps) {
           <SourceDistribution bySource={summary.today.bySource} />
 
           {summary.today.avgDurationMs > 0 && (
-            <div style={{ marginTop: 8, fontSize: 11, color: "#64748b" }}>
+            <div style={{ marginTop: 8, fontSize: 11, color: "var(--astra-text-muted)" }}>
               {t("popup_usageAvgResponse", String(summary.today.avgDurationMs))}
             </div>
           )}
@@ -141,16 +141,16 @@ export default function UsageInsightsCard({ summary }: UsageInsightsCardProps) {
             <div style={{
               marginTop: 10,
               paddingTop: 10,
-              borderTop: "1px solid #e2e8f0",
+              borderTop: "1px solid var(--astra-border)",
               fontSize: 11,
-              color: "#64748b",
+              color: "var(--astra-text-muted)",
               lineHeight: 1.5,
             }}
             >
-              <strong style={{ color: "#475569" }}>{t("popup_usageLastLabel")}:</strong>{" "}
+              <strong style={{ color: "var(--astra-text-secondary)" }}>{t("popup_usageLastLabel")}:</strong>{" "}
               {summary.lastEvent.providerId} / {summary.lastEvent.model} · {formatRoute(summary.lastEvent)}
               {summary.lastEvent.estimatedCostUsd != null && summary.lastEvent.estimatedCostUsd > 0
-                ? ` · ${formatCost(summary.lastEvent.estimatedCostUsd)}`
+                ? <> · <span className="astra-tabular">{formatCost(summary.lastEvent.estimatedCostUsd)}</span></>
                 : ""}
               {!summary.lastEvent.success && summary.lastEvent.errorCode
                 ? ` · ${summary.lastEvent.errorCode}`
@@ -160,7 +160,7 @@ export default function UsageInsightsCard({ summary }: UsageInsightsCardProps) {
         </>
       )}
 
-      <div style={{ marginTop: 8, fontSize: 11, color: "#94a3b8", lineHeight: 1.45 }}>
+      <div style={{ marginTop: 8, fontSize: 11, color: "var(--astra-text-hint)", lineHeight: 1.45 }}>
         {t("popup_usageLiveOnly")}
       </div>
     </section>

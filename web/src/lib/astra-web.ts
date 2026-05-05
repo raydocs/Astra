@@ -131,6 +131,25 @@ interface WebCloudStudyProgressCoverage {
   vocab_review: number
 }
 
+const WebSyncedDeepReadSessionRecordSchema = z.object({
+  pageUrl: z.string().trim().min(1),
+  pageTitle: z.string().trim().min(1).optional(),
+  hostname: z.string().trim().min(1).optional(),
+  metaDescription: z.string().trim().min(1).optional(),
+  contentSummary: z.string().trim().min(1).optional(),
+  articleExcerpt: z.string().trim().min(1).optional(),
+  sentences: z.array(z.string().trim().min(1)).max(20),
+  selectedSentenceAnchor: z.object({
+    sentenceText: z.string().trim().min(1).optional(),
+    sentenceHash: z.string().trim().min(1).optional(),
+    sentenceIndex: z.number().int().nonnegative().optional(),
+  }).optional(),
+  selectedSentenceIndex: z.number().int().nonnegative(),
+  updatedAt: z.number().int().nonnegative(),
+})
+
+export type WebSyncedDeepReadSessionRecord = z.infer<typeof WebSyncedDeepReadSessionRecordSchema>
+
 interface WebArticleImportRecentFailure {
   jobId: string
   status: "failed" | "dead_lettered" | string
@@ -222,6 +241,10 @@ export interface WebCloudAssetsWorkspace {
     pages: SyncedStudyPageProgress[]
     stepCoverage: WebCloudStudyProgressCoverage
   }
+  deepReadSessions: {
+    count: number
+    sessions: WebSyncedDeepReadSessionRecord[]
+  }
   syncHealth: {
     activeDeviceCount: number
     totalDeviceCount: number
@@ -260,6 +283,8 @@ interface TranslateSegment {
 const MAX_BATCH_ITEMS = 12
 const MAX_BATCH_CHARS = 8000
 const MAX_CONCURRENCY = 4
+const WEB_OWNED_READING_CONFIG_RECORD_PREFIX = "__owned_reading_metadata_v1__:"
+const WEB_DEEP_READ_SESSION_CONFIG_RECORD_PREFIX = "__deep_read_session_v1__:"
 
 function createEmptyStudyProgressCoverage(): WebCloudStudyProgressCoverage {
   return {
@@ -278,6 +303,23 @@ function summarizeStudyProgressCoverage(pages: SyncedStudyPageProgress[]): WebCl
     })
     return coverage
   }, createEmptyStudyProgressCoverage())
+}
+
+function isWebPrivateConfigRecordId(recordId: string): boolean {
+  return recordId.startsWith(WEB_OWNED_READING_CONFIG_RECORD_PREFIX)
+    || recordId.startsWith(WEB_DEEP_READ_SESSION_CONFIG_RECORD_PREFIX)
+}
+
+function parseWebDeepReadSessions(
+  mutations: Array<{ recordId: string; operation: "upsert" | "delete"; payload?: unknown }>,
+): WebSyncedDeepReadSessionRecord[] {
+  return mutations
+    .filter((mutation) => mutation.recordId.startsWith(WEB_DEEP_READ_SESSION_CONFIG_RECORD_PREFIX))
+    .filter((mutation) => mutation.operation === "upsert")
+    .map((mutation) => WebSyncedDeepReadSessionRecordSchema.safeParse(mutation.payload))
+    .filter((parsed): parsed is { success: true; data: WebSyncedDeepReadSessionRecord } => parsed.success)
+    .map((parsed) => parsed.data)
+    .sort((left, right) => right.updatedAt - left.updatedAt)
 }
 
 function readStringStorage(key: string): string | null {
@@ -876,11 +918,13 @@ export async function fetchWebCloudAssets(params: {
   })
 
   const configMutations = snapshot.pull?.deltas.config ?? []
+  const appConfigMutations = configMutations.filter((mutation) => !isWebPrivateConfigRecordId(mutation.recordId))
+  const deepReadSessions = parseWebDeepReadSessions(configMutations)
   const vocabularyMutations = snapshot.pull?.deltas.vocabulary ?? []
   const readingHistoryMutations = snapshot.pull?.deltas.reading_history ?? []
   const studyProgressMutations = snapshot.pull?.deltas.study_progress ?? []
   const syncedConfig = buildSyncSafeConfig(
-    applyConfigSyncMutations(DEFAULT_ASTRA_CONFIG, configMutations),
+    applyConfigSyncMutations(DEFAULT_ASTRA_CONFIG, appConfigMutations),
     { includeManagedRelayBaseURL: true },
   )
   const syncedVocabulary = applySyncedVocabularyMutations([], vocabularyMutations)
@@ -897,7 +941,7 @@ export async function fetchWebCloudAssets(params: {
       defaultEnabled: snapshot.bootstrap.collections.config.defaultEnabled,
       cursor: snapshot.pull?.nextCursors.config ?? snapshot.bootstrap.collections.config.cursor,
       mutationCount: configMutations.length,
-      activeCount: countActiveRecords(configMutations),
+      activeCount: countActiveRecords(appConfigMutations),
     },
     {
       key: "vocabulary",
@@ -933,7 +977,7 @@ export async function fetchWebCloudAssets(params: {
       enabled: snapshot.bootstrap.collections.config.enabled,
       defaultEnabled: snapshot.bootstrap.collections.config.defaultEnabled,
       cursor: snapshot.pull?.nextCursors.config ?? snapshot.bootstrap.collections.config.cursor,
-      recordCount: countActiveRecords(configMutations),
+      recordCount: countActiveRecords(appConfigMutations),
       syncedConfig,
     },
     vocabulary: {
@@ -957,6 +1001,10 @@ export async function fetchWebCloudAssets(params: {
       pageCount: studyProgressPages.length,
       pages: studyProgressPages,
       stepCoverage,
+    },
+    deepReadSessions: {
+      count: deepReadSessions.length,
+      sessions: deepReadSessions,
     },
     syncHealth: {
       activeDeviceCount: snapshot.devices.filter((entry) => entry.status === "active").length,

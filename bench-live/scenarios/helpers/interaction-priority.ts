@@ -1,8 +1,18 @@
 import { evaluateInteractionPriority, type InteractionPriorityExecution } from "../../../bench/evaluators/interaction-priority"
 import type { LiveEvaluationResult, LiveScenarioExecution } from "../../evaluator"
 
+interface LiveStressDiagnostics {
+  label: string
+  orderedLines: string[]
+}
+
 interface LiveInteractionPriorityExecution extends LiveScenarioExecution {
   interactionPriority?: InteractionPriorityExecution
+  stressDiagnostics?: LiveStressDiagnostics
+}
+
+function stressDiagnosticNotes(execution: LiveInteractionPriorityExecution) {
+  return execution.stressDiagnostics?.orderedLines ?? []
 }
 
 export function buildLiveInteractionPriorityEvaluation(
@@ -33,7 +43,7 @@ export function buildLiveInteractionPriorityEvaluation(
       summary: execution.summary ?? "The live interaction-priority scenario did not produce a structured execution payload.",
       issues: ["interactionPriority execution payload was missing"],
       nextActions: ["Inspect the live runtime bridge and rerun the scenario."],
-      notes: execution.notes ?? [],
+      notes: [...stressDiagnosticNotes(execution), ...(execution.notes ?? [])],
       rubrics: [],
       artifacts: {
         browserArtifacts: execution.artifacts ?? {},
@@ -54,7 +64,11 @@ export function buildLiveInteractionPriorityEvaluation(
     summary: benchmark.pass ? options.successSummary : options.failureSummary,
     issues,
     nextActions: benchmark.nextActions,
-    notes: [...(execution.notes ?? []), ...(Array.isArray(benchmark.artifacts.notes) ? benchmark.artifacts.notes : [])],
+    notes: [
+      ...stressDiagnosticNotes(execution),
+      ...(execution.notes ?? []),
+      ...(Array.isArray(benchmark.artifacts.notes) ? benchmark.artifacts.notes : []),
+    ],
     rubrics: [],
     artifacts: {
       browserArtifacts: execution.artifacts ?? {},

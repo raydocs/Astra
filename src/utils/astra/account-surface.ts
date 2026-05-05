@@ -5,7 +5,7 @@ import type {
   AstraSubscriptionStatus,
   AstraUsageSnapshot,
 } from "@/types/auth"
-import type { QuotaInfo } from "@/utils/astra/quota"
+import type { QuotaInfo } from "@/utils/astra/quota-types"
 
 export type AstraAccountSurfaceSource = "account_summary" | "session_snapshot" | "none"
 

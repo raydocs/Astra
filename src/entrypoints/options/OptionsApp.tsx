@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react"
 import { browser } from "#imports"
+import { Toast } from "@/components/Toast"
 import type {
   AstraConfig,
   ContentScope,
@@ -26,12 +27,26 @@ import { fetchAstraContinuitySnapshot, revokeAstraDevice, updateAstraSyncCollect
 import { buildContinuityStatus, exportConfig, importConfig, downloadConfigFile, readConfigFile, runPhaseOneCollectionSync, type AstraContinuityRemoteSnapshot, type AstraContinuityStatus } from "@/utils/storage/config-sync"
 import { exportSiteRules, importSiteRules } from "@/utils/storage/site-rules"
 import { clearTranslationCache, getCacheStats } from "@/utils/cache/translation-cache"
+import {
+  aggregateLearningLoopFunnel,
+  getLearningLoopCopyVariantAutoSelectionStatus,
+  LEARNING_LOOP_EVENT_NAMES,
+  type LearningLoopCopyVariantAutoSelectionStatus,
+  type LearningLoopEventName,
+  type LearningLoopFunnelAggregation,
+} from "@/utils/learning-loop-events"
+import { getRecentEvents, type TelemetryEvent } from "@/utils/telemetry"
 import { isTtsSupported, listVoices, type TTSVoiceOption } from "@/utils/tts"
 import { diagnoseProvider, PROVIDER_CAPABILITIES, type ProviderDiagnostics } from "@/utils/providers/capabilities"
 import { useViewportProfile } from "@/utils/ui/useViewportProfile"
 import { t } from "@/utils/i18n"
 
 type Section = "general" | "providers" | "translation" | "actions" | "sites" | "vocabulary" | "diagnostics" | "about"
+
+type PendingRevokeDevice = {
+  deviceId: string
+  label: string
+}
 
 const LANGUAGE_OPTIONS = [
   { value: "zh-CN", label: "简体中文" },
@@ -88,7 +103,7 @@ const NAV_ITEMS: { key: Section; label: string }[] = [
   { key: "about", label: "About" },
 ]
 
-const BRAND_COLOR = "#6366f1"
+const BRAND_COLOR = "var(--astra-brand)"
 
 function formatContinuityTimestamp(value: string | null | undefined): string {
   if (!value) return "not yet"
@@ -111,6 +126,101 @@ function formatDeviceHostLabel(device: {
   return segments.length > 0 ? segments.join(" · ") : "Unknown client"
 }
 
+function formatRelativeTimestamp(timestamp: number): string {
+  const deltaMs = Date.now() - timestamp
+  if (!Number.isFinite(deltaMs) || deltaMs < 0) return t("options_learningLoopJustNow")
+
+  const minutes = Math.floor(deltaMs / 60000)
+  if (minutes <= 0) return t("options_learningLoopJustNow")
+  if (minutes === 1) return t("options_learningLoopRelativeMinute")
+  if (minutes < 60) return t("options_learningLoopRelativeMinutes", `${minutes}`)
+
+  const hours = Math.floor(minutes / 60)
+  if (hours === 1) return t("options_learningLoopRelativeHour")
+  if (hours < 24) return t("options_learningLoopRelativeHours", `${hours}`)
+
+  const days = Math.floor(hours / 24)
+  if (days === 1) return t("options_learningLoopRelativeDay")
+  return t("options_learningLoopRelativeDays", `${days}`)
+}
+
+function getLearningLoopEventLabel(event: LearningLoopEventName): string {
+  switch (event) {
+    case "copy_variant_assigned":
+      return "Learning-loop copy variant assigned"
+    case "popup_primer_viewed":
+      return "Popup primer viewed"
+    case "popup_primer_cta_clicked":
+      return "Popup primer CTA clicked"
+    case "onboarding_closure_viewed":
+      return "Onboarding closure copy viewed"
+    case "onboarding_closure_cta_clicked":
+      return "Onboarding closure CTA clicked"
+    case "onboarding_completed":
+      return "Onboarding completed"
+    case "deep_read_opened":
+      return t("options_learningLoopEventDeepReadOpened")
+    case "sentence_explained":
+      return t("options_learningLoopEventSentenceExplained")
+    case "sentence_saved":
+      return t("options_learningLoopEventSentenceSaved")
+    case "review_answered":
+      return t("options_learningLoopEventReviewAnswered")
+    case "returned_to_source":
+      return t("options_learningLoopEventReturnedToSource")
+    case "resumed_reading":
+      return t("options_learningLoopEventResumedReading")
+  }
+}
+
+function formatLearningLoopFunnelRate(value: number | null): string {
+  return value == null ? "n/a" : `${Math.round(value * 100)}%`
+}
+
+function formatLearningLoopAutoSelectionPhase(status: LearningLoopCopyVariantAutoSelectionStatus): string {
+  switch (status.phase) {
+    case "collecting":
+      return "Collecting samples"
+    case "guarded":
+      return "Guardrails holding"
+    case "cooldown":
+      return "Cooldown active"
+    case "selected":
+      return status.recommendedVariant ? "Auto-selecting winner" : "Winner selected"
+    case "unavailable":
+      return "Unavailable"
+  }
+}
+
+function formatLearningLoopAutoSelectionTime(value: number | null): string {
+  if (value == null) return "n/a"
+  return new Date(value).toLocaleString()
+}
+
+function getLearningLoopEventSummary(event: TelemetryEvent): string | null {
+  if (event.type !== "feature_usage" || event.data.feature !== "learning_loop") {
+    return null
+  }
+
+  const name = typeof event.data.event === "string"
+    ? event.data.event as LearningLoopEventName
+    : null
+  if (!name || !LEARNING_LOOP_EVENT_NAMES.includes(name)) {
+    return null
+  }
+
+  const location = [event.data.hostname, event.data.pageTitle, event.data.pageUrl]
+    .find((value): value is string => typeof value === "string" && value.trim().length > 0)
+  const source = typeof event.data.source === "string" && event.data.source.trim().length > 0
+    ? event.data.source.trim()
+    : null
+
+  const parts = [getLearningLoopEventLabel(name)]
+  if (location) parts.push(location)
+  if (source) parts.push(source)
+  return parts.join(" · ")
+}
+
 // --- Styles ---
 
 const pageStyle: React.CSSProperties = {
@@ -118,16 +228,16 @@ const pageStyle: React.CSSProperties = {
   minHeight: "100vh",
   fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif',
   fontSize: 14,
-  color: "#1e293b",
-  background: "#f8fafc",
+  color: "var(--astra-text-primary)",
+  background: "var(--astra-bg-primary)",
   margin: 0,
 }
 
 const sidebarStyle: React.CSSProperties = {
   width: 200,
   minWidth: 200,
-  background: "#fff",
-  borderRight: "1px solid #e2e8f0",
+  background: "var(--astra-bg-card)",
+  borderRight: "1px solid var(--astra-border)",
   padding: "24px 0",
   display: "flex",
   flexDirection: "column",
@@ -138,131 +248,54 @@ const logoStyle: React.CSSProperties = {
   fontWeight: 700,
   color: BRAND_COLOR,
   padding: "0 20px 20px",
-  borderBottom: "1px solid #e2e8f0",
+  borderBottom: "1px solid var(--astra-border)",
   marginBottom: 8,
 }
 
-const navBtnBase: React.CSSProperties = {
-  display: "block",
-  width: "100%",
-  textAlign: "left",
-  border: "none",
-  background: "transparent",
-  padding: "10px 20px",
-  fontSize: 14,
-  cursor: "pointer",
-  color: "#475569",
-  transition: "background 0.15s, color 0.15s, box-shadow 0.15s",
-}
-
-const navBtnActive: React.CSSProperties = {
-  background: `${BRAND_COLOR}0d`,
-  color: BRAND_COLOR,
-  fontWeight: 600,
-  boxShadow: `inset -3px 0 0 ${BRAND_COLOR}`,
-}
+// navBtnBase / navBtnActive removed — now using className="astra-nav-item" / "astra-nav-item-mobile"
 
 const contentStyle: React.CSSProperties = {
   flex: 1,
   padding: "32px 40px",
-  maxWidth: 720,
 }
 
-const sectionTitle: React.CSSProperties = {
-  fontSize: 22,
-  fontWeight: 700,
-  marginBottom: 24,
-  color: "#0f172a",
-}
+// sectionTitle removed — now using className="astra-section-heading"
 
 const fieldGroup: React.CSSProperties = {
-  marginBottom: 20,
+  marginBottom: "var(--astra-space-5)",
 }
 
 const labelStyle: React.CSSProperties = {
   display: "block",
-  fontSize: 13,
+  fontSize: "var(--astra-text-sm)",
   fontWeight: 500,
-  color: "#475569",
+  color: "var(--astra-text-secondary)",
   marginBottom: 6,
 }
 
 const hintStyle: React.CSSProperties = {
-  fontSize: 12,
-  color: "#94a3b8",
+  fontSize: "var(--astra-text-xs)",
+  color: "var(--astra-text-muted)",
   marginTop: 4,
 }
 
-const inputStyle: React.CSSProperties = {
-  width: "100%",
-  maxWidth: 400,
-  padding: "8px 10px",
-  border: "1px solid #e2e8f0",
-  borderRadius: 6,
-  fontSize: 14,
-  boxSizing: "border-box",
-  outline: "none",
-}
-
-const selectStyle: React.CSSProperties = {
-  ...inputStyle,
-  appearance: "auto",
-}
-
-const btnPrimary: React.CSSProperties = {
-  padding: "8px 20px",
-  background: BRAND_COLOR,
-  color: "#fff",
-  border: "none",
-  borderRadius: 6,
-  cursor: "pointer",
-  fontSize: 14,
-  fontWeight: 500,
-}
-
-const btnSecondary: React.CSSProperties = {
-  padding: "8px 20px",
-  background: "#f1f5f9",
-  color: "#334155",
-  border: "1px solid #e2e8f0",
-  borderRadius: 6,
-  cursor: "pointer",
-  fontSize: 14,
-}
-
-const btnDanger: React.CSSProperties = {
-  padding: "6px 16px",
-  background: "#fef2f2",
-  color: "#dc2626",
-  border: "1px solid #fecaca",
-  borderRadius: 6,
-  cursor: "pointer",
-  fontSize: 13,
-}
-
-const cardStyle: React.CSSProperties = {
-  background: "#fff",
-  border: "1px solid #e2e8f0",
-  borderRadius: 8,
-  padding: 16,
-  marginBottom: 12,
-}
+// inputStyle / selectStyle / btnPrimary / btnSecondary / btnDanger / cardStyle removed — all migrated to class names
 
 const successBanner: React.CSSProperties = {
   padding: "10px 16px",
-  background: "#ecfdf5",
-  color: "#065f46",
-  border: "1px solid #a7f3d0",
-  borderRadius: 6,
-  marginBottom: 20,
-  fontSize: 13,
+  background: "var(--astra-success-bg)",
+  color: "var(--astra-success)",
+  border: "1px solid var(--astra-border)",
+  borderRadius: "var(--astra-radius-sm)",
+  marginBottom: "var(--astra-space-5)",
+  fontSize: "var(--astra-text-sm)",
 }
 
 const checkboxRow: React.CSSProperties = {
   display: "flex",
   alignItems: "center",
-  gap: 8,
-  marginBottom: 12,
+  gap: "var(--astra-space-2)",
+  marginBottom: "var(--astra-space-3)",
 }
 
 // --- Sections ---
@@ -289,12 +322,13 @@ function GeneralSection({
 
   return (
     <div>
-      <h2 style={sectionTitle}>General</h2>
+      <h2 className="astra-section-heading">General</h2>
 
       <div style={fieldGroup}>
-        <label style={labelStyle}>Target language</label>
+        <label htmlFor="options-general-target-language" style={labelStyle}>Target language</label>
         <select
-          style={selectStyle}
+          id="options-general-target-language"
+          className="astra-input"
           value={config.targetLang}
           onChange={(e) => onChange({ targetLang: e.target.value })}
         >
@@ -305,9 +339,10 @@ function GeneralSection({
       </div>
 
       <div style={fieldGroup}>
-        <label style={labelStyle}>Language level</label>
+        <label htmlFor="options-general-language-level" style={labelStyle}>Language level</label>
         <select
-          style={selectStyle}
+          id="options-general-language-level"
+          className="astra-input"
           value={config.languageLevel}
           onChange={(e) => onChange({ languageLevel: e.target.value as AstraConfig["languageLevel"] })}
         >
@@ -319,9 +354,10 @@ function GeneralSection({
       </div>
 
       <div style={fieldGroup}>
-        <label style={labelStyle}>Hover trigger</label>
+        <label htmlFor="options-general-hover-trigger" style={labelStyle}>Hover trigger</label>
         <select
-          style={selectStyle}
+          id="options-general-hover-trigger"
+          className="astra-input"
           value={config.hoverTrigger}
           onChange={(e) => onChange({ hoverTrigger: e.target.value as HoverTrigger })}
         >
@@ -332,9 +368,10 @@ function GeneralSection({
       </div>
 
       <div style={fieldGroup}>
-        <label style={labelStyle}>Content scope</label>
+        <label htmlFor="options-general-content-scope" style={labelStyle}>Content scope</label>
         <select
-          style={selectStyle}
+          id="options-general-content-scope"
+          className="astra-input"
           value={config.contentScope}
           onChange={(e) => onChange({ contentScope: e.target.value as ContentScope })}
         >
@@ -346,9 +383,10 @@ function GeneralSection({
       </div>
 
       <div style={fieldGroup}>
-        <label style={labelStyle}>Input translation</label>
+        <label htmlFor="options-general-input-translation" style={labelStyle}>Input translation</label>
         <select
-          style={selectStyle}
+          id="options-general-input-translation"
+          className="astra-input"
           value={config.inputTranslation}
           onChange={(e) => onChange({ inputTranslation: e.target.value as InputTranslation })}
         >
@@ -365,7 +403,7 @@ function GeneralSection({
           checked={config.privacyMode}
           onChange={(e) => onChange({ privacyMode: e.target.checked })}
         />
-        <label htmlFor="privacy-mode" style={{ fontSize: 14, color: "#334155" }}>
+        <label htmlFor="privacy-mode" style={{ fontSize: 14, color: "var(--astra-text-secondary)" }}>
           Privacy mode
         </label>
       </div>
@@ -374,7 +412,7 @@ function GeneralSection({
       </div>
 
       <div style={{ ...fieldGroup, marginTop: 28 }}>
-        <h3 style={{ fontSize: 16, fontWeight: 600, marginBottom: 12, color: "#0f172a" }}>Text to speech</h3>
+        <h3 className="astra-section-subheading">Text to speech</h3>
 
         <div style={checkboxRow}>
           <input
@@ -383,7 +421,7 @@ function GeneralSection({
             checked={config.tts.enabled}
             onChange={(e) => onTtsChange({ enabled: e.target.checked })}
           />
-          <label htmlFor="tts-enabled" style={{ fontSize: 14, color: "#334155" }}>
+          <label htmlFor="tts-enabled" style={{ fontSize: 14, color: "var(--astra-text-secondary)" }}>
             Enable TTS in the selection toolbar
           </label>
         </div>
@@ -392,9 +430,10 @@ function GeneralSection({
         </div>
 
         <div style={fieldGroup}>
-          <label style={labelStyle}>{t("options_ttsEngine")}</label>
+          <label htmlFor="options-general-tts-engine" style={labelStyle}>{t("options_ttsEngine")}</label>
           <select
-            style={selectStyle}
+            id="options-general-tts-engine"
+            className="astra-input"
             value={config.tts.engine}
             disabled={!config.tts.enabled}
             onChange={(e) => onTtsChange({ engine: e.target.value as "browser" | "edge", voiceName: undefined })}
@@ -410,10 +449,12 @@ function GeneralSection({
         </div>
 
         <div style={fieldGroup}>
-          <label style={labelStyle}>{t("options_ttsVoice")}</label>
+          <label htmlFor="options-general-tts-voice" style={labelStyle}>{t("options_ttsVoice")}</label>
           <div style={{ display: "flex", gap: 8, alignItems: "center", maxWidth: 520 }}>
             <select
-              style={{ ...selectStyle, flex: 1, maxWidth: "none" }}
+              id="options-general-tts-voice"
+              className="astra-input"
+              style={{ flex: 1, maxWidth: "none" }}
               value={config.tts.voiceName ?? ""}
               disabled={config.tts.engine === "browser" && (!ttsSupported || !config.tts.enabled || loadingVoices)}
               onChange={(e) => onTtsChange({ voiceName: e.target.value })}
@@ -431,7 +472,7 @@ function GeneralSection({
             {config.tts.engine === "browser" && (
               <button
                 type="button"
-                style={btnSecondary}
+                className="astra-btn-secondary"
                 disabled={!ttsSupported || loadingVoices}
                 onClick={onRefreshVoices}
               >
@@ -453,8 +494,9 @@ function GeneralSection({
         </div>
 
         <div style={fieldGroup}>
-          <label style={labelStyle}>{t("options_ttsSpeechRate", config.tts.rate.toFixed(1))}</label>
+          <label htmlFor="options-general-tts-rate" style={labelStyle}>{t("options_ttsSpeechRate", config.tts.rate.toFixed(1))}</label>
           <input
+            id="options-general-tts-rate"
             type="range"
             min="0.5"
             max="1.5"
@@ -468,8 +510,9 @@ function GeneralSection({
         </div>
 
         <div style={fieldGroup}>
-          <label style={labelStyle}>{t("options_ttsPitch", config.tts.pitch.toFixed(1))}</label>
+          <label htmlFor="options-general-tts-pitch" style={labelStyle}>{t("options_ttsPitch", config.tts.pitch.toFixed(1))}</label>
           <input
+            id="options-general-tts-pitch"
             type="range"
             min="0.5"
             max="2.0"
@@ -489,7 +532,7 @@ function GeneralSection({
             disabled={!config.tts.enabled}
             onChange={(e) => onTtsChange({ highlightSentences: e.target.checked })}
           />
-          <label htmlFor="tts-highlight" style={{ fontSize: 14, color: "#334155" }}>
+          <label htmlFor="tts-highlight" style={{ fontSize: 14, color: "var(--astra-text-secondary)" }}>
             Highlight sentences during playback
           </label>
         </div>
@@ -510,12 +553,13 @@ function ProvidersSection({
 }) {
   return (
     <div>
-      <h2 style={sectionTitle}>Providers</h2>
+      <h2 className="astra-section-heading">Providers</h2>
 
       <div style={fieldGroup}>
-        <label style={labelStyle}>Provider</label>
+        <label htmlFor="options-provider-id" style={labelStyle}>Provider</label>
         <select
-          style={selectStyle}
+          id="options-provider-id"
+          className="astra-input"
           value={config.provider.id}
           onChange={(e) => {
             const id = e.target.value as ProviderId
@@ -529,10 +573,11 @@ function ProvidersSection({
       </div>
 
       <div style={fieldGroup}>
-        <label style={labelStyle}>API key</label>
+        <label htmlFor="options-provider-api-key" style={labelStyle}>API key</label>
         <input
+          id="options-provider-api-key"
           type="password"
-          style={inputStyle}
+          className="astra-input"
           value={config.provider.apiKey ?? ""}
           onChange={(e) => onProviderChange({ apiKey: e.target.value })}
           placeholder={config.provider.id === "gemini" ? "AIzaSy..." : "sk-..."}
@@ -543,9 +588,10 @@ function ProvidersSection({
       </div>
 
       <div style={fieldGroup}>
-        <label style={labelStyle}>Relay URL</label>
+        <label htmlFor="options-provider-relay-url" style={labelStyle}>Relay URL</label>
         <input
-          style={inputStyle}
+          id="options-provider-relay-url"
+          className="astra-input"
           value={config.provider.relayBaseURL ?? ""}
           onChange={(e) => onProviderChange({ relayBaseURL: e.target.value })}
           placeholder="https://api.astra.example/v1"
@@ -554,9 +600,10 @@ function ProvidersSection({
       </div>
 
       <div style={fieldGroup}>
-        <label style={labelStyle}>Model</label>
+        <label htmlFor="options-provider-model" style={labelStyle}>Model</label>
         <input
-          style={inputStyle}
+          id="options-provider-model"
+          className="astra-input"
           value={config.provider.model}
           onChange={(e) => onProviderChange({ model: e.target.value })}
           placeholder={getDefaultProviderModel(config.provider.id)}
@@ -575,12 +622,13 @@ function TranslationSection({
 }) {
   return (
     <div>
-      <h2 style={sectionTitle}>Translation</h2>
+      <h2 className="astra-section-heading">Translation</h2>
 
       <div style={fieldGroup}>
-        <label style={labelStyle}>Presentation mode</label>
+        <label htmlFor="options-translation-mode" style={labelStyle}>Presentation mode</label>
         <select
-          style={selectStyle}
+          id="options-translation-mode"
+          className="astra-input"
           value={config.presentation.mode}
           onChange={(e) => onPresentationChange({ mode: e.target.value as TranslationMode })}
         >
@@ -591,9 +639,10 @@ function TranslationSection({
       </div>
 
       <div style={fieldGroup}>
-        <label style={labelStyle}>Theme</label>
+        <label htmlFor="options-translation-theme" style={labelStyle}>Theme</label>
         <select
-          style={selectStyle}
+          id="options-translation-theme"
+          className="astra-input"
           value={config.presentation.theme}
           onChange={(e) => onPresentationChange({ theme: e.target.value as TranslationTheme })}
         >
@@ -604,13 +653,15 @@ function TranslationSection({
       </div>
 
       <div style={fieldGroup}>
-        <label style={labelStyle}>Font size (em)</label>
+        <label htmlFor="options-translation-font-size" style={labelStyle}>Font size (em)</label>
         <input
+          id="options-translation-font-size"
           type="number"
           step="0.01"
           min="0.5"
           max="2.0"
-          style={{ ...inputStyle, maxWidth: 120 }}
+          className="astra-input"
+          style={{ maxWidth: 120 }}
           value={config.presentation.fontSize}
           onChange={(e) => {
             const value = parseFloat(e.target.value)
@@ -622,16 +673,20 @@ function TranslationSection({
       </div>
 
       <div style={fieldGroup}>
-        <label style={labelStyle}>Translation color</label>
+        <label htmlFor="options-translation-color-picker" style={labelStyle}>Translation color</label>
         <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
           <input
+            id="options-translation-color-picker"
             type="color"
+            className="astra-color-picker"
             value={config.presentation.translationColor}
             onChange={(e) => onPresentationChange({ translationColor: e.target.value })}
-            style={{ width: 40, height: 32, border: "1px solid #e2e8f0", borderRadius: 4, cursor: "pointer", padding: 2 }}
+            style={{ width: 40, height: 32, border: "1px solid var(--astra-border)", borderRadius: 4, padding: 2 }}
           />
           <input
-            style={{ ...inputStyle, maxWidth: 160 }}
+            id="options-translation-color-input"
+            className="astra-input"
+            style={{ maxWidth: 160 }}
             value={config.presentation.translationColor}
             onChange={(e) => onPresentationChange({ translationColor: e.target.value })}
             placeholder="#64748b"
@@ -674,6 +729,18 @@ function hasAdvancedRules(siteConfig: SiteConfig): boolean {
     || siteConfig.paragraphMinLength != null
 }
 
+function hasProviderOverride(siteConfig: SiteConfig): boolean {
+  return !!siteConfig.provider?.id || !!siteConfig.provider?.model
+}
+
+function siteControlId(hostname: string, field: string): string {
+  return `options-site-${encodeURIComponent(hostname)}-${field}`
+}
+
+function actionControlId(actionId: string, field: string): string {
+  return `options-action-${encodeURIComponent(actionId)}-${field}`
+}
+
 function SitesSection({
   config,
   onChange,
@@ -691,6 +758,9 @@ function SitesSection({
   const [rulesStatus, setRulesStatus] = useState<string | null>(null)
   const [showImport, setShowImport] = useState(false)
   const [importText, setImportText] = useState("")
+
+  type SitePresentationOverride = NonNullable<SiteConfig["presentation"]>
+  type SiteProviderOverride = NonNullable<SiteConfig["provider"]>
 
   useEffect(() => {
     const entries = Object.entries(config.sites)
@@ -718,6 +788,46 @@ function SitesSection({
     onChange({ sites: nextSites })
   }
 
+  const mutateSitePresentation = <K extends keyof SitePresentationOverride>(
+    hostname: string,
+    key: K,
+    value: SitePresentationOverride[K] | undefined,
+  ) => {
+    mutateSite(hostname, (current) => {
+      const nextPresentation = { ...(current.presentation ?? {}) }
+      if (value === undefined || value === "") {
+        delete nextPresentation[key]
+      } else {
+        nextPresentation[key] = value
+      }
+
+      const { presentation: _presentation, ...siteWithoutPresentation } = current
+      return Object.keys(nextPresentation).length > 0
+        ? { ...siteWithoutPresentation, presentation: nextPresentation }
+        : siteWithoutPresentation
+    })
+  }
+
+  const mutateSiteProvider = <K extends keyof SiteProviderOverride>(
+    hostname: string,
+    key: K,
+    value: SiteProviderOverride[K] | undefined,
+  ) => {
+    mutateSite(hostname, (current) => {
+      const nextProvider = { ...(current.provider ?? {}) }
+      if (value === undefined || value === "") {
+        delete nextProvider[key]
+      } else {
+        nextProvider[key] = value
+      }
+
+      const { provider: _provider, ...siteWithoutProvider } = current
+      return Object.keys(nextProvider).length > 0
+        ? { ...siteWithoutProvider, provider: nextProvider }
+        : siteWithoutProvider
+    })
+  }
+
   const addSite = () => {
     const key = normalizeSiteKey(newSiteKey)
     if (!key) return
@@ -732,24 +842,24 @@ function SitesSection({
 
   return (
     <div>
-      <h2 style={sectionTitle}>Sites</h2>
+      <h2 className="astra-section-heading">Sites</h2>
       <div style={hintStyle}>Per-site rules override global settings.</div>
 
       <div style={{ display: "flex", gap: 8, margin: "16px 0" }}>
         <input
-          style={inputStyle}
+          className="astra-input"
           value={newSiteKey}
           onChange={(e) => setNewSiteKey(e.target.value)}
           placeholder="example.com"
           onKeyDown={(e) => { if (e.key === "Enter") addSite() }}
         />
-        <button type="button" style={btnSecondary} onClick={addSite}>Add site</button>
+        <button type="button" className="astra-btn-secondary" onClick={addSite}>Add site</button>
       </div>
 
       <div style={{ display: "flex", gap: 8, marginBottom: 16 }}>
         <button
           type="button"
-          style={btnSecondary}
+          className="astra-btn-secondary"
           onClick={() => {
             const json = exportSiteRules(config)
             void navigator.clipboard.writeText(json).then(() => {
@@ -762,7 +872,7 @@ function SitesSection({
         </button>
         <button
           type="button"
-          style={btnSecondary}
+          className="astra-btn-secondary"
           onClick={() => setShowImport(!showImport)}
         >
           {t("siteRules_importRules")}
@@ -770,10 +880,11 @@ function SitesSection({
       </div>
 
       {showImport && (
-        <div style={{ ...cardStyle, marginBottom: 16 }}>
+        <div className="astra-card" style={{ marginBottom: 16 }}>
           <textarea
             data-testid="import-rules-textarea"
-            style={{ ...inputStyle, maxWidth: "100%", minHeight: 100, resize: "vertical", fontFamily: "monospace", fontSize: 13 }}
+              className="astra-input"
+              style={{ maxWidth: "100%", minHeight: 100, resize: "vertical", fontFamily: "monospace", fontSize: 13 }}
             value={importText}
             onChange={(e) => setImportText(e.target.value)}
             placeholder='Paste exported site rules JSON here...'
@@ -781,7 +892,7 @@ function SitesSection({
           <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
             <button
               type="button"
-              style={btnPrimary}
+              className="astra-btn-primary"
               onClick={() => {
                 try {
                   const result = importSiteRules(importText, config)
@@ -799,7 +910,7 @@ function SitesSection({
             </button>
             <button
               type="button"
-              style={btnSecondary}
+              className="astra-btn-secondary"
               onClick={() => { setShowImport(false); setImportText("") }}
             >
               Cancel
@@ -809,17 +920,17 @@ function SitesSection({
       )}
 
       {rulesStatus && (
-        <div style={{ ...successBanner, marginBottom: 16 }}>{rulesStatus}</div>
+        <div role="status" aria-live="polite" style={{ ...successBanner, marginBottom: 16 }}>{rulesStatus}</div>
       )}
 
       {siteEntries.length === 0 && (
-        <div style={{ ...cardStyle, color: "#94a3b8", textAlign: "center" }}>
+        <div className="astra-card" style={{ color: "var(--astra-text-muted)", textAlign: "center" }}>
           No per-site rules configured.
         </div>
       )}
 
       {siteEntries.map(([hostname, siteConfig]) => (
-        <div key={hostname} style={cardStyle}>
+        <div key={hostname} className="astra-card">
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: editingSite === hostname ? 12 : 0 }}>
             <div>
               <span style={{ fontWeight: 600, fontSize: 14 }}>{hostname}</span>
@@ -838,18 +949,25 @@ function SitesSection({
                   advanced
                 </span>
               )}
+              {hasProviderOverride(siteConfig) && (
+                <span style={{ marginLeft: 8, fontSize: 11, color: "#7c3aed", background: "#f3e8ff", padding: "2px 6px", borderRadius: 4 }}>
+                  provider
+                </span>
+              )}
             </div>
             <div style={{ display: "flex", gap: 6 }}>
               <button
                 type="button"
-                style={{ ...btnSecondary, padding: "4px 12px", fontSize: 12 }}
+                className="astra-btn-secondary"
+                style={{ padding: "4px 12px", fontSize: 12 }}
                 onClick={() => setEditingSite(editingSite === hostname ? null : hostname)}
               >
                 {editingSite === hostname ? "Close" : "Edit"}
               </button>
               <button
                 type="button"
-                style={{ ...btnDanger, padding: "4px 12px", fontSize: 12 }}
+                className="astra-btn-danger"
+                style={{ padding: "4px 12px", fontSize: 12 }}
                 onClick={() => deleteSite(hostname)}
               >
                 Delete
@@ -858,7 +976,7 @@ function SitesSection({
           </div>
 
           {editingSite === hostname && (
-            <div style={{ borderTop: "1px solid #e2e8f0", paddingTop: 12 }}>
+            <div style={{ borderTop: "1px solid var(--astra-border)", paddingTop: 12 }}>
               <div style={checkboxRow}>
                 <input
                   type="checkbox"
@@ -884,9 +1002,11 @@ function SitesSection({
                 <label htmlFor={`site-auto-${hostname}`}>Auto-translate on load</label>
               </div>
               <div style={fieldGroup}>
-                <label style={labelStyle}>Target language override</label>
+                <label htmlFor={siteControlId(hostname, "target-lang")} style={labelStyle}>Target language override</label>
                 <select
-                  style={{ ...selectStyle, maxWidth: 220 }}
+                  id={siteControlId(hostname, "target-lang")}
+                  className="astra-input"
+                  style={{ maxWidth: 220 }}
                   value={siteConfig.targetLang ?? ""}
                   onChange={(e) => mutateSite(hostname, (current) => {
                     const nextSite = { ...current }
@@ -905,9 +1025,11 @@ function SitesSection({
                 </select>
               </div>
               <div style={fieldGroup}>
-                <label style={labelStyle}>Hover trigger override</label>
+                <label htmlFor={siteControlId(hostname, "hover-trigger")} style={labelStyle}>Hover trigger override</label>
                 <select
-                  style={{ ...selectStyle, maxWidth: 220 }}
+                  id={siteControlId(hostname, "hover-trigger")}
+                  className="astra-input"
+                  style={{ maxWidth: 220 }}
                   value={siteConfig.hoverTrigger ?? ""}
                   onChange={(e) => mutateSite(hostname, (current) => {
                     const nextSite = { ...current }
@@ -926,9 +1048,11 @@ function SitesSection({
                 </select>
               </div>
               <div style={fieldGroup}>
-                <label style={labelStyle}>Content scope override</label>
+                <label htmlFor={siteControlId(hostname, "content-scope")} style={labelStyle}>Content scope override</label>
                 <select
-                  style={{ ...selectStyle, maxWidth: 220 }}
+                  id={siteControlId(hostname, "content-scope")}
+                  className="astra-input"
+                  style={{ maxWidth: 220 }}
                   value={siteConfig.contentScope ?? ""}
                   onChange={(e) => mutateSite(hostname, (current) => {
                     const nextSite = { ...current }
@@ -947,25 +1071,53 @@ function SitesSection({
                 </select>
               </div>
               <div style={fieldGroup}>
-                <label style={labelStyle}>Presentation mode override</label>
+                <label htmlFor={siteControlId(hostname, "provider-id")} style={labelStyle}>Provider override</label>
                 <select
-                  style={{ ...selectStyle, maxWidth: 220 }}
+                  id={siteControlId(hostname, "provider-id")}
+                  className="astra-input"
+                  style={{ maxWidth: 220 }}
+                  value={siteConfig.provider?.id ?? ""}
+                  onChange={(e) => mutateSiteProvider(
+                    hostname,
+                    "id",
+                    e.target.value ? e.target.value as ProviderId : undefined,
+                  )}
+                >
+                  <option value="">Use global provider ({config.provider.id})</option>
+                  {PROVIDER_OPTIONS.map((o) => (
+                    <option key={o.value} value={o.value}>{o.label}</option>
+                  ))}
+                </select>
+                <div style={hintStyle}>Provider changes use relay routing unless the global direct key belongs to the same provider.</div>
+              </div>
+              <div style={fieldGroup}>
+                <label htmlFor={siteControlId(hostname, "provider-model")} style={labelStyle}>Model override</label>
+                <input
+                  id={siteControlId(hostname, "provider-model")}
+                  className="astra-input"
+                  style={{ maxWidth: 320 }}
+                  value={siteConfig.provider?.model ?? ""}
+                  onChange={(e) => mutateSiteProvider(
+                    hostname,
+                    "model",
+                    e.target.value.trim() || undefined,
+                  )}
+                  placeholder={siteConfig.provider?.id ? getDefaultProviderModel(siteConfig.provider.id) : config.provider.model}
+                />
+                <div style={hintStyle}>Blank inherits the global model, or the selected provider default when provider is overridden.</div>
+              </div>
+              <div style={fieldGroup}>
+                <label htmlFor={siteControlId(hostname, "presentation-mode")} style={labelStyle}>Presentation mode override</label>
+                <select
+                  id={siteControlId(hostname, "presentation-mode")}
+                  className="astra-input"
+                  style={{ maxWidth: 220 }}
                   value={siteConfig.presentation?.mode ?? ""}
-                  onChange={(e) => mutateSite(hostname, (current) => {
-                    const nextPresentation = { ...(current.presentation ?? {}) }
-                    if (e.target.value) {
-                      nextPresentation.mode = e.target.value as TranslationMode
-                    } else {
-                      delete nextPresentation.mode
-                    }
-
-                    return {
-                      ...current,
-                      ...(Object.keys(nextPresentation).length > 0
-                        ? { presentation: nextPresentation }
-                        : { presentation: undefined }),
-                    }
-                  })}
+                  onChange={(e) => mutateSitePresentation(
+                    hostname,
+                    "mode",
+                    e.target.value ? e.target.value as TranslationMode : undefined,
+                  )}
                 >
                   <option value="">Use global default</option>
                   {MODE_OPTIONS.map((o) => (
@@ -974,25 +1126,17 @@ function SitesSection({
                 </select>
               </div>
               <div style={fieldGroup}>
-                <label style={labelStyle}>Theme override</label>
+                <label htmlFor={siteControlId(hostname, "presentation-theme")} style={labelStyle}>Theme override</label>
                 <select
-                  style={{ ...selectStyle, maxWidth: 220 }}
+                  id={siteControlId(hostname, "presentation-theme")}
+                  className="astra-input"
+                  style={{ maxWidth: 220 }}
                   value={siteConfig.presentation?.theme ?? ""}
-                  onChange={(e) => mutateSite(hostname, (current) => {
-                    const nextPresentation = { ...(current.presentation ?? {}) }
-                    if (e.target.value) {
-                      nextPresentation.theme = e.target.value as TranslationTheme
-                    } else {
-                      delete nextPresentation.theme
-                    }
-
-                    return {
-                      ...current,
-                      ...(Object.keys(nextPresentation).length > 0
-                        ? { presentation: nextPresentation }
-                        : { presentation: undefined }),
-                    }
-                  })}
+                  onChange={(e) => mutateSitePresentation(
+                    hostname,
+                    "theme",
+                    e.target.value ? e.target.value as TranslationTheme : undefined,
+                  )}
                 >
                   <option value="">Use global default</option>
                   {THEME_OPTIONS.map((o) => (
@@ -1000,14 +1144,57 @@ function SitesSection({
                   ))}
                 </select>
               </div>
+              <div style={fieldGroup}>
+                <label htmlFor={siteControlId(hostname, "presentation-font-size")} style={labelStyle}>Font size override</label>
+                <input
+                  id={siteControlId(hostname, "presentation-font-size")}
+                  type="number"
+                  min="0.5"
+                  max="2.0"
+                  step="0.05"
+                  className="astra-input"
+                  style={{ maxWidth: 120 }}
+                  value={siteConfig.presentation?.fontSize ?? ""}
+                  onChange={(e) => {
+                    if (e.target.value === "") {
+                      mutateSitePresentation(hostname, "fontSize", undefined)
+                      return
+                    }
+                    const value = parseFloat(e.target.value)
+                    if (!Number.isNaN(value)) {
+                      mutateSitePresentation(hostname, "fontSize", Math.max(0.5, Math.min(2.0, value)))
+                    }
+                  }}
+                  placeholder={`${config.presentation.fontSize}`}
+                />
+                <div style={hintStyle}>Blank uses the global font size.</div>
+              </div>
+              <div style={fieldGroup}>
+                <label htmlFor={siteControlId(hostname, "translation-color")} style={labelStyle}>Translation color override</label>
+                <input
+                  id={siteControlId(hostname, "translation-color")}
+                  className="astra-input"
+                  style={{ maxWidth: 160 }}
+                  value={siteConfig.presentation?.translationColor ?? ""}
+                  onChange={(e) => mutateSitePresentation(
+                    hostname,
+                    "translationColor",
+                    e.target.value.trim() || undefined,
+                  )}
+                  placeholder={config.presentation.translationColor}
+                />
+                <div style={hintStyle}>Blank uses the global translation color.</div>
+              </div>
 
               <details data-testid={`advanced-rules-${hostname}`} style={{ marginTop: 12 }}>
-                <summary style={{ cursor: "pointer", fontSize: 13, color: "#475569" }}>Advanced rules</summary>
+                <summary className="astra-details-summary" style={{ fontSize: 13, color: "var(--astra-text-secondary)" }}>Advanced rules</summary>
                 <div style={{ marginTop: 12 }}>
                   <div style={fieldGroup}>
-                    <label style={labelStyle}>Include selectors</label>
+                    <label htmlFor={siteControlId(hostname, "include-selectors")} style={labelStyle}>Include selectors</label>
                     <textarea
-                      style={textareaStyle}
+                      id={siteControlId(hostname, "include-selectors")}
+                      className="astra-input"
+                      style={{ maxWidth: "100%", minHeight: 80, resize: "vertical", fontFamily: "monospace" }}
                       value={selectorDrafts[hostname] ?? ""}
                       onChange={(e) => {
                         const nextValue = e.target.value
@@ -1041,9 +1228,11 @@ function SitesSection({
                   </div>
 
                   <div style={fieldGroup}>
-                    <label style={labelStyle}>Exclude selectors</label>
+                    <label htmlFor={siteControlId(hostname, "exclude-selectors")} style={labelStyle}>Exclude selectors</label>
                     <textarea
-                      style={textareaStyle}
+                      id={siteControlId(hostname, "exclude-selectors")}
+                      className="astra-input"
+                      style={{ maxWidth: "100%", minHeight: 80, resize: "vertical", fontFamily: "monospace" }}
                       value={excludeSelectorDrafts[hostname] ?? ""}
                       onChange={(e) => {
                         const nextValue = e.target.value
@@ -1077,12 +1266,14 @@ function SitesSection({
                   </div>
 
                   <div style={fieldGroup}>
-                    <label style={labelStyle}>Minimum paragraph length</label>
+                    <label htmlFor={siteControlId(hostname, "paragraph-min-length")} style={labelStyle}>Minimum paragraph length</label>
                     <input
+                      id={siteControlId(hostname, "paragraph-min-length")}
                       type="number"
                       min="0"
                       step="1"
-                      style={{ ...inputStyle, maxWidth: 220 }}
+                      className="astra-input"
+                      style={{ maxWidth: 220 }}
                       value={siteConfig.paragraphMinLength?.toString() ?? ""}
                       onChange={(e) => mutateSite(hostname, (current) => {
                         const nextSite = { ...current }
@@ -1110,15 +1301,6 @@ function SitesSection({
       ))}
     </div>
   )
-}
-
-const textareaStyle: React.CSSProperties = {
-  ...inputStyle,
-  maxWidth: "100%",
-  minHeight: 80,
-  resize: "vertical",
-  fontFamily: "monospace",
-  fontSize: 13,
 }
 
 function ActionsSection({
@@ -1201,20 +1383,20 @@ function ActionsSection({
 
   return (
     <div>
-      <h2 style={sectionTitle}>Custom Actions</h2>
+      <h2 className="astra-section-heading">Custom Actions</h2>
       <div style={hintStyle}>
         Custom actions appear in the selection toolbar alongside built-in actions.
         Use {"{{text}}"} and {"{{targetLang}}"} as placeholders in your prompt template.
       </div>
 
       {customActions.length === 0 && !showNewForm && (
-        <div style={{ ...cardStyle, color: "#94a3b8", textAlign: "center", marginTop: 16 }}>
+        <div className="astra-card" style={{ color: "var(--astra-text-muted)", textAlign: "center", marginTop: 16 }}>
           No custom actions configured.
         </div>
       )}
 
       {customActions.map((action) => (
-        <div key={action.id} style={{ ...cardStyle, marginTop: 12 }}>
+        <div key={action.id} className="astra-card" style={{ marginTop: 12 }}>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: editingId === action.id ? 12 : 0 }}>
             <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
               <input
@@ -1223,7 +1405,7 @@ function ActionsSection({
                 onChange={() => handleToggle(action.id)}
               />
               <span style={{ fontWeight: 600, fontSize: 14 }}>{action.label}</span>
-              <span style={{ fontSize: 13, color: "#64748b" }}>({action.labelZh})</span>
+              <span style={{ fontSize: 13, color: "var(--astra-text-muted)" }}>({action.labelZh})</span>
               {!action.enabled && (
                 <span style={{ fontSize: 11, color: "#dc2626", background: "#fef2f2", padding: "2px 6px", borderRadius: 4 }}>
                   disabled
@@ -1233,14 +1415,16 @@ function ActionsSection({
             <div style={{ display: "flex", gap: 6 }}>
               <button
                 type="button"
-                style={{ ...btnSecondary, padding: "4px 12px", fontSize: 12 }}
+                className="astra-btn-secondary"
+                style={{ padding: "4px 12px", fontSize: 12 }}
                 onClick={() => editingId === action.id ? setEditingId(null) : startEditing(action)}
               >
                 {editingId === action.id ? "Cancel" : "Edit"}
               </button>
               <button
                 type="button"
-                style={{ ...btnDanger, padding: "4px 12px", fontSize: 12 }}
+                className="astra-btn-danger"
+                style={{ padding: "4px 12px", fontSize: 12 }}
                 onClick={() => handleDelete(action.id)}
               >
                 Delete
@@ -1249,33 +1433,37 @@ function ActionsSection({
           </div>
 
           {editingId !== action.id && (
-            <div style={{ marginTop: 4, fontSize: 12, color: "#94a3b8", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+            <div style={{ marginTop: 4, fontSize: 12, color: "var(--astra-text-hint)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
               {action.systemPrompt.length > 80 ? `${action.systemPrompt.slice(0, 80)}...` : action.systemPrompt}
             </div>
           )}
 
           {editingId === action.id && (
-            <div style={{ borderTop: "1px solid #e2e8f0", paddingTop: 12 }}>
+            <div style={{ borderTop: "1px solid var(--astra-border)", paddingTop: 12 }}>
               <div style={fieldGroup}>
-                <label style={labelStyle}>Label (English)</label>
+                <label htmlFor={actionControlId(action.id, "edit-label-en")} style={labelStyle}>Label (English)</label>
                 <input
-                  style={inputStyle}
-                  value={editLabel}
+                  id={actionControlId(action.id, "edit-label-en")}
+                  className="astra-input"
+                    value={editLabel}
                   onChange={(e) => setEditLabel(e.target.value)}
                 />
               </div>
               <div style={fieldGroup}>
-                <label style={labelStyle}>Label (Chinese)</label>
+                <label htmlFor={actionControlId(action.id, "edit-label-zh")} style={labelStyle}>Label (Chinese)</label>
                 <input
-                  style={inputStyle}
-                  value={editLabelZh}
+                  id={actionControlId(action.id, "edit-label-zh")}
+                  className="astra-input"
+                    value={editLabelZh}
                   onChange={(e) => setEditLabelZh(e.target.value)}
                 />
               </div>
               <div style={fieldGroup}>
-                <label style={labelStyle}>System prompt template</label>
+                <label htmlFor={actionControlId(action.id, "edit-prompt")} style={labelStyle}>System prompt template</label>
                 <textarea
-                  style={textareaStyle}
+                  id={actionControlId(action.id, "edit-prompt")}
+                  className="astra-input"
+                  style={{ maxWidth: "100%", minHeight: 80, resize: "vertical", fontFamily: "monospace" }}
                   value={editPrompt}
                   onChange={(e) => setEditPrompt(e.target.value)}
                 />
@@ -1285,7 +1473,7 @@ function ActionsSection({
               </div>
               <button
                 type="button"
-                style={btnPrimary}
+                className="astra-btn-primary"
                 onClick={() => handleSaveEdit(action.id)}
               >
                 Save changes
@@ -1296,30 +1484,33 @@ function ActionsSection({
       ))}
 
       {showNewForm ? (
-        <div style={{ ...cardStyle, marginTop: 16 }}>
+        <div className="astra-card" style={{ marginTop: 16 }}>
           <h3 style={{ fontSize: 15, fontWeight: 600, marginBottom: 12, marginTop: 0 }}>New custom action</h3>
           <div style={fieldGroup}>
-            <label style={labelStyle}>Label (English)</label>
+            <label htmlFor="options-action-new-label-en" style={labelStyle}>Label (English)</label>
             <input
-              style={inputStyle}
-              value={newLabel}
+              id="options-action-new-label-en"
+              className="astra-input"
+                value={newLabel}
               onChange={(e) => setNewLabel(e.target.value)}
               placeholder="e.g. Simplify"
             />
           </div>
           <div style={fieldGroup}>
-            <label style={labelStyle}>Label (Chinese)</label>
+            <label htmlFor="options-action-new-label-zh" style={labelStyle}>Label (Chinese)</label>
             <input
-              style={inputStyle}
-              value={newLabelZh}
+              id="options-action-new-label-zh"
+              className="astra-input"
+                value={newLabelZh}
               onChange={(e) => setNewLabelZh(e.target.value)}
               placeholder="e.g. 简化"
             />
           </div>
           <div style={fieldGroup}>
-            <label style={labelStyle}>System prompt template</label>
+            <label htmlFor="options-action-new-prompt" style={labelStyle}>System prompt template</label>
             <textarea
-              style={textareaStyle}
+              id="options-action-new-prompt"
+              className="astra-input"
               value={newPrompt}
               onChange={(e) => setNewPrompt(e.target.value)}
               placeholder={"Simplify the following text in {{targetLang}}. Output only the simplified text.\n\nText: {{text}}"}
@@ -1329,17 +1520,17 @@ function ActionsSection({
             </div>
           </div>
           <div style={{ display: "flex", gap: 8 }}>
-            <button type="button" style={btnPrimary} onClick={handleAdd}>
+          <button type="button" className="astra-btn-primary" onClick={handleAdd}>
               Add action
-            </button>
-            <button type="button" style={btnSecondary} onClick={() => { setShowNewForm(false); setNewLabel(""); setNewLabelZh(""); setNewPrompt("") }}>
+             </button>
+          <button type="button" className="astra-btn-secondary" onClick={() => { setShowNewForm(false); setNewLabel(""); setNewLabelZh(""); setNewPrompt("") }}>
               Cancel
             </button>
           </div>
         </div>
       ) : (
         <div style={{ marginTop: 16 }}>
-          <button type="button" style={btnSecondary} onClick={() => setShowNewForm(true)}>
+          <button type="button" className="astra-btn-secondary" onClick={() => setShowNewForm(true)}>
             + Add custom action
           </button>
         </div>
@@ -1356,6 +1547,8 @@ function VocabularySection() {
   }
 
   const [cacheInfo, setCacheInfo] = useState<string>("Loading...")
+  const [learningLoopSummary, setLearningLoopSummary] = useState<string>(t("options_learningLoopLoading"))
+  const [learningLoopEvents, setLearningLoopEvents] = useState<Array<{ id: string, summary: string, relativeTime: string }>>([])
 
   const refreshCacheInfo = async () => {
     try {
@@ -1377,8 +1570,56 @@ function VocabularySection() {
     }
   }
 
+  const refreshLearningLoopInfo = async () => {
+    try {
+      const events = await getRecentEvents(50)
+      const learningLoopEvents = events
+        .filter((event) => event.type === "feature_usage" && event.data.feature === "learning_loop")
+
+      if (learningLoopEvents.length === 0) {
+        setLearningLoopSummary(t("options_learningLoopEmpty"))
+        setLearningLoopEvents([])
+        return
+      }
+
+      const counts = new Map<LearningLoopEventName, number>()
+      for (const name of LEARNING_LOOP_EVENT_NAMES) {
+        counts.set(name, 0)
+      }
+
+      for (const event of learningLoopEvents) {
+        const name = typeof event.data.event === "string"
+          ? event.data.event as LearningLoopEventName
+          : null
+        if (name && counts.has(name)) {
+          counts.set(name, (counts.get(name) ?? 0) + 1)
+        }
+      }
+
+      const activeCounts = LEARNING_LOOP_EVENT_NAMES
+        .map((name) => {
+          const count = counts.get(name) ?? 0
+          return count > 0 ? `${getLearningLoopEventLabel(name)} ${count}` : null
+        })
+        .filter((value): value is string => Boolean(value))
+
+      setLearningLoopSummary(activeCounts.join(" · ") || t("options_learningLoopEmpty"))
+      setLearningLoopEvents(learningLoopEvents
+        .slice(0, 5)
+        .map((event) => ({
+          id: event.id,
+          summary: getLearningLoopEventSummary(event) ?? t("options_learningLoopUnknownEvent"),
+          relativeTime: formatRelativeTimestamp(event.timestamp),
+        })))
+    } catch {
+      setLearningLoopSummary(t("options_learningLoopUnavailable"))
+      setLearningLoopEvents([])
+    }
+  }
+
   useEffect(() => {
     void refreshCacheInfo()
+    void refreshLearningLoopInfo()
   }, [])
 
   const clearCache = async () => {
@@ -1395,32 +1636,94 @@ function VocabularySection() {
 
   return (
     <div>
-      <h2 style={sectionTitle}>Vocabulary</h2>
+      <h2 className="astra-section-heading">Vocabulary</h2>
 
-      <div style={cardStyle}>
+      <div className="astra-card">
         <div style={{ marginBottom: 12 }}>
           <strong>Saved words</strong>
           <div style={hintStyle}>Open the vocabulary page to review and manage saved words.</div>
         </div>
-        <button type="button" style={btnPrimary} onClick={openVocabulary}>
+        <button type="button" className="astra-btn-primary" onClick={openVocabulary}>
           Open vocabulary
         </button>
       </div>
 
-      <div style={cardStyle}>
+      <div className="astra-card">
         <div style={{ marginBottom: 12 }}>
           <strong>Cache</strong>
           <div style={{ ...hintStyle, marginTop: 4 }}>{cacheInfo}</div>
         </div>
-        <button type="button" style={btnDanger} onClick={() => void clearCache()}>
-          Clear cache
+        <button type="button" className="astra-btn-danger" onClick={() => void clearCache()}>
+            Clear cache
         </button>
+      </div>
+
+      <div className="astra-card">
+        <div style={{ marginBottom: 12 }}>
+          <strong>{t("options_learningLoopTitle")}</strong>
+          <div style={hintStyle}>{t("options_learningLoopHint")}</div>
+          <div style={{ ...hintStyle, marginTop: 4 }}>{learningLoopSummary}</div>
+        </div>
+
+        {learningLoopEvents.length > 0 ? (
+          <div style={{ display: "grid", gap: 8 }}>
+            {learningLoopEvents.map((event) => (
+              <div
+                key={event.id}
+                style={{
+                  border: "1px solid var(--astra-border)",
+                  borderRadius: 8,
+                  padding: "10px 12px",
+                  background: "var(--astra-bg-primary)",
+                }}
+              >
+                <div style={{ fontSize: 13, color: "var(--astra-text-primary)", fontWeight: 500 }}>{event.summary}</div>
+                <div style={{ ...hintStyle, marginTop: 4 }}>{event.relativeTime}</div>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <div style={{ ...hintStyle, marginTop: 4 }}>{learningLoopSummary}</div>
+        )}
       </div>
     </div>
   )
 }
 
 function DiagnosticsSection({ config }: { config: AstraConfig }) {
+  const [learningLoopFunnel, setLearningLoopFunnel] = useState<LearningLoopFunnelAggregation>(() => aggregateLearningLoopFunnel([]))
+  const [learningLoopFunnelStatus, setLearningLoopFunnelStatus] = useState("Loading local funnel telemetry...")
+  const [learningLoopAutoSelection, setLearningLoopAutoSelection] = useState<LearningLoopCopyVariantAutoSelectionStatus | null>(null)
+
+  useEffect(() => {
+    let mounted = true
+
+    void getRecentEvents(200)
+      .then(async (events) => {
+        if (!mounted) return
+        const aggregation = aggregateLearningLoopFunnel(events)
+        const autoSelection = await getLearningLoopCopyVariantAutoSelectionStatus(events)
+        if (!mounted) return
+        setLearningLoopFunnel(aggregation)
+        setLearningLoopAutoSelection(autoSelection)
+        setLearningLoopFunnelStatus(
+          aggregation.totals.totalEvents > 0
+            ? `${aggregation.totals.totalEvents} local funnel event${aggregation.totals.totalEvents === 1 ? "" : "s"}`
+            : "No local funnel events yet.",
+        )
+      })
+      .catch(() => {
+        if (!mounted) return
+        setLearningLoopFunnel(aggregateLearningLoopFunnel([]))
+        setLearningLoopAutoSelection(null)
+        setLearningLoopFunnelStatus("Learning-loop funnel telemetry unavailable.")
+      })
+
+    return () => {
+      mounted = false
+    }
+  }, [])
+
   const diag = diagnoseProvider({
     providerId: config.provider.id,
     model: config.provider.model,
@@ -1437,21 +1740,24 @@ function DiagnosticsSection({ config }: { config: AstraConfig }) {
     disconnected: "#dc2626",
   }
 
+  const autoSelectionCurrent = learningLoopAutoSelection?.candidates.find((candidate) => candidate.variant === learningLoopAutoSelection.currentVariant)
+  const autoSelectionWinner = learningLoopAutoSelection?.candidates.find((candidate) => candidate.variant === learningLoopAutoSelection.winnerVariant)
+
   return (
     <div>
-      <h2 style={sectionTitle}>Diagnostics</h2>
+      <h2 className="astra-section-heading">Diagnostics</h2>
 
-      <div style={cardStyle}>
-        <h3 style={{ fontSize: 16, fontWeight: 600, marginBottom: 12, color: "#0f172a" }}>{t("options_diagProviderStatus")}</h3>
+      <div className="astra-card">
+        <h3 style={{ fontSize: 16, fontWeight: 600, marginBottom: 12, color: "var(--astra-text-primary)" }}>{t("options_diagProviderStatus")}</h3>
 
         <div style={{
           display: "flex",
           alignItems: "center",
           gap: 8,
           padding: "10px 14px",
-          background: "#f8fafc",
+          background: "var(--astra-bg-primary)",
           borderRadius: 8,
-          border: "1px solid #e2e8f0",
+          border: "1px solid var(--astra-border)",
         }}
         >
           <span style={{
@@ -1463,30 +1769,30 @@ function DiagnosticsSection({ config }: { config: AstraConfig }) {
           }}
           />
           <div>
-            <div style={{ fontSize: 14, fontWeight: 600, color: "#0f172a" }}>
+            <div style={{ fontSize: 14, fontWeight: 600, color: "var(--astra-text-primary)" }}>
               {diag.providerName} — {diag.modelLabel ?? diag.model}
             </div>
-            <div style={{ fontSize: 12, color: "#64748b", marginTop: 2 }}>
+            <div style={{ fontSize: 12, color: "var(--astra-text-muted)", marginTop: 2 }}>
               {t("options_diagDirect")} {diag.directAccess ? t("options_diagYes") : t("options_diagNo")} · {t("options_diagRelay")} {diag.relayAccess ? t("options_diagYes") : t("options_diagNo")} · {t("options_diagCostPerPage")} {diag.estimatedCostPerPage}
             </div>
           </div>
         </div>
 
         <div style={{ marginTop: 16 }}>
-          <h4 style={{ fontSize: 13, fontWeight: 600, color: "#475569", marginBottom: 8 }}>{t("options_diagTransportRoutes")}</h4>
+          <h4 style={{ fontSize: 13, fontWeight: 600, color: "var(--astra-text-secondary)", marginBottom: 8 }}>{t("options_diagTransportRoutes")}</h4>
           <div style={{ display: "flex", gap: 8 }}>
             <div style={{
               flex: 1,
               padding: "8px 12px",
               borderRadius: 8,
-              border: "1px solid #e2e8f0",
+              border: "1px solid var(--astra-border)",
               background: diag.directAccess ? "#f0fdf4" : "#fef2f2",
             }}
             >
               <div style={{ fontSize: 12, fontWeight: 600, color: diag.directAccess ? "#166534" : "#991b1b" }}>
                 {t("options_diagDirectApi")}
               </div>
-              <div style={{ fontSize: 11, color: "#64748b", marginTop: 2 }}>
+              <div style={{ fontSize: 11, color: "var(--astra-text-muted)", marginTop: 2 }}>
                 {diag.directAccess ? t("options_diagApiKeyConfigured", diag.providerName) : t("options_diagNoApiKey")}
               </div>
             </div>
@@ -1494,14 +1800,14 @@ function DiagnosticsSection({ config }: { config: AstraConfig }) {
               flex: 1,
               padding: "8px 12px",
               borderRadius: 8,
-              border: "1px solid #e2e8f0",
+              border: "1px solid var(--astra-border)",
               background: diag.relayAccess ? "#f0fdf4" : "#fef2f2",
             }}
             >
               <div style={{ fontSize: 12, fontWeight: 600, color: diag.relayAccess ? "#166534" : "#991b1b" }}>
                 {t("options_diagAstraRelay")}
               </div>
-              <div style={{ fontSize: 11, color: "#64748b", marginTop: 2 }}>
+              <div style={{ fontSize: 11, color: "var(--astra-text-muted)", marginTop: 2 }}>
                 {diag.relayAccess ? t("options_diagRelayActive") : t("options_diagNoRelay")}
               </div>
             </div>
@@ -1509,16 +1815,85 @@ function DiagnosticsSection({ config }: { config: AstraConfig }) {
         </div>
       </div>
 
-      <div style={{ ...cardStyle, marginTop: 16 }}>
-        <h3 style={{ fontSize: 16, fontWeight: 600, marginBottom: 12, color: "#0f172a" }}>{t("options_diagProviderCapabilities")}</h3>
+      <div className="astra-card" style={{ marginTop: 16 }} data-testid="learning-loop-funnel-card">
+        <h3 className="astra-section-subheading">Local A/B learning funnel</h3>
+        <div style={hintStyle}>
+          Uses only this device's local telemetry from the popup primer through Deep Read, explanation, save, and review events. No backend or schema migration is required.
+        </div>
+        <div style={{ ...hintStyle, marginTop: 4 }} data-testid="learning-loop-funnel-status">
+          {learningLoopFunnelStatus}
+        </div>
+        {learningLoopAutoSelection && (
+          <div
+            data-testid="learning-loop-auto-selection-status"
+            style={{
+              marginTop: 12,
+              border: "1px solid #bfdbfe",
+              borderRadius: 8,
+              padding: "10px 12px",
+              background: "#eff6ff",
+            }}
+          >
+            <div style={{ fontSize: 13, color: "var(--astra-text-primary)", fontWeight: 700 }}>
+              Auto-selection: {formatLearningLoopAutoSelectionPhase(learningLoopAutoSelection)}
+            </div>
+            <div style={{ fontSize: 12, color: "#334155", marginTop: 4, lineHeight: 1.55 }}>
+              Current {autoSelectionCurrent?.label ?? learningLoopAutoSelection.currentVariant} · Local winner {autoSelectionWinner?.label ?? "none yet"} · {learningLoopAutoSelection.reason}
+            </div>
+            <div style={{ ...hintStyle, marginTop: 6 }}>
+              Guardrails: {learningLoopAutoSelection.guardrails.minViewsPerVariant} views/variant · score ≥ {formatLearningLoopFunnelRate(learningLoopAutoSelection.guardrails.minWinnerScore)} · hysteresis {formatLearningLoopFunnelRate(learningLoopAutoSelection.guardrails.hysteresis)} · cooldown {Math.round(learningLoopAutoSelection.guardrails.cooldownMs / 3600000)}h
+            </div>
+            <div style={{ ...hintStyle, marginTop: 4 }}>
+              Last evaluated {formatLearningLoopAutoSelectionTime(learningLoopAutoSelection.lastEvaluatedAt)} · Cooldown until {formatLearningLoopAutoSelectionTime(learningLoopAutoSelection.cooldownUntil)}
+            </div>
+            <div style={{ display: "grid", gap: 4, marginTop: 8 }}>
+              {learningLoopAutoSelection.candidates.map((candidate) => (
+                <div key={candidate.variant} style={{ fontSize: 12, color: "#334155" }}>
+                  {candidate.label}: {candidate.views}/{learningLoopAutoSelection.guardrails.minViewsPerVariant} views · score {formatLearningLoopFunnelRate(candidate.score)} · {candidate.ready ? "ready" : "collecting"}
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+        <div style={{ display: "grid", gap: 8, marginTop: 12 }}>
+          {learningLoopFunnel.variants.map((variant) => (
+            <div
+              key={variant.variant}
+              data-testid={`learning-loop-funnel-${variant.variant}`}
+              style={{
+                border: "1px solid var(--astra-border)",
+                borderRadius: 8,
+                padding: "10px 12px",
+                background: variant.variant === "unknown" ? "var(--astra-bg-primary)" : "#fff7ed",
+              }}
+            >
+              <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center" }}>
+                <strong style={{ fontSize: 13, color: "var(--astra-text-primary)" }}>{variant.label}</strong>
+                <span style={{ fontSize: 11, color: "var(--astra-text-muted)" }}>
+                  Save/explain {formatLearningLoopFunnelRate(variant.saveRate)}
+                </span>
+              </div>
+              <div style={{ fontSize: 12, color: "#334155", marginTop: 6, lineHeight: 1.55 }}>
+                Views {variant.counts.popup_primer_viewed} · CTA {variant.counts.popup_primer_cta_clicked} · Deep Read {variant.counts.deep_read_opened} · Explained {variant.counts.sentence_explained} · Saved {variant.counts.sentence_saved} · Reviewed {variant.counts.review_answered}
+              </div>
+              <div style={{ ...hintStyle, marginTop: 4 }}>
+                CTA/view {formatLearningLoopFunnelRate(variant.ctaRate)} · Deep Read/view {formatLearningLoopFunnelRate(variant.deepReadRate)} · Explain/Deep Read {formatLearningLoopFunnelRate(variant.explainRate)}
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      <div className="astra-card" style={{ marginTop: 16 }}>
+        <h3 className="astra-section-subheading">{t("options_diagProviderCapabilities")}</h3>
 
         <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
           <thead>
-            <tr style={{ borderBottom: "2px solid #e2e8f0" }}>
-              <th style={{ textAlign: "left", padding: "6px 8px", color: "#475569" }}>{t("options_diagColModel")}</th>
-              <th style={{ textAlign: "right", padding: "6px 8px", color: "#475569" }}>{t("options_diagColInputCost")}</th>
-              <th style={{ textAlign: "right", padding: "6px 8px", color: "#475569" }}>{t("options_diagColOutputCost")}</th>
-              <th style={{ textAlign: "right", padding: "6px 8px", color: "#475569" }}>{t("options_diagColContext")}</th>
+            <tr style={{ borderBottom: "2px solid var(--astra-border)" }}>
+              <th style={{ textAlign: "left", padding: "6px 8px", color: "var(--astra-text-secondary)" }}>{t("options_diagColModel")}</th>
+              <th style={{ textAlign: "right", padding: "6px 8px", color: "var(--astra-text-secondary)" }}>{t("options_diagColInputCost")}</th>
+              <th style={{ textAlign: "right", padding: "6px 8px", color: "var(--astra-text-secondary)" }}>{t("options_diagColOutputCost")}</th>
+              <th style={{ textAlign: "right", padding: "6px 8px", color: "var(--astra-text-secondary)" }}>{t("options_diagColContext")}</th>
             </tr>
           </thead>
           <tbody>
@@ -1530,7 +1905,7 @@ function DiagnosticsSection({ config }: { config: AstraConfig }) {
                   background: model.id === config.provider.model ? "#eff6ff" : "transparent",
                 }}
               >
-                <td style={{ padding: "6px 8px", color: "#0f172a" }}>
+                <td style={{ padding: "6px 8px", color: "var(--astra-text-primary)" }}>
                   {model.label}
                   {model.recommended && (
                     <span style={{ marginLeft: 6, fontSize: 10, color: "#6366f1", fontWeight: 600 }}>{t("options_diagRecommended")}</span>
@@ -1539,13 +1914,13 @@ function DiagnosticsSection({ config }: { config: AstraConfig }) {
                     <span style={{ marginLeft: 6, fontSize: 10, color: "#2563eb", fontWeight: 600 }}>{t("options_diagActive")}</span>
                   )}
                 </td>
-                <td style={{ textAlign: "right", padding: "6px 8px", color: "#64748b" }}>
+                <td style={{ textAlign: "right", padding: "6px 8px", color: "var(--astra-text-muted)" }}>
                   {model.inputCostPer1kTokens > 0 ? `$${model.inputCostPer1kTokens}` : t("options_diagFree")}
                 </td>
-                <td style={{ textAlign: "right", padding: "6px 8px", color: "#64748b" }}>
+                <td style={{ textAlign: "right", padding: "6px 8px", color: "var(--astra-text-muted)" }}>
                   {model.outputCostPer1kTokens > 0 ? `$${model.outputCostPer1kTokens}` : t("options_diagFree")}
                 </td>
-                <td style={{ textAlign: "right", padding: "6px 8px", color: "#64748b" }}>
+                <td style={{ textAlign: "right", padding: "6px 8px", color: "var(--astra-text-muted)" }}>
                   {(model.maxContextTokens / 1000).toFixed(0)}k
                 </td>
               </tr>
@@ -1553,13 +1928,13 @@ function DiagnosticsSection({ config }: { config: AstraConfig }) {
           </tbody>
         </table>
 
-        <div style={{ marginTop: 12, fontSize: 11, color: "#94a3b8" }}>
+        <div style={{ marginTop: 12, fontSize: 11, color: "var(--astra-text-hint)" }}>
           {t("options_diagMaxBatch", [String(capability.maxBatchSize), capability.maxInputCharsPerRequest.toLocaleString()])}
         </div>
       </div>
 
-      <div style={{ ...cardStyle, marginTop: 16 }}>
-        <h3 style={{ fontSize: 16, fontWeight: 600, marginBottom: 12, color: "#0f172a" }}>{t("options_diagWorkflowConfig")}</h3>
+      <div className="astra-card" style={{ marginTop: 16 }}>
+        <h3 className="astra-section-subheading">{t("options_diagWorkflowConfig")}</h3>
         <div style={{ fontSize: 12, color: "#334155", lineHeight: 1.6 }}>
           <div style={{ marginBottom: 8 }}>
             <strong>{t("options_diagConnectionMode")}</strong> {config.connectionMode === "astra" ? t("options_diagAstraManaged") : t("options_diagCustomKey")}
@@ -1588,12 +1963,96 @@ function DiagnosticsSection({ config }: { config: AstraConfig }) {
   )
 }
 
+function RevokeDeviceConfirmDialog({
+  deviceLabel,
+  busy,
+  onCancel,
+  onConfirm,
+}: {
+  deviceLabel: string
+  busy: boolean
+  onCancel: () => void
+  onConfirm: () => void
+}) {
+  const cancelButtonRef = useRef<HTMLButtonElement>(null)
+
+  useEffect(() => {
+    cancelButtonRef.current?.focus()
+  }, [])
+
+  useEffect(() => {
+    if (busy) return
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        event.preventDefault()
+        onCancel()
+      }
+    }
+
+    window.addEventListener("keydown", handleKeyDown)
+    return () => window.removeEventListener("keydown", handleKeyDown)
+  }, [busy, onCancel])
+
+  return (
+    <div
+      style={{
+        position: "fixed",
+        inset: 0,
+        zIndex: "var(--astra-z-modal)",
+        display: "grid",
+        placeItems: "center",
+        padding: 24,
+        background: "rgba(15, 23, 42, 0.42)",
+      }}
+    >
+      <section
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="revoke-device-dialog-title"
+        aria-describedby="revoke-device-dialog-description"
+        className="astra-card"
+        style={{
+          width: "min(100%, 420px)",
+          boxShadow: "var(--astra-shadow-lg)",
+        }}
+      >
+        <h2 id="revoke-device-dialog-title" style={{ fontSize: 18, fontWeight: 700, color: "var(--astra-text-primary)", margin: "0 0 8px" }}>
+          Revoke device access?
+        </h2>
+        <p id="revoke-device-dialog-description" style={{ margin: 0, color: "var(--astra-text-secondary)", lineHeight: 1.6 }}>
+          Revoke Astra access for <strong>{deviceLabel}</strong>? This device will need to sign in again.
+        </p>
+        <div style={{ display: "flex", justifyContent: "flex-end", gap: 12, marginTop: 20 }}>
+          <button
+            ref={cancelButtonRef}
+            type="button"
+            className="astra-btn-secondary"
+            onClick={onCancel}
+            disabled={busy}
+          >
+            Cancel
+          </button>
+          <button
+            type="button"
+            className="astra-btn-danger"
+            onClick={onConfirm}
+            disabled={busy}
+          >
+            {busy ? "Revoking..." : "Revoke access"}
+          </button>
+        </div>
+      </section>
+    </div>
+  )
+}
+
 function AboutSection({
   continuityStatus,
   continuityBusy,
   continuityActionBusyDeviceId,
   onRefreshContinuity,
-  onRevokeDevice,
+  onRequestRevokeDevice,
   onToggleReadingHistorySync,
   onToggleStudyProgressSync,
 }: {
@@ -1601,7 +2060,7 @@ function AboutSection({
   continuityBusy: boolean
   continuityActionBusyDeviceId: string | null
   onRefreshContinuity: () => void
-  onRevokeDevice: (deviceId: string) => void
+  onRequestRevokeDevice: (device: PendingRevokeDevice) => void
   onToggleReadingHistorySync: (enabled: boolean) => void
   onToggleStudyProgressSync: (enabled: boolean) => void
 }) {
@@ -1637,16 +2096,16 @@ function AboutSection({
 
   return (
     <div>
-      <h2 style={sectionTitle}>About</h2>
+      <h2 className="astra-section-heading">About</h2>
 
-      <div style={cardStyle}>
+      <div className="astra-card">
         <div style={{ fontSize: 18, fontWeight: 700, color: BRAND_COLOR, marginBottom: 8 }}>
           Astra
         </div>
-        <div style={{ marginBottom: 12, color: "#475569" }}>
+        <div style={{ marginBottom: 12, color: "var(--astra-text-secondary)" }}>
           AI-powered language learning software, extension-first.
         </div>
-        <div style={{ fontSize: 13, color: "#64748b", marginBottom: 4 }}>
+        <div style={{ fontSize: 13, color: "var(--astra-text-muted)", marginBottom: 4 }}>
           Version: {version}
         </div>
         <div style={{ display: "flex", gap: 12, marginTop: 16 }}>
@@ -1669,8 +2128,8 @@ function AboutSection({
         </div>
       </div>
 
-      <div style={{ ...cardStyle, marginTop: 16 }} data-testid="continuity-status">
-        <h3 style={{ fontSize: 16, fontWeight: 600, marginBottom: 8, color: "#0f172a" }}>
+      <div className="astra-card" style={{ marginTop: 16 }} data-testid="continuity-status">
+        <h3 style={{ fontSize: 16, fontWeight: 600, marginBottom: 8, color: "var(--astra-text-primary)" }}>
           Continuity status
         </h3>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12, gap: 12 }}>
@@ -1679,7 +2138,8 @@ function AboutSection({
           </div>
           <button
             type="button"
-            style={{ ...btnSecondary, padding: "6px 12px", fontSize: 12, whiteSpace: "nowrap" }}
+            className="astra-btn-secondary"
+            style={{ padding: "6px 12px", fontSize: 12, whiteSpace: "nowrap" }}
             data-testid="refresh-continuity-btn"
             onClick={onRefreshContinuity}
             disabled={continuityBusy || continuityActionBusyDeviceId !== null}
@@ -1687,7 +2147,7 @@ function AboutSection({
             {continuityBusy ? "Refreshing..." : "Refresh status"}
           </button>
         </div>
-        <div style={{ fontSize: 13, color: "#475569", lineHeight: 1.6 }}>
+        <div style={{ fontSize: 13, color: "var(--astra-text-secondary)", lineHeight: 1.6 }}>
           <div><strong>Device:</strong> {continuityStatus?.device.label ?? "Preparing device identity"}</div>
           <div><strong>Session:</strong> {continuityStatus?.session.state ?? "signed-out"}</div>
           <div><strong>Config sync-safe:</strong> ready</div>
@@ -1707,7 +2167,7 @@ function AboutSection({
                   {remoteConfigCollection.hasPull ? ` · latest pull ${remoteConfigCollection.deltaCount} delta${remoteConfigCollection.deltaCount === 1 ? "" : "s"}` : ""}
                 </div>
               )}
-              <div style={{ marginTop: 8, border: "1px solid #e2e8f0", borderRadius: 6, padding: "10px 12px", background: "#f8fafc" }}>
+              <div style={{ marginTop: 8, border: "1px solid var(--astra-border)", borderRadius: 6, padding: "10px 12px", background: "var(--astra-bg-primary)" }}>
                 <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "center" }}>
                   <div>
                     <div>
@@ -1721,8 +2181,9 @@ function AboutSection({
                     </div>
                   </div>
                   {remoteReadingHistoryCollection && (
-                    <label style={{ display: "inline-flex", alignItems: "center", gap: 8, fontSize: 12, color: "#334155", whiteSpace: "nowrap" }}>
+                    <label htmlFor="options-continuity-reading-history-sync" style={{ display: "inline-flex", alignItems: "center", gap: 8, fontSize: 12, color: "#334155", whiteSpace: "nowrap" }}>
                       <input
+                        id="options-continuity-reading-history-sync"
                         data-testid="reading-history-sync-toggle"
                         type="checkbox"
                         checked={remoteReadingHistoryCollection.enabled}
@@ -1734,7 +2195,7 @@ function AboutSection({
                   )}
                 </div>
               </div>
-              <div style={{ marginTop: 8, border: "1px solid #e2e8f0", borderRadius: 6, padding: "10px 12px", background: "#f8fafc" }}>
+              <div style={{ marginTop: 8, border: "1px solid var(--astra-border)", borderRadius: 6, padding: "10px 12px", background: "var(--astra-bg-primary)" }}>
                 <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "center" }}>
                   <div>
                     <div>
@@ -1748,8 +2209,9 @@ function AboutSection({
                     </div>
                   </div>
                   {remoteStudyProgressCollection && (
-                    <label style={{ display: "inline-flex", alignItems: "center", gap: 8, fontSize: 12, color: "#334155", whiteSpace: "nowrap" }}>
+                    <label htmlFor="options-continuity-study-progress-sync" style={{ display: "inline-flex", alignItems: "center", gap: 8, fontSize: 12, color: "#334155", whiteSpace: "nowrap" }}>
                       <input
+                        id="options-continuity-study-progress-sync"
                         data-testid="study-progress-sync-toggle"
                         type="checkbox"
                         checked={remoteStudyProgressCollection.enabled}
@@ -1771,17 +2233,17 @@ function AboutSection({
                     const revokeDisabled = continuityBusy || continuityActionBusyDeviceId !== null
                     const isRevoking = continuityActionBusyDeviceId === device.deviceId
                     return (
-                      <div key={device.deviceId} style={{ border: "1px solid #e2e8f0", borderRadius: 6, padding: "8px 10px", background: device.isCurrentDevice ? "#eef2ff" : "#f8fafc" }}>
+                      <div key={device.deviceId} style={{ border: "1px solid var(--astra-border)", borderRadius: 6, padding: "8px 10px", background: device.isCurrentDevice ? "#eef2ff" : "var(--astra-bg-primary)" }}>
                         <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "flex-start" }}>
                           <div>
                             <div style={{ fontWeight: 600, color: "#334155" }}>
                               {device.label}
                               {device.isCurrentDevice ? " · Current device" : ""}
                             </div>
-                            <div style={{ fontSize: 12, color: "#64748b", marginTop: 4 }}>
+                            <div style={{ fontSize: 12, color: "var(--astra-text-muted)", marginTop: 4 }}>
                               {formatDeviceHostLabel(device)}
                             </div>
-                            <div style={{ fontSize: 12, color: "#64748b", marginTop: 4 }}>
+                            <div style={{ fontSize: 12, color: "var(--astra-text-muted)", marginTop: 4 }}>
                               {device.status} · Last seen {formatContinuityTimestamp(device.lastSeenAt)} · Last sync {formatContinuityTimestamp(device.lastSyncAt)}
                             </div>
                           </div>
@@ -1792,8 +2254,9 @@ function AboutSection({
                           ) : (
                             <button
                               type="button"
-                              style={{ ...btnDanger, whiteSpace: "nowrap" }}
-                              onClick={() => onRevokeDevice(device.deviceId)}
+                              className="astra-btn-danger"
+                              style={{ whiteSpace: "nowrap" }}
+                              onClick={() => onRequestRevokeDevice({ deviceId: device.deviceId, label: device.label })}
                               disabled={revokeDisabled}
                             >
                               {isRevoking ? "Revoking..." : "Revoke access"}
@@ -1819,8 +2282,8 @@ function AboutSection({
         </div>
       </div>
 
-      <div style={{ ...cardStyle, marginTop: 16 }}>
-        <h3 style={{ fontSize: 16, fontWeight: 600, marginBottom: 8, color: "#0f172a" }}>
+      <div className="astra-card" style={{ marginTop: 16 }}>
+        <h3 style={{ fontSize: 16, fontWeight: 600, marginBottom: 8, color: "var(--astra-text-primary)" }}>
           {t("options_backupTitle")}
         </h3>
         <div style={{ ...hintStyle, marginBottom: 16 }}>
@@ -1829,6 +2292,8 @@ function AboutSection({
 
         {backupStatus && (
           <div
+            role="status"
+            aria-live={backupStatus.type === "error" ? "assertive" : "polite"}
             data-testid="backup-status"
             style={{
               ...successBanner,
@@ -1845,7 +2310,7 @@ function AboutSection({
         <div style={{ display: "flex", gap: 12 }}>
           <button
             type="button"
-            style={btnPrimary}
+            className="astra-btn-primary"
             data-testid="export-settings-btn"
             onClick={() => void handleExport()}
           >
@@ -1853,7 +2318,7 @@ function AboutSection({
           </button>
           <button
             type="button"
-            style={btnSecondary}
+            className="astra-btn-secondary"
             data-testid="import-settings-btn"
             onClick={() => fileInputRef.current?.click()}
           >
@@ -1891,6 +2356,7 @@ export default function OptionsApp() {
   const [continuityDevice, setContinuityDevice] = useState<AstraDeviceIdentity | null>(null)
   const [continuityBusy, setContinuityBusy] = useState(false)
   const [continuityActionBusyDeviceId, setContinuityActionBusyDeviceId] = useState<string | null>(null)
+  const [pendingRevokeDevice, setPendingRevokeDevice] = useState<PendingRevokeDevice | null>(null)
   const [saved, setSaved] = useState(false)
   const [dirty, setDirty] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -2042,17 +2508,19 @@ export default function OptionsApp() {
     await handleToggleOptionalCollectionSync("study_progress", enabled)
   }, [handleToggleOptionalCollectionSync])
 
-  const handleRevokeContinuityDevice = useCallback(async (targetDeviceId: string) => {
-    if (!continuitySession || !continuityDevice) return
-    if (targetDeviceId === continuityDevice.deviceId) {
-      setError("Use popup Sign out for the current device instead of remote revoke.")
+  const requestRevokeContinuityDevice = useCallback((device: PendingRevokeDevice) => {
+    if (continuityBusy || continuityActionBusyDeviceId !== null) return
+    setPendingRevokeDevice(device)
+  }, [continuityActionBusyDeviceId, continuityBusy])
+
+  const executeRevokeContinuityDevice = useCallback(async (targetDeviceId: string) => {
+    if (!continuitySession || !continuityDevice) {
+      setPendingRevokeDevice(null)
       return
     }
-
-    const confirmed = typeof window !== "undefined" && typeof window.confirm === "function"
-      ? window.confirm("Revoke this device's Astra access? It will need to sign in again.")
-      : true
-    if (!confirmed) {
+    if (targetDeviceId === continuityDevice.deviceId) {
+      setError("Use popup Sign out for the current device instead of remote revoke.")
+      setPendingRevokeDevice(null)
       return
     }
 
@@ -2070,8 +2538,19 @@ export default function OptionsApp() {
       setError(err instanceof Error ? err.message : "Failed to revoke device access.")
     } finally {
       setContinuityActionBusyDeviceId(null)
+      setPendingRevokeDevice(null)
     }
   }, [continuityDevice, continuitySession])
+
+  const handleCancelRevokeContinuityDevice = useCallback(() => {
+    if (continuityActionBusyDeviceId !== null) return
+    setPendingRevokeDevice(null)
+  }, [continuityActionBusyDeviceId])
+
+  const handleConfirmRevokeContinuityDevice = useCallback(() => {
+    if (!pendingRevokeDevice || continuityBusy || continuityActionBusyDeviceId !== null) return
+    void executeRevokeContinuityDevice(pendingRevokeDevice.deviceId)
+  }, [continuityActionBusyDeviceId, continuityBusy, executeRevokeContinuityDevice, pendingRevokeDevice])
 
   const updateProvider = (patch: Partial<AstraConfig["provider"]>) => {
     setDirty(true)
@@ -2174,9 +2653,7 @@ export default function OptionsApp() {
             onRefreshContinuity={() => {
               void refreshContinuityState(undefined, { forceRemote: true })
             }}
-            onRevokeDevice={(deviceId) => {
-              void handleRevokeContinuityDevice(deviceId)
-            }}
+            onRequestRevokeDevice={requestRevokeContinuityDevice}
             onToggleReadingHistorySync={(enabled) => {
               void handleToggleReadingHistorySync(enabled)
             }}
@@ -2201,8 +2678,8 @@ export default function OptionsApp() {
         ? {
             display: "flex",
             overflowX: "auto",
-            background: "#fff",
-            borderBottom: "1px solid #e2e8f0",
+            background: "var(--astra-bg-card)",
+            borderBottom: "1px solid var(--astra-border)",
             padding: "8px 12px",
             gap: 4,
             position: "sticky",
@@ -2216,22 +2693,8 @@ export default function OptionsApp() {
           <button
             type="button"
             key={item.key}
-            style={isMobile
-              ? {
-                  border: "none",
-                  background: section === item.key ? `${BRAND_COLOR}14` : "transparent",
-                  color: section === item.key ? BRAND_COLOR : "#475569",
-                  fontWeight: section === item.key ? 600 : 400,
-                  padding: "6px 12px",
-                  borderRadius: 6,
-                  fontSize: 13,
-                  cursor: "pointer",
-                  whiteSpace: "nowrap",
-                }
-              : {
-                  ...navBtnBase,
-                  ...(section === item.key ? navBtnActive : {}),
-                }}
+            className={isMobile ? "astra-nav-item-mobile" : "astra-nav-item"}
+            aria-current={section === item.key ? "page" : undefined}
             onClick={() => setSection(item.key)}
           >
             {item.label}
@@ -2239,18 +2702,15 @@ export default function OptionsApp() {
         ))}
       </nav>
 
-      <main style={{
-        ...contentStyle,
-        padding: isMobile ? "16px 12px" : contentStyle.padding,
-        maxWidth: isMobile ? "none" : contentStyle.maxWidth,
-      }}
+      <main
+        className="astra-container astra-container--medium"
+        style={{
+          ...contentStyle,
+          padding: isMobile ? "16px 12px" : contentStyle.padding,
+        }}
       >
-        {saved && <div style={successBanner}>Settings saved.</div>}
-        {error && (
-          <div style={{ ...successBanner, background: "#fef2f2", color: "#dc2626", borderColor: "#fecaca" }}>
-            {error}
-          </div>
-        )}
+        {saved && <Toast variant="success">Settings saved.</Toast>}
+        {error && <Toast variant="error">{error}</Toast>}
 
         {renderSection()}
 
@@ -2258,15 +2718,25 @@ export default function OptionsApp() {
           <div style={{ marginTop: 24, display: "flex", gap: 12, alignItems: "center" }}>
             <button
               type="button"
-              style={{ ...btnPrimary, opacity: dirty ? 1 : 0.6 }}
+              className="astra-btn-primary"
+              style={{ opacity: dirty ? 1 : 0.6 }}
               onClick={() => void handleSave()}
             >
               Save settings
             </button>
-            {dirty && <span style={{ fontSize: 12, color: "#94a3b8" }}>Unsaved changes</span>}
+            {dirty && <span style={{ fontSize: 12, color: "var(--astra-text-hint)" }}>Unsaved changes</span>}
           </div>
         )}
       </main>
+
+      {pendingRevokeDevice && (
+        <RevokeDeviceConfirmDialog
+          deviceLabel={pendingRevokeDevice.label}
+          busy={continuityBusy || continuityActionBusyDeviceId !== null}
+          onCancel={handleCancelRevokeContinuityDevice}
+          onConfirm={handleConfirmRevokeContinuityDevice}
+        />
+      )}
     </div>
   )
 }

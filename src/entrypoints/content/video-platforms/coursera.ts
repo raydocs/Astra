@@ -1,9 +1,11 @@
+import { courseOverlayRenderingRule } from "./rendering-rules"
 import type { VideoPlatformConfig } from "./types"
 
 export const courseraPlatform: VideoPlatformConfig = {
   id: "coursera",
   hostnames: ["www.coursera.org"],
   preferTextTracks: true,
+  subtitleRendering: courseOverlayRenderingRule("coursera"),
   // Coursera uses a transcript component or subtitle overlay for course videos
   captionContainerSelector: [
     ".rc-VideoTranscript",

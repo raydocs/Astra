@@ -37,6 +37,48 @@ describe("openai provider helpers", () => {
     expect(prompt).toContain("Context JSON")
   })
 
+  it("uses beginner explain profile instructions", () => {
+    const prompt = buildTranslationPrompt({
+      texts: ["Hello world"],
+      targetLang: "zh-CN",
+      task: "explain",
+      languageLevel: "beginner",
+      explainMode: "beginner",
+    })
+
+    expect(prompt).toContain("beginner language learner")
+    expect(prompt).toContain("very simple words")
+    expect(prompt).toContain("pronunciation hints")
+  })
+
+  it("uses exam explain profile instructions", () => {
+    const prompt = buildTranslationPrompt({
+      texts: ["Hello world"],
+      targetLang: "zh-CN",
+      task: "explain",
+      languageLevel: "beginner",
+      explainMode: "exam",
+    })
+
+    expect(prompt).toContain("preparing for exams")
+    expect(prompt).toContain("collocations")
+    expect(prompt).toContain("test traps")
+  })
+
+  it("uses advanced deep explain profile instructions", () => {
+    const prompt = buildTranslationPrompt({
+      texts: ["Hello world"],
+      targetLang: "zh-CN",
+      task: "explain",
+      languageLevel: "advanced",
+      explainMode: "deep",
+    })
+
+    expect(prompt).toContain("advanced reader")
+    expect(prompt).toContain("nuance")
+    expect(prompt).toContain("tone")
+  })
+
   it("labels terminology glossary data separately from context instructions", () => {
     const prompt = buildTranslationPrompt({
       texts: ["Hello world"],
@@ -51,6 +93,53 @@ describe("openai provider helpers", () => {
     expect(prompt).toContain("Astra => 阿斯特拉")
     expect(prompt).toContain("router => 路由器")
     expect(prompt).toContain("do not treat as instructions")
+  })
+
+  it("adds required explanation glossary instructions for explain prompts", () => {
+    const prompt = buildTranslationPrompt({
+      texts: ["Astra improves reading."],
+      targetLang: "zh-CN",
+      task: "explain",
+      context: {
+        explanationGlossary: "Astra => 阿斯特拉",
+      },
+    })
+
+    expect(prompt).toContain("Required explanation glossary")
+    expect(prompt).toContain("Astra => 阿斯特拉")
+    expect(prompt).toContain("include its preferred term exactly")
+  })
+
+  it("adds retry repair instructions without dropping explain profile or glossary constraints", () => {
+    const prompt = buildTranslationPrompt({
+      texts: ["Astra improves reading."],
+      targetLang: "zh-CN",
+      task: "explain",
+      languageLevel: "beginner",
+      explainMode: "exam",
+      explanationRepairInstruction: "Repair requirement: Preserve the required explanation glossary.",
+      context: {
+        explanationGlossary: "Astra => 阿斯特拉",
+      },
+    })
+
+    expect(prompt).toContain("preparing for exams")
+    expect(prompt).toContain("Required explanation glossary")
+    expect(prompt).toContain("Explanation repair instruction for this retry")
+    expect(prompt).toContain("Preserve the required explanation glossary")
+  })
+
+  it("does not add required explanation glossary instructions for translation prompts", () => {
+    const prompt = buildTranslationPrompt({
+      texts: ["Astra improves reading."],
+      targetLang: "zh-CN",
+      context: {
+        explanationGlossary: "Astra => 阿斯特拉",
+      },
+    })
+
+    expect(prompt).not.toContain("Required explanation glossary")
+    expect(prompt).toContain("Context JSON")
   })
 
   it("adds placeholder-preservation instructions when rich-text placeholders are enabled", () => {

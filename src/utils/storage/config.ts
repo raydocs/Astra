@@ -5,6 +5,7 @@ import {
   AstraConfigSchema,
   AstraSyncedConfigSchema,
   DEFAULT_ASTRA_CONFIG,
+  DEFAULT_SUBTITLE_QUALITY_CONTROLS,
   buildSyncSafeConfig,
   getDefaultProviderModel,
   mergeSyncSafeConfig,
@@ -67,6 +68,7 @@ export async function migrateLegacyConfig(): Promise<AstraConfig> {
     },
     tts: DEFAULT_ASTRA_CONFIG.tts,
     presentation: DEFAULT_ASTRA_CONFIG.presentation,
+    subtitleQualityControls: DEFAULT_SUBTITLE_QUALITY_CONTROLS,
     sites: {},
   })
 
@@ -134,6 +136,9 @@ export async function saveConfig(input: AstraConfigInput): Promise<AstraConfig> 
         ...(value.presentation && Object.keys(value.presentation).length > 0
           ? { presentation: value.presentation }
           : {}),
+        ...(value.provider && Object.keys(value.provider).length > 0
+          ? { provider: value.provider }
+          : {}),
         ...(value.selectors?.length ? { selectors: value.selectors } : {}),
         ...(value.excludeSelectors?.length ? { excludeSelectors: value.excludeSelectors } : {}),
         ...(value.paragraphMinLength != null ? { paragraphMinLength: value.paragraphMinLength } : {}),
@@ -158,6 +163,12 @@ export async function saveConfig(input: AstraConfigInput): Promise<AstraConfig> 
       : {}),
     ...(parsedInput.languageLevel !== undefined
       ? { languageLevel: parsedInput.languageLevel }
+      : {}),
+    ...(parsedInput.explainMode !== undefined
+      ? { explainMode: parsedInput.explainMode }
+      : {}),
+    ...(parsedInput.explanationGlossary !== undefined
+      ? { explanationGlossary: parsedInput.explanationGlossary }
       : {}),
     ...(parsedInput.privacyMode !== undefined
       ? { privacyMode: parsedInput.privacyMode }
@@ -197,6 +208,11 @@ export async function saveConfig(input: AstraConfigInput): Promise<AstraConfig> 
     presentation: {
       ...currentConfig.presentation,
       ...parsedInput.presentation,
+    },
+    subtitleQualityControls: {
+      ...DEFAULT_SUBTITLE_QUALITY_CONTROLS,
+      ...(currentConfig.subtitleQualityControls ?? {}),
+      ...(parsedInput.subtitleQualityControls ?? {}),
     },
     sites: mergedSites,
     ...(parsedInput.customActions !== undefined

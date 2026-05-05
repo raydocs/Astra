@@ -4,6 +4,8 @@ export interface SelectionExplainExecution {
   requestCount: number
   requestTask: string | null
   requestSelectionContext: string | null
+  requestLanguageLevel?: string | null
+  requestExplainMode?: string | null
   resultText: string
   clipboardWrites: string[]
   buttonLabels: string[]
@@ -28,6 +30,7 @@ function buildPatchHints(
     shouldCopy?: boolean
     expectedTask?: "explain" | "translate"
     requireContext?: boolean
+    requireExplainProfile?: boolean
   } = {},
 ): PatchHintArtifact | undefined {
   const failingSignals: string[] = []
@@ -42,6 +45,10 @@ function buildPatchHints(
 
   if (expected.requireContext !== false && !execution.requestSelectionContext) {
     failingSignals.push("missing selection context")
+  }
+
+  if (expected.requireExplainProfile && (!execution.requestLanguageLevel || !execution.requestExplainMode)) {
+    failingSignals.push("missing explain profile")
   }
 
   if (expected.shouldCopy && execution.clipboardWrites.length === 0) {
@@ -89,6 +96,7 @@ export function evaluateSelectionExplain(
     shouldCopy?: boolean
     expectedTask?: "explain" | "translate"
     requireContext?: boolean
+    requireExplainProfile?: boolean
   } = {},
 ): EvaluationResult {
   const issues: BenchmarkIssue[] = []
@@ -122,6 +130,15 @@ export function evaluateSelectionExplain(
       issues,
       "high",
       "Selection toolbar did not pass contextual text into the action request.",
+    )
+  }
+
+  if (expected.requireExplainProfile && (!execution.requestLanguageLevel || !execution.requestExplainMode)) {
+    addIssue(
+      issues,
+      "high",
+      "Selection toolbar did not pass the explain profile into the action request.",
+      `languageLevel=${execution.requestLanguageLevel ?? "missing"}, explainMode=${execution.requestExplainMode ?? "missing"}`,
     )
   }
 
@@ -168,6 +185,8 @@ export function evaluateSelectionExplain(
     issues,
     artifacts: {
       resultText: execution.resultText,
+      requestLanguageLevel: execution.requestLanguageLevel ?? null,
+      requestExplainMode: execution.requestExplainMode ?? null,
       clipboardWrites: execution.clipboardWrites,
       buttonLabels: execution.buttonLabels,
       patchHints: buildPatchHints(execution, expected),

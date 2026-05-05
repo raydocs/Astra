@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react"
 import { createRoot } from "react-dom/client"
+import { browser } from "#imports"
 import { ErrorBoundary } from "@/components/ErrorBoundary"
 import { t } from "@/utils/i18n"
 
@@ -8,7 +9,7 @@ import { copyTextToClipboard } from "@/utils/dom/clipboard"
 import { hasInjectedTranslation } from "@/utils/dom/inject"
 import { findClosestTextBlock, findContentRoot } from "@/utils/dom/traversal"
 import { readConfig } from "@/utils/storage/config"
-import { saveVocabularyEntry } from "@/utils/storage/vocabulary"
+import { getDueVocabularyCount, hasVocabularyEntryByText, saveVocabularyEntry } from "@/utils/storage/vocabulary"
 
 import {
   getInteractionSuppressionState,
@@ -16,6 +17,9 @@ import {
   subscribeToInteractionSuppression,
 } from "../interaction-coordination"
 import { runInlineAction } from "../inline-actions"
+import { markSessionSave } from "../learning-state"
+import { AstraIdentityStrip } from "./AstraIdentityStrip"
+import { OVERLAY_FONT_FAMILY, OVERLAY_STYLE_TOKENS, createOverlayCardStyle, createOverlayStyle1TokenStyleElement, overlayPx } from "./overlayScale"
 
 type OverlayStatus = "hidden" | "pending" | "success" | "error"
 type ExplanationStatus = "idle" | "pending" | "success" | "error"
@@ -29,9 +33,10 @@ interface HoverOverlayState {
   status: OverlayStatus
   translation: string | null
   error: string | null
-  theme: "default" | "underline" | "highlight"
+  theme: "default" | "underline" | "highlight" | "mask"
   mode: "bilingual" | "translation-only"
   triggerMode: "alt" | "always"
+  fontScale: number
   explanationStatus: ExplanationStatus
   explanation: string | null
   explanationError: string | null
@@ -85,6 +90,7 @@ function HoverTranslateApp() {
     theme: "default",
     mode: "bilingual",
     triggerMode: "alt",
+    fontScale: 0.92,
     explanationStatus: "idle",
     explanation: null,
     explanationError: null,
@@ -103,6 +109,9 @@ function HoverTranslateApp() {
   const COOLDOWN_MS = 3000
 
   const [saveStatus, setSaveStatus] = useState<SaveStatus>("idle")
+  const [dueCount, setDueCount] = useState<number | null>(null)
+  const [existingSaved, setExistingSaved] = useState(false)
+  const savedLookupSeq = useRef(0)
 
   overlayVisibleRef.current = overlay.visible
 
@@ -120,7 +129,10 @@ function HoverTranslateApp() {
       currentSourceText.current = ""
       requestSeq.current += 1
       explainRequestSeq.current += 1
+      savedLookupSeq.current += 1
       setSaveStatus("idle")
+      setDueCount(null)
+      setExistingSaved(false)
       setOverlay((current) => ({
         ...current,
         visible: false,
@@ -134,12 +146,63 @@ function HoverTranslateApp() {
       }))
     }
 
+    const checkVocabularySavedState = (sourceText: string, requestId: number, targetElement: HTMLElement) => {
+      const lookupId = savedLookupSeq.current + 1
+      savedLookupSeq.current = lookupId
+
+      void (async () => {
+        let alreadySaved = false
+        try {
+          alreadySaved = await hasVocabularyEntryByText(sourceText)
+        } catch {
+          return
+        }
+
+        if (
+          requestSeq.current !== requestId
+          || currentTarget.current !== targetElement
+          || savedLookupSeq.current !== lookupId
+        ) {
+          return
+        }
+
+        setExistingSaved(alreadySaved)
+        if (!alreadySaved) {
+          setDueCount(null)
+          return
+        }
+
+        try {
+          const nextDueCount = await getDueVocabularyCount()
+          if (
+            requestSeq.current !== requestId
+            || currentTarget.current !== targetElement
+            || savedLookupSeq.current !== lookupId
+          ) {
+            return
+          }
+          setDueCount(nextDueCount)
+        } catch {
+          if (
+            requestSeq.current !== requestId
+            || currentTarget.current !== targetElement
+            || savedLookupSeq.current !== lookupId
+          ) {
+            return
+          }
+          setDueCount(null)
+        }
+      })()
+    }
+
     const showCachedOverlay = (
       rect: DOMRect,
       targetLang: string,
       cached: HoverCacheEntry,
       theme: HoverOverlayState["theme"],
       mode: HoverOverlayState["mode"],
+      targetElement: HTMLElement,
+      fontScale: number,
       triggerMode: HoverOverlayState["triggerMode"] = "alt",
     ) => {
       setOverlay({
@@ -152,11 +215,13 @@ function HoverTranslateApp() {
         theme,
         mode,
         triggerMode,
+        fontScale,
         explanationStatus: cached.explanation ? "success" : "idle",
         explanation: cached.explanation ?? null,
         explanationError: null,
         showExplanation: false,
       })
+      checkVocabularySavedState(cached.sourceText, requestSeq.current, targetElement)
     }
 
     const handleKeyDown = (event: KeyboardEvent) => {
@@ -230,6 +295,7 @@ function HoverTranslateApp() {
               theme: resolved.presentation.theme,
               mode: resolved.presentation.mode,
               triggerMode,
+              fontScale: resolved.presentation.fontSize,
               explanationStatus: "idle",
               explanation: null,
               explanationError: null,
@@ -246,6 +312,8 @@ function HoverTranslateApp() {
               cached,
               resolved.presentation.theme,
               resolved.presentation.mode,
+              block.element,
+              resolved.presentation.fontSize,
               triggerMode,
             )
             return
@@ -260,6 +328,9 @@ function HoverTranslateApp() {
 
           const nextRequest = requestSeq.current + 1
           requestSeq.current = nextRequest
+          savedLookupSeq.current += 1
+          setExistingSaved(false)
+          setDueCount(null)
           setOverlay({
             visible: true,
             ...getOverlayPosition(rect),
@@ -269,8 +340,9 @@ function HoverTranslateApp() {
             error: null,
             theme: resolved.presentation.theme,
             mode: resolved.presentation.mode,
-            triggerMode,
-            explanationStatus: "idle",
+              triggerMode,
+              fontScale: resolved.presentation.fontSize,
+              explanationStatus: "idle",
             explanation: null,
             explanationError: null,
             showExplanation: false,
@@ -301,8 +373,9 @@ function HoverTranslateApp() {
               error: result.message,
               theme: resolved.presentation.theme,
               mode: resolved.presentation.mode,
-              triggerMode,
-              explanationStatus: "idle",
+            triggerMode,
+            fontScale: resolved.presentation.fontSize,
+            explanationStatus: "idle",
               explanation: null,
               explanationError: null,
               showExplanation: false,
@@ -325,12 +398,14 @@ function HoverTranslateApp() {
             error: null,
             theme: resolved.presentation.theme,
             mode: resolved.presentation.mode,
-            triggerMode,
-            explanationStatus: "idle",
+              triggerMode,
+              fontScale: resolved.presentation.fontSize,
+              explanationStatus: "idle",
             explanation: null,
             explanationError: null,
             showExplanation: false,
           })
+          checkVocabularySavedState(block.text, nextRequest, block.element)
         })()
       }, HOVER_DELAY_MS)
     }
@@ -472,93 +547,219 @@ function HoverTranslateApp() {
         hostname: window.location.hostname,
       })
       setSaveStatus("saved")
+
+      let nextDueCount: number | null = null
+      try {
+        nextDueCount = await getDueVocabularyCount()
+      } catch {
+        nextDueCount = null
+      }
+
+      setExistingSaved(true)
+      setDueCount(nextDueCount)
+      markSessionSave("hover_translate", nextDueCount)
     } catch {
       setSaveStatus("idle")
     }
   }
 
+  const openVocabulary = () => {
+    void browser.tabs.create({ url: browser.runtime.getURL("/vocabulary.html") })
+  }
+
+  const openReview = () => {
+    void browser.tabs.create({ url: browser.runtime.getURL("/vocabulary.html?tab=review") })
+  }
+
   if (!overlay.visible) return null
 
+  const fontScale = overlay.fontScale
   const panelStyle: React.CSSProperties = {
+    ...createOverlayCardStyle(fontScale),
     position: "fixed",
     top: overlay.top,
     left: overlay.left,
-    maxWidth: 320,
+    maxWidth: Number.parseFloat(overlayPx(340, fontScale)),
     zIndex: 2147483645,
-    background: "#fff",
-    color: overlay.mode === "translation-only" ? "#0f172a" : "#334155",
-    borderRadius: 10,
-    boxShadow: "0 10px 25px rgba(15, 23, 42, 0.18)",
-    padding: "10px 12px",
+    color: overlay.mode === "translation-only" ? OVERLAY_STYLE_TOKENS.textPrimary : OVERLAY_STYLE_TOKENS.textSecondary,
+    padding: `${overlayPx(8, fontScale)} ${overlayPx(12, fontScale)} ${overlayPx(10, fontScale)}`,
     maxHeight: "60vh",
     overflowY: "auto",
     lineHeight: 1.55,
-    fontSize: 13,
+    fontSize: Number.parseFloat(overlayPx(13, fontScale)),
     borderLeft: overlay.theme === "default" && overlay.mode === "bilingual"
-      ? "3px solid #6366f1"
+      ? `${overlayPx(3, fontScale)} solid ${OVERLAY_STYLE_TOKENS.brand}`
       : undefined,
     textDecoration: overlay.theme === "underline" ? "underline" : undefined,
-    textDecorationColor: overlay.theme === "underline" ? "#6366f1" : undefined,
-    backgroundColor: overlay.theme === "highlight" ? "rgba(99, 102, 241, 0.08)" : "#fff",
+    textDecorationColor: overlay.theme === "underline" ? OVERLAY_STYLE_TOKENS.brand : undefined,
+    backgroundColor: overlay.theme === "highlight"
+      ? OVERLAY_STYLE_TOKENS.brandMuted
+      : overlay.theme === "mask"
+        ? OVERLAY_STYLE_TOKENS.surfaceSubtle
+        : OVERLAY_STYLE_TOKENS.surface,
+    ...(overlay.theme === "mask"
+      ? {
+          border: `1px dashed ${OVERLAY_STYLE_TOKENS.borderStrong}`,
+          boxShadow: `inset 0 0 0 1px ${OVERLAY_STYLE_TOKENS.surfaceElevated}`,
+        }
+      : {}),
+    fontFamily: OVERLAY_FONT_FAMILY,
   }
 
   const actionButtonStyle: React.CSSProperties = {
-    border: "none",
-    background: "rgba(99, 102, 241, 0.08)",
-    color: "#4f46e5",
+    border: `1px solid ${OVERLAY_STYLE_TOKENS.brandBorder}`,
+    background: OVERLAY_STYLE_TOKENS.brandMuted,
+    color: OVERLAY_STYLE_TOKENS.brandHover,
     borderRadius: 999,
-    padding: "4px 8px",
-    fontSize: 11,
-    fontWeight: 600,
+    padding: `${overlayPx(4, fontScale)} ${overlayPx(8, fontScale)}`,
+    fontSize: Number.parseFloat(overlayPx(11, fontScale)),
+    fontWeight: 700,
     cursor: "pointer",
+    fontFamily: OVERLAY_FONT_FAMILY,
+    whiteSpace: "nowrap",
+  }
+
+  const primaryActionButtonStyle: React.CSSProperties = {
+    ...actionButtonStyle,
+    background: OVERLAY_STYLE_TOKENS.brand,
+    color: OVERLAY_STYLE_TOKENS.textInverse,
+  }
+
+  const compactSavedRowStyle: React.CSSProperties = {
+    marginTop: Number.parseFloat(overlayPx(8, fontScale)),
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: Number.parseFloat(overlayPx(8, fontScale)),
+    flexWrap: "wrap",
+  }
+
+  const compactSavedBadgeStyle: React.CSSProperties = {
+    color: OVERLAY_STYLE_TOKENS.success,
+    background: OVERLAY_STYLE_TOKENS.successBg,
+    borderRadius: 999,
+    border: `1px solid ${OVERLAY_STYLE_TOKENS.successBorder}`,
+    padding: `${overlayPx(4, fontScale)} ${overlayPx(8, fontScale)}`,
+    fontSize: Number.parseFloat(overlayPx(11, fontScale)),
+    fontWeight: 700,
+    lineHeight: 1,
+  }
+
+  const saveCtaButtonStyle: React.CSSProperties = {
+    border: `1px solid ${OVERLAY_STYLE_TOKENS.successBorder}`,
+    background: OVERLAY_STYLE_TOKENS.successBg,
+    color: OVERLAY_STYLE_TOKENS.success,
+    borderRadius: Number.parseFloat(overlayPx(8, fontScale)),
+    padding: `${overlayPx(7, fontScale)} ${overlayPx(10, fontScale)}`,
+    fontSize: Number.parseFloat(overlayPx(12, fontScale)),
+    fontWeight: 700,
+    cursor: "pointer",
+    width: "100%",
+    marginTop: Number.parseFloat(overlayPx(8, fontScale)),
+    textAlign: "center",
+    fontFamily: OVERLAY_FONT_FAMILY,
+  }
+
+  const savedActionButtonStyle: React.CSSProperties = {
+    ...actionButtonStyle,
+    background: OVERLAY_STYLE_TOKENS.successBg,
+    color: OVERLAY_STYLE_TOKENS.success,
   }
 
   return (
     <div style={panelStyle}>
-      <div style={{ fontSize: 11, color: "#64748b", marginBottom: 4 }}>
-        {overlay.triggerMode === "always" ? t("label_hover") : t("label_altHover")}
-      </div>
-      {overlay.status === "pending" && <span style={{ color: "#94a3b8" }}>⋯</span>}
-      {overlay.status === "error" && <span style={{ color: "#b45309" }}>⚠ {overlay.error}</span>}
+      <AstraIdentityStrip targetLang={overlay.targetLang} fontScale={fontScale} />
+      {overlay.status === "pending" && <span style={{ color: OVERLAY_STYLE_TOKENS.textHint, marginTop: Number.parseFloat(overlayPx(4, fontScale)), display: "inline-block" }}>⋯</span>}
+      {overlay.status === "error" && <span style={{ color: OVERLAY_STYLE_TOKENS.warning }}>⚠ {overlay.error}</span>}
       {overlay.status === "success" && (
         <>
           <div>{overlay.translation}</div>
-          <div style={{ display: "flex", gap: 6, marginTop: 8 }}>
+          <div style={{ display: "flex", gap: Number.parseFloat(overlayPx(6, fontScale)), marginTop: Number.parseFloat(overlayPx(8, fontScale)), flexWrap: "wrap" }}>
             <button type="button" style={actionButtonStyle} onClick={() => void handleCopy()}>
               {t("actionCopy")}
             </button>
-            <button type="button" style={actionButtonStyle} onClick={() => void handleExplain()}>
+            <button
+              type="button"
+              data-testid="hover-explain-button"
+              style={{
+                ...primaryActionButtonStyle,
+                ...(overlay.explanationStatus === "pending" ? { opacity: 0.75, cursor: "progress" } : {}),
+              }}
+              onClick={() => void handleExplain()}
+            >
               {overlay.explanationStatus === "pending"
                 ? t("actionExplaining")
                 : overlay.showExplanation
                   ? t("actionHideExplanation")
                   : t("actionExplain")}
             </button>
+          </div>
+          {saveStatus !== "saved" && !existingSaved && (
             <button
               type="button"
-              style={actionButtonStyle}
+              data-testid="hover-result-save-cta"
+              style={{
+                ...saveCtaButtonStyle,
+                ...(saveStatus === "saving" ? { opacity: 0.7, cursor: "default" } : {}),
+              }}
               onClick={() => void handleSave()}
               disabled={saveStatus === "saving"}
             >
-              {saveStatus === "saved" ? t("actionSaved") : saveStatus === "saving" ? t("actionSaving") : t("actionSave")}
+              {saveStatus === "saving" ? t("actionSaving") : `📚 ${t("actionSave")}`}
             </button>
-          </div>
+          )}
+          {saveStatus !== "saved" && existingSaved && (
+            <div style={compactSavedRowStyle} data-testid="hover-existing-saved-row">
+              <span style={compactSavedBadgeStyle}>{t("actionSaved")}</span>
+              <button
+                type="button"
+                style={savedActionButtonStyle}
+                onClick={() => openReview()}
+              >
+                {dueCount && dueCount > 0 ? `${t("popup_review")} (${dueCount})` : t("popup_review")}
+              </button>
+            </div>
+          )}
           {overlay.showExplanation && (
             <div
               style={{
-                marginTop: 8,
-                paddingTop: 8,
-                borderTop: "1px solid rgba(148, 163, 184, 0.25)",
-                color: "#0f172a",
+                marginTop: Number.parseFloat(overlayPx(8, fontScale)),
+                paddingTop: Number.parseFloat(overlayPx(8, fontScale)),
+                borderTop: `1px solid ${OVERLAY_STYLE_TOKENS.borderSubtle}`,
+                color: OVERLAY_STYLE_TOKENS.textPrimary,
               }}
             >
               {overlay.explanationStatus === "pending" && (
-                <span style={{ color: "#94a3b8" }}>⋯</span>
+                <span style={{ color: OVERLAY_STYLE_TOKENS.textHint }}>⋯</span>
               )}
               {overlay.explanationStatus === "error" && (
-                <span style={{ color: "#b45309" }}>⚠ {overlay.explanationError}</span>
+                <span style={{ color: OVERLAY_STYLE_TOKENS.warning }}>⚠ {overlay.explanationError}</span>
               )}
               {overlay.explanationStatus === "success" && overlay.explanation}
+            </div>
+          )}
+          {saveStatus === "saved" && (
+            <div
+              style={{
+                marginTop: Number.parseFloat(overlayPx(8, fontScale)),
+                paddingTop: Number.parseFloat(overlayPx(8, fontScale)),
+                borderTop: `1px solid ${OVERLAY_STYLE_TOKENS.successBorder}`,
+              }}
+            >
+              <div style={{ fontSize: Number.parseFloat(overlayPx(12, fontScale)), fontWeight: 700, color: OVERLAY_STYLE_TOKENS.success, marginBottom: Number.parseFloat(overlayPx(2, fontScale)) }}>
+                {t("learningSavedTitle")}
+              </div>
+              <div style={{ fontSize: Number.parseFloat(overlayPx(11, fontScale)), color: OVERLAY_STYLE_TOKENS.success, marginBottom: Number.parseFloat(overlayPx(8, fontScale)) }}>
+                {t("learningSavedHint")}
+              </div>
+              <div style={{ display: "flex", gap: Number.parseFloat(overlayPx(6, fontScale)), flexWrap: "wrap" }}>
+                <button type="button" style={savedActionButtonStyle} onClick={() => openVocabulary()}>
+                  {t("popup_vocabulary")}
+                </button>
+                <button type="button" style={savedActionButtonStyle} onClick={() => openReview()}>
+                  {dueCount && dueCount > 0 ? `${t("popup_review")} (${dueCount})` : t("popup_review")}
+                </button>
+              </div>
             </div>
           )}
         </>
@@ -582,6 +783,7 @@ export function mountHoverTranslate() {
   document.documentElement.appendChild(host)
 
   const shadow = host.attachShadow({ mode: "open" })
+  shadow.appendChild(createOverlayStyle1TokenStyleElement())
   const container = document.createElement("div")
   shadow.appendChild(container)
   createRoot(container).render(<ErrorBoundary><HoverTranslateApp /></ErrorBoundary>)

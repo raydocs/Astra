@@ -45,6 +45,8 @@ const driverMocks = vi.hoisted(() => {
               texts: ["selection explain keeps context in place"],
               targetLang: "zh-CN",
               task: "explain",
+              languageLevel: "beginner",
+              explainMode: "exam",
               context: {
                 selectionContext: "Astra needs browser-backed proof that selection explain keeps context in place so users can inspect a sentence without losing their reading flow.",
               },
@@ -94,6 +96,8 @@ describe("selectionExplainBasicScenario", () => {
     expect(execution.selectionExplain).toMatchObject({
       requestCount: 1,
       requestTask: "explain",
+      requestLanguageLevel: "beginner",
+      requestExplainMode: "exam",
     })
     expect(result.artifacts.execution.artifacts).toMatchObject({
       browserExecutablePath: "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
