@@ -52,6 +52,7 @@ function createDeferred<T>() {
 
 describe("meeting caption translation", () => {
   beforeEach(() => {
+    vi.clearAllMocks()
     readConfigMock.mockResolvedValue(DEFAULT_ASTRA_CONFIG)
     runInlineActionMock.mockResolvedValue({ ok: true, text: "会议翻译" })
     document.head.innerHTML = ""
