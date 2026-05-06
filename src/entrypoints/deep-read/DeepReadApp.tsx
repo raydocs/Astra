@@ -693,7 +693,7 @@ export default function DeepReadApp() {
   }
 
   return (
-    <div className="astra-deep-read-shell">
+    <div className="astra-deep-read-shell" data-astra-theme="light">
       <div className="astra-deep-read-glow" />
       <div className="astra-deep-read-glow-secondary" />
 
@@ -906,7 +906,7 @@ export default function DeepReadApp() {
                         className="astra-sentence-btn"
                         aria-pressed={isSelected}
                       >
-                        <div className="astra-micro-label" style={{ color: isSelected ? "var(--astra-accent-warm-hover)" : "var(--astra-text-muted)", marginBottom: 4 }}>
+                        <div className="astra-micro-label" style={{ color: isSelected ? "var(--astra-brand-hover)" : "var(--astra-text-muted)", marginBottom: 4 }}>
                           {formatMessage(t("popup_deepReadSentenceNumber"), index + 1)}
                         </div>
                         <div className="astra-deep-read-reading-sentence-text">{sentence}</div>
@@ -966,7 +966,7 @@ export default function DeepReadApp() {
                       aria-pressed={isSelected}
                     >
                       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, marginBottom: 6 }}>
-                        <div className="astra-micro-label" style={{ color: isSelected ? "var(--astra-accent-warm-hover)" : "var(--astra-text-muted)" }}>
+                        <div className="astra-micro-label" style={{ color: isSelected ? "var(--astra-brand-hover)" : "var(--astra-text-muted)" }}>
                           {formatMessage(t("popup_deepReadSentenceNumber"), index + 1)}
                         </div>
                         {isSaved && <span className="astra-chip-success">{t("actionSaved")}</span>}

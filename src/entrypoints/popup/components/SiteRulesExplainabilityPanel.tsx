@@ -331,7 +331,7 @@ export function buildSiteRulesExplainabilityModel(params: SiteRulesExplainabilit
 function SummaryRows({ title, rows }: { title: string; rows: string[] }) {
   return (
     <div style={{ marginTop: 8 }}>
-      <div style={{ fontSize: 11, fontWeight: 700, color: "var(--astra-popup-text-warm-strong)", textTransform: "uppercase", letterSpacing: 0.3 }}>{title}</div>
+      <div style={{ fontSize: 11, fontWeight: 700, color: "var(--astra-text-primary)", textTransform: "uppercase", letterSpacing: 0.3 }}>{title}</div>
       {rows.map((row) => {
         const [label, ...rest] = row.split(": ")
         return (
@@ -356,7 +356,7 @@ function QuickFixActions({
 
   return (
     <div data-testid="site-rules-quick-fixes" style={{ marginTop: 8 }}>
-      <div style={{ fontSize: 11, fontWeight: 700, color: "var(--astra-popup-text-warm-strong)", textTransform: "uppercase", letterSpacing: 0.3 }}>Quick fixes</div>
+      <div style={{ fontSize: 11, fontWeight: 700, color: "var(--astra-text-primary)", textTransform: "uppercase", letterSpacing: 0.3 }}>Quick fixes</div>
       <div style={{ display: "grid", gap: 6, marginTop: 6 }}>
         {quickFixes.map((quickFix) => (
           <div key={quickFix.action} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>

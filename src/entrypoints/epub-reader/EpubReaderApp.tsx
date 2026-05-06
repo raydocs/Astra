@@ -218,10 +218,10 @@ export function EpubReaderApp() {
   }, [])
 
   return (
-    <div className="astra-container astra-container--wide" style={containerStyle}>
+    <div className="astra-container astra-container--wide" style={containerStyle} data-astra-theme="light">
       <header style={headerStyle}>
         <h1 style={{ margin: 0, fontSize: 18, color: "var(--astra-brand)" }}>Astra ePub Reader</h1>
-        {bookTitle && <span style={{ fontSize: 13, color: "#64748b" }}>{bookTitle}</span>}
+        {bookTitle && <span style={{ fontSize: 13, color: "var(--astra-text-muted)" }}>{bookTitle}</span>}
       </header>
 
       {reopenBanner && (

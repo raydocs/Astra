@@ -117,7 +117,7 @@ export default function SimpleControls({
         <span className="astra-setting-row__body">
           <span className="astra-setting-row__title">Explanation glossary</span>
           <details style={{ marginTop: 8 }}>
-            <summary className="astra-cursor-pointer" style={{ color: "var(--astra-accent-warm-hover)", fontSize: 12, fontWeight: 700 }}>
+            <summary className="astra-cursor-pointer" style={{ color: "var(--astra-brand-hover)", fontSize: 12, fontWeight: 700 }}>
               Explanation glossary
             </summary>
             <textarea

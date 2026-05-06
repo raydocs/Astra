@@ -145,9 +145,9 @@ function SourceDistribution({ bySource }: { bySource: Partial<Record<RequestSour
             key={source}
             style={{
               flex: count,
-              background: source === "page-translation" ? "var(--astra-accent-warm)"
-                : source === "selection" ? "var(--astra-accent-warm-hover)"
-                  : source === "hover" ? "var(--astra-accent-warm)"
+              background: source === "page-translation" ? "var(--astra-brand)"
+                : source === "selection" ? "var(--astra-info)"
+                  : source === "hover" ? "var(--astra-brand-muted)"
                     : "var(--astra-text-hint)",
             }}
             title={`${getSourceLabel(source)}: ${count} (${Math.round((count / total) * 100)}%)`}

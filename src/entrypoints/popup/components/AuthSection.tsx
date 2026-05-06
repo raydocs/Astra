@@ -52,7 +52,7 @@ export default function AuthSection({
 
   return (
     <details open style={{ marginBottom: 12 }}>
-      <summary className="astra-cursor-pointer" style={{ fontSize: 13, color: "var(--astra-accent-warm-hover)" }}>
+      <summary className="astra-cursor-pointer" style={{ fontSize: 13, color: "var(--astra-brand-hover)" }}>
         {t("popup_astraAccount")}
       </summary>
       <div style={{ marginTop: 8 }}>

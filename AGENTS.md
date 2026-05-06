@@ -16,7 +16,7 @@ Astra is an AI-powered language learning browser extension with three main devel
 |------|---------|
 | Install deps | `pnpm install` (runs `wxt prepare` via postinstall) |
 | Extension dev (Chrome) | `pnpm dev` |
-| Web app dev | `pnpm dev:web` (port 4173) |
+| Web app dev | `pnpm dev:web` (port 4173). Imports **`src/assets/astra-style1-tokens.css`**; **default UI theme is light** (`data-astra-theme="light"`). Use **`--accent-primary`** in new CSS (legacy alias: `--accent-blue`). |
 | Relay server | `pnpm relay:start` (port 8787) or `pnpm relay:dev` (watch) |
 | Type check | `pnpm type-check` |
 | Lint | `pnpm lint` |

@@ -302,7 +302,7 @@ export function SubtitleReaderApp() {
   }, [])
 
   return (
-    <div className="astra-container astra-container--wide astra-subtitle-shell">
+    <div className="astra-container astra-container--wide astra-subtitle-shell" data-astra-theme="light" data-astra="quiet">
       <header className="astra-subtitle-header">
         <div>
           <div className="astra-subtitle-header__title">Astra File Translator</div>

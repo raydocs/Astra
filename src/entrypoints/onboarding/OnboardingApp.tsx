@@ -58,11 +58,20 @@ const labelTextStyle: React.CSSProperties = {
 // selectStyle removed — now using className="astra-input"
 
 const summaryBoxStyle: React.CSSProperties = {
-  background: "var(--astra-brand-muted)",
-  borderRadius: 10,
+  background: "var(--astra-bg-elevated)",
+  border: "1px solid var(--astra-border-strong)",
+  borderRadius: 12,
   padding: "20px 24px",
   marginBottom: 24,
   textAlign: "center",
+}
+
+function OnboardingCtaIconArrow() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
+      <path d="M5 12h14M13 6l6 6-6 6" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  )
 }
 
 interface IosBootstrapRuntimeStatus {
@@ -197,23 +206,29 @@ function OnboardingPreview({
     <aside className="astra-onboarding-panel astra-onboarding-preview-pane" aria-label="Astra live preview">
       <div className="astra-onboarding-preview-toolbar">
         <span className="astra-quiet-eyebrow">Live preview</span>
-        <span className="astra-onboarding-preview-host">newyorker.com</span>
+        <span className="astra-onboarding-preview-host">
+          <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
+            <circle cx="12" cy="12" r="9" />
+            <path d="M3 12h18M12 3a14 14 0 0 1 0 18M12 3a14 14 0 0 0 0 18" strokeLinecap="round" />
+          </svg>
+          newyorker.com
+        </span>
       </div>
 
       <div className="astra-onboarding-preview-card">
-        <div className="astra-quiet-eyebrow" style={{ marginBottom: 8 }}>Preview article</div>
+        <div className="astra-quiet-eyebrow" style={{ marginBottom: 8 }}>Preview · article</div>
         <h2 className="astra-onboarding-preview-title">Why Solitude Is Important for Reading</h2>
         <div className="astra-onboarding-preview-subtitle">为什么独处对阅读如此重要</div>
 
         <div className="astra-onboarding-preview-body">
           <p>
-            Reading well requires a kind of <span className="astra-onboarding-preview-mark">attention</span> that the modern web has quietly <span className="astra-onboarding-preview-mark">eroded</span>.
+            Reading well requires a kind of <span className="astra-onboarding-preview-mark">attention</span> that the modern web has quietly <span className="astra-onboarding-preview-mark">eroded</span>. To <span className="astra-onboarding-preview-mark">inhabit</span> a difficult sentence, you have to be willing to sit with it.
           </p>
           <p className="astra-onboarding-preview-translation">
-            阅读得当需要一种现代网络已悄然侵蚀的专注力。
+            阅读得当需要一种现代网络已悄然侵蚀的专注力。要真正进入一句难懂的话，你必须愿意在它面前停留。
           </p>
           <p>
-            Astra sits underneath the page, adding only what you ask for, never repainting what was already legible.
+            Astra runs <span className="astra-onboarding-preview-mark">underneath</span> the page, adding only what you ask for, never repainting what was already <span className="astra-onboarding-preview-mark">legible</span>.
           </p>
           <p className="astra-onboarding-preview-translation">
             Astra 运行在页面之下，只补充你需要的部分，绝不重绘原本已可读的内容。
@@ -221,7 +236,13 @@ function OnboardingPreview({
         </div>
 
         <div className="astra-onboarding-preview-footer">
-          Translation: {targetLabel} · Level: {levelLabel} · Explanation: {explainModeLabel}
+          <div className="astra-onboarding-preview-footer__hint">
+            <span className="astra-onboarding-preview-footer__dot" aria-hidden="true" />
+            <span>Marked words are saved to your library when you click them.</span>
+          </div>
+          <div className="astra-onboarding-preview-footer__meta">
+            Translation: {targetLabel} · Level: {levelLabel} · Explanation: {explainModeLabel}
+          </div>
         </div>
       </div>
     </aside>
@@ -231,21 +252,15 @@ function OnboardingPreview({
 function StepWelcome({ onNext }: { onNext: () => void }) {
   return (
     <div style={{ textAlign: "left" }}>
-      <div
-        className="astra-onboarding-mark"
-        style={{ marginBottom: 24 }}
-      >
-        A
-      </div>
       <h1 className="astra-onboarding-title">Astra — AI Language Learning</h1>
       <p className="astra-onboarding-copy">Not just a translator: turn real webpages into sentence explanations, saved vocabulary, and spaced review.</p>
       <button
         type="button"
         onClick={onNext}
-        className="astra-btn-primary"
-        style={{ display: "block", width: "100%", padding: "14px 24px", fontSize: 16 }}
+        className="astra-btn-onboarding-primary"
       >
-        Get Started
+        Get started
+        <OnboardingCtaIconArrow />
       </button>
     </div>
   )
@@ -350,10 +365,10 @@ function StepLanguage({
       <button
         type="button"
         onClick={onNext}
-        className="astra-btn-primary"
-        style={{ display: "block", width: "100%", padding: "14px 24px", fontSize: 16 }}
+        className="astra-btn-onboarding-primary"
       >
         Continue
+        <OnboardingCtaIconArrow />
       </button>
     </div>
   )
@@ -385,14 +400,14 @@ function StepFeatures({
         data-testid="onboarding-closure-loop-copy"
         data-copy-variant={copyVariant}
         style={{
-          background: "var(--astra-popup-bg-soft)",
-          border: "1px solid var(--astra-popup-border-warm)",
+          background: "var(--astra-bg-card)",
+          border: "1px solid var(--astra-border-strong)",
           borderRadius: 12,
           padding: "14px 16px",
           marginBottom: 16,
         }}
       >
-        <div style={{ fontSize: 13, fontWeight: 800, color: "var(--astra-popup-text-warm-strong)", textTransform: "uppercase", letterSpacing: "0.04em" }}>
+        <div style={{ fontSize: 13, fontWeight: 800, color: "var(--astra-text-secondary)", textTransform: "uppercase", letterSpacing: "0.04em" }}>
           {copy.eyebrow}
         </div>
         <div style={{ fontSize: 14, fontWeight: 700, color: "var(--astra-text-primary)", marginTop: 4 }}>
@@ -462,8 +477,9 @@ function StepFeatures({
         ))}
       </div>
 
-      <button type="button" onClick={onContinue} className="astra-btn-primary" style={{ display: "block", width: "100%", padding: "14px 24px", fontSize: 16 }}>
+      <button type="button" onClick={onContinue} className="astra-btn-onboarding-primary">
         Continue
+        <OnboardingCtaIconArrow />
       </button>
     </div>
   )
@@ -516,7 +532,7 @@ function StepReady({
             textAlign: "left",
           }}
         >
-          <div style={{ fontSize: 11, fontWeight: 800, color: "var(--astra-popup-text-warm-strong)", textTransform: "uppercase", letterSpacing: "0.04em" }}>
+          <div style={{ fontSize: 11, fontWeight: 800, color: "var(--astra-text-secondary)", textTransform: "uppercase", letterSpacing: "0.04em" }}>
             {packageCopy.eyebrow}
           </div>
           <div style={{ fontSize: 13, fontWeight: 700, color: "var(--astra-text-primary)", marginTop: 4 }}>
@@ -597,8 +613,8 @@ function StepReady({
             type="button"
             data-testid="onboarding-account-continuity-sign-in-cta"
             onClick={openAccountContinuitySignIn}
-            className="astra-btn-primary"
-            style={{ display: "block", width: "100%", marginTop: 8, padding: "8px 12px", fontSize: 12 }}
+            className="astra-btn-onboarding-primary"
+            style={{ width: "100%", marginTop: 8, padding: "8px 12px", fontSize: 12 }}
           >
             {accountContinuityCopy.cta}
           </button>
@@ -612,10 +628,10 @@ function StepReady({
         type="button"
         onClick={onComplete}
         disabled={completing}
-        className="astra-btn-primary"
-        style={{ display: "block", width: "100%", padding: "14px 24px", fontSize: 16 }}
+        className="astra-btn-onboarding-primary"
       >
-        {completing ? "Setting up..." : "Start Using Astra"}
+        {completing ? "Setting up…" : "Start using Astra"}
+        {!completing && <OnboardingCtaIconArrow />}
       </button>
     </div>
   )
@@ -753,7 +769,7 @@ export default function OnboardingApp() {
   }
 
   return (
-    <div className="astra-onboarding-shell">
+    <div className="astra-onboarding-shell" data-astra-theme="light" data-astra="quiet">
       <main className="astra-onboarding-frame">
         <section className="astra-onboarding-panel astra-onboarding-panel--copy">
           <div className="astra-onboarding-brand-row">
