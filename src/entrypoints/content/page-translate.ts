@@ -9,8 +9,10 @@ import { sanitizeTranslationContext } from "@/utils/privacy"
 import { recordPageTranslation } from "@/utils/storage/reading-history"
 import { upsertOwnedArticleFromUrl } from "@/utils/storage/owned-reading"
 import {
+  applySiteCustomCss,
   clearLoading,
   removeAllTranslations,
+  removeSiteCustomCss,
   removeTranslationFor,
   replaceLoading,
   showLoading,
@@ -72,6 +74,7 @@ interface TranslationSession {
   contentScope: ResolvedSiteTranslationSettings["contentScope"]
   privacyMode: boolean
   siteRules?: { selectors?: string[]; excludeSelectors?: string[]; paragraphMinLength?: number }
+  customCss?: string
   diagnostics?: TranslationRuntimeDiagnostics
   intersectionObserver: IntersectionObserver | null
   mutationObserver: MutationObserver | null
@@ -212,6 +215,7 @@ function stopSession(
   error: TranslationError | null = null,
   options: { invalidatePendingStart?: boolean; preserveProgress?: boolean } = {},
 ): TranslationSnapshot {
+  removeSiteCustomCss()
   if (options.invalidatePendingStart ?? true) {
     sessionLifecycleToken += 1
   }
@@ -872,6 +876,7 @@ export async function startPageTranslation(
       excludeSelectors: resolved.excludeSelectors,
       paragraphMinLength: resolved.paragraphMinLength,
     },
+    customCss: resolved.customCss,
     intersectionObserver: null,
     mutationObserver: null,
     drainPromise: null,
@@ -885,6 +890,7 @@ export async function startPageTranslation(
   }
 
   currentSession = session
+  applySiteCustomCss(session.customCss)
   publishSessionState(session, "starting")
 
   session.intersectionObserver = createIntersectionObserver(session)

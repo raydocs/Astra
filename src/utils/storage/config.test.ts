@@ -290,6 +290,8 @@ describe("config storage", () => {
           selectors: ["article", ".content"],
           excludeSelectors: [".comments", "aside"],
           paragraphMinLength: 42,
+          includePathPatterns: ["/docs/*", "/blog/*"],
+          excludePathPatterns: ["/docs/private/*"],
         },
       },
     })
@@ -301,6 +303,8 @@ describe("config storage", () => {
         selectors: ["article", ".content"],
         excludeSelectors: [".comments", "aside"],
         paragraphMinLength: 42,
+        includePathPatterns: ["/docs/*", "/blog/*"],
+        excludePathPatterns: ["/docs/private/*"],
       },
     })
   })

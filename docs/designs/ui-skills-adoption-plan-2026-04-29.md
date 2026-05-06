@@ -1,6 +1,7 @@
 # UI Skills Adoption Plan for Astra
 
 **Date:** 2026-04-29  
+**Update (2026-05):** Web Companion imports **`src/assets/astra-style1-tokens.css`** (same Style 1 palette as the extension token layer). UI default is **light** (`data-astra-theme="light"`). Web-local aliases use **`--accent-primary`** (maps to `--astra-style-accent-primary`; Quiet ≈ ink blue, Twilight ≈ star gold — not a fixed “system blue”). Legacy **`--accent-blue`** remains an alias only.  
 **Baseline Reference:** [docs/analysis/ui-design-baseline-audit-2026-04-24.md](../analysis/ui-design-baseline-audit-2026-04-24.md) (scored **3.5/10**)  
 **Catalog Evaluated:** [UI Skills](https://www.ui-skills.com/skills/) by [ibelick/ui-skills](https://github.com/ibelick/ui-skills) + Anthropic registry  
 **Architecture:** React (extension surfaces: inline CSSProperties → migrating to CSS classes) + CSS design system (web companion)
@@ -28,7 +29,7 @@ From the [UI Skills catalog](https://www.ui-skills.com/skills/) and its [GitHub 
 | 5 | **[frontend-design](https://www.ui-skills.com/skills/anthropics/frontend-design/)** | Anthropic | Anti-generic design guidance: typography pairing, bold color commitment, spatial composition | ★★☆ Strategic (web companion redesign) |
 | 6 | **[interface-design](https://www.ui-skills.com/skills/interface-design/)** | Registry | Audit + upgrade path for premium visual quality: depth, spacing systems, elevation | ★★☆ Strategic |
 | 7 | **[fixing-metadata](https://www.ui-skills.com/skills/fixing-metadata/)** | Core | Web companion + reader pages need proper `<title>`, OG tags, and structured data for sharing | ★☆☆ Quick win |
-| 8 | **Design Tokens Unification** (custom, derived from baseline-ui + frontend-design) | Composite | Bridge extension tokens (`--astra-*`) and web tokens (`--bg-primary`, `--accent-blue`) | ★★★ Prerequisite |
+| 8 | **Design Tokens Unification** (custom, derived from baseline-ui + frontend-design) | Composite | Shared **Style 1** file (`astra-style1-tokens.css`); extension adds `--astra-*` in `astra-extension.css`, web adds `--bg-primary`, `--accent-primary`, etc. in `web/src/styles.css` | ★★★ Prerequisite |
 
 ### Skills Evaluated but Not Selected
 
@@ -140,8 +141,8 @@ Before mapping skills to files, here's what has changed since the baseline audit
 
 | Principle | Current State | Recommendation |
 |-----------|--------------|----------------|
-| "Choose distinctive fonts" | Extension: `system-ui` stack; Web: `-apple-system` stack | Web companion is already intentionally Apple-native; extension should keep system font for performance. **No change needed** — system fonts are the right choice for a utility extension |
-| "Commit to a cohesive color palette" | Extension: indigo `#6366f1`; Web: blue `#0A84FF`; Popup hero: orange `#ea580c` | Unify: **indigo is primary**, orange is **accent for learning/CTA**, blue is web-only variant. Document in brand guide |
+| "Choose distinctive fonts" | Extension + web: **Inter Tight / Source Serif 4 / JetBrains Mono** (shared Style 1 import + stacks in `astra-extension.css` / `web/src/styles.css`) | Continue removing stray `system-ui`-only hardcoding in individual TSX surfaces |
+| "Commit to a cohesive color palette" | **Style 1** — `--astra-style-accent-primary` (Quiet vs Twilight); web aliases **`--accent-primary`**; legacy `--accent-blue` | Do not treat the web app as a separate "system blue" product; document Quiet/Twilight semantics in brand guide |
 | "Dominant colors with sharp accents" | Currently 5+ orange variants in popup alone | Reduce to: `--astra-accent-warm: #ea580c`, `--astra-accent-warm-hover: #c2410c` — two values only |
 | "Use CSS variables for consistency" | ✅ Already implemented in `astra-extension.css` | Continue migration from inline hex → token references |
 | "Empty states need clear next action" | Drop zones show `"PDF"` at fontSize 48 | Replace with illustration + descriptive text + file-select button |
@@ -170,14 +171,15 @@ Before mapping skills to files, here's what has changed since the baseline audit
 
 ### Skill 8: Design Tokens Unification (custom)
 
-**Goal:** Bridge extension (`--astra-*`) and web (`--bg-*`, `--accent-*`) token namespaces.
+**Goal:** One shared **Style 1** palette (`src/assets/astra-style1-tokens.css`) with thin surface-specific aliases.
+
+**Current state (2026-05):** `astra-extension.css` imports Style 1 and exposes `--astra-*` shortcuts; `web/src/styles.css` imports the same file and exposes `--bg-primary`, `--accent-primary`, etc. Web Companion **defaults to light** (`data-astra-theme="light"`).
 
 | Step | Detail |
 |------|--------|
-| **Map tokens** | Create a crosswalk document: `--astra-bg-primary` ↔ `--bg-secondary` (web uses pure black `#000` as primary, extension uses slate `#f8fafc`) |
-| **Shared semantic layer** | Define a shared set: `--astra-surface`, `--astra-on-surface`, `--astra-accent`, `--astra-accent-on` that both CSS files resolve differently |
-| **Dark mode tokens** | Add `@media (prefers-color-scheme: dark)` block to `astra-extension.css` that remaps `--astra-bg-primary` → `#1C1C1E`, `--astra-text-primary` → `#FFFFFF`, etc. — **modeled after web companion's existing dark palette** |
-| **Shared file** | Extract semantic token definitions into `src/assets/astra-tokens.css` imported by both `astra-extension.css` and `web/src/styles.css` |
+| **Crosswalk** | Document mapping only where aliases diverge (e.g. web `--bg-primary` → `--astra-style-bg-app`) — avoid stale hex comparisons (`#000` vs slate). |
+| **Dark / Twilight** | Extension uses attribute selectors (`[data-astra-theme="dark"]`, `[data-astra="twilight"]`) wired to the same token file — not a separate “copy Apple dark palette” block. |
+| **Optional shared semantic layer** | If needed later: `--astra-surface` style names on top of Style 1 — incremental; do not fork duplicate hex lists. |
 
 ---
 
@@ -323,10 +325,10 @@ claude skills add --url https://github.com/anthropics/skills/blob/main/skills/fr
 
 | Decision | Rationale | Alternative Considered |
 |----------|-----------|----------------------|
-| Keep `system-ui` font stack for extension | Extension is a utility tool; system fonts ensure native feel and fast rendering | Distinctive display font per frontend-design skill — rejected as inappropriate for this context |
-| Indigo (`#6366f1`) as unified primary, not blue or orange | Already adopted in `astra-extension.css`; most reader surfaces already use it; web companion blue is intentionally Apple-native (different product surface) | Orange — rejected as it's used inconsistently and feels more like an accent |
+| Extension UI fonts | Stack aligns with Style 1: **Inter Tight** + **Source Serif 4** + **JetBrains Mono** (see `astra-extension.css` / shared token import) | `system-ui`-only — superseded for Quiet/Twilight editorial direction |
+| Primary accent is semantic, not a fixed brand hex | **Style 1** defines `--astra-style-accent-primary`: Quiet Reader ≈ iron blue, Constellation/Twilight ≈ star gold; web uses **`--accent-primary`** tied to the same token | Legacy indigo-only or “web = Apple blue” framing — outdated once Style 1 shipped |
 | CSS custom properties over Tailwind migration | Astra is a browser extension with Shadow DOM constraints; Tailwind requires build pipeline changes and complicates content script injection | Tailwind — rejected as over-engineering for this architecture |
-| Dark mode via `@media (prefers-color-scheme)` not class toggle | Extension surfaces have no settings UI for theme; OS-level detection is the right default | Manual toggle — could add later in Options |
+| Theme selection | **Web Companion** defaults to **light** (`data-astra-theme="light"`). Extension continues to follow its own entrypoint/theme attributes (e.g. twilight / quiet) | Single global `@media (prefers-color-scheme)` for all surfaces — insufficient for explicit Quiet vs Twilight |
 | Decompose components before visual redesign | Monolithic files make targeted styling changes risky; decomposition de-risks Phase 3 | Style first, decompose later — rejected because 2400-line files are unmaintainable |
 
 ---

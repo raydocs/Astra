@@ -118,6 +118,52 @@ interface PageSavedReviewSummary {
   entryId?: string
 }
 
+type DeepReadStickyNoteKind = "summary" | "key" | "context" | "ask"
+
+interface DeepReadStickyNoteItem {
+  id: string
+  kind: DeepReadStickyNoteKind
+  title?: string
+  body: string
+  paragraphLabel: string
+  tilt?: "left" | "right"
+}
+
+function getStickyKindLabel(kind: DeepReadStickyNoteKind): string {
+  return {
+    summary: "So far",
+    key: "Key idea",
+    context: "Context",
+    ask: "Ask Astra",
+  }[kind]
+}
+
+function DeepReadStickyNote({
+  note,
+  onDismiss,
+}: {
+  note: DeepReadStickyNoteItem
+  onDismiss: (id: string) => void
+}) {
+  if (!note.body.trim()) return null
+
+  return (
+    <article className="astra-sticky-note" data-tilt={note.tilt ?? "left"} data-kind={note.kind}>
+      <div className="astra-sticky-note__head">
+        <span className="astra-sticky-note__kind">{getStickyKindLabel(note.kind)}</span>
+        <span className="astra-sticky-note__ai">AI</span>
+      </div>
+      {note.title && <h4 className="astra-sticky-note__title">{note.title}</h4>}
+      <p className="astra-sticky-note__body">{note.body}</p>
+      <div className="astra-sticky-note__footer">
+        <button type="button" className="astra-sticky-note__action" onClick={() => onDismiss(note.id)}>Dismiss</button>
+        <span style={{ flex: 1 }} />
+        <span className="astra-sticky-note__label">{note.paragraphLabel}</span>
+      </div>
+    </article>
+  )
+}
+
 function derivePageSavedReviewState(
   entries: VocabularyEntry[],
   studyUrl?: string | null,
@@ -169,6 +215,7 @@ export default function DeepReadApp() {
   const [pageSavedReviewSummary, setPageSavedReviewSummary] = useState<PageSavedReviewSummary | null>(null)
   const [savingIndex, setSavingIndex] = useState<number | null>(null)
   const [speakingIndex, setSpeakingIndex] = useState<number | null>(null)
+  const [dismissedStickyNotes, setDismissedStickyNotes] = useState<Set<string>>(() => new Set())
   const [autoPlayEnabled, setAutoPlayEnabled] = useState(false)
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
 
@@ -338,6 +385,44 @@ export default function DeepReadApp() {
   const savedPageReviewActionLabel = pageSavedReviewSummary
     ? t("popup_studyPageSavedReviewAction")
     : dueCount > 0 ? `${t("popup_review")} (${dueCount})` : t("popup_review")
+
+  const stickyNotes = useMemo<DeepReadStickyNoteItem[]>(() => {
+    const paragraphLabel = sentences.length > 0
+      ? `¶ ${Math.min(selectedSentenceIndex + 1, sentences.length)}`
+      : "Digest"
+
+    if (pageDigest?.summary?.trim()) {
+      return [{
+        id: "digest-summary",
+        kind: "summary",
+        title: "You’ve read the setup.",
+        body: pageDigest.summary.trim(),
+        paragraphLabel,
+        tilt: "left",
+      }]
+    }
+
+    const contextFallback = (studyContext?.contentSummary || studyContext?.metaDescription || "").trim()
+    if (!contextFallback) return []
+
+    const trimmedBody = contextFallback.length > 260
+      ? `${contextFallback.slice(0, 260).trimEnd()}…`
+      : contextFallback
+
+    return [{
+      id: "context-note",
+      kind: "context",
+      title: "Context note",
+      body: trimmedBody,
+      paragraphLabel: "Digest",
+      tilt: "right",
+    }]
+  }, [pageDigest?.summary, selectedSentenceIndex, sentences.length, studyContext?.contentSummary, studyContext?.metaDescription])
+
+  const visibleStickyNotes = useMemo(
+    () => stickyNotes.filter((note) => !dismissedStickyNotes.has(note.id)),
+    [dismissedStickyNotes, stickyNotes],
+  )
 
   useEffect(() => {
     if (!sentences.length) return
@@ -608,26 +693,43 @@ export default function DeepReadApp() {
   }
 
   return (
-    <div className="astra-deep-read-shell">
+    <div className="astra-deep-read-shell" data-astra-theme="light">
       <div className="astra-deep-read-glow" />
       <div className="astra-deep-read-glow-secondary" />
 
       <div className="astra-deep-read-container">
+        <nav className="astra-deep-read-topbar" aria-label="Deep Read navigation">
+          <div className="astra-deep-read-topbar__identity">
+            <div className="astra-deep-read-topbar__brand">Astra</div>
+            <span className="astra-deep-read-topbar__host">
+              {studyContext?.hostname || lastReadingPage?.hostname || t("popup_deepReadTitle")}
+            </span>
+          </div>
+          <div className="astra-deep-read-topbar__actions">
+            {studyContext?.pageUrl && /^https?:\/\//i.test(studyContext.pageUrl) && (
+              <button type="button" className="astra-btn-secondary" onClick={openSourcePage}>
+                {t("review_openSourcePage")}
+              </button>
+            )}
+            <button type="button" className="astra-btn-secondary" onClick={openVocabulary}>
+              {t("popup_vocabulary")}
+            </button>
+            <button type="button" className="astra-btn-primary" onClick={openSavedPageReview}>
+              {savedPageReviewActionLabel}
+            </button>
+          </div>
+        </nav>
+
         <section className="astra-deep-read-hero-card">
           <div style={{ display: "flex", flexWrap: "wrap", justifyContent: "space-between", gap: 20, alignItems: "flex-start" }}>
             <div style={{ flex: "1 1 460px", minWidth: 0 }}>
-              <div className="astra-eyebrow">{t("popup_deepReadTitle")}</div>
+              <div className="astra-quiet-eyebrow">{t("popup_deepReadTitle")}</div>
               <h1 className="astra-deep-read-hero-title">
                 {studyContext?.pageTitle || t("popup_deepReadPageFallbackTitle")}
               </h1>
               <p className="astra-deep-read-hero-subtitle">
                 {studyContext?.hostname || t("popup_deepReadHint")}
               </p>
-              {studyContext?.pageUrl && /^https?:\/\//i.test(studyContext.pageUrl) && (
-                <button type="button" className="astra-btn-secondary" style={{ marginTop: 14 }} onClick={openSourcePage}>
-                  {t("review_openSourcePage")}
-                </button>
-              )}
             </div>
 
             <div style={{ display: "grid", gap: 10, gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))", flex: "1 1 320px", width: "100%" }}>
@@ -804,7 +906,7 @@ export default function DeepReadApp() {
                         className="astra-sentence-btn"
                         aria-pressed={isSelected}
                       >
-                        <div className="astra-micro-label" style={{ color: isSelected ? "var(--astra-accent-warm-hover)" : "var(--astra-text-muted)", marginBottom: 4 }}>
+                        <div className="astra-micro-label" style={{ color: isSelected ? "var(--astra-brand-hover)" : "var(--astra-text-muted)", marginBottom: 4 }}>
                           {formatMessage(t("popup_deepReadSentenceNumber"), index + 1)}
                         </div>
                         <div className="astra-deep-read-reading-sentence-text">{sentence}</div>
@@ -864,7 +966,7 @@ export default function DeepReadApp() {
                       aria-pressed={isSelected}
                     >
                       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, marginBottom: 6 }}>
-                        <div className="astra-micro-label" style={{ color: isSelected ? "var(--astra-accent-warm-hover)" : "var(--astra-text-muted)" }}>
+                        <div className="astra-micro-label" style={{ color: isSelected ? "var(--astra-brand-hover)" : "var(--astra-text-muted)" }}>
                           {formatMessage(t("popup_deepReadSentenceNumber"), index + 1)}
                         </div>
                         {isSaved && <span className="astra-chip-success">{t("actionSaved")}</span>}
@@ -905,15 +1007,38 @@ export default function DeepReadApp() {
           <aside style={{ display: "flex", flexDirection: "column", gap: 16 }}>
             <section className="astra-deep-read-sidebar-card">
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, marginBottom: 10, flexWrap: "wrap" }}>
-                <div className="astra-sidebar-title">{t("popup_studyTitle")}</div>
+                <div>
+                  <div className="astra-quiet-eyebrow" style={{ marginBottom: 6 }}>Digest</div>
+                  <div className="astra-sidebar-title">{t("popup_studyTitle")}</div>
+                </div>
                 <button type="button" className="astra-btn-secondary" onClick={() => void handleGenerateDigest()}>
                   {digestLoading ? "..." : pageDigest ? t("popup_regenerateDigest") : t("popup_generateDigest")}
                 </button>
               </div>
 
+              {visibleStickyNotes.length > 0 && (
+                <div className="astra-deep-read-sticky-stack">
+                  {visibleStickyNotes.map((note) => (
+                    <DeepReadStickyNote
+                      key={note.id}
+                      note={note}
+                      onDismiss={(id) => {
+                        setDismissedStickyNotes((current) => {
+                          const next = new Set(current)
+                          next.add(id)
+                          return next
+                        })
+                      }}
+                    />
+                  ))}
+                </div>
+              )}
+
               {pageDigest ? (
                 <>
-                  <div className="astra-deep-read-digest-summary">{pageDigest.summary}</div>
+                  {visibleStickyNotes.some((note) => note.id === "digest-summary") ? null : (
+                    <div className="astra-deep-read-digest-summary">{pageDigest.summary}</div>
+                  )}
                   {pageDigest.suggestedAction && (
                     <div className="astra-deep-read-warm-callout">
                       {pageDigest.suggestedAction}

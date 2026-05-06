@@ -738,6 +738,54 @@
   "popup_currentSite": {
     "message": "Current Site"
   },
+  "popup_designThisSite": {
+    "message": "This Site"
+  },
+  "popup_autoTranslateSite": {
+    "message": "Auto-translate"
+  },
+  "popup_displayModeSite": {
+    "message": "Display"
+  },
+  "popup_styleSite": {
+    "message": "Style"
+  },
+  "popup_readingEyebrow": {
+    "message": "Reading"
+  },
+  "popup_hoverTranslateRow": {
+    "message": "Hover to translate"
+  },
+  "popup_todayTitle": {
+    "message": "Today"
+  },
+  "popup_libraryLink": {
+    "message": "Library"
+  },
+  "popup_metricSavedWords": {
+    "message": "saved words"
+  },
+  "popup_metricWeekActivity": {
+    "message": "saved · 7d"
+  },
+  "popup_reviewCtaTitle": {
+    "message": "Review $1 words"
+  },
+  "popup_reviewCtaHint": {
+    "message": "Spaced repetition queue"
+  },
+  "popup_reviewStart": {
+    "message": "Start →"
+  },
+  "popup_toolbarLibraryAria": {
+    "message": "Library"
+  },
+  "popup_toolbarSettingsAria": {
+    "message": "Settings"
+  },
+  "popup_languageCoachSection": {
+    "message": "Language, coach & font size"
+  },
 
   "popup_studyStepRead": {
     "message": "Read"

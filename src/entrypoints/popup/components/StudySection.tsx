@@ -86,9 +86,9 @@ const cardStyle: React.CSSProperties = {
 }
 
 const actionButtonStyle: React.CSSProperties = {
-  border: "1px solid var(--astra-popup-border-warm-strong)",
-  background: "var(--astra-popup-bg-soft)",
-  color: "var(--astra-accent-warm-hover)",
+  border: "1px solid var(--astra-border-strong)",
+  background: "var(--astra-bg-card)",
+  color: "var(--astra-brand-hover)",
   borderRadius: 8,
   padding: "6px 10px",
   fontSize: 12,
@@ -145,7 +145,7 @@ function StudyProgressBar({ completionPercent, completedSteps }: {
                 flex: 1,
                 height: 4,
                 borderRadius: 2,
-                background: done ? "var(--astra-accent-warm)" : "var(--astra-border)",
+                background: done ? "var(--astra-brand)" : "var(--astra-border)",
                 transition: "background 0.2s",
               }}
               title={`${getStepLabel(step)}${done ? t("popup_studyStepDone") : ""}`}
@@ -181,15 +181,15 @@ function CurrentPageProgressCard({ studyLoop }: { studyLoop: StudyLoopViewModel 
       style={{
         marginTop: 10,
         padding: "10px 12px",
-        background: "var(--astra-popup-bg-soft)",
-        border: "1px solid var(--astra-popup-border-warm)",
+        background: "var(--astra-bg-card)",
+        border: "1px solid var(--astra-border)",
         borderRadius: 10,
       }}
     >
-      <div style={{ fontSize: 12, fontWeight: 700, color: "var(--astra-popup-text-warm-strong)", marginBottom: 4 }}>
+      <div style={{ fontSize: 12, fontWeight: 700, color: "var(--astra-text-primary)", marginBottom: 4 }}>
         {t("popup_studyCurrentPageProgressTitle")}
       </div>
-      <div style={{ fontSize: 10, color: "var(--astra-popup-text-warm)", marginBottom: 8 }}>
+      <div style={{ fontSize: 10, color: "var(--astra-text-secondary)", marginBottom: 8 }}>
         {t("popup_studyCurrentPageProgressHint")}
       </div>
       <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
@@ -356,8 +356,8 @@ function NextStepBanner({
     <div style={{
       marginTop: 8,
       padding: "8px 10px",
-      background: "var(--astra-popup-bg-soft)",
-      border: "1px solid var(--astra-popup-border-warm-strong)",
+      background: "var(--astra-bg-card)",
+      border: "1px solid var(--astra-border-strong)",
       borderRadius: 8,
       display: "flex",
       justifyContent: "space-between",
@@ -365,10 +365,10 @@ function NextStepBanner({
     }}
     >
       <div style={{ minWidth: 0 }}>
-        <div style={{ fontSize: 12, color: "var(--astra-popup-text-warm-strong)", fontWeight: 600 }}>
+        <div style={{ fontSize: 12, color: "var(--astra-text-primary)", fontWeight: 600 }}>
           {t("popup_studyNext")} {getStepLabel(nextStep)}
         </div>
-        <div style={{ fontSize: 11, color: "var(--astra-accent-warm-hover)", marginTop: 2, lineHeight: 1.4 }}>
+        <div style={{ fontSize: 11, color: "var(--astra-brand-hover)", marginTop: 2, lineHeight: 1.4 }}>
           {getNextStepHint(nextStep)}
         </div>
       </div>
@@ -386,6 +386,75 @@ function NextStepBanner({
       >
         {action.label}
       </button>
+    </div>
+  )
+}
+
+function StudyProgressCardGroup({
+  studyLoop,
+  pageSavedReviewSummary,
+  canReadArticle,
+  dueCount,
+  onReadArticle,
+  onExplainSentence,
+  onOpenVocabulary,
+  onOpenReview,
+  onReviewPageSavedSentences,
+}: {
+  studyLoop: StudyLoopViewModel
+  pageSavedReviewSummary: { count: number } | null
+  canReadArticle: boolean
+  dueCount: number
+  onReadArticle: () => void
+  onExplainSentence: () => void
+  onOpenVocabulary: () => void
+  onOpenReview: () => void
+  onReviewPageSavedSentences: () => void
+}) {
+  return (
+    <div
+      data-testid="study-progress-card-group"
+      style={{
+        marginTop: 10,
+        padding: "10px 12px",
+        background: "var(--astra-bg-card)",
+        border: "1px solid var(--astra-border)",
+        borderRadius: 10,
+      }}
+    >
+      {studyLoop.currentPage && studyLoop.nextStep && studyLoop.completedSteps.length > 0 && (
+        <div
+          style={{
+            marginBottom: 8,
+            padding: "8px 10px",
+            background: "var(--astra-success-bg)",
+            border: "1px solid var(--astra-success-border)",
+            borderRadius: 8,
+            fontSize: 12,
+            color: "var(--astra-success)",
+            lineHeight: 1.45,
+          }}
+        >
+          {t("popup_studyResumeFromLast")}
+        </div>
+      )}
+      <CurrentPageProgressCard studyLoop={studyLoop} />
+      <PersonalizedStrategyCard studyLoop={studyLoop} />
+      <StudyProgressBar
+        completionPercent={studyLoop.completionPercent}
+        completedSteps={studyLoop.completedSteps}
+      />
+      <NextStepBanner
+        nextStep={studyLoop.nextStep}
+        onReadArticle={onReadArticle}
+        onExplainSentence={onExplainSentence}
+        onOpenVocabulary={onOpenVocabulary}
+        onOpenReview={onOpenReview}
+        onReviewPageSavedSentences={onReviewPageSavedSentences}
+        hasPageSavedReview={!!pageSavedReviewSummary}
+        canReadArticle={canReadArticle}
+        dueCount={dueCount}
+      />
     </div>
   )
 }
@@ -463,8 +532,8 @@ export default function StudySection({
         </div>
         <div style={{
           fontSize: 11,
-          color: dueCount > 0 ? "var(--astra-popup-text-warm-strong)" : "var(--astra-text-muted)",
-          background: dueCount > 0 ? "var(--astra-popup-bg-start)" : "var(--astra-border)",
+          color: dueCount > 0 ? "var(--astra-brand)" : "var(--astra-text-muted)",
+          background: dueCount > 0 ? "var(--astra-brand-muted)" : "var(--astra-border)",
           borderRadius: 999,
           padding: "4px 8px",
           whiteSpace: "nowrap",
@@ -541,10 +610,10 @@ export default function StudySection({
           style={{
             marginTop: 10,
             padding: "12px",
-            background: "linear-gradient(145deg, var(--astra-popup-bg-soft) 0%, var(--astra-popup-bg-start) 100%)",
-            border: "1px solid var(--astra-popup-border-warm-strong)",
+            background: "var(--astra-bg-card)",
+            border: "1px solid var(--astra-border-strong)",
             borderRadius: 12,
-            boxShadow: "var(--astra-popup-shadow-warm-md)",
+            boxShadow: "var(--astra-shadow-md)",
           }}
         >
           <div style={{
@@ -552,9 +621,9 @@ export default function StudySection({
             alignItems: "center",
             fontSize: 10,
             fontWeight: 700,
-            color: "var(--astra-popup-text-warm-strong)",
+            color: "var(--astra-text-primary)",
             background: "var(--astra-bg-card)",
-            border: "1px solid var(--astra-popup-border-warm-strong)",
+            border: "1px solid var(--astra-border-strong)",
             borderRadius: 999,
             padding: "2px 8px",
             marginBottom: 8,
@@ -562,30 +631,38 @@ export default function StudySection({
           >
             {t("popup_studyNext")}
           </div>
-          <div style={{ fontSize: 13, fontWeight: 800, color: "var(--astra-popup-text-warm)", marginBottom: 4 }}>
+          <div style={{ fontSize: 13, fontWeight: 800, color: "var(--astra-text-secondary)", marginBottom: 4 }}>
             {t("popup_deepReadTitle")}
           </div>
-          <div style={{ fontSize: 11, color: "var(--astra-popup-text-warm-strong)", lineHeight: 1.45, marginBottom: 10 }}>
+          <div style={{ fontSize: 11, color: "var(--astra-text-primary)", lineHeight: 1.45, marginBottom: 10 }}>
             {t("popup_deepReadHint")}
           </div>
           <button
             type="button"
-            className="astra-cursor-pointer"
+            className="astra-btn-primary astra-cursor-pointer"
             style={{
-              border: "1px solid var(--astra-accent-warm-hover)",
-              background: "var(--astra-accent-warm)",
-              color: "var(--astra-text-on-brand)",
-              borderRadius: 8,
-              padding: "8px 12px",
-              fontSize: 12,
-              fontWeight: 700,
               width: "100%",
+              fontWeight: 700,
             }}
             onClick={onReadArticle}
           >
             {t("popup_deepReadAction")}
           </button>
         </div>
+      )}
+
+      {studyLoop && (
+        <StudyProgressCardGroup
+          studyLoop={studyLoop}
+          pageSavedReviewSummary={pageSavedReviewSummary}
+          canReadArticle={canReadArticle}
+          dueCount={dueCount}
+          onReadArticle={onReadArticle}
+          onExplainSentence={onExplainSentence}
+          onOpenVocabulary={onOpenVocabulary}
+          onOpenReview={onOpenReview}
+          onReviewPageSavedSentences={onReviewPageSavedSentences}
+        />
       )}
 
       {canSavePageAsset && (
@@ -738,11 +815,11 @@ export default function StudySection({
               style={{
                 marginBottom: 8,
                 padding: "6px 8px",
-                background: "var(--astra-popup-bg-soft)",
-                border: "1px solid var(--astra-popup-border-warm-strong)",
+                background: "var(--astra-bg-card)",
+                border: "1px solid var(--astra-border-strong)",
                 borderRadius: 8,
                 fontSize: 11,
-                color: "var(--astra-popup-text-warm-strong)",
+                color: "var(--astra-text-primary)",
                 lineHeight: 1.45,
               }}
             >
@@ -766,8 +843,8 @@ export default function StudySection({
                   key={card.id}
                   style={{
                     padding: "8px 10px",
-                    background: card.selected ? "var(--astra-popup-bg-soft)" : "var(--astra-bg-card)",
-                    border: card.selected ? "1px solid var(--astra-popup-border-warm-strong)" : "1px solid var(--astra-popup-border-warm)",
+                    background: card.selected ? "var(--astra-bg-card)" : "var(--astra-bg-card)",
+                    border: card.selected ? "1px solid var(--astra-border-strong)" : "1px solid var(--astra-border)",
                     borderRadius: 8,
                     cursor: sentenceActionLocked ? "default" : "pointer",
                   }}
@@ -805,6 +882,7 @@ export default function StudySection({
                   )}
                   <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 8 }}>
                     <button
+                      data-testid={`study-sentence-explain-${card.index}`}
                       type="button"
                       style={actionButtonStyle}
                       onClick={(event) => {
@@ -816,6 +894,7 @@ export default function StudySection({
                       {card.explainStatus === "explaining" ? `${t("popup_studyExplainSentence")}...` : t("popup_studyExplainSentence")}
                     </button>
                     <button
+                      data-testid={`study-sentence-save-${card.index}`}
                       type="button"
                       style={actionButtonStyle}
                       onClick={(event) => {
@@ -831,18 +910,18 @@ export default function StudySection({
                     <div style={{
                       marginTop: 8,
                       padding: "8px 10px",
-                      background: "var(--astra-popup-bg-soft)",
-                      border: "1px solid var(--astra-popup-border-warm-strong)",
+                      background: "var(--astra-bg-card)",
+                      border: "1px solid var(--astra-border-strong)",
                       borderRadius: 8,
                       fontSize: 12,
-                      color: "var(--astra-popup-text-warm)",
+                      color: "var(--astra-text-secondary)",
                       lineHeight: 1.55,
                       whiteSpace: "pre-wrap",
                     }}>
                       {card.explainProfileLabel && (
                         <div
                           data-testid={`study-sentence-explain-profile-${card.index}`}
-                          style={{ fontSize: 10, fontWeight: 700, color: "var(--astra-popup-text-warm-strong)", marginBottom: 6 }}
+                          style={{ fontSize: 10, fontWeight: 700, color: "var(--astra-text-primary)", marginBottom: 6 }}
                         >
                           {card.explainProfileLabel}
                         </div>
@@ -924,11 +1003,11 @@ export default function StudySection({
         <div style={{
           marginTop: 10,
           padding: "8px 10px",
-          background: "var(--astra-popup-bg-soft)",
-          border: "1px solid var(--astra-popup-border-warm-strong)",
+          background: "var(--astra-bg-card)",
+          border: "1px solid var(--astra-border-strong)",
           borderRadius: 8,
           fontSize: 12,
-          color: "var(--astra-popup-text-warm-strong)",
+          color: "var(--astra-text-primary)",
         }}>
           {t("popup_digestGenerating")}
         </div>
@@ -937,21 +1016,21 @@ export default function StudySection({
         <div style={{
           marginTop: 10,
           padding: "10px 12px",
-          background: "var(--astra-popup-bg-soft)",
-          border: "1px solid var(--astra-popup-border-warm)",
+          background: "var(--astra-bg-card)",
+          border: "1px solid var(--astra-border)",
           borderRadius: 8,
         }}>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 8 }}>
-            <div style={{ fontSize: 13, fontWeight: 700, color: "var(--astra-popup-text-warm-strong)", marginBottom: 4 }}>
+            <div style={{ fontSize: 13, fontWeight: 700, color: "var(--astra-text-primary)", marginBottom: 4 }}>
               {pageDigest.headline}
             </div>
             {digestStale && (
               <span style={{
                 fontSize: 10,
                 fontWeight: 700,
-                color: "var(--astra-popup-text-warm-strong)",
-                background: "var(--astra-popup-bg-start)",
-                border: "1px solid var(--astra-popup-border-warm-strong)",
+                color: "var(--astra-brand)",
+                background: "var(--astra-brand-muted)",
+                border: "1px solid var(--astra-border-strong)",
                 borderRadius: 999,
                 padding: "2px 8px",
                 whiteSpace: "nowrap",
@@ -964,7 +1043,7 @@ export default function StudySection({
             {pageDigest.summary}
           </div>
           {pageDigest.keyPoints.length > 0 && (
-            <ul style={{ margin: "6px 0 0 0", paddingLeft: 18, fontSize: 12, color: "var(--astra-popup-text-warm)", lineHeight: 1.55 }}>
+            <ul style={{ margin: "6px 0 0 0", paddingLeft: 18, fontSize: 12, color: "var(--astra-text-secondary)", lineHeight: 1.55 }}>
               {pageDigest.keyPoints.map((point, i) => (
                 <li key={i}>{point}</li>
               ))}
@@ -972,7 +1051,7 @@ export default function StudySection({
           )}
           {pageDigest.vocabularyFocus.length > 0 && (
             <div style={{ marginTop: 8 }}>
-              <div style={{ fontSize: 11, fontWeight: 700, color: "var(--astra-popup-text-warm-strong)", marginBottom: 4 }}>
+              <div style={{ fontSize: 11, fontWeight: 700, color: "var(--astra-text-primary)", marginBottom: 4 }}>
                 {t("popup_digestVocabularyFocus")}
               </div>
               <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
@@ -980,14 +1059,14 @@ export default function StudySection({
                   <div
                     key={`${item.term}-${i}`}
                     style={{
-                      background: "var(--astra-popup-bg-soft)",
-                      border: "1px solid var(--astra-popup-border-warm-strong)",
+                      background: "var(--astra-bg-card)",
+                      border: "1px solid var(--astra-border-strong)",
                       borderRadius: 8,
                       padding: "6px 8px",
                     }}
                   >
-                    <div style={{ fontSize: 12, fontWeight: 700, color: "var(--astra-popup-text-warm-strong)" }}>{item.term}</div>
-                    <div style={{ fontSize: 11, color: "var(--astra-popup-text-warm)", lineHeight: 1.45 }}>{item.note}</div>
+                    <div style={{ fontSize: 12, fontWeight: 700, color: "var(--astra-text-primary)" }}>{item.term}</div>
+                    <div style={{ fontSize: 11, color: "var(--astra-text-secondary)", lineHeight: 1.45 }}>{item.note}</div>
                   </div>
                 ))}
               </div>
@@ -995,10 +1074,10 @@ export default function StudySection({
           )}
           {pageDigest.grammarFocus.length > 0 && (
             <div style={{ marginTop: 8 }}>
-              <div style={{ fontSize: 11, fontWeight: 700, color: "var(--astra-popup-text-warm-strong)", marginBottom: 4 }}>
+              <div style={{ fontSize: 11, fontWeight: 700, color: "var(--astra-text-primary)", marginBottom: 4 }}>
                 {t("popup_digestGrammarFocus")}
               </div>
-              <ul style={{ margin: 0, paddingLeft: 18, fontSize: 12, color: "var(--astra-popup-text-warm)", lineHeight: 1.55 }}>
+              <ul style={{ margin: 0, paddingLeft: 18, fontSize: 12, color: "var(--astra-text-secondary)", lineHeight: 1.55 }}>
                 {pageDigest.grammarFocus.map((point, i) => (
                   <li key={i}>{point}</li>
                 ))}
@@ -1010,13 +1089,13 @@ export default function StudySection({
               marginTop: 8,
               padding: "8px 10px",
               background: "var(--astra-bg-card)",
-              border: "1px dashed var(--astra-popup-border-warm-strong)",
+              border: "1px dashed var(--astra-border-strong)",
               borderRadius: 8,
             }}>
-              <div style={{ fontSize: 11, fontWeight: 700, color: "var(--astra-popup-text-warm-strong)", marginBottom: 2 }}>
+              <div style={{ fontSize: 11, fontWeight: 700, color: "var(--astra-text-primary)", marginBottom: 2 }}>
                 {t("popup_digestNextStep")}
               </div>
-              <div style={{ fontSize: 12, color: "var(--astra-popup-text-warm)", lineHeight: 1.55 }}>
+              <div style={{ fontSize: 12, color: "var(--astra-text-secondary)", lineHeight: 1.55 }}>
                 {pageDigest.suggestedAction}
               </div>
             </div>
@@ -1025,11 +1104,11 @@ export default function StudySection({
             <div style={{
               marginTop: 8,
               padding: "8px 10px",
-              background: "var(--astra-popup-bg-soft)",
-              border: "1px solid var(--astra-popup-border-warm-strong)",
+              background: "var(--astra-bg-card)",
+              border: "1px solid var(--astra-border-strong)",
               borderRadius: 8,
             }}>
-              <div style={{ fontSize: 11, color: "var(--astra-popup-text-warm-strong)", lineHeight: 1.45 }}>
+              <div style={{ fontSize: 11, color: "var(--astra-text-primary)", lineHeight: 1.45 }}>
                 {t("popup_digestStaleHint")}
               </div>
               <button
@@ -1053,44 +1132,6 @@ export default function StudySection({
             {t("popup_generateDigest")}
           </button>
         </div>
-      )}
-
-      {studyLoop && (
-        <>
-          {studyLoop.currentPage && studyLoop.nextStep && studyLoop.completedSteps.length > 0 && (
-            <div
-              style={{
-                marginTop: 10,
-                padding: "8px 10px",
-                background: "var(--astra-success-bg)",
-                border: "1px solid var(--astra-success-border)",
-                borderRadius: 8,
-                fontSize: 12,
-                color: "var(--astra-success)",
-                lineHeight: 1.45,
-              }}
-            >
-              {t("popup_studyResumeFromLast")}
-            </div>
-          )}
-          <CurrentPageProgressCard studyLoop={studyLoop} />
-          <PersonalizedStrategyCard studyLoop={studyLoop} />
-          <StudyProgressBar
-            completionPercent={studyLoop.completionPercent}
-            completedSteps={studyLoop.completedSteps}
-          />
-          <NextStepBanner
-            nextStep={studyLoop.nextStep}
-            onReadArticle={onReadArticle}
-            onExplainSentence={onExplainSentence}
-            onOpenVocabulary={onOpenVocabulary}
-            onOpenReview={onOpenReview}
-            onReviewPageSavedSentences={onReviewPageSavedSentences}
-            hasPageSavedReview={!!pageSavedReviewSummary}
-            canReadArticle={canReadArticle}
-            dueCount={dueCount}
-          />
-        </>
       )}
 
       {weeklyRoi && <WeeklyRoiSummaryCard weeklyRoi={weeklyRoi} />}
@@ -1189,10 +1230,10 @@ export default function StudySection({
               marginTop: 8,
               padding: "8px 10px",
               background: "var(--astra-bg-card)",
-              border: "1px solid var(--astra-popup-border-warm)",
+              border: "1px solid var(--astra-border)",
               borderRadius: 8,
               fontSize: 12,
-              color: "var(--astra-popup-text-warm)",
+              color: "var(--astra-text-secondary)",
               lineHeight: 1.55,
               whiteSpace: "pre-wrap",
             }}>

@@ -36,6 +36,19 @@ import { translatePageSubtitles, removeTranslatedSubtitles } from "./subtitle-tr
 // Helpers
 // ---------------------------------------------------------------------------
 
+function setLocation(hostname: string, pathname: string) {
+  Object.defineProperty(window, "location", {
+    value: {
+      hostname,
+      pathname,
+      href: `https://${hostname}${pathname}`,
+      protocol: "https:",
+    },
+    writable: true,
+    configurable: true,
+  })
+}
+
 const ENABLED_CONFIG = {
   version: 1 as const,
   targetLang: "zh-CN",
@@ -133,6 +146,8 @@ describe("translatePageSubtitles", () => {
   })
 
   afterEach(() => {
+    setLocation("localhost", "/")
+    document.body.innerHTML = ""
     vi.useRealTimers()
   })
 
@@ -220,6 +235,19 @@ describe("translatePageSubtitles", () => {
     readConfigMock.mockResolvedValue(NO_API_KEY_CONFIG)
 
     const sourceTrack = makeTextTrack({ kind: "subtitles", cues: { length: 3 } })
+    appendVideoWithTracks([sourceTrack])
+
+    const promise = translatePageSubtitles()
+    await vi.runAllTimersAsync()
+    await promise
+
+    expect(translateTextsMock).not.toHaveBeenCalled()
+  })
+
+  it("skips YouTube because the video subtitle pipeline owns YouTube caption rendering", async () => {
+    setLocation("www.youtube.com", "/watch")
+
+    const sourceTrack = makeTextTrack({ kind: "captions", mode: "showing", cues: { length: 1 } })
     appendVideoWithTracks([sourceTrack])
 
     const promise = translatePageSubtitles()

@@ -49,35 +49,35 @@ type PreviewMode = "original" | "overlay" | "compare"
 
 const shellStyle: React.CSSProperties = {
   minHeight: "100vh",
-  background: "linear-gradient(180deg, #fff7ed 0%, #fffaf3 48%, #f8fafc 100%)",
-  color: "#0f172a",
-  fontFamily: "system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif",
+  background: "var(--astra-bg-primary)",
+  color: "var(--astra-text-primary)",
+  fontFamily: "var(--astra-font)",
   padding: 24,
   boxSizing: "border-box",
 }
 
 const panelStyle: React.CSSProperties = {
-  background: "rgba(255, 255, 255, 0.92)",
-  border: "1px solid #fed7aa",
+  background: "var(--astra-bg-card)",
+  border: "1px solid var(--astra-border-strong)",
   borderRadius: 16,
-  boxShadow: "0 20px 45px rgba(124, 45, 18, 0.08)",
+  boxShadow: "var(--astra-shadow-md)",
 }
 
 const buttonStyle: React.CSSProperties = {
   border: 0,
   borderRadius: 999,
-  background: "#ea580c",
-  color: "white",
+  background: "var(--astra-brand)",
+  color: "var(--astra-text-on-brand)",
   fontWeight: 700,
   padding: "10px 16px",
   cursor: "pointer",
 }
 
 const ghostButtonStyle: React.CSSProperties = {
-  border: "1px solid #fdba74",
+  border: "1px solid var(--astra-brand-border)",
   borderRadius: 999,
-  background: "#fff7ed",
-  color: "#9a3412",
+  background: "var(--astra-bg-elevated)",
+  color: "var(--astra-brand)",
   fontWeight: 700,
   padding: "8px 12px",
   cursor: "pointer",
@@ -228,7 +228,7 @@ function OverlayReasonBadge({ reason }: { reason: ImageTranslationOverlayQuality
   return (
     <span
       data-testid={`image-translation-overlay-reason-${reason}`}
-      style={{ display: "inline-flex", width: "fit-content", borderRadius: 999, background: reason === "renderable" ? "#dcfce7" : "#ffedd5", color: reason === "renderable" ? "#166534" : "#9a3412", fontSize: 11, fontWeight: 800, padding: "3px 8px" }}
+      style={{ display: "inline-flex", width: "fit-content", borderRadius: 999, background: reason === "renderable" ? "var(--astra-success-bg)" : "var(--astra-warning-bg)", color: reason === "renderable" ? "var(--astra-success)" : "var(--astra-warning)", fontSize: 11, fontWeight: 800, padding: "3px 8px" }}
     >
       {overlayReasonLabels[reason]}
     </span>
@@ -241,17 +241,17 @@ function OverlayQualitySummary({ summary }: { summary: ImageTranslationOverlayQu
     .map(([reason, count]) => `${overlayReasonLabels[reason]}: ${count}`)
 
   return (
-    <article data-testid="image-translation-overlay-quality-summary" style={{ ...panelStyle, padding: 14, color: "#7c2d12", lineHeight: 1.45 }}>
+    <article data-testid="image-translation-overlay-quality-summary" style={{ ...panelStyle, padding: 14, color: "var(--astra-text-primary)", lineHeight: 1.45 }}>
       <strong>Overlay quality gate:</strong> {summary.renderable}/{summary.total} row(s) safe for approximate overlay; {summary.fallback} row(s) kept in compare fallback.
-      {fallbackReasons.length ? <div style={{ marginTop: 6, color: "#9a3412", fontSize: 12 }}>{fallbackReasons.join(" · ")}</div> : null}
+      {fallbackReasons.length ? <div style={{ marginTop: 6, color: "var(--astra-text-secondary)", fontSize: 12 }}>{fallbackReasons.join(" · ")}</div> : null}
     </article>
   )
 }
 
 function qualityTierAccent(summary: TranslationQualitySummary): { border: string, background: string, color: string } {
-  if (summary.tier === "tier_1") return { border: "#bbf7d0", background: "#f0fdf4", color: "#166534" }
-  if (summary.tier === "tier_2") return { border: "#fed7aa", background: "#fff7ed", color: "#9a3412" }
-  return { border: "#fecaca", background: "#fef2f2", color: "#991b1b" }
+  if (summary.tier === "tier_1") return { border: "var(--astra-success-border)", background: "var(--astra-success-bg)", color: "var(--astra-success)" }
+  if (summary.tier === "tier_2") return { border: "var(--astra-warning-border)", background: "var(--astra-warning-bg)", color: "var(--astra-warning)" }
+  return { border: "var(--astra-danger-border)", background: "var(--astra-danger-bg)", color: "var(--astra-danger)" }
 }
 
 function QualityTierCard({ summary }: { summary: TranslationQualitySummary }) {
@@ -275,7 +275,7 @@ function PathMarkerCard({ summary }: { summary: TranslationPathSummary }) {
       data-testid="image-translation-path-marker-card"
       data-path-marker-version={summary.version}
       data-path-marker-kinds={summary.kinds.join(" ")}
-      style={{ ...panelStyle, padding: 14, borderColor: "#bae6fd", background: "#f0f9ff", color: "#075985", lineHeight: 1.45 }}
+      style={{ ...panelStyle, padding: 14, borderColor: "var(--astra-info-border)", background: "var(--astra-info-bg)", color: "var(--astra-info)", lineHeight: 1.45 }}
     >
       <div style={{ fontSize: 12, fontWeight: 900, textTransform: "uppercase", letterSpacing: 0.4 }}>Path used · Dual Path Marker v1</div>
       <strong>{summary.label}</strong>
@@ -287,21 +287,21 @@ function PathMarkerCard({ summary }: { summary: TranslationPathSummary }) {
 function CompareRows({ rows, showReasons = false }: { rows: TranslationRow[], showReasons?: boolean }) {
   return (
     <article data-testid="image-translation-compare-panel" style={{ ...panelStyle, padding: 16 }}>
-      <h2 style={{ marginTop: 0, color: "#9a3412", fontSize: 18 }}>Compare rows</h2>
+      <h2 style={{ marginTop: 0, color: "var(--astra-text-primary)", fontSize: 18 }}>Compare rows</h2>
       <div style={{ display: "grid", gap: 10 }}>
         {rows.map((row, index) => (
           <div
             // eslint-disable-next-line react/no-array-index-key
             key={`${row.sourceText}-${index}`}
-            style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) minmax(0, 1fr)", gap: 10, padding: 10, border: "1px solid #fed7aa", borderRadius: 12, background: "#fffaf3" }}
+            style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) minmax(0, 1fr)", gap: 10, padding: 10, border: "1px solid var(--astra-border)", borderRadius: 12, background: "var(--astra-bg-sunken)" }}
           >
             <div>
-              <div style={{ color: "#9a3412", fontSize: 11, fontWeight: 800, textTransform: "uppercase", letterSpacing: 0.4 }}>OCR source</div>
+              <div style={{ color: "var(--astra-text-secondary)", fontSize: 11, fontWeight: 800, textTransform: "uppercase", letterSpacing: 0.4 }}>OCR source</div>
               {showReasons ? <OverlayReasonBadge reason={row.overlayReason} /> : null}
               <div style={{ whiteSpace: "pre-wrap", lineHeight: 1.45, marginTop: showReasons ? 6 : 0 }}>{row.sourceText}</div>
             </div>
             <div>
-              <div style={{ color: "#9a3412", fontSize: 11, fontWeight: 800, textTransform: "uppercase", letterSpacing: 0.4 }}>Translation</div>
+              <div style={{ color: "var(--astra-text-secondary)", fontSize: 11, fontWeight: 800, textTransform: "uppercase", letterSpacing: 0.4 }}>Translation</div>
               <div style={{ whiteSpace: "pre-wrap", lineHeight: 1.45 }}>{row.translatedText}</div>
             </div>
           </div>
@@ -455,8 +455,8 @@ export function ImageTranslateApp() {
 
   const renderImagePreview = (withOverlay: boolean) => (
     <div style={{ ...panelStyle, padding: 16 }}>
-      <h2 style={{ marginTop: 0, color: "#9a3412", fontSize: 18 }}>{withOverlay ? "Translated overlay preview" : "Original image"}</h2>
-      <div style={{ position: "relative", overflow: "hidden", borderRadius: 12, border: "1px solid #fed7aa", background: "#fff7ed" }}>
+      <h2 style={{ marginTop: 0, color: "var(--astra-text-primary)", fontSize: 18 }}>{withOverlay ? "Translated overlay preview" : "Original image"}</h2>
+      <div style={{ position: "relative", overflow: "hidden", borderRadius: 12, border: "1px solid var(--astra-border-strong)", background: "var(--astra-bg-sunken)" }}>
         {previewUrl ? <img src={previewUrl} alt={translation?.fileName ?? selectedFileName} style={{ display: "block", width: "100%", maxWidth: "100%" }} /> : null}
         {withOverlay ? overlayRows.map((row, index) => row.bbox ? (
           <div
@@ -472,10 +472,10 @@ export function ImageTranslateApp() {
               minHeight: `${Math.max(row.bbox.height, 7)}%`,
               boxSizing: "border-box",
               padding: "3px 5px",
-              border: "1px solid rgba(154, 52, 18, 0.72)",
+              border: "1px solid var(--astra-brand-border)",
               borderRadius: 6,
-              background: "rgba(255, 247, 237, 0.9)",
-              color: "#7c2d12",
+              background: "var(--astra-brand-muted)",
+              color: "var(--astra-text-primary)",
               fontSize: 12,
               fontWeight: 700,
               lineHeight: 1.15,
@@ -486,9 +486,9 @@ export function ImageTranslateApp() {
           </div>
         ) : null) : null}
       </div>
-      <p style={{ color: "#64748b", fontSize: 12 }}>{translation?.fileName ?? selectedFileName} {translation ? `· ${translation.lineCount} extracted line(s)` : ""}</p>
+      <p style={{ color: "var(--astra-text-muted)", fontSize: 12 }}>{translation?.fileName ?? selectedFileName} {translation ? `· ${translation.lineCount} extracted line(s)` : ""}</p>
       {withOverlay ? (
-        <p style={{ marginBottom: 0, color: "#9a3412", fontSize: 12, lineHeight: 1.45 }}>
+        <p style={{ marginBottom: 0, color: "var(--astra-text-secondary)", fontSize: 12, lineHeight: 1.45 }}>
           Translated overlay is approximate: OCR boxes and font sizing are best-effort and may not match the original layout. Risky rows stay in compare fallback.
         </p>
       ) : null}
@@ -496,12 +496,12 @@ export function ImageTranslateApp() {
   )
 
   return (
-    <main style={shellStyle} data-testid="image-translation-beta-page">
+    <main style={shellStyle} data-testid="image-translation-beta-page" data-astra-theme="light" data-astra="quiet">
       <div style={{ maxWidth: 1040, margin: "0 auto" }}>
         <header style={{ marginBottom: 20 }}>
-          <div style={{ color: "#c2410c", fontWeight: 700, letterSpacing: 0.2 }}>Astra Labs · Beta</div>
-          <h1 style={{ margin: "6px 0", color: "#7c2d12", fontSize: 34 }}>Image/OCR Translation Beta</h1>
-          <p style={{ margin: 0, maxWidth: 780, color: "#475569", lineHeight: 1.55 }}>
+          <div style={{ color: "var(--astra-brand)", fontWeight: 700, letterSpacing: 0.2 }}>Astra Labs · Beta</div>
+          <h1 style={{ margin: "6px 0", color: "var(--astra-text-primary)", fontSize: 34 }}>Image/OCR Translation Beta</h1>
+          <p style={{ margin: 0, maxWidth: 780, color: "var(--astra-text-secondary)", lineHeight: 1.55 }}>
             Upload or paste an image, extract readable text, then translate it through Astra’s existing translation pipeline.
             The translated overlay preview is approximate and not layout-preserving production quality; compare rows remain available as the reliable fallback.
           </p>
@@ -513,16 +513,16 @@ export function ImageTranslateApp() {
             onPaste={handlePaste}
             tabIndex={0}
             style={{
-              border: "2px dashed #fdba74",
+              border: "2px dashed var(--astra-brand-border)",
               borderRadius: 14,
               padding: 24,
               textAlign: "center",
-              background: "#fff7ed",
+              background: "var(--astra-bg-elevated)",
               outline: "none",
             }}
           >
-            <h2 style={{ margin: "0 0 8px", color: "#9a3412", fontSize: 20 }}>Upload or paste an image</h2>
-            <p style={{ margin: "0 auto 14px", maxWidth: 640, color: "#64748b", lineHeight: 1.5 }}>
+            <h2 style={{ margin: "0 0 8px", color: "var(--astra-text-primary)", fontSize: 20 }}>Upload or paste an image</h2>
+            <p style={{ margin: "0 auto 14px", maxWidth: 640, color: "var(--astra-text-muted)", lineHeight: 1.5 }}>
               PNG, JPEG, WebP, GIF, BMP, and SVG are accepted. Raster OCR depends on browser TextDetector support;
               SVG text is extracted directly for a deterministic first slice.
             </p>
@@ -542,7 +542,7 @@ export function ImageTranslateApp() {
             >
               {busy ? "Working…" : "Choose image"}
             </button>
-            <div style={{ marginTop: 10, fontSize: 12, color: "#9a3412" }}>
+            <div style={{ marginTop: 10, fontSize: 12, color: "var(--astra-text-secondary)" }}>
               Target language: <strong>{targetLang}</strong>
               {selectedFileName ? ` · ${selectedFileName}` : ""}
             </div>
@@ -557,10 +557,10 @@ export function ImageTranslateApp() {
         )}
 
         {phase === "error" && (
-          <section data-testid="image-translation-error" style={{ ...panelStyle, padding: 18, borderColor: "#f97316", background: "#fff7ed" }}>
-            <h2 style={{ margin: "0 0 8px", color: "#9a3412", fontSize: 18 }}>Image translation could not continue</h2>
-            <div style={{ color: "#7c2d12", fontWeight: 700 }}>Reason: {errorReason}</div>
-            <p style={{ marginBottom: 0, color: "#475569" }}>{errorMessage}</p>
+          <section data-testid="image-translation-error" style={{ ...panelStyle, padding: 18, borderColor: "var(--astra-warning-border)", background: "var(--astra-warning-bg)" }}>
+            <h2 style={{ margin: "0 0 8px", color: "var(--astra-text-primary)", fontSize: 18 }}>Image translation could not continue</h2>
+            <div style={{ color: "var(--astra-warning)", fontWeight: 700 }}>Reason: {errorReason}</div>
+            <p style={{ marginBottom: 0, color: "var(--astra-text-secondary)" }}>{errorMessage}</p>
           </section>
         )}
 
@@ -570,7 +570,7 @@ export function ImageTranslateApp() {
             {translation.translationPathSummary && <PathMarkerCard summary={translation.translationPathSummary} />}
             <OverlayQualitySummary summary={translation.overlayQualitySummary} />
             <div role="group" aria-label="Image translation display mode" style={{ ...panelStyle, padding: 12, display: "flex", flexWrap: "wrap", gap: 8, alignItems: "center" }}>
-              <strong style={{ color: "#7c2d12" }}>View:</strong>
+              <strong style={{ color: "var(--astra-text-primary)" }}>View:</strong>
               {([
                 ["original", "Original"],
                 ["overlay", "Translated overlay"],
@@ -598,7 +598,7 @@ export function ImageTranslateApp() {
                 {renderImagePreview(previewMode === "overlay")}
                 {previewMode === "overlay" && fallbackRows.length ? (
                   <article data-testid="image-translation-overlay-fallback-rows" style={{ display: "grid", gap: 10 }}>
-                    <div style={{ ...panelStyle, padding: 14, color: "#7c2d12", lineHeight: 1.45 }}>
+                    <div style={{ ...panelStyle, padding: 14, color: "var(--astra-text-primary)", lineHeight: 1.45 }}>
                       Some OCR rows were not safe enough for approximate overlay placement, so they stay in compare fallback with reason badges.
                     </div>
                     <CompareRows rows={fallbackRows} showReasons />

@@ -1,0 +1,65 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Astra · UI Redesign</title>
+
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link
+    href="https://fonts.googleapis.com/css2?family=Source+Serif+4:ital,opsz,wght@0,8..60,300..700;1,8..60,300..700&family=Inter+Tight:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap"
+    rel="stylesheet"
+  />
+  <link rel="stylesheet" href="styles/tokens.css" />
+
+  <style>
+    html, body { margin: 0; height: 100%; }
+    body {
+      font-family: "Inter Tight", system-ui, sans-serif;
+      background: #f0eee9;
+    }
+  </style>
+
+  <script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+  <script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+  <script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+</head>
+<body>
+  <div id="root"></div>
+
+  <script type="text/babel" data-presets="react" src="components/icons.jsx"></script>
+  <script type="text/babel" data-presets="react" src="components/ui.jsx"></script>
+  <script type="text/babel" data-presets="react" src="components/design-system-frame.jsx"></script>
+  <script type="text/babel" data-presets="react" src="components/popup-frame.jsx"></script>
+  <script type="text/babel" data-presets="react" src="components/onboarding-frame.jsx"></script>
+  <script type="text/babel" data-presets="react" src="components/deep-read-frame.jsx"></script>
+  <script type="text/babel" data-presets="react" src="components/settings-frame.jsx"></script>
+  <script type="text/babel" data-presets="react" src="components/floating-tab-frame.jsx"></script>
+  <script type="text/babel" data-presets="react" src="components/inline-frames.jsx"></script>
+  <script type="text/babel" data-presets="react" src="components/study-frames.jsx"></script>
+  <script type="text/babel" data-presets="react" src="components/state-frames.jsx"></script>
+  <script type="text/babel" data-presets="react" src="components/governance-frames.jsx"></script>
+  <script type="text/babel" data-presets="react" src="components/media-frames.jsx"></script>
+
+  <!-- Phase II — gap-fill frames (1–20) -->
+  <script type="text/babel" data-presets="react" src="components/progress-frames.jsx"></script>
+  <script type="text/babel" data-presets="react" src="components/onboarding-multi-frames.jsx"></script>
+  <script type="text/babel" data-presets="react" src="components/permission-frames.jsx"></script>
+  <script type="text/babel" data-presets="react" src="components/deepread-review-frames.jsx"></script>
+  <script type="text/babel" data-presets="react" src="components/library-frames.jsx"></script>
+  <script type="text/babel" data-presets="react" src="components/system-frames.jsx"></script>
+  <script type="text/babel" data-presets="react" src="components/sync-theme-focus-frames.jsx"></script>
+  <script type="text/babel" data-presets="react" src="components/audio-tags-import-frames.jsx"></script>
+  <script type="text/babel" data-presets="react" src="components/mobile-changelog-ai-frames.jsx"></script>
+
+  <script type="text/babel" data-presets="react" src="design-canvas.jsx"></script>
+
+  <script type="text/babel" data-presets="react" src="design-canvas-app.jsx"></script>
+
+  <script type="text/babel" data-presets="react">
+    const MountApp = window.RedesignCanvasApp;
+    ReactDOM.createRoot(document.getElementById("root")).render(<MountApp />);
+  </script>
+</body>
+</html>

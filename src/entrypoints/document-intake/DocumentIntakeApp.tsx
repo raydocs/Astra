@@ -163,7 +163,7 @@ export function DocumentIntakeApp() {
   const resumeTarget = result ? buildOwnedReadingResumeTarget(result.item) : null
 
   return (
-    <main data-testid="document-intake-page" style={containerStyle}>
+    <main data-testid="document-intake-page" data-astra-theme="light" style={containerStyle}>
       <header style={headerStyle}>
         <div>
           <div style={eyebrowStyle}>Unified Document Intake Hub v1</div>
@@ -249,9 +249,9 @@ const containerStyle: React.CSSProperties = {
   maxWidth: 840,
   margin: "0 auto",
   padding: 24,
-  fontFamily: "system-ui, -apple-system, BlinkMacSystemFont, Segoe UI, sans-serif",
-  color: "#0f172a",
-  background: "linear-gradient(180deg, #fff7ed 0%, #fffaf3 46%, #f8fafc 100%)",
+  fontFamily: "var(--astra-font)",
+  color: "var(--astra-text-primary)",
+  background: "var(--astra-bg-primary)",
 }
 
 const headerStyle: React.CSSProperties = {
@@ -267,22 +267,22 @@ const eyebrowStyle: React.CSSProperties = {
   fontWeight: 800,
   letterSpacing: "0.08em",
   textTransform: "uppercase",
-  color: "#ea580c",
+  color: "var(--astra-brand)",
 }
 
 const dropZoneStyle: React.CSSProperties = {
-  border: "2px dashed #fb923c",
+  border: "2px dashed var(--astra-brand-border)",
   borderRadius: 18,
-  background: "rgba(255, 255, 255, 0.76)",
+  background: "var(--astra-bg-elevated)",
   padding: "42px 24px",
   textAlign: "center",
   cursor: "pointer",
-  boxShadow: "0 16px 36px rgba(124, 45, 18, 0.08)",
+  boxShadow: "var(--astra-shadow-md)",
 }
 
 const mutedStyle: React.CSSProperties = {
   margin: "8px 0 0",
-  color: "#64748b",
+  color: "var(--astra-text-muted)",
   lineHeight: 1.5,
 }
 
@@ -290,16 +290,16 @@ const noteStyle: React.CSSProperties = {
   marginTop: 16,
   padding: 12,
   borderRadius: 12,
-  border: "1px solid #fed7aa",
-  background: "#fffaf3",
-  color: "#7c2d12",
+  border: "1px solid var(--astra-warning-border)",
+  background: "var(--astra-warning-bg)",
+  color: "var(--astra-warning)",
   fontSize: 13,
   lineHeight: 1.5,
 }
 
 const statusStyle: React.CSSProperties = {
   marginTop: 16,
-  color: "#7c2d12",
+  color: "var(--astra-warning)",
   fontWeight: 700,
 }
 
@@ -307,28 +307,28 @@ const errorStyle: React.CSSProperties = {
   marginTop: 16,
   padding: 12,
   borderRadius: 12,
-  color: "#991b1b",
-  background: "#fee2e2",
-  border: "1px solid #fecaca",
+  color: "var(--astra-danger)",
+  background: "var(--astra-danger-bg)",
+  border: "1px solid var(--astra-danger-border)",
 }
 
 const readyStyle: React.CSSProperties = {
   marginTop: 16,
   padding: 16,
   borderRadius: 14,
-  border: "1px solid #fed7aa",
-  background: "rgba(255, 255, 255, 0.86)",
+  border: "1px solid var(--astra-border-strong)",
+  background: "var(--astra-bg-card)",
 }
 
 const limitationStyle: React.CSSProperties = {
   ...mutedStyle,
-  color: "#9a3412",
+  color: "var(--astra-warning)",
   fontWeight: 700,
 }
 
 const handoffReadyStyle: React.CSSProperties = {
   ...mutedStyle,
-  color: "#166534",
+  color: "var(--astra-success)",
   fontWeight: 700,
 }
 

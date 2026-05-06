@@ -1,3 +1,4 @@
+import type { CSSProperties } from "react"
 import type { BoxDistribution } from "@/utils/srs/leitner"
 
 interface ReviewStatsProps {
@@ -5,12 +6,13 @@ interface ReviewStatsProps {
   dueCount: number
 }
 
+/** Leitner box colors — Quiet Reader light palette (status + accent, not neon). */
 const BOX_COLORS: Record<number, string> = {
-  1: "#ef4444", // red
-  2: "#f97316", // orange
-  3: "#eab308", // yellow
-  4: "#22c55e", // green
-  5: "#10b981", // emerald
+  1: "var(--astra-danger)",
+  2: "var(--astra-warning)",
+  3: "var(--astra-hl)",
+  4: "var(--astra-info)",
+  5: "var(--astra-ok)",
 }
 
 const BOX_LABELS: Record<number, string> = {
@@ -32,41 +34,41 @@ export default function ReviewStats({ distribution, dueCount }: ReviewStatsProps
     { key: 5, count: distribution.box5, color: BOX_COLORS[5], label: BOX_LABELS[5] },
   ]
 
-  const containerStyle: React.CSSProperties = {
+  const containerStyle: CSSProperties = {
     marginBottom: 20,
     padding: "14px 16px",
-    background: "#fff",
-    border: "1px solid #e2e8f0",
-    borderRadius: 10,
+    background: "var(--astra-style-bg-elevated, var(--astra-bg-card))",
+    border: "1px solid var(--astra-style-line-1, var(--astra-border))",
+    borderRadius: "var(--astra-style-radius-lg, 10px)",
   }
 
-  const summaryStyle: React.CSSProperties = {
+  const summaryStyle: CSSProperties = {
     fontSize: 13,
-    color: "#64748b",
+    color: "var(--astra-text-muted)",
     marginBottom: 10,
     display: "flex",
     gap: 8,
     flexWrap: "wrap",
   }
 
-  const barContainerStyle: React.CSSProperties = {
+  const barContainerStyle: CSSProperties = {
     display: "flex",
     height: 20,
-    borderRadius: 6,
+    borderRadius: "var(--astra-style-radius-md, 6px)",
     overflow: "hidden",
-    background: "#f1f5f9",
+    background: "var(--astra-style-bg-sunken, var(--astra-bg-subtle))",
     marginBottom: 8,
   }
 
-  const legendStyle: React.CSSProperties = {
+  const legendStyle: CSSProperties = {
     display: "flex",
     gap: 12,
     flexWrap: "wrap",
     fontSize: 11,
-    color: "#64748b",
+    color: "var(--astra-text-muted)",
   }
 
-  const legendDotStyle = (color: string): React.CSSProperties => ({
+  const legendDotStyle = (color: string): CSSProperties => ({
     display: "inline-block",
     width: 8,
     height: 8,
@@ -75,14 +77,16 @@ export default function ReviewStats({ distribution, dueCount }: ReviewStatsProps
     marginRight: 4,
   })
 
+  const sepColor = "var(--astra-style-line-2, var(--astra-border-strong))"
+
   return (
     <div style={containerStyle}>
       <div style={summaryStyle}>
-        <span><strong className="astra-tabular" style={{ color: "#d97706" }}>{dueCount}</strong> due today</span>
-        <span style={{ color: "#cbd5e1" }}>|</span>
-        <span><strong className="astra-tabular" style={{ color: "#10b981" }}>{mastered}</strong> mastered</span>
-        <span style={{ color: "#cbd5e1" }}>|</span>
-        <span><strong className="astra-tabular" style={{ color: "#0f172a" }}>{total}</strong> total</span>
+        <span><strong className="astra-tabular" style={{ color: "var(--astra-warning)" }}>{dueCount}</strong> due today</span>
+        <span style={{ color: sepColor }}>|</span>
+        <span><strong className="astra-tabular" style={{ color: "var(--astra-ok)" }}>{mastered}</strong> mastered</span>
+        <span style={{ color: sepColor }}>|</span>
+        <span><strong className="astra-tabular" style={{ color: "var(--astra-ink-1, var(--astra-text-primary))" }}>{total}</strong> total</span>
       </div>
 
       <div

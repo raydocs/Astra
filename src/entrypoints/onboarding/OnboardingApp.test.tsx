@@ -66,7 +66,7 @@ describe("OnboardingApp", () => {
     expect(container.textContent).toContain("Astra — AI Language Learning")
     expect(container.textContent).toContain("Not just a translator: turn real webpages into sentence explanations")
     expect(container.querySelector('[data-testid="onboarding-ios-bridge-diagnostics"]')).toBeNull()
-    expect(buttonByText("Get Started")).toBeDefined()
+    expect(buttonByText("Get started")).toBeDefined()
   })
 
   it("shows onboarding iOS bridge diagnostics only when bridge state has signal", async () => {
@@ -102,7 +102,7 @@ describe("OnboardingApp", () => {
 
   it("adds closure-loop copy to the feature step", async () => {
     await act(async () => {
-      buttonByText("Get Started")?.click()
+      buttonByText("Get started")?.click()
       await Promise.resolve()
     })
     await act(async () => {
@@ -149,7 +149,7 @@ describe("OnboardingApp", () => {
     })
 
     await act(async () => {
-      buttonByText("Get Started")?.click()
+      buttonByText("Get started")?.click()
       await Promise.resolve()
     })
     await act(async () => {
@@ -165,7 +165,7 @@ describe("OnboardingApp", () => {
 
   it("records onboarding closure click and completion funnel events locally", async () => {
     await act(async () => {
-      buttonByText("Get Started")?.click()
+      buttonByText("Get started")?.click()
       await Promise.resolve()
     })
     await act(async () => {
@@ -231,7 +231,7 @@ describe("OnboardingApp", () => {
     }))
 
     await act(async () => {
-      buttonByText("Start Using Astra")?.click()
+      buttonByText("Start using Astra")?.click()
       await Promise.resolve()
       await Promise.resolve()
       await Promise.resolve()
