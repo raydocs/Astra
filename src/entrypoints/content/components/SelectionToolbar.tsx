@@ -38,6 +38,7 @@ interface ToolbarPosition {
 const BRAND_COLOR = OVERLAY_STYLE_TOKENS.brand
 const PRIMARY_BUTTON_HOVER_COLOR = OVERLAY_STYLE_TOKENS.brandHover
 const PRIMARY_BUTTON_ACTIVE_COLOR = OVERLAY_STYLE_TOKENS.brandActive
+const QUIET_SERIF_FONT_FAMILY = '"Source Serif 4", "Source Serif Pro", "Tiempos Text", "Songti SC", "Noto Serif SC", Georgia, serif'
 const HOST_ID = "astra-selection-toolbar-host"
 const PRIMARY_ACTION_IDS = new Set(["translate", "explain"])
 
@@ -65,47 +66,52 @@ function createStyles(fontScale: number) {
     shellCard: {
       ...createOverlayCardStyle(fontScale),
       padding: isCoarsePointer
-        ? `${overlayPx(8, fontScale)} ${overlayPx(8, fontScale)}`
-        : `${overlayPx(6, fontScale)} ${overlayPx(6, fontScale)}`,
+        ? `${overlayPx(7, fontScale)} ${overlayPx(8, fontScale)}`
+        : `${overlayPx(4, fontScale)} ${overlayPx(5, fontScale)}`,
       display: "flex",
       flexDirection: "column",
-      gap: isCoarsePointer ? overlayPx(6, fontScale) : overlayPx(4, fontScale),
-      minWidth: Number.parseFloat(overlayPx(180, fontScale)),
+      gap: isCoarsePointer ? overlayPx(5, fontScale) : overlayPx(3, fontScale),
+      minWidth: Number.parseFloat(overlayPx(168, fontScale)),
+      borderColor: OVERLAY_STYLE_TOKENS.borderSubtle,
+      background: `color-mix(in srgb, ${OVERLAY_STYLE_TOKENS.surfaceElevated} 94%, ${OVERLAY_STYLE_TOKENS.surfaceSubtle})`,
+      boxShadow: "0 14px 36px color-mix(in srgb, CanvasText 10%, transparent)",
     } as React.CSSProperties,
     buttonBar: {
       display: "flex",
-      gap: isCoarsePointer ? overlayPx(4, fontScale) : overlayPx(4, fontScale),
+      gap: isCoarsePointer ? overlayPx(3, fontScale) : overlayPx(2, fontScale),
       flexWrap: "wrap",
     } as React.CSSProperties,
     button: {
       border: "1px solid transparent",
-      background: OVERLAY_STYLE_TOKENS.brandMuted,
+      background: "transparent",
       cursor: "pointer",
       padding: isCoarsePointer
-        ? `${overlayPx(8, fontScale)} ${overlayPx(14, fontScale)}`
-        : `${overlayPx(5, fontScale)} ${overlayPx(10, fontScale)}`,
-      borderRadius: overlayPx(8, fontScale),
-      fontSize: overlayPx(isCoarsePointer ? 14 : 13, fontScale),
+        ? `${overlayPx(7, fontScale)} ${overlayPx(12, fontScale)}`
+        : `${overlayPx(4, fontScale)} ${overlayPx(8, fontScale)}`,
+      borderRadius: overlayPx(7, fontScale),
+      fontSize: overlayPx(isCoarsePointer ? 14 : 12.5, fontScale),
       color: OVERLAY_STYLE_TOKENS.textSecondary,
       whiteSpace: "nowrap",
-      transition: "background 0.15s, color 0.15s, border-color 0.15s",
-      minHeight: isCoarsePointer ? overlayPx(40, fontScale) : overlayPx(30, fontScale),
+      transition: "background 0.15s, color 0.15s, border-color 0.15s, box-shadow 0.15s",
+      minHeight: isCoarsePointer ? overlayPx(38, fontScale) : overlayPx(28, fontScale),
       lineHeight: 1.2,
       fontFamily: OVERLAY_FONT_FAMILY,
+      fontWeight: 500,
     } as React.CSSProperties,
     buttonHover: {
-      background: OVERLAY_STYLE_TOKENS.brandMutedStrong,
-      color: BRAND_COLOR,
-      borderColor: OVERLAY_STYLE_TOKENS.brandBorderStrong,
+      background: OVERLAY_STYLE_TOKENS.surfaceSubtle,
+      color: OVERLAY_STYLE_TOKENS.textPrimary,
+      borderColor: OVERLAY_STYLE_TOKENS.borderSubtle,
     } as React.CSSProperties,
     primaryButton: {
-      background: BRAND_COLOR,
-      color: OVERLAY_STYLE_TOKENS.textInverse,
-      fontWeight: 700,
-      borderColor: OVERLAY_STYLE_TOKENS.brandBorderStrong,
+      background: OVERLAY_STYLE_TOKENS.textPrimary,
+      color: OVERLAY_STYLE_TOKENS.surfaceElevated,
+      fontWeight: 650,
+      borderColor: OVERLAY_STYLE_TOKENS.textPrimary,
+      boxShadow: "0 1px 2px color-mix(in srgb, CanvasText 12%, transparent)",
     } as React.CSSProperties,
     primaryButtonHover: {
-      background: PRIMARY_BUTTON_HOVER_COLOR,
+      background: `color-mix(in srgb, ${OVERLAY_STYLE_TOKENS.textPrimary} 90%, ${PRIMARY_BUTTON_HOVER_COLOR})`,
     } as React.CSSProperties,
     primaryButtonActive: {
       background: PRIMARY_BUTTON_ACTIVE_COLOR,
@@ -113,18 +119,38 @@ function createStyles(fontScale: number) {
     } as React.CSSProperties,
     resultPanel: {
       ...createOverlayCardStyle(fontScale),
-      marginTop: overlayPx(8, fontScale),
-      padding: `${overlayPx(10, fontScale)} ${overlayPx(14, fontScale)}`,
-      maxWidth: Number.parseFloat(overlayPx(420, fontScale)),
+      marginTop: overlayPx(7, fontScale),
+      padding: `${overlayPx(11, fontScale)} ${overlayPx(15, fontScale)}`,
+      maxWidth: Number.parseFloat(overlayPx(430, fontScale)),
       fontSize: overlayPx(14, fontScale),
       color: OVERLAY_STYLE_TOKENS.textPrimary,
-      lineHeight: "1.6",
+      lineHeight: "1.65",
       borderLeft: `${overlayPx(3, fontScale)} solid ${BRAND_COLOR}`,
+      borderTopColor: OVERLAY_STYLE_TOKENS.borderSubtle,
+      borderRightColor: OVERLAY_STYLE_TOKENS.borderSubtle,
+      borderBottomColor: OVERLAY_STYLE_TOKENS.borderSubtle,
+      background: `color-mix(in srgb, ${OVERLAY_STYLE_TOKENS.surfaceElevated} 96%, ${OVERLAY_STYLE_TOKENS.surfaceSubtle})`,
+      boxShadow: "0 12px 32px color-mix(in srgb, CanvasText 9%, transparent)",
       wordBreak: "break-word",
+    } as React.CSSProperties,
+    resultBody: {
+      fontFamily: QUIET_SERIF_FONT_FAMILY,
+      fontSize: overlayPx(15, fontScale),
+      fontStyle: "italic",
+      lineHeight: 1.6,
+      color: OVERLAY_STYLE_TOKENS.textPrimary,
+      letterSpacing: "-0.01em",
+    } as React.CSSProperties,
+    resultMeta: {
+      fontSize: overlayPx(10.5, fontScale),
+      fontWeight: 650,
+      letterSpacing: "0.08em",
+      textTransform: "uppercase",
+      marginBottom: overlayPx(6, fontScale),
     } as React.CSSProperties,
     saveCtaButton: {
       border: `1px solid ${OVERLAY_STYLE_TOKENS.successBorder}`,
-      background: OVERLAY_STYLE_TOKENS.successBg,
+      background: `color-mix(in srgb, ${OVERLAY_STYLE_TOKENS.successBg} 86%, transparent)`,
       color: OVERLAY_STYLE_TOKENS.success,
       borderRadius: overlayPx(8, fontScale),
       padding: `${overlayPx(8, fontScale)} ${overlayPx(12, fontScale)}`,
@@ -814,7 +840,7 @@ function SelectionToolbarApp() {
               {actionResult.actionId === "explain" && formatExplainProfileLabel(actionResult) && (
                 <div
                   data-testid="selection-explain-profile"
-                  style={{ fontSize: overlayPx(11, fontScale), fontWeight: 700, color: OVERLAY_STYLE_TOKENS.brandActive, marginBottom: overlayPx(6, fontScale) }}
+                  style={{ ...styles.resultMeta, color: OVERLAY_STYLE_TOKENS.brandActive }}
                 >
                   {formatExplainProfileLabel(actionResult)}
                 </div>
@@ -822,12 +848,17 @@ function SelectionToolbarApp() {
               {glossaryEvidenceLabel && (
                 <div
                   data-testid="selection-glossary-evidence"
-                  style={{ fontSize: overlayPx(11, fontScale), fontWeight: 700, color: OVERLAY_STYLE_TOKENS.success, marginBottom: overlayPx(6, fontScale) }}
+                  style={{ ...styles.resultMeta, color: OVERLAY_STYLE_TOKENS.success }}
                 >
                   {glossaryEvidenceLabel}
                 </div>
               )}
-              {actionResult.text}
+              <div style={{
+                ...styles.resultBody,
+                ...(hasActionError ? { fontFamily: OVERLAY_FONT_FAMILY, fontStyle: "normal", fontSize: overlayPx(13, fontScale), color: OVERLAY_STYLE_TOKENS.warning } : {}),
+              }}>
+                {actionResult.text}
+              </div>
             </div>
           ) : null}
 
@@ -842,7 +873,7 @@ function SelectionToolbarApp() {
                 void handleSave()
               }}
             >
-              📚 {t("actionSave")}
+              {t("actionSave")}
             </button>
           )}
 
@@ -900,7 +931,7 @@ function SelectionToolbarApp() {
       {wordAnnotation && (
         <div style={{ ...styles.resultPanel, borderLeftColor: OVERLAY_STYLE_TOKENS.info }} data-testid="word-annotation-card">
           <div style={{ display: "flex", alignItems: "baseline", gap: overlayPx(8, fontScale), marginBottom: overlayPx(4, fontScale), flexWrap: "wrap" }}>
-            <strong style={{ fontSize: overlayPx(16, fontScale) }}>{wordAnnotation.word}</strong>
+            <strong style={{ fontFamily: QUIET_SERIF_FONT_FAMILY, fontSize: overlayPx(17, fontScale), fontWeight: 500 }}>{wordAnnotation.word}</strong>
             {wordAnnotation.pronunciation && (
               <span style={{ color: OVERLAY_STYLE_TOKENS.textMuted, fontSize: overlayPx(13, fontScale) }}>{wordAnnotation.pronunciation}</span>
             )}
@@ -916,7 +947,7 @@ function SelectionToolbarApp() {
               {wordAnnotation.partOfSpeech}
             </span>
           </div>
-          <div style={{ marginBottom: overlayPx(4, fontScale) }}>{wordAnnotation.meaning}</div>
+          <div style={{ marginBottom: overlayPx(4, fontScale), fontFamily: QUIET_SERIF_FONT_FAMILY, fontStyle: "italic", fontSize: overlayPx(15, fontScale) }}>{wordAnnotation.meaning}</div>
           <div style={{ color: OVERLAY_STYLE_TOKENS.textSecondary, fontSize: overlayPx(13, fontScale), marginBottom: overlayPx(4, fontScale) }}>{wordAnnotation.shortExplanation}</div>
           {wordAnnotation.exampleSentence && (
             <div style={{ color: OVERLAY_STYLE_TOKENS.textMuted, fontSize: overlayPx(13, fontScale), fontStyle: "italic" }}>{wordAnnotation.exampleSentence}</div>
@@ -926,7 +957,7 @@ function SelectionToolbarApp() {
 
       {grammarResult && (
         <div style={{ ...styles.resultPanel, borderLeftColor: OVERLAY_STYLE_TOKENS.brandHover }} data-testid="grammar-card">
-          <div style={{ fontWeight: 600, marginBottom: overlayPx(6, fontScale) }}>{grammarResult.overview}</div>
+          <div style={{ fontFamily: QUIET_SERIF_FONT_FAMILY, fontStyle: "italic", fontWeight: 500, fontSize: overlayPx(15, fontScale), marginBottom: overlayPx(6, fontScale) }}>{grammarResult.overview}</div>
           {grammarResult.structure.length > 0 && (
             <ul style={{ margin: `0 0 ${overlayPx(6, fontScale)} 0`, paddingLeft: overlayPx(18, fontScale), fontSize: overlayPx(13, fontScale), color: OVERLAY_STYLE_TOKENS.textSecondary }}>
               {grammarResult.structure.map((item, i) => (

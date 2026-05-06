@@ -587,7 +587,7 @@ describe("SelectionToolbar interaction suppression", () => {
 
     expect(translateBtn?.dataset.actionVariant).toBe("primary")
     expect(explainBtn?.dataset.actionVariant).toBe("primary")
-    expect(copyBtn?.style.background).toContain("--astra-style-accent-muted")
+    expect(copyBtn?.style.background).toBe("transparent")
 
     let resolveExplain!: (value: { ok: true; translations: string[] }) => void
     translateTextsMock.mockImplementationOnce(() => new Promise((resolve) => {
@@ -672,8 +672,9 @@ describe("SelectionToolbar interaction suppression", () => {
     expect(inlineSaveCta).toBeTruthy()
     expect(inlineSaveCta?.textContent).toContain(t("actionSave"))
 
-    const exactSaveButtons = Array.from(shadow.querySelectorAll("button")).filter((btn) => btn.textContent === t("actionSave"))
-    expect(exactSaveButtons).toHaveLength(0)
+    const topBarSaveButtons = Array.from(shadow.querySelectorAll("button"))
+      .filter((btn) => btn.textContent === t("actionSave") && btn.dataset.testid !== "selection-result-save-cta")
+    expect(topBarSaveButtons).toHaveLength(0)
   })
 
   it("publishes learning session save state when inline CTA save succeeds", async () => {
@@ -794,7 +795,7 @@ describe("SelectionToolbar interaction suppression", () => {
     const translateButton = shadow.querySelector("[data-testid='selection-action-translate']") as HTMLButtonElement | null
 
     expect(toolbarRoot?.style.fontSize).toBe("1.05rem")
-    expect(translateButton?.style.fontSize).toBe("15.6px")
+    expect(translateButton?.style.fontSize).toBe("15px")
   })
 
   it("hides the speak button when TTS is disabled in config", async () => {

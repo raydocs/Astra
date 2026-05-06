@@ -676,6 +676,29 @@ describe("popup App", () => {
     })
   })
 
+  it("disables translation when active page URL is excluded by site path rules", async () => {
+    browserMock.tabs.query.mockResolvedValue([{ id: 1, url: "https://example.com/blog/post" }])
+    readConfigMock.mockResolvedValueOnce(createConfig({
+      sites: {
+        "example.com": {
+          enabled: true,
+          alwaysTranslate: false,
+          includePathPatterns: ["/docs/*"],
+        },
+      },
+    }))
+
+    await act(async () => {
+      window.dispatchEvent(new Event("focus"))
+      await Promise.resolve()
+      await Promise.resolve()
+      await Promise.resolve()
+    })
+
+    const translateButton = getButtons().find((button) => button.textContent === t("popup_translateThisPage"))!
+    expect(translateButton.disabled).toBe(true)
+  })
+
   it("shows the learning closure primer above simple controls and reuses popup actions", async () => {
     await flushApp()
 
@@ -1939,6 +1962,32 @@ describe("popup App", () => {
           selectors: ["article", ".content"],
           excludeSelectors: [".comments", "aside"],
           paragraphMinLength: 42,
+        }),
+      }),
+    }))
+  })
+
+  it("persists site path-pattern rules from the popup", async () => {
+    await flushApp()
+
+    const includePatternsInput = container.querySelector('[data-testid="site-include-path-patterns-input"]') as HTMLTextAreaElement
+    const excludePatternsInput = container.querySelector('[data-testid="site-exclude-path-patterns-input"]') as HTMLTextAreaElement
+
+    expect(includePatternsInput).toBeTruthy()
+    expect(excludePatternsInput).toBeTruthy()
+
+    await setFormValue(includePatternsInput, "/docs/*\n/blog/*")
+    await setFormValue(excludePatternsInput, "/docs/private/*")
+    await act(async () => {
+      await vi.runAllTimersAsync()
+    })
+    await flushApp()
+
+    expect(saveConfigInBackgroundMock).toHaveBeenLastCalledWith(expect.objectContaining({
+      sites: expect.objectContaining({
+        "example.com": expect.objectContaining({
+          includePathPatterns: ["/docs/*", "/blog/*"],
+          excludePathPatterns: ["/docs/private/*"],
         }),
       }),
     }))

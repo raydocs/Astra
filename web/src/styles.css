@@ -1,8 +1,14 @@
 @import "@/assets/astra-style1-tokens.css";
 
 :root {
-  color-scheme: dark;
-  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", "Helvetica Neue", Arial, sans-serif;
+  color-scheme: light;
+
+  /* Font stacks — match extension `astra-extension.css` (fonts loaded via astra-style1-tokens.css). */
+  --astra-font: "Inter Tight", "Söhne", "Helvetica Neue", "PingFang SC", "Hiragino Sans GB", system-ui, sans-serif;
+  --astra-font-serif: "Source Serif 4", "Source Serif Pro", "Tiempos Text", "Songti SC", "Noto Serif SC", Georgia, serif;
+  --astra-font-mono: "JetBrains Mono", "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+
+  font-family: var(--astra-font);
 
   /* Web compatibility variables bridge to shared Style 1 semantics. */
   --bg-primary: var(--astra-style-bg-app);
@@ -24,7 +30,12 @@
   --border-radius-md: var(--astra-style-radius-md);
   --border-radius-sm: var(--astra-style-radius-sm);
 
-  --accent-blue: var(--astra-style-accent-primary);
+  /* Primary accent — maps to Style 1 `--astra-style-accent-primary` (Quiet = ink blue, Twilight = star gold). */
+  --accent-primary: var(--astra-style-accent-primary);
+  /* Legacy alias — prefer `--accent-primary`. */
+  --accent-blue: var(--accent-primary);
+  --accent-highlight: var(--astra-style-hl);
+  --accent-warm: var(--astra-style-accent-warm);
   --accent-green: var(--astra-style-success);
   --accent-red: var(--astra-style-danger);
   --accent-warning: var(--astra-style-warning);
@@ -73,6 +84,11 @@
   box-sizing: border-box;
 }
 
+:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
+}
+
 html, body, #root {
   min-height: 100vh;
   margin: 0;
@@ -85,6 +101,7 @@ body {
     radial-gradient(ellipse at 80% -20%, var(--body-glow-primary), transparent 40%),
     radial-gradient(ellipse at -20% 120%, var(--body-glow-success), transparent 40%);
   background-attachment: fixed;
+  text-wrap: pretty;
 }
 
 h1, h2, h3, h4, h5, h6 {
@@ -92,6 +109,15 @@ h1, h2, h3, h4, h5, h6 {
   letter-spacing: -0.02em;
   margin-top: 0;
   color: var(--label-primary);
+}
+
+/* Editorial serif for top headings — parity with extension themed h1/h2/h3. */
+html[data-astra-theme] h1,
+html[data-astra-theme] h2,
+html[data-astra-theme] h3 {
+  font-family: var(--astra-font-serif);
+  font-weight: 400;
+  letter-spacing: -0.02em;
 }
 
 button, input, textarea, select {
@@ -203,7 +229,7 @@ button {
 
 .nav-item.is-active {
   background: var(--accent-muted);
-  color: var(--accent-blue);
+  color: var(--accent-primary);
 }
 
 /* Main Content */
@@ -282,7 +308,7 @@ button {
 }
 
 .button.primary {
-  background: var(--accent-blue);
+  background: var(--accent-primary);
   color: var(--web-on-accent);
   box-shadow: var(--shadow-glow);
 }
@@ -545,7 +571,7 @@ button {
 .field textarea:focus,
 .field select:focus {
   outline: none;
-  border-color: var(--accent-blue);
+  border-color: var(--accent-primary);
   box-shadow: var(--focus-ring);
 }
 
@@ -616,7 +642,7 @@ button {
   border-radius: var(--border-radius-md);
   background: var(--bg-primary);
   border: 1px solid var(--separator);
-  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-family: var(--astra-font-mono);
   font-size: 0.85rem;
   white-space: pre-wrap;
   color: var(--label-secondary);
@@ -754,6 +780,7 @@ button {
 .reader-body {
   max-height: calc(100vh - 18rem);
   overflow-y: auto;
+  font-family: var(--astra-font-serif);
   font-size: 1.15rem;
   line-height: 1.6;
   color: var(--label-secondary);

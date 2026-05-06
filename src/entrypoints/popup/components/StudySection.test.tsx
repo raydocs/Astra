@@ -150,6 +150,47 @@ describe("StudySection weekly ROI", () => {
     expect(saveButton.disabled).toBe(true)
   })
 
+  it("promotes the next study step above page assetization diagnostics", () => {
+    act(() => {
+      root.render(<StudySection {...createProps({
+        studyContext: {
+          pageTitle: "Hierarchy article",
+          pageUrl: "https://example.com/hierarchy",
+          hostname: "example.com",
+          contentSummary: "A studyable page summary.",
+        },
+        studyLoop: {
+          currentPage: {
+            url: "https://example.com/hierarchy",
+            hostname: "example.com",
+            title: "Hierarchy article",
+            completedSteps: ["read"],
+            sentencesExplained: 0,
+            vocabSaved: 0,
+            vocabReviewed: 0,
+            startedAt: Date.now(),
+            lastActivityAt: Date.now(),
+          },
+          completedSteps: ["read"],
+          currentCounts: { sentencesExplained: 0, vocabSaved: 0, vocabReviewed: 0 },
+          nextStep: "explain",
+          completionPercent: 20,
+          dailyStats: { date: "2026-04-14", pagesStudied: 1, sentencesExplained: 0, vocabSaved: 0, vocabReviewed: 0 },
+          recentPages: [],
+          personalizedStrategy: null,
+        },
+      })} />)
+    })
+
+    const progress = container.querySelector('[data-testid="study-progress-card-group"]') as HTMLElement
+    const assetization = container.querySelector('[data-testid="study-content-assetization-card"]') as HTMLElement
+    const nextStep = container.querySelector('[data-testid="study-next-step-action"]') as HTMLButtonElement
+    expect(progress).toBeTruthy()
+    expect(assetization).toBeTruthy()
+    expect(nextStep).toBeTruthy()
+    expect(progress.compareDocumentPosition(assetization) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+  })
+
   it("renders proof-aware account continuity copy without changing the sign-in CTA", () => {
     const onOpenAccountContinuitySignIn = vi.fn()
 

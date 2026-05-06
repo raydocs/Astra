@@ -6,7 +6,7 @@ import { AstraWebApp } from "./app"
 import "./styles.css"
 
 if (!document.documentElement.dataset.astraTheme) {
-  document.documentElement.dataset.astraTheme = "dark"
+  document.documentElement.dataset.astraTheme = "light"
 }
 
 if ("serviceWorker" in navigator && import.meta.env.PROD) {

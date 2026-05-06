@@ -738,6 +738,54 @@
   "popup_currentSite": {
     "message": "当前站点"
   },
+  "popup_designThisSite": {
+    "message": "此站点"
+  },
+  "popup_autoTranslateSite": {
+    "message": "自动翻译"
+  },
+  "popup_displayModeSite": {
+    "message": "显示"
+  },
+  "popup_styleSite": {
+    "message": "样式"
+  },
+  "popup_readingEyebrow": {
+    "message": "阅读"
+  },
+  "popup_hoverTranslateRow": {
+    "message": "悬停翻译"
+  },
+  "popup_todayTitle": {
+    "message": "今天"
+  },
+  "popup_libraryLink": {
+    "message": "词库"
+  },
+  "popup_metricSavedWords": {
+    "message": "已保存词"
+  },
+  "popup_metricWeekActivity": {
+    "message": "近7日新存"
+  },
+  "popup_reviewCtaTitle": {
+    "message": "复习 $1 个词"
+  },
+  "popup_reviewCtaHint": {
+    "message": "间隔重复队列"
+  },
+  "popup_reviewStart": {
+    "message": "开始 →"
+  },
+  "popup_toolbarLibraryAria": {
+    "message": "词库"
+  },
+  "popup_toolbarSettingsAria": {
+    "message": "设置"
+  },
+  "popup_languageCoachSection": {
+    "message": "语言、讲解与字号"
+  },
 
   "popup_studyStepRead": {
     "message": "阅读"

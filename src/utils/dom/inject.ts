@@ -9,6 +9,7 @@ export const ASTRA_TRANSLATION_SELECTOR = `[${ASTRA_TRANSLATION_ATTR}]`
 export const ASTRA_SOURCE_ATTR = "data-astra-source"
 export const ASTRA_SOURCE_SELECTOR = `[${ASTRA_SOURCE_ATTR}]`
 export const ASTRA_SOURCE_HIDDEN_ATTR = "data-astra-source-hidden"
+export const ASTRA_CUSTOM_CSS_STYLE_ID = "astra-site-custom-css"
 
 export interface InjectOptions {
   mode?: TranslationMode
@@ -208,4 +209,27 @@ export function removeAllTranslations() {
     }
     el.remove()
   })
+}
+
+export function applySiteCustomCss(css: string | undefined | null): void {
+  const nextCss = css?.trim() ?? ""
+  if (!nextCss) {
+    removeSiteCustomCss()
+    return
+  }
+
+  const existing = document.getElementById(ASTRA_CUSTOM_CSS_STYLE_ID)
+  const style = existing instanceof HTMLStyleElement ? existing : document.createElement("style")
+  style.id = ASTRA_CUSTOM_CSS_STYLE_ID
+  style.setAttribute("data-astra-custom-css", "1")
+  style.textContent = nextCss
+
+  if (!style.parentElement) {
+    const parent = document.head ?? document.documentElement
+    parent?.appendChild(style)
+  }
+}
+
+export function removeSiteCustomCss(): void {
+  document.getElementById(ASTRA_CUSTOM_CSS_STYLE_ID)?.remove()
 }

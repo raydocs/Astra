@@ -52,12 +52,12 @@ export default function AuthSection({
 
   return (
     <details open style={{ marginBottom: 12 }}>
-      <summary className="astra-cursor-pointer" style={{ fontSize: 13, color: "var(--astra-accent-warm-hover)" }}>
+      <summary className="astra-cursor-pointer" style={{ fontSize: 13, color: "var(--astra-brand-hover)" }}>
         {t("popup_astraAccount")}
       </summary>
       <div style={{ marginTop: 8 }}>
         {isAuthenticatedSession && session ? (
-          <div className="astra-card">
+          <div className="astra-site-sheet__card">
             <div style={{ fontSize: 13, color: "var(--astra-text-primary)", fontWeight: 600 }}>{resolvedAccount?.email ?? session.email}</div>
             <div style={{ fontSize: 12, color: "var(--astra-text-secondary)", marginTop: 4 }}>
               {t("popup_currentPlan")}：{resolvedAccount?.plan ?? session.plan}
@@ -121,7 +121,7 @@ export default function AuthSection({
         ) : (
           <>
             {session?.identityMode === "anonymous" && (
-              <div className="astra-card" style={{ fontSize: 12, color: "var(--astra-text-secondary)", marginBottom: 10 }}>
+              <div className="astra-site-sheet__card" style={{ fontSize: 12, color: "var(--astra-text-secondary)", marginBottom: 10 }}>
                 This device has a guest Astra session. Sign in to attach continuity to your account.
               </div>
             )}

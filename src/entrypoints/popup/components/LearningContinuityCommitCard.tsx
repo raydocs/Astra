@@ -99,15 +99,15 @@ export default function LearningContinuityCommitCard({
       style={{
         marginTop: 12,
         background: "var(--astra-bg-card)",
-        border: "1px solid var(--astra-popup-border-warm)",
+        border: "1px solid var(--astra-border-strong)",
         borderRadius: 12,
         padding: 12,
-        boxShadow: "var(--astra-popup-shadow-warm-sm)",
+        boxShadow: "var(--astra-shadow-sm)",
       }}
     >
       <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 10 }}>
         <div style={{ minWidth: 0 }}>
-          <div style={{ fontSize: 12, fontWeight: 800, color: "var(--astra-popup-text-warm-strong)", textTransform: "uppercase", letterSpacing: "0.04em" }}>
+          <div style={{ fontSize: 12, fontWeight: 800, color: "var(--astra-text-secondary)", textTransform: "uppercase", letterSpacing: "0.04em" }}>
             Learning continuity commit
           </div>
           <div style={{ fontSize: 11, color: "var(--astra-text-muted)", marginTop: 4, lineHeight: 1.45 }}>

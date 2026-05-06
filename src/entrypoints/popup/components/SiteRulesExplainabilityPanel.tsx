@@ -8,7 +8,7 @@ import {
   type TranslationSiteRuleFilterStageId,
   type TranslationSnapshot,
 } from "@/types/translation"
-import { statusCardStyle, warningStyle } from "./styles"
+import { warningStyle } from "./styles"
 
 export type SiteRulesQuickFixAction = "clear-include-selectors" | "clear-exclude-selectors"
 
@@ -147,9 +147,11 @@ function summarizeSelector(
   return lines
 }
 
-function hasAdvancedRules(resolvedSite: ResolvedSiteTranslationSettings): boolean {
+function hasAdvancedRules(resolvedSite: ResolvedSiteTranslationSettings, rawSiteRule: SiteConfig | undefined): boolean {
   return !!resolvedSite.selectors?.length
     || !!resolvedSite.excludeSelectors?.length
+    || !!rawSiteRule?.includePathPatterns?.length
+    || !!rawSiteRule?.excludePathPatterns?.length
     || resolvedSite.paragraphMinLength != null
 }
 
@@ -160,7 +162,14 @@ function buildWhy(params: SiteRulesExplainabilityPanelProps, diagnostics: Transl
 
   if (!activeSiteKey) return "No active http(s) tab is available, so Astra cannot evaluate this page."
   if (!contentAvailable) return statusMessage || "Astra content diagnostics are unavailable for this page."
-  if (!resolvedSite.enabled) return "Astra is disabled for this site by the current site rule/default setting."
+  if (!resolvedSite.enabled) {
+    const hasPathPatterns = (params.rawSiteRule?.includePathPatterns?.length ?? 0) > 0
+      || (params.rawSiteRule?.excludePathPatterns?.length ?? 0) > 0
+    if ((params.rawSiteRule?.enabled ?? true) && hasPathPatterns) {
+      return "Astra is disabled because the current URL path does not match this site rule."
+    }
+    return "Astra is disabled for this site by the current site rule/default setting."
+  }
   if (!providerReady) return "Astra is enabled here, but translation is waiting for provider or relay access."
   if (siteRules && siteRules.inputBlockCount > 0 && siteRules.afterParagraphCount === 0) {
     return "Astra found page text, but the current site filters matched no translatable blocks."
@@ -279,13 +288,15 @@ export function buildSiteRulesExplainabilityModel(params: SiteRulesExplainabilit
     warnings.push("Paragraph length filtering removed every remaining block.")
   }
 
-  const selectorSummary = hasAdvancedRules(resolvedSite)
+  const selectorSummary = hasAdvancedRules(resolvedSite, rawSiteRule)
     ? [
         ...summarizeSelector("Include selectors", resolvedSite.selectors, includeSyntax, siteRules?.selectors),
         ...summarizeSelector("Exclude selectors", resolvedSite.excludeSelectors, excludeSyntax, siteRules?.excludeSelectors),
+        `Include path patterns: ${rawSiteRule?.includePathPatterns?.length ?? 0}`,
+        `Exclude path patterns: ${rawSiteRule?.excludePathPatterns?.length ?? 0}`,
         `Paragraph min length: ${resolvedSite.paragraphMinLength ?? "not configured"}`,
       ]
-    : ["No advanced include/exclude/paragraph filters are configured for this site."]
+    : ["No advanced include/exclude/path/paragraph filters are configured for this site."]
 
   const runtimeSummary = siteRules
     ? [
@@ -320,7 +331,7 @@ export function buildSiteRulesExplainabilityModel(params: SiteRulesExplainabilit
 function SummaryRows({ title, rows }: { title: string; rows: string[] }) {
   return (
     <div style={{ marginTop: 8 }}>
-      <div style={{ fontSize: 11, fontWeight: 700, color: "var(--astra-popup-text-warm-strong)", textTransform: "uppercase", letterSpacing: 0.3 }}>{title}</div>
+      <div style={{ fontSize: 11, fontWeight: 700, color: "var(--astra-text-primary)", textTransform: "uppercase", letterSpacing: 0.3 }}>{title}</div>
       {rows.map((row) => {
         const [label, ...rest] = row.split(": ")
         return (
@@ -345,7 +356,7 @@ function QuickFixActions({
 
   return (
     <div data-testid="site-rules-quick-fixes" style={{ marginTop: 8 }}>
-      <div style={{ fontSize: 11, fontWeight: 700, color: "var(--astra-popup-text-warm-strong)", textTransform: "uppercase", letterSpacing: 0.3 }}>Quick fixes</div>
+      <div style={{ fontSize: 11, fontWeight: 700, color: "var(--astra-text-primary)", textTransform: "uppercase", letterSpacing: 0.3 }}>Quick fixes</div>
       <div style={{ display: "grid", gap: 6, marginTop: 6 }}>
         {quickFixes.map((quickFix) => (
           <div key={quickFix.action} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
@@ -370,9 +381,9 @@ export default function SiteRulesExplainabilityPanel(props: SiteRulesExplainabil
   const model = buildSiteRulesExplainabilityModel(props)
 
   return (
-    <section data-testid="site-rules-explainability-panel" style={statusCardStyle}>
-      <div style={{ fontSize: 13, fontWeight: 700, color: "var(--astra-popup-text-warm-strong)" }}>{model.title}</div>
-      <div data-testid="site-rules-explainability-why" style={{ fontSize: 12, color: "var(--astra-text-secondary)", marginTop: 6, lineHeight: 1.45 }}>
+    <section data-testid="site-rules-explainability-panel" className="astra-site-sheet__card">
+      <div className="astra-sheet-row__title" style={{ fontSize: 13 }}>{model.title}</div>
+      <div data-testid="site-rules-explainability-why" className="astra-sheet-row__sub" style={{ marginTop: 6, lineHeight: 1.45 }}>
         {model.why}
       </div>
       <SummaryRows title="Rule source" rows={[model.ruleSource, ...model.ruleSummary]} />
