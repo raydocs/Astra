@@ -387,6 +387,138 @@ async function seedExtensionStorageFromPage(options: {
     : new Error("Failed to seed extension storage from any extension page candidate.")
 }
 
+async function readExtensionStorageFromServiceWorker(options: {
+  context: BrowserContext
+  keys: string[]
+  timeoutMs?: number
+}): Promise<Record<string, unknown> | null> {
+  const timeoutMs = options.timeoutMs ?? 10_000
+  const existingServiceWorker = options.context.serviceWorkers()[0] ?? null
+  const serviceWorker = existingServiceWorker ?? await options.context.waitForEvent("serviceworker", {
+    timeout: timeoutMs,
+  }).catch(() => null)
+
+  if (!serviceWorker) {
+    return null
+  }
+
+  return serviceWorker.evaluate(async (keys) => {
+    const extensionChrome = (globalThis as unknown as {
+      chrome?: {
+        storage?: {
+          local?: {
+            get: (keys: string[]) => Promise<Record<string, unknown>>
+          }
+        }
+      }
+    }).chrome
+
+    if (!extensionChrome?.storage?.local) {
+      throw new Error("chrome.storage.local is unavailable in the extension service worker")
+    }
+
+    return extensionChrome.storage.local.get(keys)
+  }, options.keys)
+}
+
+async function readExtensionStorageFromPage(options: {
+  context: BrowserContext
+  extensionId: string
+  extensionPath?: string
+  keys: string[]
+}): Promise<Record<string, unknown>> {
+  const pageCandidates = await resolveExtensionSeedStoragePageCandidates(options.extensionPath)
+  if (pageCandidates.length === 0) {
+    throw new ExtensionBuildNotFoundError("No extension HTML page available to read chrome.storage.local.")
+  }
+
+  let lastError: unknown
+  for (const extensionPagePath of pageCandidates) {
+    const setupPage = await options.context.newPage()
+    try {
+      await setupPage.goto(`chrome-extension://${options.extensionId}/${extensionPagePath}`, {
+        waitUntil: "commit",
+        timeout: 20_000,
+      })
+      await setupPage.waitForFunction(
+        `typeof chrome !== "undefined" && !!chrome.storage?.local`,
+        { timeout: 10_000 },
+      )
+      return setupPage.evaluate(async (keys) => {
+        const extensionChrome = (globalThis as unknown as {
+          chrome?: {
+            storage?: {
+              local?: {
+                get: (keys: string[]) => Promise<Record<string, unknown>>
+              }
+            }
+          }
+        }).chrome
+
+        if (!extensionChrome?.storage?.local) {
+          throw new Error("chrome.storage.local is unavailable in the extension setup page")
+        }
+
+        return extensionChrome.storage.local.get(keys)
+      }, options.keys)
+    } catch (error) {
+      lastError = error
+    } finally {
+      try {
+        await setupPage.close()
+      } catch {
+        // ignore cleanup failures
+      }
+    }
+  }
+
+  throw lastError instanceof Error
+    ? lastError
+    : new Error("Failed to read extension storage from any extension page candidate.")
+}
+
+export async function readExtensionStorageState(options: {
+  context: BrowserContext
+  extensionId: string
+  extensionPath?: string
+  keys: string[]
+}): Promise<Record<string, unknown>> {
+  const fromWorker = await readExtensionStorageFromServiceWorker({
+    context: options.context,
+    keys: options.keys,
+  }).catch(() => null)
+
+  if (fromWorker) {
+    return fromWorker
+  }
+
+  return readExtensionStorageFromPage(options)
+}
+
+async function verifyExtensionStorageState(options: {
+  context: BrowserContext
+  extensionId: string
+  extensionPath?: string
+  storageState: Record<string, unknown>
+}): Promise<void> {
+  const keys = Object.keys(options.storageState)
+  const stored = await readExtensionStorageState({
+    context: options.context,
+    extensionId: options.extensionId,
+    extensionPath: options.extensionPath,
+    keys,
+  })
+
+  const missingKeys = keys.filter((key) => typeof stored[key] === "undefined")
+
+  if (missingKeys.length > 0) {
+    throw new Error(
+      `Extension storage seeding verification failed for ${missingKeys.join(", ")}. `
+        + `Seeded keys: ${keys.join(", ")}. Read-back keys: ${Object.keys(stored).join(", ") || "<none>"}.`,
+    )
+  }
+}
+
 async function seedExtensionStorageState(options: {
   context: BrowserContext
   extensionId: string
@@ -779,7 +911,7 @@ export async function captureFixtureSmokeWithPlaywright(params: {
  * @param options.initialUrl - URL to navigate to after extension loads (default: about:blank)
  * @param options.waitForExtensionInject - Max ms to wait for the extension to inject into the page (default: 5000)
  *   Set to 0 to skip waiting for injection (useful when navigating to pages that shouldn't trigger the extension).
- * @param options.storageState - Initial chrome.storage.local state to inject before the extension loads.
+ * @param options.storageState - Initial chrome.storage.local state to inject before the first fixture navigation.
  *   This is essential for site-automation scenarios where alwaysTranslate must be pre-configured.
  */
 export async function withExtensionBrowserPage(options: {
@@ -880,23 +1012,6 @@ export async function withExtensionBrowserPage(options: {
   }
 
   const page = context.pages()[0] ?? await context.newPage()
-  if (initialUrl !== "about:blank") {
-    await page.goto(initialUrl, { waitUntil: "domcontentloaded", timeout: 15_000 })
-
-    if (waitForInject > 0) {
-      try {
-        await page.waitForFunction(
-          () => !!document.getElementById("astra-float-ball-host")
-            || !!document.getElementById("astra-hover-translate-host")
-            || !!(document.querySelector("[data-astra-injected]")),
-          { timeout: waitForInject },
-        )
-      } catch {
-        // Some pages (chrome://, non-http) intentionally exclude extension injection
-      }
-    }
-  }
-
   const extensionId = await resolveExtensionId(context, 10_000, extensionPath)
 
   if (options.storageState && Object.keys(options.storageState).length > 0) {
@@ -906,17 +1021,31 @@ export async function withExtensionBrowserPage(options: {
       extensionPath,
       storageState: options.storageState,
     })
-    if (initialUrl !== "about:blank") {
-      await page.bringToFront()
-    }
+    await verifyExtensionStorageState({
+      context,
+      extensionId,
+      extensionPath,
+      storageState: options.storageState,
+    })
   }
 
   if (process.env.CI === "true") {
     await installCiExtensionOutboundGuards(context)
   }
 
-  if (initialUrl === "about:blank") {
-    await page.goto(initialUrl, { waitUntil: "domcontentloaded", timeout: 15_000 })
+  await page.goto(initialUrl, { waitUntil: "domcontentloaded", timeout: 15_000 })
+
+  if (initialUrl !== "about:blank" && waitForInject > 0) {
+    try {
+      await page.waitForFunction(
+        () => !!document.getElementById("astra-float-ball-host")
+          || !!document.getElementById("astra-hover-translate-host")
+          || !!(document.querySelector("[data-astra-injected]")),
+        { timeout: waitForInject },
+      )
+    } catch {
+      // Some pages (chrome://, non-http) intentionally exclude extension injection
+    }
   }
 
   return {

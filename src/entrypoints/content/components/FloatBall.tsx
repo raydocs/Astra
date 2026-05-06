@@ -14,6 +14,8 @@ import { OVERLAY_FONT_FAMILY, OVERLAY_STYLE_TOKENS, createOverlayStyle1TokenStyl
 const STORAGE_KEY = "astra_float_ball_y"
 const DEFAULT_Y = 300
 const BALL_SIZE = 44
+const EDGE_TAB_IDLE_WIDTH = 3
+const EDGE_TAB_EXPANDED_WIDTH = 34
 
 const COLOR_IDLE = OVERLAY_STYLE_TOKENS.brand
 const COLOR_ACTIVE = OVERLAY_STYLE_TOKENS.success
@@ -95,6 +97,7 @@ function FloatBallButton() {
   const [posY, setPosY] = useState(DEFAULT_Y)
   const [dragging, setDragging] = useState(false)
   const [hovered, setHovered] = useState(false)
+  const [focused, setFocused] = useState(false)
   const [learningPulseActive, setLearningPulseActive] = useState(false)
   const [fontScale, setFontScale] = useState(0.92)
   const dragRef = useRef<{ startY: number; startPosY: number } | null>(null)
@@ -233,20 +236,50 @@ function FloatBallButton() {
   )
 
   const visual = getFloatBallVisualState(translationState, learningState)
+
+  const activate = useCallback(() => {
+    if (visual.disabled) return
+
+    if (visual.failedBlocks > 0) {
+      retryFailedBlocks()
+    } else if (visual.reviewReady) {
+      openReview()
+    } else {
+      void toggleCurrentTabTranslation().catch((error) => {
+        console.error("[Astra] Float ball toggle failed:", error)
+      })
+    }
+  }, [openReview, visual.disabled, visual.failedBlocks, visual.reviewReady])
+
+  const handleKeyDown = useCallback((event: React.KeyboardEvent<HTMLDivElement>) => {
+    if (event.key !== "Enter" && event.key !== " ") return
+    event.preventDefault()
+    event.stopPropagation()
+    activate()
+  }, [activate])
   const showLearningPulse = learningPulseActive && visual.reviewReady
+  const expanded = hovered || focused || dragging || Boolean(visual.progressText) || visual.failedBlocks > 0 || visual.reviewReady || showLearningPulse
+  const tabWidth = expanded ? EDGE_TAB_EXPANDED_WIDTH : EDGE_TAB_IDLE_WIDTH
 
   return (
     <div
+      role="button"
+      tabIndex={visual.disabled ? -1 : 0}
+      aria-label={visual.tooltip}
+      aria-disabled={visual.disabled || undefined}
+      onKeyDown={handleKeyDown}
       onPointerDown={handlePointerDown}
       onPointerMove={handlePointerMove}
       onPointerUp={handlePointerUp}
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
+      onFocus={() => setFocused(true)}
+      onBlur={() => setFocused(false)}
       style={{
         position: "fixed",
         right: 0,
         top: posY,
-        width: BALL_SIZE,
+        width: tabWidth,
         height: BALL_SIZE,
         zIndex: 2147483647,
         cursor: dragging ? "grabbing" : visual.disabled ? "progress" : "pointer",
@@ -255,15 +288,32 @@ function FloatBallButton() {
         display: "flex",
         alignItems: "center",
         justifyContent: "center",
-        background: visual.color,
-        borderRadius: "50% 0 0 50%",
-        boxShadow: showLearningPulse
-          ? `0 0 0 8px color-mix(in srgb, ${COLOR_LEARNING} 14%, transparent), 0 2px 16px color-mix(in srgb, ${visual.color} 60%, transparent)`
-          : `0 2px 12px color-mix(in srgb, ${visual.color} 50%, transparent)`,
-        transition: dragging ? "none" : "background 0.25s, box-shadow 0.25s, top 0.15s",
+        background: expanded
+          ? `color-mix(in srgb, ${visual.color} 82%, ${OVERLAY_STYLE_TOKENS.surfaceElevated})`
+          : `color-mix(in srgb, ${OVERLAY_STYLE_TOKENS.textPrimary} 22%, transparent)`,
+        color: OVERLAY_STYLE_TOKENS.textInverse,
+        borderTop: expanded
+          ? `1px solid ${focused ? `color-mix(in srgb, ${visual.color} 34%, transparent)` : `color-mix(in srgb, ${visual.color} 18%, transparent)`}`
+          : "1px solid transparent",
+        borderBottom: expanded
+          ? `1px solid ${focused ? `color-mix(in srgb, ${visual.color} 34%, transparent)` : `color-mix(in srgb, ${visual.color} 18%, transparent)`}`
+          : "1px solid transparent",
+        borderLeft: expanded
+          ? `1px solid ${focused ? `color-mix(in srgb, ${visual.color} 34%, transparent)` : `color-mix(in srgb, ${visual.color} 18%, transparent)`}`
+          : "1px solid transparent",
+        borderRight: "none",
+        borderRadius: `${overlayPx(12, fontScale)} 0 0 ${overlayPx(12, fontScale)}`,
+        boxShadow: focused
+          ? `0 0 0 3px color-mix(in srgb, ${visual.color} 18%, transparent), -1px 4px 12px color-mix(in srgb, ${visual.color} 14%, transparent)`
+          : showLearningPulse
+            ? `0 0 0 4px color-mix(in srgb, ${COLOR_LEARNING} 10%, transparent), -1px 4px 12px color-mix(in srgb, ${visual.color} 14%, transparent)`
+            : expanded
+              ? `-1px 4px 12px color-mix(in srgb, ${visual.color} 14%, transparent)`
+              : "none",
+        transition: dragging ? "none" : "width 0.18s ease, background 0.25s, box-shadow 0.25s, opacity 0.2s, top 0.15s",
         animation: showLearningPulse ? "astra-floatball-learning-pulse 0.8s ease-out" : undefined,
-        transform: hovered && !dragging ? "scale(1.1)" : "scale(1)",
-        opacity: visual.disabled ? 0.92 : 1,
+        opacity: visual.disabled ? 0.72 : expanded ? 0.9 : 0.32,
+        outline: "none",
       }}
       title={visual.tooltip}
     >
@@ -271,7 +321,7 @@ function FloatBallButton() {
         <div
           style={{
             position: "absolute",
-            right: BALL_SIZE + 8,
+            right: tabWidth + 8,
             top: "50%",
             transform: "translateY(-50%)",
             background: OVERLAY_STYLE_TOKENS.tooltipBg,
@@ -300,17 +350,23 @@ function FloatBallButton() {
             lineHeight: 1,
             pointerEvents: "none",
             fontFamily: OVERLAY_FONT_FAMILY,
+            opacity: expanded ? 1 : 0,
+            transition: "opacity 0.12s ease",
           }}
         >
           {visual.progressText}
         </span>
       ) : (
         <svg
-          width="22"
-          height="22"
+          width="18"
+          height="18"
           viewBox="0 0 24 24"
           fill="none"
-          style={{ pointerEvents: "none" }}
+          style={{
+            pointerEvents: "none",
+            opacity: expanded ? 1 : 0,
+            transition: "opacity 0.12s ease",
+          }}
         >
           <path
             d="M12 2 L14.5 9 L22 9.5 L16 14.5 L18 22 L12 17.5 L6 22 L8 14.5 L2 9.5 L9.5 9 Z"

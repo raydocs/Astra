@@ -6,7 +6,11 @@ const MIN_OVERLAY_FONT_SCALE = 0.5
 const MAX_OVERLAY_FONT_SCALE = 2
 
 export const OVERLAY_FONT_FAMILY =
-  '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif'
+  '"Inter Tight", "Söhne", "Helvetica Neue", "PingFang SC", "Hiragino Sans GB", system-ui, sans-serif'
+export const OVERLAY_FONT_FAMILY_SERIF =
+  '"Source Serif 4", "Source Serif Pro", "Tiempos Text", "Songti SC", "Noto Serif SC", Georgia, serif'
+export const OVERLAY_FONT_FAMILY_MONO =
+  '"JetBrains Mono", "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, monospace'
 
 export const OVERLAY_STYLE_TOKENS = {
   brand: "var(--astra-style-accent-primary, Highlight)",
@@ -16,9 +20,24 @@ export const OVERLAY_STYLE_TOKENS = {
   brandMutedStrong: "color-mix(in srgb, var(--astra-style-accent-primary, Highlight) 14%, transparent)",
   brandBorder: "var(--astra-style-accent-border, color-mix(in srgb, Highlight 25%, transparent))",
   brandBorderStrong: "color-mix(in srgb, var(--astra-style-accent-primary, Highlight) 34%, transparent)",
+  accent: "var(--astra-style-accent, Highlight)",
+  accentHover: "var(--astra-style-accent-hover, Highlight)",
+  accentSoft: "var(--astra-style-accent-soft, color-mix(in srgb, Highlight 8%, transparent))",
+  accentLine: "var(--astra-style-accent-line, color-mix(in srgb, Highlight 22%, transparent))",
+  hl: "var(--astra-style-hl, Highlight)",
+  hlSoft: "var(--astra-style-hl-soft, color-mix(in srgb, Highlight 10%, transparent))",
   surface: "var(--astra-style-bg-surface, Canvas)",
   surfaceElevated: "var(--astra-style-bg-elevated, Canvas)",
   surfaceSubtle: "var(--astra-style-bg-subtle, Field)",
+  bgPage: "var(--astra-style-bg-page, Canvas)",
+  bgSunken: "var(--astra-style-bg-sunken, Field)",
+  bgHover: "var(--astra-style-bg-hover, Field)",
+  ink1: "var(--astra-style-ink-1, CanvasText)",
+  ink2: "var(--astra-style-ink-2, color-mix(in srgb, CanvasText 72%, transparent))",
+  ink3: "var(--astra-style-ink-3, color-mix(in srgb, CanvasText 56%, transparent))",
+  ink4: "var(--astra-style-ink-4, GrayText)",
+  line1: "var(--astra-style-line-1, ButtonBorder)",
+  line2: "var(--astra-style-line-2, color-mix(in srgb, ButtonBorder 72%, CanvasText))",
   textPrimary: "var(--astra-style-text-primary, CanvasText)",
   textSecondary: "var(--astra-style-text-secondary, color-mix(in srgb, CanvasText 72%, transparent))",
   textMuted: "var(--astra-style-text-muted, color-mix(in srgb, CanvasText 56%, transparent))",
@@ -39,11 +58,19 @@ export const OVERLAY_STYLE_TOKENS = {
   warningBorder: "var(--astra-style-warning-border, color-mix(in srgb, MarkText 34%, transparent))",
   danger: "var(--astra-style-danger, MarkText)",
   tooltipBg: "color-mix(in srgb, var(--astra-style-text-primary, CanvasText) 86%, transparent)",
+  ok: "var(--astra-style-ok, LinkText)",
+  warn: "var(--astra-style-warn, MarkText)",
 } as const
 
 const OVERLAY_STYLE1_TOKEN_CSS = style1TokenCss
-  .replace(":root,\n[data-astra-theme=\"light\"]", ":host,\n:host([data-astra-theme=\"light\"])")
-  .replace("[data-astra-theme=\"dark\"]", ":host([data-astra-theme=\"dark\"])")
+  .replace(
+    ":root,\n[data-astra-theme=\"light\"],\n[data-astra=\"quiet\"]",
+    ":host,\n:host([data-astra-theme=\"light\"]),\n:host([data-astra=\"quiet\"])",
+  )
+  .replace(
+    "[data-astra-theme=\"dark\"],\n[data-astra=\"twilight\"]",
+    ":host([data-astra-theme=\"dark\"]),\n:host([data-astra=\"twilight\"])",
+  )
 
 export function createOverlayStyle1TokenStyleElement(): HTMLStyleElement {
   const style = document.createElement("style")
@@ -78,8 +105,8 @@ export function createOverlayCardStyle(fontScale?: number | null): React.CSSProp
   return {
     fontFamily: OVERLAY_FONT_FAMILY,
     borderRadius: overlayPx(12, fontScale),
-    border: `1px solid ${OVERLAY_STYLE_TOKENS.brandBorder}`,
+    border: `1px solid ${OVERLAY_STYLE_TOKENS.line1}`,
     boxShadow: OVERLAY_STYLE_TOKENS.shadowLg,
-    background: OVERLAY_STYLE_TOKENS.surface,
+    background: OVERLAY_STYLE_TOKENS.surfaceElevated,
   }
 }

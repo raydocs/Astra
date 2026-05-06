@@ -289,10 +289,16 @@ export function PdfReaderApp() {
   }
 
   return (
-    <div className="astra-container astra-container--wide" style={containerStyle} onDragOver={(e) => e.preventDefault()} onDrop={handleFileDrop}>
+    <div
+      className="astra-container astra-container--wide"
+      data-astra-theme="light"
+      style={containerStyle}
+      onDragOver={(e) => e.preventDefault()}
+      onDrop={handleFileDrop}
+    >
       <header style={headerStyle}>
         <h1 style={{ margin: 0, fontSize: 18, color: "var(--astra-brand)" }}>Astra PDF Reader</h1>
-        {fileName && <span style={{ fontSize: 13, color: "#64748b" }}>{fileName}</span>}
+        {fileName && <span style={{ fontSize: 13, color: "var(--astra-text-muted)" }}>{fileName}</span>}
         {phase === "translating" && (
           <span style={{ fontSize: 12, color: "var(--astra-brand)" }}>
             Translating page {progress.current}/{progress.total}...

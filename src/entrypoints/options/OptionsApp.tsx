@@ -93,17 +93,90 @@ const LANGUAGE_LEVEL_OPTIONS = [
 ] as const
 
 const NAV_ITEMS: { key: Section; label: string }[] = [
-  { key: "general", label: "General" },
-  { key: "providers", label: "Providers" },
   { key: "translation", label: "Translation" },
   { key: "actions", label: "Actions" },
   { key: "sites", label: "Sites" },
   { key: "vocabulary", label: "Vocabulary" },
+  { key: "providers", label: "Providers" },
   { key: "diagnostics", label: "Diagnostics" },
+  { key: "general", label: "General" },
   { key: "about", label: "About" },
 ]
 
+type NavGroupItem = {
+  key: Section
+  label: string
+  getCount?: (config: AstraConfig) => number | null
+}
+
+const NAV_GROUPS: { label: string; items: NavGroupItem[] }[] = [
+  {
+    label: "Reading",
+    items: [
+      { key: "translation", label: "Translation" },
+      { key: "actions", label: "Actions" },
+      {
+        key: "sites",
+        label: "Sites",
+        getCount: (cfg) => {
+          const count = Object.keys(cfg.sites).length
+          return count > 0 ? count : null
+        },
+      },
+    ],
+  },
+  {
+    label: "Learning",
+    items: [
+      { key: "vocabulary", label: "Vocabulary" },
+    ],
+  },
+  {
+    label: "Engine",
+    items: [
+      { key: "providers", label: "Providers" },
+      { key: "diagnostics", label: "Diagnostics" },
+    ],
+  },
+  {
+    label: "Account",
+    items: [
+      { key: "general", label: "General" },
+      { key: "about", label: "About" },
+    ],
+  },
+]
+
+const SECTION_META: Record<Section, { breadcrumb: string }> = {
+  translation: { breadcrumb: "Translation" },
+  actions: { breadcrumb: "Actions" },
+  sites: { breadcrumb: "Sites" },
+  vocabulary: { breadcrumb: "Vocabulary" },
+  providers: { breadcrumb: "Providers" },
+  diagnostics: { breadcrumb: "Diagnostics" },
+  general: { breadcrumb: "General" },
+  about: { breadcrumb: "About" },
+}
+
 const BRAND_COLOR = "var(--astra-brand)"
+
+function SectionHeader({
+  eyebrow,
+  headline,
+  intro,
+}: {
+  eyebrow: string
+  headline: string
+  intro?: React.ReactNode
+}) {
+  return (
+    <header className="astra-settings-section-header">
+      <div className="astra-settings-eyebrow">{eyebrow}</div>
+      <h1 className="astra-settings-headline">{headline}</h1>
+      {intro && <p className="astra-settings-intro">{intro}</p>}
+    </header>
+  )
+}
 
 function formatContinuityTimestamp(value: string | null | undefined): string {
   if (!value) return "not yet"
@@ -222,44 +295,10 @@ function getLearningLoopEventSummary(event: TelemetryEvent): string | null {
 }
 
 // --- Styles ---
-
-const pageStyle: React.CSSProperties = {
-  display: "flex",
-  minHeight: "100vh",
-  fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif',
-  fontSize: 14,
-  color: "var(--astra-text-primary)",
-  background: "var(--astra-bg-primary)",
-  margin: 0,
-}
-
-const sidebarStyle: React.CSSProperties = {
-  width: 200,
-  minWidth: 200,
-  background: "var(--astra-bg-card)",
-  borderRight: "1px solid var(--astra-border)",
-  padding: "24px 0",
-  display: "flex",
-  flexDirection: "column",
-}
-
-const logoStyle: React.CSSProperties = {
-  fontSize: 20,
-  fontWeight: 700,
-  color: BRAND_COLOR,
-  padding: "0 20px 20px",
-  borderBottom: "1px solid var(--astra-border)",
-  marginBottom: 8,
-}
-
-// navBtnBase / navBtnActive removed — now using className="astra-nav-item" / "astra-nav-item-mobile"
-
-const contentStyle: React.CSSProperties = {
-  flex: 1,
-  padding: "32px 40px",
-}
-
-// sectionTitle removed — now using className="astra-section-heading"
+// pageStyle / sidebarStyle / logoStyle / contentStyle / navBtnBase / sectionTitle
+// were removed when the Options surface migrated to the Quiet Reader shell
+// (.astra-settings-* in src/assets/astra-extension.css). Inline styles below
+// are kept only for narrow per-field tweaks that don't yet have a token class.
 
 const fieldGroup: React.CSSProperties = {
   marginBottom: "var(--astra-space-5)",
@@ -321,8 +360,14 @@ function GeneralSection({
     && !availableVoices.some((voice) => voice.name === config.tts.voiceName)
 
   return (
-    <div>
-      <h2 className="astra-section-heading">General</h2>
+    <div className="astra-settings-section">
+      <SectionHeader
+        eyebrow="Account · General"
+        headline="The everyday voice of Astra"
+        intro="Pick the language Astra translates into, how chatty its explanations are, and how it speaks aloud when you ask."
+      />
+
+      <h2 className="astra-section-heading astra-sr-only">General</h2>
 
       <div style={fieldGroup}>
         <label htmlFor="options-general-target-language" style={labelStyle}>Target language</label>
@@ -552,8 +597,14 @@ function ProvidersSection({
   onProviderChange: (patch: Partial<AstraConfig["provider"]>) => void
 }) {
   return (
-    <div>
-      <h2 className="astra-section-heading">Providers</h2>
+    <div className="astra-settings-section">
+      <SectionHeader
+        eyebrow="Engine · AI providers"
+        headline="Which model does the heavy lifting"
+        intro="Astra can talk to any compatible relay or call OpenAI / Gemini directly with your own key. The active model lives next to every translation row."
+      />
+
+      <h2 className="astra-section-heading astra-sr-only">Providers</h2>
 
       <div style={fieldGroup}>
         <label htmlFor="options-provider-id" style={labelStyle}>Provider</label>
@@ -616,81 +667,206 @@ function ProvidersSection({
 function TranslationSection({
   config,
   onPresentationChange,
+  onConfigChange,
 }: {
   config: AstraConfig
   onPresentationChange: (patch: Partial<AstraConfig["presentation"]>) => void
+  onConfigChange: (patch: Partial<AstraConfig>) => void
 }) {
+  const previewSource = "The afternoon light slipped between the columns and rested on the open page."
+  const previewTarget = "下午的光线从立柱之间穿过，停在翻开的书页上。"
+  const activeModel = config.provider.model || getDefaultProviderModel(config.provider.id)
+
   return (
-    <div>
-      <h2 className="astra-section-heading">Translation</h2>
+    <div className="astra-settings-section">
+      <SectionHeader
+        eyebrow="Reading · Translation"
+        headline="How Astra translates the page"
+        intro="Quiet rails that keep the source visible while the model whispers an alternate reading. Every control here also accepts per-site overrides under Sites."
+      />
 
-      <div style={fieldGroup}>
-        <label htmlFor="options-translation-mode" style={labelStyle}>Presentation mode</label>
-        <select
-          id="options-translation-mode"
-          className="astra-input"
-          value={config.presentation.mode}
-          onChange={(e) => onPresentationChange({ mode: e.target.value as TranslationMode })}
-        >
-          {MODE_OPTIONS.map((o) => (
-            <option key={o.value} value={o.value}>{o.label}</option>
-          ))}
-        </select>
-      </div>
+      <div className="astra-settings-rows">
+        <div className="astra-settings-row">
+          <div className="astra-settings-row__body">
+            <p className="astra-settings-row__title">Translation mode</p>
+            <p className="astra-settings-row__hint">Bilingual keeps source paragraphs visible. Translation only quietly replaces them.</p>
+          </div>
+          <div className="astra-settings-row__control">
+            <label htmlFor="options-translation-mode" className="astra-sr-only">Translation mode</label>
+            <select
+              id="options-translation-mode"
+              className="astra-input"
+              value={config.presentation.mode}
+              onChange={(e) => onPresentationChange({ mode: e.target.value as TranslationMode })}
+            >
+              {MODE_OPTIONS.map((o) => (
+                <option key={o.value} value={o.value}>{o.label}</option>
+              ))}
+            </select>
+          </div>
+        </div>
 
-      <div style={fieldGroup}>
-        <label htmlFor="options-translation-theme" style={labelStyle}>Theme</label>
-        <select
-          id="options-translation-theme"
-          className="astra-input"
-          value={config.presentation.theme}
-          onChange={(e) => onPresentationChange({ theme: e.target.value as TranslationTheme })}
-        >
-          {THEME_OPTIONS.map((o) => (
-            <option key={o.value} value={o.value}>{o.label}</option>
-          ))}
-        </select>
-      </div>
+        <div className="astra-settings-row">
+          <div className="astra-settings-row__body">
+            <p className="astra-settings-row__title">Translate range</p>
+            <p className="astra-settings-row__hint">"Article only" skips navigation, sidebars, and footers so the page chrome stays untouched.</p>
+          </div>
+          <div className="astra-settings-row__control">
+            <label htmlFor="options-translation-range" className="astra-sr-only">Translate range</label>
+            <select
+              id="options-translation-range"
+              className="astra-input"
+              value={config.contentScope}
+              onChange={(e) => onConfigChange({ contentScope: e.target.value as ContentScope })}
+            >
+              {CONTENT_SCOPE_OPTIONS.map((o) => (
+                <option key={o.value} value={o.value}>{o.label}</option>
+              ))}
+            </select>
+          </div>
+        </div>
 
-      <div style={fieldGroup}>
-        <label htmlFor="options-translation-font-size" style={labelStyle}>Font size (em)</label>
-        <input
-          id="options-translation-font-size"
-          type="number"
-          step="0.01"
-          min="0.5"
-          max="2.0"
-          className="astra-input"
-          style={{ maxWidth: 120 }}
-          value={config.presentation.fontSize}
-          onChange={(e) => {
-            const value = parseFloat(e.target.value)
-            if (!Number.isNaN(value)) {
-              onPresentationChange({ fontSize: Math.max(0.5, Math.min(2.0, value)) })
-            }
-          }}
-        />
-      </div>
+        <div className="astra-settings-row astra-settings-row--stack">
+          <div className="astra-settings-row__body">
+            <p className="astra-settings-row__title">Display style</p>
+            <p className="astra-settings-row__hint">Pick how the translated paragraph anchors itself to the source. Live preview updates below.</p>
+          </div>
+          <div className="astra-settings-row__control astra-settings-row__control--wide">
+            <div className="astra-settings-segmented" role="group" aria-label="Display style">
+              {THEME_OPTIONS.map((o) => (
+                <button
+                  type="button"
+                  key={o.value}
+                  className="astra-settings-segmented__option"
+                  aria-pressed={config.presentation.theme === o.value}
+                  onClick={() => onPresentationChange({ theme: o.value as TranslationTheme })}
+                >
+                  {o.label.replace(" (border)", "")}
+                </button>
+              ))}
+            </div>
+          </div>
+          <div
+            className="astra-settings-preview"
+            data-theme={config.presentation.theme}
+            aria-hidden="true"
+          >
+            <p className="astra-settings-preview__source">{previewSource}</p>
+            <p
+              className="astra-settings-preview__target"
+              style={{
+                color: config.presentation.translationColor || undefined,
+                fontSize: `${(config.presentation.fontSize ?? 1) * 14.5}px`,
+              }}
+            >
+              {previewTarget}
+            </p>
+          </div>
+        </div>
 
-      <div style={fieldGroup}>
-        <label htmlFor="options-translation-color-picker" style={labelStyle}>Translation color</label>
-        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-          <input
-            id="options-translation-color-picker"
-            type="color"
-            className="astra-color-picker"
-            value={config.presentation.translationColor}
-            onChange={(e) => onPresentationChange({ translationColor: e.target.value })}
-            style={{ width: 40, height: 32, border: "1px solid var(--astra-border)", borderRadius: 4, padding: 2 }}
-          />
-          <input
-            id="options-translation-color-input"
-            className="astra-input"
-            style={{ maxWidth: 160 }}
-            value={config.presentation.translationColor}
-            onChange={(e) => onPresentationChange({ translationColor: e.target.value })}
-            placeholder="#64748b"
-          />
+        <div className="astra-settings-row">
+          <div className="astra-settings-row__body">
+            <p className="astra-settings-row__title">Font size</p>
+            <p className="astra-settings-row__hint">Multiplier on the source paragraph's own type size. 1.0 keeps Astra in line with the page.</p>
+          </div>
+          <div className="astra-settings-row__control">
+            <label htmlFor="options-translation-font-size" className="astra-sr-only">Font size (em)</label>
+            <input
+              id="options-translation-font-size"
+              type="number"
+              step="0.05"
+              min="0.5"
+              max="2.0"
+              className="astra-input"
+              style={{ minWidth: 0, width: 120 }}
+              value={config.presentation.fontSize}
+              onChange={(e) => {
+                const value = parseFloat(e.target.value)
+                if (!Number.isNaN(value)) {
+                  onPresentationChange({ fontSize: Math.max(0.5, Math.min(2.0, value)) })
+                }
+              }}
+            />
+          </div>
+        </div>
+
+        <div className="astra-settings-row">
+          <div className="astra-settings-row__body">
+            <p className="astra-settings-row__title">Translation color</p>
+            <p className="astra-settings-row__hint">The ink Astra uses for the translated line. Tap the swatch to pick or paste any hex.</p>
+          </div>
+          <div className="astra-settings-row__control">
+            <label htmlFor="options-translation-color-picker" className="astra-sr-only">Translation color</label>
+            <input
+              id="options-translation-color-picker"
+              type="color"
+              className="astra-color-picker"
+              value={config.presentation.translationColor}
+              onChange={(e) => onPresentationChange({ translationColor: e.target.value })}
+              style={{ width: 36, height: 30, border: "1px solid var(--astra-border)", borderRadius: 4, padding: 2 }}
+            />
+            <input
+              id="options-translation-color-input"
+              className="astra-input"
+              style={{ width: 130, minWidth: 0 }}
+              value={config.presentation.translationColor}
+              onChange={(e) => onPresentationChange({ translationColor: e.target.value })}
+              placeholder="#1f4e7a"
+              aria-label="Translation color hex value"
+            />
+          </div>
+        </div>
+
+        <div className="astra-settings-row">
+          <div className="astra-settings-row__body">
+            <p className="astra-settings-row__title">Page translation shortcut</p>
+            <p className="astra-settings-row__hint">Toggles the whole-page translation overlay. Customise the binding in your browser's keyboard shortcut settings.</p>
+          </div>
+          <div className="astra-settings-row__control">
+            <kbd className="astra-settings-kbd">⌘</kbd>
+            <kbd className="astra-settings-kbd">⇧</kbd>
+            <kbd className="astra-settings-kbd">T</kbd>
+          </div>
+        </div>
+
+        <div className="astra-settings-row">
+          <div className="astra-settings-row__body">
+            <p className="astra-settings-row__title">Hover to translate</p>
+            <p className="astra-settings-row__hint">Hold Alt and hover any paragraph to translate it in place — or always-on for slower reads.</p>
+          </div>
+          <div className="astra-settings-row__control">
+            <label htmlFor="options-translation-hover-trigger" className="astra-sr-only">Hover trigger</label>
+            <select
+              id="options-translation-hover-trigger"
+              className="astra-input"
+              value={config.hoverTrigger}
+              onChange={(e) => onConfigChange({ hoverTrigger: e.target.value as HoverTrigger })}
+            >
+              {HOVER_TRIGGER_OPTIONS.map((o) => (
+                <option key={o.value} value={o.value}>{o.label}</option>
+              ))}
+            </select>
+          </div>
+        </div>
+
+        <div className="astra-settings-row">
+          <div className="astra-settings-row__body">
+            <p className="astra-settings-row__title">AI smart context</p>
+            <p className="astra-settings-row__hint">Send surrounding paragraphs so the model nails ambiguous pronouns. Translation requests run on:</p>
+          </div>
+          <div className="astra-settings-row__control">
+            <span className="astra-settings-pill" title={`Provider · ${config.provider.id}`}>{activeModel}</span>
+            <span className="astra-settings-toggle">
+              <input
+                id="options-translation-input"
+                type="checkbox"
+                checked={config.inputTranslation === "enabled"}
+                onChange={(e) => onConfigChange({ inputTranslation: e.target.checked ? "enabled" : "disabled" })}
+                aria-label="AI smart context"
+              />
+              <span className="astra-settings-toggle__track" aria-hidden="true" />
+            </span>
+          </div>
         </div>
       </div>
     </div>
@@ -841,8 +1017,14 @@ function SitesSection({
   }
 
   return (
-    <div>
-      <h2 className="astra-section-heading">Sites</h2>
+    <div className="astra-settings-section">
+      <SectionHeader
+        eyebrow="Reading · Sites & rules"
+        headline="Tune Astra per site"
+        intro="Per-site rules override global settings — pick which sites get auto-translation, swap models per host, or keep specific selectors out of the reading flow."
+      />
+
+      <h2 className="astra-section-heading astra-sr-only">Sites</h2>
       <div style={hintStyle}>Per-site rules override global settings.</div>
 
       <div style={{ display: "flex", gap: 8, margin: "16px 0" }}>
@@ -1382,8 +1564,14 @@ function ActionsSection({
   }
 
   return (
-    <div>
-      <h2 className="astra-section-heading">Custom Actions</h2>
+    <div className="astra-settings-section">
+      <SectionHeader
+        eyebrow="Reading · Custom actions"
+        headline="Your own gestures on the page"
+        intro="Custom actions appear in the selection toolbar alongside built-in ones. Use {{text}} and {{targetLang}} as placeholders in your prompt template."
+      />
+
+      <h2 className="astra-section-heading astra-sr-only">Custom Actions</h2>
       <div style={hintStyle}>
         Custom actions appear in the selection toolbar alongside built-in actions.
         Use {"{{text}}"} and {"{{targetLang}}"} as placeholders in your prompt template.
@@ -1635,8 +1823,14 @@ function VocabularySection() {
   }
 
   return (
-    <div>
-      <h2 className="astra-section-heading">Vocabulary</h2>
+    <div className="astra-settings-section">
+      <SectionHeader
+        eyebrow="Learning · Library"
+        headline="Where every saved sentence comes home"
+        intro="Saved vocabulary, translation cache stats, and the local A/B funnel for the popup → Deep Read → review loop."
+      />
+
+      <h2 className="astra-section-heading astra-sr-only">Vocabulary</h2>
 
       <div className="astra-card">
         <div style={{ marginBottom: 12 }}>
@@ -1744,8 +1938,14 @@ function DiagnosticsSection({ config }: { config: AstraConfig }) {
   const autoSelectionWinner = learningLoopAutoSelection?.candidates.find((candidate) => candidate.variant === learningLoopAutoSelection.winnerVariant)
 
   return (
-    <div>
-      <h2 className="astra-section-heading">Diagnostics</h2>
+    <div className="astra-settings-section">
+      <SectionHeader
+        eyebrow="Engine · Diagnostics"
+        headline="What Astra sees from this device"
+        intro="Provider status, the local learning-loop A/B funnel, and recent telemetry — all visible only to you, on this machine."
+      />
+
+      <h2 className="astra-section-heading astra-sr-only">Diagnostics</h2>
 
       <div className="astra-card">
         <h3 style={{ fontSize: 16, fontWeight: 600, marginBottom: 12, color: "var(--astra-text-primary)" }}>{t("options_diagProviderStatus")}</h3>
@@ -2095,8 +2295,14 @@ function AboutSection({
   }
 
   return (
-    <div>
-      <h2 className="astra-section-heading">About</h2>
+    <div className="astra-settings-section">
+      <SectionHeader
+        eyebrow="Account · Sync & backup"
+        headline="Astra across your devices"
+        intro="Continuity status, registered devices, optional collection toggles, and JSON export — your bridge between this browser and the rest of your reading life."
+      />
+
+      <h2 className="astra-section-heading astra-sr-only">About</h2>
 
       <div className="astra-card">
         <div style={{ fontSize: 18, fontWeight: 700, color: BRAND_COLOR, marginBottom: 8 }}>
@@ -2345,7 +2551,8 @@ function AboutSection({
 // --- Main component ---
 
 export default function OptionsApp() {
-  const [section, setSection] = useState<Section>("general")
+  const [section, setSection] = useState<Section>("translation")
+  const [searchQuery, setSearchQuery] = useState("")
   const [config, setConfig] = useState<AstraConfig>(DEFAULT_ASTRA_CONFIG)
   const [availableVoices, setAvailableVoices] = useState<TTSVoiceOption[]>([])
   const [ttsSupported, setTtsSupported] = useState(false)
@@ -2635,7 +2842,13 @@ export default function OptionsApp() {
       case "providers":
         return <ProvidersSection config={config} onProviderChange={updateProvider} />
       case "translation":
-        return <TranslationSection config={config} onPresentationChange={updatePresentation} />
+        return (
+          <TranslationSection
+            config={config}
+            onPresentationChange={updatePresentation}
+            onConfigChange={updateConfig}
+          />
+        )
       case "actions":
         return <ActionsSection config={config} onChange={updateConfig} />
       case "sites":
@@ -2668,66 +2881,149 @@ export default function OptionsApp() {
   const viewport = useViewportProfile()
   const isMobile = viewport.isCompact
 
+  const breadcrumbLabel = SECTION_META[section].breadcrumb
+  const sessionState = continuityStatus?.session.state ?? "signed-out"
+  const isSynced = sessionState === "authenticated"
+  const syncStatusLabel = isSynced
+    ? "Synced just now"
+    : sessionState === "signed-out"
+      ? "Local only on this device"
+      : "Continuity preparing…"
+
+  const trimmedQuery = searchQuery.trim().toLowerCase()
+  const filteredGroups = NAV_GROUPS.map((group) => ({
+    ...group,
+    items: trimmedQuery.length > 0
+      ? group.items.filter((item) =>
+          item.label.toLowerCase().includes(trimmedQuery)
+          || group.label.toLowerCase().includes(trimmedQuery)
+          || item.key.toLowerCase().includes(trimmedQuery)
+        )
+      : group.items,
+  })).filter((group) => group.items.length > 0)
+
   return (
-    <div style={{
-      ...pageStyle,
-      flexDirection: isMobile ? "column" : "row",
-    }}
-    >
-      <nav style={isMobile
-        ? {
-            display: "flex",
-            overflowX: "auto",
-            background: "var(--astra-bg-card)",
-            borderBottom: "1px solid var(--astra-border)",
-            padding: "8px 12px",
-            gap: 4,
-            position: "sticky",
-            top: 0,
-            zIndex: 10,
-          }
-        : sidebarStyle}
-      >
-        {!isMobile && <div style={logoStyle}>Astra</div>}
-        {NAV_ITEMS.map((item) => (
-          <button
-            type="button"
-            key={item.key}
-            className={isMobile ? "astra-nav-item-mobile" : "astra-nav-item"}
-            aria-current={section === item.key ? "page" : undefined}
-            onClick={() => setSection(item.key)}
-          >
-            {item.label}
-          </button>
-        ))}
-      </nav>
+    <div className="astra-settings-page" data-astra-theme="light" data-astra="quiet">
+      <div className={`astra-settings-shell${isMobile ? " astra-settings-shell--compact" : ""}`}>
+        {!isMobile && (
+          <aside className="astra-settings-sidebar" aria-label="Settings sections">
+            <div className="astra-settings-brand">
+              <span className="astra-settings-brand__mark">Astra</span>
+              <span className="astra-settings-brand__version">v2.0</span>
+            </div>
 
-      <main
-        className="astra-container astra-container--medium"
-        style={{
-          ...contentStyle,
-          padding: isMobile ? "16px 12px" : contentStyle.padding,
-        }}
-      >
-        {saved && <Toast variant="success">Settings saved.</Toast>}
-        {error && <Toast variant="error">{error}</Toast>}
+            <div className="astra-settings-search">
+              <input
+                type="search"
+                className="astra-settings-search__input"
+                placeholder="Search settings"
+                aria-label="Search settings"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+              />
+              <kbd className="astra-settings-search__kbd" aria-hidden="true">⌘K</kbd>
+            </div>
 
-        {renderSection()}
+            <nav className="astra-settings-nav" aria-label="Settings groups">
+              {filteredGroups.map((group) => (
+                <div className="astra-settings-nav-group" key={group.label}>
+                  <div className="astra-settings-nav-group__eyebrow">{group.label}</div>
+                  <ul className="astra-settings-nav-list">
+                    {group.items.map((item) => {
+                      const count = item.getCount?.(config) ?? null
+                      return (
+                        <li className="astra-settings-nav-row" key={item.key}>
+                          <button
+                            type="button"
+                            className="astra-settings-nav-item"
+                            data-section={item.key}
+                            aria-current={section === item.key ? "page" : undefined}
+                            onClick={() => setSection(item.key)}
+                          >
+                            {item.label}
+                          </button>
+                          {count != null && (
+                            <span className="astra-settings-nav-row__count" aria-hidden="true">{count}</span>
+                          )}
+                        </li>
+                      )
+                    })}
+                  </ul>
+                </div>
+              ))}
+              {filteredGroups.length === 0 && (
+                <div style={{ padding: "10px 12px", fontSize: 12, color: "var(--astra-text-muted)" }}>
+                  No matching settings.
+                </div>
+              )}
+            </nav>
 
-        {section !== "vocabulary" && section !== "about" && section !== "diagnostics" && (
-          <div style={{ marginTop: 24, display: "flex", gap: 12, alignItems: "center" }}>
+            <footer
+              className="astra-settings-sidebar-status"
+              data-state={isSynced ? "synced" : "local"}
+            >
+              <span className="astra-settings-sidebar-status__dot" aria-hidden="true" />
+              <span>{syncStatusLabel}</span>
+            </footer>
+          </aside>
+        )}
+
+        <main className="astra-settings-main">
+          <header className="astra-settings-topbar">
+            <nav className="astra-settings-breadcrumb" aria-label="Breadcrumb">
+              <span>Settings</span>
+              <span className="astra-settings-breadcrumb__separator" aria-hidden="true">/</span>
+              <span className="astra-settings-breadcrumb__current">{breadcrumbLabel}</span>
+            </nav>
             <button
               type="button"
-              className="astra-btn-primary"
-              style={{ opacity: dirty ? 1 : 0.6 }}
-              onClick={() => void handleSave()}
+              className="astra-settings-close"
+              onClick={() => window.close()}
+              aria-label="Close settings"
             >
-              Save settings
+              Close
             </button>
-            {dirty && <span style={{ fontSize: 12, color: "var(--astra-text-hint)" }}>Unsaved changes</span>}
+          </header>
+
+          {isMobile && (
+            <nav className="astra-settings-mobile-nav" aria-label="Settings sections">
+              {NAV_ITEMS.map((item) => (
+                <button
+                  type="button"
+                  key={item.key}
+                  className="astra-settings-nav-item"
+                  data-section={item.key}
+                  aria-current={section === item.key ? "page" : undefined}
+                  onClick={() => setSection(item.key)}
+                >
+                  {item.label}
+                </button>
+              ))}
+            </nav>
+          )}
+
+          <div className="astra-settings-body">
+            {saved && <Toast variant="success">Settings saved.</Toast>}
+            {error && <Toast variant="error">{error}</Toast>}
+
+            {renderSection()}
+
+            {section !== "vocabulary" && section !== "about" && section !== "diagnostics" && (
+              <div className="astra-settings-actions">
+                <button
+                  type="button"
+                  className="astra-btn-primary"
+                  style={{ opacity: dirty ? 1 : 0.6 }}
+                  onClick={() => void handleSave()}
+                >
+                  Save settings
+                </button>
+                {dirty && <span className="astra-settings-actions__hint">Unsaved changes</span>}
+              </div>
+            )}
           </div>
-        )}
-      </main>
+        </main>
+      </div>
 
       {pendingRevokeDevice && (
         <RevokeDeviceConfirmDialog

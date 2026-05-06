@@ -4,11 +4,13 @@
 **Scope:** All user-facing surfaces — extension popup, options, onboarding, deep-read, vocabulary, subtitle-reader, pdf-reader, epub-reader, content overlays, and web companion  
 **Overall Score: 3.5 / 10**
 
+**Errata (2026-05):** The web companion now imports **`src/assets/astra-style1-tokens.css`** (same Style 1 palette as the extension CSS layer). UI **defaults to light** (`data-astra-theme="light"`). New web CSS should use **`--accent-primary`**; **`--accent-blue`** is a legacy alias only. Rows below remain an April 2026 snapshot except where the Web companion row was refreshed.
+
 ---
 
 ## Executive Summary
 
-Astra's UI currently suffers from **three competing design languages** across its surfaces, **zero shared design tokens**, and **severe accessibility gaps**. The extension side uses 100% inline `React.CSSProperties` with hardcoded hex values, making hover/focus states, dark mode, and responsive breakpoints impossible without JS workarounds. The web companion has a polished Apple-inspired dark theme via CSS classes, but shares nothing with the extension surfaces.
+Astra's UI currently suffers from **three competing design languages** across its surfaces, **limited shared design tokens** (extension vs web historically diverged), and **severe accessibility gaps**. The extension side uses heavy inline `React.CSSProperties` with hardcoded hex values in many surfaces, making hover/focus states, theme switching, and responsive breakpoints harder without JS workarounds. The web companion uses CSS classes; as of **May 2026** its colors track **Style 1** alongside the extension, defaulting to **Quiet Reader (light)** rather than an isolated “Apple dark-only” palette.
 
 ---
 
@@ -20,16 +22,17 @@ Astra's UI currently suffers from **three competing design languages** across it
 |---|---|---|---|
 | **Popup** (App.tsx, components/*) | Orange `#ea580c` / `#9a3412` | Warm gradient `#fff7ed → #fffaf3 → #f8fafc` | Inline CSSProperties |
 | **Readers & Vocabulary** (deep-read, epub, pdf, subtitle, vocabulary, onboarding) | Indigo `#6366f1` | White/slate `#f8fafc → #fff` | Inline CSSProperties |
-| **Web companion** (web/src/app.tsx) | Blue `#0A84FF` | Pure black `#000000` with Apple dark mode | CSS classes via `styles.css` |
+| **Web companion** (`web/src/app.tsx`) | **`--accent-primary`** → Style 1 `--astra-style-accent-primary` | Default **light** Quiet Reader paper **`#f4efe6`** (`--astra-style-bg-app`) | CSS classes via `styles.css` + shared **`astra-style1-tokens.css`** |
 | **Content overlays** (SelectionToolbar, HoverTranslate, FloatBall) | Indigo `#6366f1` | White cards with indigo-tinted borders | Inline + `overlayScale.ts` helper |
 | **Onboarding** | Indigo `#6366f1` but branded as standalone | Slate-to-indigo gradient `#f8fafc → #eef2ff` | Inline CSSProperties |
 | **Deep-read** | Orange `#ea580c` (hero) + slate body | Orange-warm gradient shell with dark hero card | Inline CSSProperties, unique "magazine" style |
 
 **Key file references:**
+- `src/assets/astra-style1-tokens.css` — **shared** Style 1 palette (imported by `astra-extension.css` and `web/src/styles.css`)
 - `src/entrypoints/popup/components/styles.ts` — 82 lines, 8 shared style objects (only used within popup)
-- `web/src/styles.css` — 825 lines, comprehensive design system (only used by web app)
+- `web/src/styles.css` — web layout/components + aliases (`--bg-primary`, `--accent-primary`, …)
 - `src/entrypoints/content/components/overlayScale.ts` — 41 lines, scaling utility (only used by content overlays)
-- No shared `theme.ts` or design token file exists
+- No shared `theme.ts` file — semantics live in CSS custom properties
 
 ### Brand Color Chaos
 
@@ -55,16 +58,13 @@ Every extension surface uses `React.CSSProperties` objects — no CSS files, no 
 - Other files correctly use module-level `const` style objects
 - `OptionsApp.tsx` defines `textareaStyle` at line 1182, after it's referenced earlier (works but confusing)
 
-### Web Companion: Proper CSS Design System
+### Web Companion: CSS aligned with Style 1
 
-`web/src/styles.css` is a well-organized 825-line CSS file with:
-- CSS custom properties (`--bg-primary`, `--accent-blue`, `--separator`, etc.)
-- Component classes (`.card`, `.button`, `.nav-item`, `.metric-card`)
-- Responsive breakpoints at 1024px, 860px, 640px
-- Dark mode by default (`color-scheme: dark`)
-- Apple-style glassmorphism (`backdrop-filter: blur(40px) saturate(200%)`)
+`web/src/styles.css` imports **`src/assets/astra-style1-tokens.css`** (same Quiet Reader / Constellation palette as the extension). It defines web-local aliases (`--bg-primary`, **`--accent-primary`**, `--separator`, …). **`--accent-blue`** is a deprecated alias for `--accent-primary` only.
 
-**This CSS is completely isolated** — none of its tokens or patterns are available to extension surfaces.
+**Defaults:** **Light** theme (`data-astra-theme="light"` on `<html>`, `color-scheme: light`). Optional dark uses `[data-astra-theme="dark"]` against the same token file (Twilight palette).
+
+Class-level layout (cards, sidebar glassmorphism, grids) remains web-specific; **semantic colors** track Style 1 so docs and marketing should not describe the web app as a separate “Apple-only blue” system.
 
 ---
 
