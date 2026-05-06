@@ -5,6 +5,7 @@ import path from "node:path"
 import {
   materializeFixturePage,
   openExtensionActionPopup,
+  readExtensionStorageState,
   serveMaterializedFixturePage,
   withExtensionBrowserPage,
   LiveBrowserUnavailableError,
@@ -60,6 +61,50 @@ interface PopupDeepReadProofExecution extends LiveScenarioExecution {
     explainProfileReviewVisible: boolean
     consoleErrors: string[]
     relayRequestCount: number
+  }
+}
+
+interface SeededConfigDiagnostics {
+  configPresent: boolean
+  providerId?: string
+  accessTokenPresent?: boolean
+  relayBaseURL?: string
+  relayBaseURLMatchesExpected?: boolean
+  languageLevel?: string
+  explainMode?: string
+  ready: boolean
+  error?: string
+}
+
+function asRecord(value: unknown): Record<string, unknown> | null {
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : null
+}
+
+function summarizeSeededConfig(stored: Record<string, unknown>, expectedRelayOrigin: string): SeededConfigDiagnostics {
+  const config = asRecord(stored["astra.config.v1"])
+  const provider = asRecord(config?.provider)
+  const relayBaseURL = typeof provider?.relayBaseURL === "string" ? provider.relayBaseURL : undefined
+  const accessTokenPresent = typeof provider?.accessToken === "string" && provider.accessToken.trim().length > 0
+  const languageLevel = typeof config?.languageLevel === "string" ? config.languageLevel : undefined
+  const explainMode = typeof config?.explainMode === "string" ? config.explainMode : undefined
+  const providerId = typeof provider?.id === "string" ? provider.id : undefined
+
+  return {
+    configPresent: !!config,
+    providerId,
+    accessTokenPresent,
+    relayBaseURL,
+    relayBaseURLMatchesExpected: relayBaseURL === expectedRelayOrigin,
+    languageLevel,
+    explainMode,
+    ready: !!config
+      && providerId === "openai"
+      && accessTokenPresent
+      && relayBaseURL === expectedRelayOrigin
+      && languageLevel === "beginner"
+      && explainMode === "exam",
   }
 }
 
@@ -212,6 +257,64 @@ export const popupDeepReadProofScenario: LiveScenarioDefinition<PopupDeepReadPro
           "astra.config.v1": liveConfig,
         },
       })
+
+      const seededConfigDiagnostics = await readExtensionStorageState({
+        context: extCtx.context,
+        extensionId: extCtx.extensionId,
+        extensionPath: extCtx.extensionPath,
+        keys: ["astra.config.v1"],
+      })
+        .then((stored) => summarizeSeededConfig(stored, relayServer!.origin))
+        .catch((error) => ({
+          configPresent: false,
+          ready: false,
+          error: error instanceof Error ? error.message : String(error),
+        } satisfies SeededConfigDiagnostics))
+
+      runtime.log("Popup deep-read seeded config read-back.", { ...seededConfigDiagnostics })
+      if (!seededConfigDiagnostics.ready) {
+        runtime.fail("Popup deep-read seeded config precondition failed.")
+        const snapshot = runtime.snapshot()
+        return {
+          status: snapshot.status,
+          summary: "Popup deep-read seeded config precondition failed.",
+          notes: [
+            `Seeded config ready: ${seededConfigDiagnostics.ready}`,
+            `Seeded config diagnostics: ${JSON.stringify(seededConfigDiagnostics)}`,
+          ],
+          artifacts: {
+            artifactDir,
+            extensionPath: extCtx.extensionPath,
+            browserExecutablePath: extCtx.browserExecutablePath,
+            fixtureUrl: servedFixturePage.url,
+            relayOrigin: relayServer.origin,
+            seededConfig: seededConfigDiagnostics,
+          },
+          runtime: snapshot,
+          startedAt: snapshot.startedAt,
+          finishedAt: snapshot.finishedAt,
+          popupDeepRead: {
+            popupRendered: false,
+            articleExcerptVisible: false,
+            sentenceDeckPresent: false,
+            explainWorked: false,
+            saveWorked: false,
+            pageSavedReviewCtaVisible: false,
+            destinationOpened: false,
+            focusedReviewOpened: false,
+            focusedReviewAnswered: false,
+            deepReadReturnOpened: false,
+            deepReadSavedReviewCtaVisible: false,
+            returnedSentenceVisible: false,
+            sourceContextVisible: false,
+            explainProfileRequestVisible: false,
+            explainRecoveryRetryVisible: false,
+            explainProfileReviewVisible: false,
+            consoleErrors: [],
+            relayRequestCount: relayServer.translateRequests.length,
+          },
+        }
+      }
 
       const consoleErrors: string[] = []
       extCtx.page.on("console", (msg) => {
@@ -590,6 +693,7 @@ export const popupDeepReadProofScenario: LiveScenarioDefinition<PopupDeepReadPro
           browserExecutablePath: extCtx.browserExecutablePath,
           fixtureUrl: servedFixturePage.url,
           relayOrigin: relayServer.origin,
+          seededConfig: seededConfigDiagnostics,
         },
         runtime: snapshot,
         startedAt: snapshot.startedAt,
@@ -696,66 +800,78 @@ export const popupDeepReadProofScenario: LiveScenarioDefinition<PopupDeepReadPro
     }
     const issues: string[] = []
     const nextActions: string[] = []
+    const seededConfigDiagnostics = asRecord(execution.artifacts?.seededConfig)
+    const seededConfigPreconditionFailed = seededConfigDiagnostics?.ready === false
 
-    if (!popupDeepRead.popupRendered) {
+    if (seededConfigPreconditionFailed) {
+      issues.push("Popup deep-read seeded config precondition failed.")
+      nextActions.push("Check extension storage seeding/read-back before opening the popup or debugging downstream learning-loop checks.")
+    }
+
+    if (!seededConfigPreconditionFailed && !popupDeepRead.popupRendered) {
       issues.push("Popup deep-read surface did not render.")
       nextActions.push("Check popup App.tsx and active-tab study-context wiring.")
     }
-    if (!popupDeepRead.articleExcerptVisible) {
+    if (!seededConfigPreconditionFailed && !popupDeepRead.articleExcerptVisible) {
       issues.push("Popup did not surface article excerpt text.")
       nextActions.push("Check popup study context extraction and excerpt rendering.")
     }
-    if (!popupDeepRead.sentenceDeckPresent) {
+    if (!seededConfigPreconditionFailed && !popupDeepRead.sentenceDeckPresent) {
       issues.push("Popup sentence deck was not visible.")
       nextActions.push("Check StudySection sentence-card rendering.")
     }
-    if (!popupDeepRead.explainWorked) {
+    if (!seededConfigPreconditionFailed && !popupDeepRead.explainWorked) {
       issues.push("Popup sentence explain did not complete.")
-      nextActions.push("Check popup explain state and relay routing.")
-    }
-    if (!popupDeepRead.saveWorked) {
-      issues.push("Popup sentence save did not complete.")
-      nextActions.push("Check popup save flow and vocabulary storage wiring.")
-    }
-    if (!popupDeepRead.pageSavedReviewCtaVisible) {
-      issues.push("Popup revisit did not show the durable page saved-sentences review CTA.")
-      nextActions.push("Check popup current-page vocabulary matching and StudySection page CTA rendering.")
-    }
-    if (!popupDeepRead.destinationOpened) {
-      issues.push("Popup save CTA did not open the vocabulary surface.")
-      nextActions.push("Check popup save CTA wiring to vocabulary tabs.")
-    }
-    if (!popupDeepRead.focusedReviewOpened) {
-      issues.push("Saved CTA did not open page-scoped saved-sentence review.")
-      nextActions.push("Check popup save CTA wiring to vocabulary page-loop contract.")
-    }
-    if (!popupDeepRead.focusedReviewAnswered) {
-      issues.push("Focused saved-sentence review was not answered.")
-      nextActions.push("Check ReviewMode focused session completion.")
-    }
-    if (!popupDeepRead.deepReadReturnOpened || !popupDeepRead.returnedSentenceVisible) {
-      issues.push("Focused review did not return to the saved sentence in Deep Read.")
-      nextActions.push("Check ReviewMode return CTA and sentence-anchor deep-read link.")
-    }
-    if (!popupDeepRead.deepReadSavedReviewCtaVisible) {
-      issues.push("Deep Read revisit did not show the page-level saved review CTA.")
-      nextActions.push("Check DeepReadApp persisted vocabulary lookup and saved summary rendering.")
-    }
-    if (!popupDeepRead.sourceContextVisible) {
-      issues.push("Saved popup source context was not visible in vocabulary.")
-      nextActions.push("Check vocabulary rendering of sourceContext metadata.")
-    }
-    if (!popupDeepRead.explainProfileRequestVisible) {
-      issues.push("Popup explain request did not carry the canonical explain profile.")
-      nextActions.push("Check popup explain payload and relay provider routing.")
-    }
-    if (!popupDeepRead.explainRecoveryRetryVisible) {
-      issues.push("Popup explain recovery retry did not carry repair instruction plus original profile/context.")
-      nextActions.push("Check explanation quality retry payload and popup explain retry path.")
-    }
-    if (!popupDeepRead.explainProfileReviewVisible) {
-      issues.push("Saved popup explain profile was not visible in review.")
-      nextActions.push("Check vocabulary sourceContext persistence and ReviewMode rendering.")
+      nextActions.push(
+        popupDeepRead.relayRequestCount === 0
+          ? "Check extension storage seeding/read-back and popup provider config hydration before debugging downstream save/review checks."
+          : "Check popup explain state and relay routing.",
+      )
+    } else {
+      if (!popupDeepRead.saveWorked) {
+        issues.push("Popup sentence save did not complete.")
+        nextActions.push("Check popup save flow and vocabulary storage wiring.")
+      }
+      if (!popupDeepRead.pageSavedReviewCtaVisible) {
+        issues.push("Popup revisit did not show the durable page saved-sentences review CTA.")
+        nextActions.push("Check popup current-page vocabulary matching and StudySection page CTA rendering.")
+      }
+      if (!popupDeepRead.destinationOpened) {
+        issues.push("Popup save CTA did not open the vocabulary surface.")
+        nextActions.push("Check popup save CTA wiring to vocabulary tabs.")
+      }
+      if (!popupDeepRead.focusedReviewOpened) {
+        issues.push("Saved CTA did not open page-scoped saved-sentence review.")
+        nextActions.push("Check popup save CTA wiring to vocabulary page-loop contract.")
+      }
+      if (!popupDeepRead.focusedReviewAnswered) {
+        issues.push("Focused saved-sentence review was not answered.")
+        nextActions.push("Check ReviewMode focused session completion.")
+      }
+      if (!popupDeepRead.deepReadReturnOpened || !popupDeepRead.returnedSentenceVisible) {
+        issues.push("Focused review did not return to the saved sentence in Deep Read.")
+        nextActions.push("Check ReviewMode return CTA and sentence-anchor deep-read link.")
+      }
+      if (!popupDeepRead.deepReadSavedReviewCtaVisible) {
+        issues.push("Deep Read revisit did not show the page-level saved review CTA.")
+        nextActions.push("Check DeepReadApp persisted vocabulary lookup and saved summary rendering.")
+      }
+      if (!popupDeepRead.sourceContextVisible) {
+        issues.push("Saved popup source context was not visible in vocabulary.")
+        nextActions.push("Check vocabulary rendering of sourceContext metadata.")
+      }
+      if (!popupDeepRead.explainProfileRequestVisible) {
+        issues.push("Popup explain request did not carry the canonical explain profile.")
+        nextActions.push("Check popup explain payload and relay provider routing.")
+      }
+      if (!popupDeepRead.explainRecoveryRetryVisible) {
+        issues.push("Popup explain recovery retry did not carry repair instruction plus original profile/context.")
+        nextActions.push("Check explanation quality retry payload and popup explain retry path.")
+      }
+      if (!popupDeepRead.explainProfileReviewVisible) {
+        issues.push("Saved popup explain profile was not visible in review.")
+        nextActions.push("Check vocabulary sourceContext persistence and ReviewMode rendering.")
+      }
     }
     if (popupDeepRead.consoleErrors.length > 0) {
       issues.push(`${popupDeepRead.consoleErrors.length} console error(s) were captured.`)
