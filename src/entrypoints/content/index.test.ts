@@ -1006,8 +1006,7 @@ describe("content entrypoint mounting", () => {
       "astra.config.v1": {
         oldValue: {
           provider: { id: "openai", apiKey: "direct-openai-key" },
-          sites: { "example.com": { enabled: true, alwaysTranslate: true, selectors: ["article"] } },
-        },
+          sites: { "example.com": { enabled: true, alwaysTranslate: true, selectors: ["article"] } } },
         newValue: {
           provider: { id: "openai", apiKey: "" },
           sites: {
