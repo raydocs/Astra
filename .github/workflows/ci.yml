@@ -51,6 +51,7 @@ jobs:
     runs-on: ubuntu-latest
     env:
       ASTRA_BENCH_LIVE_USE_GOOGLE_CHROME: "1"
+      CI: "true"
       DBUS_SESSION_BUS_ADDRESS: /dev/null
 
     steps:
@@ -84,8 +85,6 @@ jobs:
         run: xvfb-run -a pnpm bench:live:lane:extension-core
 
       - name: Run live lane (learning-loop)
-        env:
-          CI: "true"
         run: xvfb-run -a pnpm bench:live:lane:learning-loop
 
       - name: Publish live gate summary
