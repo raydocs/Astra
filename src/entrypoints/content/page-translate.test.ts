@@ -486,6 +486,44 @@ describe("page translation controller", () => {
     expect(translateTextsMock).not.toHaveBeenCalled()
   })
 
+  it("applies and removes saved custom CSS during page translation", async () => {
+    readConfigMock.mockResolvedValueOnce({
+      version: 1,
+      targetLang: "zh-CN",
+      provider: {
+        id: "openai",
+        accessToken: "astra-token",
+        relayBaseURL: "https://astra.example/v1",
+        model: "gpt-5.4-nano",
+      },
+      presentation: {
+        mode: "bilingual",
+        theme: "default",
+      },
+      sites: {
+        [window.location.hostname]: {
+          enabled: true,
+          alwaysTranslate: false,
+          customCss: "body { outline: 3px solid red; }",
+        },
+      },
+    })
+    translateTextsMock.mockResolvedValue({
+      ok: true,
+      translations: ["可见文本"],
+    })
+
+    await startPageTranslation()
+    await flushPromises()
+
+    const customCssNode = document.getElementById("astra-site-custom-css")
+    expect(customCssNode).not.toBeNull()
+    expect(customCssNode?.textContent).toBe("body { outline: 3px solid red; }")
+
+    stopPageTranslation()
+    expect(document.getElementById("astra-site-custom-css")).toBeNull()
+  })
+
   it("uses the current URL path for site include path rules", async () => {
     window.history.replaceState({}, "", "/article?foo=1#bar")
     readConfigMock.mockResolvedValueOnce({

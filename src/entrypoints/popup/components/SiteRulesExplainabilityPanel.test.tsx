@@ -302,6 +302,28 @@ describe("SiteRulesExplainabilityPanel", () => {
     expect(onQuickFix).toHaveBeenCalledWith("clear-include-selectors")
   })
 
+  it("explains site disablement caused by path-pattern mismatch", () => {
+    const model = buildSiteRulesExplainabilityModel({
+      activeSiteKey: "example.com",
+      rawSiteRule: {
+        enabled: true,
+        alwaysTranslate: false,
+        includePathPatterns: ["/docs/*"],
+        excludePathPatterns: ["/docs/private/*"],
+      },
+      resolvedSite: createResolvedSite({
+        enabled: false,
+      }),
+      translationState: createTranslationState(),
+      contentAvailable: true,
+      providerReady: true,
+    })
+
+    expect(model.why).toContain("current URL path does not match this site rule")
+    expect(model.selectorSummary).toContain("Include path patterns: 1")
+    expect(model.selectorSummary).toContain("Exclude path patterns: 1")
+  })
+
   it("does not keep stale runtime quick-fix CTAs after the draft selectors are cleared", () => {
     const staleRuntimeState = createTranslationState({
       phase: "running",

@@ -260,6 +260,41 @@ const RuntimeLearningContinuitySyncStatusResponseSchema = z.object({
   }),
 })
 
+const TranslationCacheBucketStatsSchema = z.object({
+  bucketKey: z.string(),
+  providerId: z.string(),
+  model: z.string(),
+  connectionMode: z.string(),
+  lookups: z.number().int().nonnegative(),
+  hits: z.number().int().nonnegative(),
+  misses: z.number().int().nonnegative(),
+  writes: z.number().int().nonnegative(),
+  hitRate: z.number().nonnegative(),
+  lastAccessedAt: z.number().int().nonnegative(),
+})
+
+const TranslationCacheStatsSchema = z.object({
+  count: z.number().int().nonnegative(),
+  oldestMs: z.number().int().nonnegative(),
+  lookups: z.number().int().nonnegative(),
+  hits: z.number().int().nonnegative(),
+  misses: z.number().int().nonnegative(),
+  writes: z.number().int().nonnegative(),
+  hitRate: z.number().nonnegative(),
+  buckets: z.array(TranslationCacheBucketStatsSchema),
+})
+
+const RuntimeTranslationCacheStatsResponseSchema = z.union([
+  z.object({
+    type: z.literal("runtime/translation-cache-stats:success"),
+    payload: TranslationCacheStatsSchema,
+  }),
+  z.object({
+    type: z.literal("runtime/translation-cache-stats:error"),
+    error: TranslationErrorSchema,
+  }),
+])
+
 const RuntimeVideoNoteCreateFromCurrentTabPayloadSchema = z.object({
   forceRegenerate: z.boolean().optional(),
 })
@@ -295,6 +330,7 @@ const RuntimeResponseSchema = z.union([
   RuntimeSaveConfigResponseSchema,
   RuntimeLearningContinuitySyncResponseSchema,
   RuntimeLearningContinuitySyncStatusResponseSchema,
+  RuntimeTranslationCacheStatsResponseSchema,
   RuntimeVideoNoteCreateResponseSchema,
   RuntimeVideoNoteGetJobResponseSchema,
 ])
@@ -401,6 +437,10 @@ export interface RuntimeLearningContinuitySyncStatusRequest {
   type: "runtime/learning-continuity-sync-status"
 }
 
+export interface RuntimeTranslationCacheStatsRequest {
+  type: "runtime/translation-cache-stats"
+}
+
 export interface RuntimeVideoNoteCreateFromCurrentTabRequest {
   type: "runtime/video-note:create-from-current-tab"
   payload?: z.infer<typeof RuntimeVideoNoteCreateFromCurrentTabPayloadSchema>
@@ -449,6 +489,18 @@ export interface RuntimeLearningContinuitySyncStatusSuccessResponse {
   }
 }
 
+export type TranslationCacheStats = z.infer<typeof TranslationCacheStatsSchema>
+
+export interface RuntimeTranslationCacheStatsSuccessResponse {
+  type: "runtime/translation-cache-stats:success"
+  payload: TranslationCacheStats
+}
+
+export interface RuntimeTranslationCacheStatsErrorResponse {
+  type: "runtime/translation-cache-stats:error"
+  error: TranslationError
+}
+
 export interface RuntimeVideoNoteCreateFromCurrentTabSuccessResponse {
   type: "runtime/video-note:create-from-current-tab:success"
   payload: z.infer<typeof VideoNoteCreateResponseSchema>
@@ -476,6 +528,7 @@ export type RuntimeRequest =
   | RuntimeSaveConfigRequest
   | RuntimeLearningContinuitySyncRequest
   | RuntimeLearningContinuitySyncStatusRequest
+  | RuntimeTranslationCacheStatsRequest
   | RuntimeVideoNoteCreateFromCurrentTabRequest
   | RuntimeVideoNoteGetJobRequest
 export type RuntimeResponse =
@@ -486,6 +539,8 @@ export type RuntimeResponse =
   | RuntimeLearningContinuitySyncSuccessResponse
   | RuntimeLearningContinuitySyncErrorResponse
   | RuntimeLearningContinuitySyncStatusSuccessResponse
+  | RuntimeTranslationCacheStatsSuccessResponse
+  | RuntimeTranslationCacheStatsErrorResponse
   | RuntimeVideoNoteCreateFromCurrentTabSuccessResponse
   | RuntimeVideoNoteCreateFromCurrentTabErrorResponse
   | RuntimeVideoNoteGetJobSuccessResponse
@@ -602,6 +657,13 @@ export function isRuntimeLearningContinuitySyncStatusRequest(
   return (value as Partial<RuntimeLearningContinuitySyncStatusRequest>).type === "runtime/learning-continuity-sync-status"
 }
 
+export function isRuntimeTranslationCacheStatsRequest(
+  value: unknown,
+): value is RuntimeTranslationCacheStatsRequest {
+  if (typeof value !== "object" || value === null) return false
+  return (value as Partial<RuntimeTranslationCacheStatsRequest>).type === "runtime/translation-cache-stats"
+}
+
 export function isRuntimeVideoNoteCreateFromCurrentTabRequest(
   value: unknown,
 ): value is RuntimeVideoNoteCreateFromCurrentTabRequest {
@@ -646,6 +708,12 @@ export function isRuntimeLearningContinuitySyncStatusResponse(
   value: unknown,
 ): value is RuntimeLearningContinuitySyncStatusSuccessResponse {
   return RuntimeLearningContinuitySyncStatusResponseSchema.safeParse(value).success
+}
+
+export function isRuntimeTranslationCacheStatsResponse(
+  value: unknown,
+): value is RuntimeTranslationCacheStatsSuccessResponse | RuntimeTranslationCacheStatsErrorResponse {
+  return RuntimeTranslationCacheStatsResponseSchema.safeParse(value).success
 }
 
 export function isContentCommand(value: unknown): value is ContentCommand {

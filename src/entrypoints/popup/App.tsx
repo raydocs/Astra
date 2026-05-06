@@ -18,7 +18,7 @@ import type {
   TranslationMode,
 } from "@/types/config"
 import type { AstraAccount, AstraDeviceIdentity, AstraSession, AstraUsageSnapshot } from "@/types/auth"
-import { isRuntimeResponse, type LearningContinuitySyncStatus, type PageStudyContext } from "@/types/messages"
+import { isRuntimeResponse, type LearningContinuitySyncStatus, type PageStudyContext, type TranslationCacheStats } from "@/types/messages"
 import type { TranslationSnapshot } from "@/types/translation"
 import {
   resolveActiveHttpTab,
@@ -26,6 +26,7 @@ import {
   getActiveTabStudyContext,
   getActiveTabTranslationState,
   getLearningContinuitySyncStatus,
+  getTranslationCacheStats,
   retryActiveTabFailedBlocks,
   saveConfigInBackground,
   startActiveTabTranslation,
@@ -110,6 +111,13 @@ import SiteSettingsSection from "./components/SiteSettingsSection"
 import SiteRulesExplainabilityPanel, { type SiteRulesQuickFixAction } from "./components/SiteRulesExplainabilityPanel"
 import LearningContinuityCommitCard from "./components/LearningContinuityCommitCard"
 import LearningClosurePrimerCard from "./components/LearningClosurePrimerCard"
+import {
+  PopupArticleHero,
+  PopupReadingQuickCard,
+  PopupSiteQuickCard,
+  PopupTodayLearning,
+} from "./components/PopupQuietReaderSections"
+import { PopupGroupCard, PopupHeader, PopupShell } from "./components/PopupDesignPrimitives"
 import StudySection, {
   type PopupPageAssetSaveStatus,
   type PopupSentenceCardViewModel,
@@ -441,8 +449,10 @@ export default function App() {
   const [recentHistory, setRecentHistory] = useState<ReadingHistoryEntry[]>([])
   const [studyContext, setStudyContext] = useState<PageStudyContext | null>(null)
   const [dueCount, setDueCount] = useState(0)
+  const [vocabularyTotalCount, setVocabularyTotalCount] = useState(0)
   const [learningLoopCopyVariant, setLearningLoopCopyVariantState] = useState<LearningLoopCopyVariant>(DEFAULT_LEARNING_LOOP_COPY_VARIANT)
   const [usageSummary, setUsageSummary] = useState<TranslationUsageSummary | null>(null)
+  const [translationCacheStats, setTranslationCacheStats] = useState<TranslationCacheStats | null>(null)
   const [studyLoop, setStudyLoop] = useState<StudyLoopViewModel | null>(null)
   const [weeklyRoi, setWeeklyRoi] = useState<WeeklyLearningRoiViewModel | null>(null)
   const [pageDigest, setPageDigest] = useState<PageDigestRecord | null>(null)
@@ -481,14 +491,16 @@ export default function App() {
   const primerViewEventKeyRef = useRef<string | null>(null)
   const subtitleQualityTrendKeyRef = useRef<string | null>(null)
 
+  const effectiveSiteContext = activePageUrl ?? activeSiteKey
+
   const persistedResolvedSite = useMemo(
-    () => resolveSiteTranslationSettings(persistedConfig, activeSiteKey),
-    [persistedConfig, activeSiteKey],
+    () => resolveSiteTranslationSettings(persistedConfig, effectiveSiteContext),
+    [persistedConfig, effectiveSiteContext],
   )
 
   const draftResolvedSite = useMemo(
-    () => resolveSiteTranslationSettings(configDraft, activeSiteKey),
-    [configDraft, activeSiteKey],
+    () => resolveSiteTranslationSettings(configDraft, effectiveSiteContext),
+    [configDraft, effectiveSiteContext],
   )
 
   const subtitleQualityControls = configDraft.subtitleQualityControls ?? DEFAULT_SUBTITLE_QUALITY_CONTROLS
@@ -656,7 +668,7 @@ export default function App() {
   }
 
   const refreshAll = async () => {
-    const [config, siteKey, device, storedSession, history, currentDueCount, studyContextResponse, usage, studyStore, vocabularyEntries, iosStatus, continuitySync, ownedReadingItems] = await Promise.all([
+    const [config, siteKey, device, storedSession, history, currentDueCount, studyContextResponse, usage, cacheStatsResult, studyStore, vocabularyEntries, iosStatus, continuitySync, ownedReadingItems] = await Promise.all([
       readConfig(),
       getActiveSiteKey(),
       ensureAstraDeviceIdentity(),
@@ -665,6 +677,7 @@ export default function App() {
       getDueVocabularyCount(),
       getActiveTabStudyContext(),
       getTranslationUsageSummary(),
+      getTranslationCacheStats(),
       getStudyProgress(),
       getVocabularyEntries(),
       fetchIosBootstrapRuntimeStatus(),
@@ -673,8 +686,10 @@ export default function App() {
     ])
     setRecentHistory(history.slice(0, 3))
     setDueCount(currentDueCount)
+    setVocabularyTotalCount(vocabularyEntries.length)
     setStudyContext(studyContextResponse.ok ? studyContextResponse.context : null)
     setUsageSummary(usage)
+    setTranslationCacheStats(cacheStatsResult.ok ? cacheStatsResult.stats : null)
     setIosBootstrapStatus(iosStatus)
     const phaseOneStatus = continuitySync.ok ? continuitySync.status : null
     setLearningContinuitySyncStatus(phaseOneStatus)
@@ -1430,7 +1445,7 @@ export default function App() {
         hasUnsavedChangesRef.current = false
 
         if (activeSiteKey) {
-          const resolvedSite = resolveSiteTranslationSettings(nextConfig, activeSiteKey)
+          const resolvedSite = resolveSiteTranslationSettings(nextConfig, activePageUrl ?? activeSiteKey)
           if (!resolvedSite.enabled) {
             await stopActiveTabTranslation()
           } else if (options.retranslateActivePage && translationState?.phase !== "idle" && contentAvailable) {
@@ -1750,6 +1765,11 @@ export default function App() {
       ? (authAccount?.plan ?? authSession?.plan ?? null)
       : null,
   )
+  const headerStatusTone = isAuthenticatedSession
+    ? "ready"
+    : continuityStatus?.device.ready
+      ? "warning"
+      : "muted"
   const accountSurfaceSource = resolveAstraAccountSurfaceSource({
     account: authAccount,
     usage: authUsage,
@@ -2087,72 +2107,112 @@ export default function App() {
   }
 
   return (
-    <div style={{
-      width: "100%",
-      maxWidth: 400,
-      minWidth: 280,
-      padding: 16,
-      fontFamily: "system-ui, sans-serif",
-      boxSizing: "border-box",
-      background: "linear-gradient(180deg, var(--astra-popup-bg-soft) 0%, var(--astra-popup-bg-subtle) 42%, var(--astra-bg-primary) 100%)",
-      border: "1px solid var(--astra-popup-border-warm)",
-      borderRadius: 14,
-      color: "var(--astra-text-primary)",
-    }}>
-      {/* Header */}
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
-        <h2 style={{ margin: 0, fontSize: 18, display: "flex", alignItems: "center", gap: 8, color: "var(--astra-popup-text-warm)" }}>
-          Astra
-        </h2>
-        <button
-          type="button"
-          onClick={() => void browser.tabs.create({ url: browser.runtime.getURL("/options.html" as "/popup.html") })}
-          className="astra-popup-icon-btn"
-          title="Settings"
-        >
-          &#9881;
-        </button>
-      </div>
+    <PopupShell>
+      <PopupHeader
+        title="Astra"
+        statusLabel={`${sessionStatusLabel} · ${planLabel}`}
+        statusTone={headerStatusTone}
+        onOpenSettings={() => void browser.tabs.create({ url: browser.runtime.getURL("/options.html" as "/popup.html") })}
+        onOpenLibrary={openVocabularyPage}
+        libraryAriaLabel={t("popup_toolbarLibraryAria")}
+        settingsAriaLabel={t("popup_toolbarSettingsAria")}
+      />
 
-      {/* Translate This Page button */}
-      {isIdle ? (
-        <button
-          onClick={() => {
-            void translate()
-          }}
-          className="astra-btn-primary"
-          style={{ width: "100%", padding: "10px 12px", fontSize: 15, fontWeight: 600 }}
-          disabled={translateDisabled}
-        >
-          {t("popup_translateThisPage")}
-        </button>
-      ) : (
-        <button
-          onClick={() => {
-            void removeTranslation()
-          }}
-          className="astra-btn-secondary"
-          style={{ width: "100%", padding: "10px 12px", fontSize: 15, fontWeight: 600 }}
-          disabled={removeDisabled}
-        >
-          {t("popup_stopTranslation")}
-        </button>
-      )}
+      <PopupArticleHero studyContext={studyContext} />
 
-      <div style={{ marginTop: 8, display: "flex", alignItems: "center", gap: 6, fontSize: 12, color: "var(--astra-popup-text-warm)" }}>
-        <span style={{
-          display: "inline-block",
-          width: 8,
-          height: 8,
-          borderRadius: "50%",
-          background: isAuthenticatedSession ? "var(--astra-success)" : continuityStatus?.device.ready ? "var(--astra-accent-warm)" : "var(--astra-text-decorative)",
-        }} />
-        <span>
-          {sessionStatusLabel}
-          {" · "}
-          {planLabel}
-        </span>
-      </div>
+      <section className="astra-popup-group astra-popup-primary-group">
+        <div className="astra-group-card astra-group-card--padded">
+          {isIdle ? (
+            <button
+              onClick={() => {
+                void translate()
+              }}
+              className="astra-btn-primary astra-btn-ink-primary"
+              style={{ width: "100%", padding: "13px 16px", fontSize: 15, justifyContent: "space-between" }}
+              disabled={translateDisabled}
+            >
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
+                <path d="M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18Z" strokeLinecap="round" />
+                <path d="M2 12h20M12 2c3 3 5 6 5 10s-2 7-5 10M12 2C9 5 7 8 7 12s2 7 5 10" strokeLinecap="round" />
+              </svg>
+              <span style={{ flex: 1, textAlign: "left", marginLeft: 8 }}>{t("popup_translateThisPage")}</span>
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
+                <path d="M5 12h14M13 6l6 6-6 6" strokeLinecap="round" strokeLinejoin="round" />
+              </svg>
+            </button>
+          ) : (
+            <button
+              onClick={() => {
+                void removeTranslation()
+              }}
+              className="astra-btn-secondary"
+              style={{ width: "100%", padding: "12px 14px", fontSize: 15, fontWeight: 600 }}
+              disabled={removeDisabled}
+            >
+              {t("popup_stopTranslation")}
+            </button>
+          )}
+
+          <div style={{ marginTop: 8, display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+            <button
+              type="button"
+              onClick={openDeepReadPage}
+              className="astra-btn-outline-quiet"
+              style={{ padding: "9px 10px", fontSize: 13 }}
+              disabled={!studyReady}
+            >
+              {t("popup_deepReadAction")}
+            </button>
+            <button
+              type="button"
+              onClick={() => { void handleSaveCurrentPageAsset() }}
+              className="astra-btn-outline-quiet"
+              style={{ padding: "9px 10px", fontSize: 13 }}
+              disabled={pageAssetSaveStatus === "saving" || pageAssetSaveStatus === "saved" || !studyContext}
+            >
+              {pageAssetSaveStatus === "saved" ? t("popup_contentAssetizationSavedAction") : pageAssetSaveStatus === "saving" ? t("popup_contentAssetizationSavingAction") : t("popup_contentAssetizationSaveAction")}
+            </button>
+          </div>
+        </div>
+      </section>
+
+      <PopupSiteQuickCard
+        activeSiteKey={activeSiteKey}
+        hostname={currentSite.hostname || studyContext?.hostname || activeSiteKey || ""}
+        rawSiteRule={activeSiteKey ? configDraft.sites[activeSiteKey] : undefined}
+        sitePresentationMode={draftResolvedSite.presentation.mode}
+        sitePresentationTheme={draftResolvedSite.presentation.theme}
+        onAlwaysTranslateChange={(value) => {
+          handleSiteRuleChange((rule) => ({ ...rule, alwaysTranslate: value }))
+        }}
+        onSiteModeChange={(mode) => {
+          handleSiteRuleChange((rule) => ({
+            ...rule,
+            presentation: { ...configDraft.presentation, ...rule.presentation, mode },
+          }))
+        }}
+        onSiteThemeChange={(theme) => {
+          handleSiteRuleChange((rule) => ({
+            ...rule,
+            presentation: { ...configDraft.presentation, ...rule.presentation, theme },
+          }))
+        }}
+      />
+
+      <PopupReadingQuickCard
+        hoverTrigger={configDraft.hoverTrigger}
+        onHoverTriggerChange={(trigger) => handleConfigChange({ hoverTrigger: trigger })}
+        onOpenDeepRead={openDeepReadPage}
+        deepReadDisabled={!studyReady}
+      />
+
+      <PopupTodayLearning
+        savedWordsTotal={vocabularyTotalCount}
+        dueReviews={dueCount}
+        weeklyVocabSaved={weeklyRoi?.vocabulary.savedCount ?? 0}
+        onOpenLibrary={openVocabularyPage}
+        onOpenReview={openReviewPage}
+      />
 
       {isAuthenticatedSession && (
         <LearningContinuityCommitCard
@@ -2193,30 +2253,20 @@ export default function App() {
       )}
 
       {accountContinuityAuthHydrated && (
-        <div
-          data-testid="popup-account-continuity-card"
-          style={{
-            marginTop: 12,
-            marginBottom: 8,
-            padding: "10px 12px",
-            background: "var(--astra-bg-primary)",
-            border: "1px solid var(--astra-border-strong)",
-            borderRadius: 10,
-          }}
-        >
-          <div style={{ fontSize: 11, fontWeight: 800, color: "var(--astra-text-secondary)", textTransform: "uppercase", letterSpacing: "0.04em" }}>
+        <div data-testid="popup-account-continuity-card" className="astra-account-continuity-card">
+          <div className="astra-account-continuity-card__eyebrow">
             {accountContinuityCopy.eyebrow}
           </div>
-          <div style={{ fontSize: 13, fontWeight: 800, color: "var(--astra-text-primary)", marginTop: 4 }}>
+          <div className="astra-account-continuity-card__title">
             {isAccountContinuitySignedIn ? accountContinuityCopy.connectedTitle : accountContinuityCopy.title}
           </div>
-          <div style={{ fontSize: 12, color: "var(--astra-text-secondary)", lineHeight: 1.45, marginTop: 4 }}>
+          <div className="astra-account-continuity-card__copy">
             {isAccountContinuitySignedIn ? accountContinuityCopy.connectedSummary : accountContinuityCopy.summary}
           </div>
-          <div data-testid="popup-account-continuity-proof-moment" style={{ fontSize: 11, color: "var(--astra-text-secondary)", lineHeight: 1.45, marginTop: 6, fontWeight: 700 }}>
+          <div data-testid="popup-account-continuity-proof-moment" className="astra-account-continuity-card__proof">
             {accountContinuityProofMoment}
           </div>
-          <div style={{ fontSize: 11, color: "var(--astra-text-muted)", lineHeight: 1.45, marginTop: 6 }}>
+          <div className="astra-account-continuity-card__boundary">
             {accountContinuityCopy.boundary}
           </div>
           {!isAccountContinuitySignedIn && (
@@ -2230,7 +2280,7 @@ export default function App() {
               >
                 {accountContinuityCopy.cta}
               </button>
-              <div style={{ fontSize: 11, color: "var(--astra-text-muted)", lineHeight: 1.45, marginTop: 6 }}>
+              <div className="astra-account-continuity-card__boundary">
                 {accountContinuityCopy.ctaHelper}
               </div>
             </>
@@ -2264,52 +2314,54 @@ export default function App() {
         }}
       />
 
-      {/* Target Language + Translation Mode */}
-      <div style={{ marginTop: 12 }}>
-        <SimpleControls
-          targetLang={configDraft.targetLang}
-          translationMode={configDraft.presentation.mode}
-          languageLevel={configDraft.languageLevel}
-          explainMode={configDraft.explainMode}
-          explanationGlossaryText={serializeExplanationGlossary(configDraft.explanationGlossary)}
-          onTargetLangChange={handleTargetLangChange}
-          onModeChange={handleModeChange}
-          onLanguageLevelChange={(level) => {
-            handleConfigChange({ languageLevel: level })
-          }}
-          onExplainModeChange={(mode) => {
-            handleConfigChange({ explainMode: mode })
-          }}
-          onExplanationGlossaryChange={(value) => {
-            handleConfigChange({ explanationGlossary: parseExplanationGlossaryText(value) })
-          }}
-        />
-        <label htmlFor="popup-global-font-size" style={{ ...labelStyle, marginTop: 8 }}>{t("label_translationFontSize")}</label>
-        <input
-          id="popup-global-font-size"
-          data-testid="popup-global-font-size-input"
-          type="range"
-          min={0.5}
-          max={2}
-          step={0.05}
-          value={configDraft.presentation.fontSize}
-          onChange={(event) => {
-            const value = Number.parseFloat(event.target.value)
-            if (!Number.isFinite(value)) return
-            handleConfigChange({
-              presentation: {
-                ...configDraft.presentation,
-                fontSize: Math.min(2, Math.max(0.5, value)),
-              },
-            })
-          }}
-          className="astra-input"
-          style={{ padding: 0 }}
-        />
-        <div style={{ fontSize: 11, color: "var(--astra-text-muted)", marginTop: 2 }}>
-          {t("label_translationFontSizeValue", configDraft.presentation.fontSize.toFixed(2))}
+      <details className="astra-popup-language-coach-details" data-testid="popup-language-coach-details">
+        <summary className="astra-popup-language-coach-summary">{t("popup_languageCoachSection")}</summary>
+        <div style={{ marginTop: 8 }}>
+          <SimpleControls
+            targetLang={configDraft.targetLang}
+            translationMode={configDraft.presentation.mode}
+            languageLevel={configDraft.languageLevel}
+            explainMode={configDraft.explainMode}
+            explanationGlossaryText={serializeExplanationGlossary(configDraft.explanationGlossary)}
+            onTargetLangChange={handleTargetLangChange}
+            onModeChange={handleModeChange}
+            onLanguageLevelChange={(level) => {
+              handleConfigChange({ languageLevel: level })
+            }}
+            onExplainModeChange={(mode) => {
+              handleConfigChange({ explainMode: mode })
+            }}
+            onExplanationGlossaryChange={(value) => {
+              handleConfigChange({ explanationGlossary: parseExplanationGlossaryText(value) })
+            }}
+          />
+          <label htmlFor="popup-global-font-size" style={{ ...labelStyle, marginTop: 8 }}>{t("label_translationFontSize")}</label>
+          <input
+            id="popup-global-font-size"
+            data-testid="popup-global-font-size-input"
+            type="range"
+            min={0.5}
+            max={2}
+            step={0.05}
+            value={configDraft.presentation.fontSize}
+            onChange={(event) => {
+              const value = Number.parseFloat(event.target.value)
+              if (!Number.isFinite(value)) return
+              handleConfigChange({
+                presentation: {
+                  ...configDraft.presentation,
+                  fontSize: Math.min(2, Math.max(0.5, value)),
+                },
+              })
+            }}
+            className="astra-input"
+            style={{ padding: 0 }}
+          />
+          <div style={{ fontSize: 11, color: "var(--astra-text-muted)", marginTop: 2 }}>
+            {t("label_translationFontSizeValue", configDraft.presentation.fontSize.toFixed(2))}
+          </div>
         </div>
-      </div>
+      </details>
 
       <StudySection
         currentPageActivity={currentPageHistory}
@@ -2360,7 +2412,7 @@ export default function App() {
       />
 
       <details style={{ marginTop: 12 }}>
-        <summary className="astra-cursor-pointer" style={{ fontSize: 13, color: "var(--astra-accent-warm-hover)" }}>
+        <summary className="astra-cursor-pointer" style={{ fontSize: 13, color: "var(--astra-brand-hover)" }}>
           More tools & diagnostics
         </summary>
 
@@ -2420,8 +2472,8 @@ export default function App() {
 
         <div style={{
           marginTop: 10,
-          background: "var(--astra-popup-bg-subtle)",
-          border: "1px solid var(--astra-popup-border-warm)",
+          background: "var(--astra-bg-sunken)",
+          border: "1px solid var(--astra-border)",
           borderRadius: 8,
           padding: 10,
         }}>
@@ -2548,7 +2600,7 @@ export default function App() {
         </div>
 
         <div style={{ marginTop: 12 }}>
-          <UsageInsightsCard summary={usageSummary} />
+          <UsageInsightsCard summary={usageSummary} cacheStats={translationCacheStats} />
         </div>
 
         {activeSiteKey && (
@@ -2590,7 +2642,7 @@ export default function App() {
             onToggle={(event) => setSignInPanelOpen(event.currentTarget.open)}
             style={{ marginTop: 4, marginBottom: 8 }}
           >
-            <summary className="astra-cursor-pointer" style={{ fontSize: 13, color: "var(--astra-accent-warm-hover)" }}>
+            <summary className="astra-cursor-pointer" style={{ fontSize: 13, color: "var(--astra-brand-hover)" }}>
               {t("popup_signInToAstra")}
             </summary>
             <div style={{ marginTop: 8 }}>
@@ -2636,7 +2688,7 @@ export default function App() {
               void handleSignOut()
             }}
             className="astra-btn-link"
-            style={{ color: "var(--astra-accent-warm-hover)" }}
+            style={{ color: "var(--astra-brand-hover)" }}
             disabled={authBusy}
           >
             {t("popup_signOut")}
@@ -2662,7 +2714,7 @@ export default function App() {
           type="button"
           onClick={() => void browser.tabs.create({ url: browser.runtime.getURL("/options.html" as "/popup.html") })}
           className="astra-btn-link"
-          style={{ color: "var(--astra-accent-warm-hover)" }}
+          style={{ color: "var(--astra-brand-hover)" }}
         >
           {t("popup_settings")}
         </button>
@@ -2670,7 +2722,7 @@ export default function App() {
           type="button"
           onClick={openVocabularyPage}
           className="astra-btn-link"
-          style={{ color: "var(--astra-accent-warm-hover)" }}
+          style={{ color: "var(--astra-brand-hover)" }}
         >
           {t("popup_vocabulary")}
         </button>
@@ -2678,14 +2730,14 @@ export default function App() {
           type="button"
           onClick={openReviewPage}
           className="astra-btn-link"
-          style={{ color: "var(--astra-accent-warm-hover)" }}
+          style={{ color: "var(--astra-brand-hover)" }}
         >
           {t("popup_review")}
         </button>
       </div>
-      <div style={{ fontSize: 11, color: "var(--astra-popup-text-warm-strong)", textAlign: "center", marginTop: 4 }}>
+      <div style={{ fontSize: 11, color: "var(--astra-text-muted)", textAlign: "center", marginTop: 4 }}>
         Astra v0.1.0
       </div>
-    </div>
+    </PopupShell>
   )
 }

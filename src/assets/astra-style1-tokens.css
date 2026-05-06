@@ -1,170 +1,221 @@
 /**
- * Astra Style 1 Tokens — Amie light + Linear dark
+ * Astra Style 1 Tokens — Quiet Reader (light) + Constellation (dark)
  *
- * Pure semantic token layer shared by extension and web stylesheets.
- * Existing --astra-* and web --bg/--label names bridge to these tokens
- * in their owning stylesheets for backward compatibility.
+ * Two parallel directions that share typography scale, spacing, and radii;
+ * they diverge on color and surface mood.
+ *
+ * Direction A — Quiet Reader: warm paper, ink, restrained iron-blue accent.
+ *   Reading-first. Translation as marginalia. Inspired by classical book design.
+ *
+ * Direction B — Constellation: deep navy/twilight, star-gold accent.
+ *   Modern, calm, gets out of the way. Nods to the Astra (星辰) name.
+ *
+ * Existing --astra-* aliases in astra-extension.css bridge to these tokens.
+ * New design tokens (--astra-style-ink-*, --astra-style-line-*, --astra-style-hl-*,
+ * --astra-style-sticky-*) provide the updated visual vocabulary.
  */
 
+/* ─── Google Fonts ─── */
+@import url('https://fonts.googleapis.com/css2?family=Inter+Tight:wght@400;500;600;700&family=Source+Serif+4:ital,wght@0,300;0,400;0,500;0,600;0,700;1,300;1,400;1,500;1,600&family=JetBrains+Mono:wght@400;500&display=swap');
+
 :root,
-[data-astra-theme="light"] {
+[data-astra-theme="light"],
+[data-astra="quiet"] {
   color-scheme: light;
 
-  /* Surface / background */
-  --astra-style-bg-app: #faf7f2;
-  --astra-style-bg-surface: #ffffff;
-  --astra-style-bg-elevated: #fffdfa;
-  --astra-style-bg-subtle: #f5efe7;
-  --astra-style-bg-hover: #f1ede6;
+  /* ─── Surfaces ─── */
+  --astra-style-bg-page: #f4efe6;         /* warm cream paper — primary page bg */
+  --astra-style-bg-app: #f4efe6;          /* same, backward-compat alias */
+  --astra-style-bg-surface: #fbf8f1;       /* card surface — warm cream */
+  --astra-style-bg-elevated: #ffffff;       /* pure white elevated */
+  --astra-style-bg-sunken: #ece5d8;        /* below surface — inset bg */
+  --astra-style-bg-subtle: #f5efe7;        /* backward-compat → maps to sunken */
+  --astra-style-bg-hover: #efe9dc;
   --astra-style-bg-input: #ffffff;
 
-  /* Text */
-  --astra-style-text-primary: #15110d;
-  --astra-style-text-secondary: #514842;
-  --astra-style-text-muted: #766b63;
-  --astra-style-text-hint: #766b63;
-  --astra-style-text-decorative: #a59a91;
+  /* ─── Ink (text) ─── */
+  --astra-style-ink-1: #1a1612;            /* primary — near-black ink */
+  --astra-style-ink-2: #4a423a;            /* secondary */
+  --astra-style-ink-3: #7a7068;            /* muted */
+  --astra-style-ink-4: #a89e93;            /* hint / decorative */
+  /* Backward-compat aliases */
+  --astra-style-text-primary: #1a1612;
+  --astra-style-text-secondary: #4a423a;
+  --astra-style-text-muted: #7a7068;
+  --astra-style-text-hint: #7a7068;
+  --astra-style-text-decorative: #a89e93;
   --astra-style-text-inverse: #ffffff;
 
-  /* Borders */
-  --astra-style-border-subtle: #e8ded3;
-  --astra-style-border-strong: #d8cbbd;
+  /* ─── Lines (borders) ─── */
+  --astra-style-line-1: #ddd3c2;           /* subtle */
+  --astra-style-line-2: #c8bca8;           /* strong */
+  /* Backward-compat aliases */
+  --astra-style-border-subtle: #ddd3c2;
+  --astra-style-border-strong: #c8bca8;
 
-  /* Primary accent (Astra indigo preserved) */
-  --astra-style-accent-primary: #6366f1;
-  --astra-style-accent-primary-hover: #4f46e5;
-  --astra-style-accent-primary-active: #4338ca;
-  --astra-style-accent-muted: rgba(99, 102, 241, 0.08);
-  --astra-style-accent-border: rgba(99, 102, 241, 0.25);
+  /* ─── Accent — restrained iron-blue (fountain-pen ink) ─── */
+  --astra-style-accent: #1f4e7a;           /* deep ink blue */
+  --astra-style-accent-hover: #173a5c;     /* darker on hover */
+  --astra-style-accent-soft: rgba(31, 78, 122, 0.08);  /* tinted bg */
+  --astra-style-accent-line: rgba(31, 78, 122, 0.22);   /* tinted border */
+  /* Backward-compat aliases */
+  --astra-style-accent-primary: #1f4e7a;
+  --astra-style-accent-primary-hover: #173a5c;
+  --astra-style-accent-primary-active: #123049;
+  --astra-style-accent-muted: rgba(31, 78, 122, 0.08);
+  --astra-style-accent-border: rgba(31, 78, 122, 0.22);
 
-  /* Warm accent (popup / learning-loop emphasis preserved) */
-  --astra-style-accent-warm: #ea580c;
-  --astra-style-accent-warm-hover: #c2410c;
+  /* ─── Highlight — terracotta (translation marks) ─── */
+  --astra-style-hl: #c4633a;               /* terracotta */
+  --astra-style-hl-soft: rgba(196, 99, 58, 0.10);
+  /* Backward-compat: warm accent → highlight terracotta */
+  --astra-style-accent-warm: #c4633a;
+  --astra-style-accent-warm-hover: #a8522e;
 
-  /* Radii */
-  --astra-style-radius-sm: 6px;
-  --astra-style-radius-md: 10px;
-  --astra-style-radius-lg: 14px;
-  --astra-style-radius-xl: 20px;
-  --astra-style-radius-pill: 999px;
+  /* ─── Status ─── */
+  --astra-style-ok: #3f6b4a;
+  --astra-style-warn: #8a5a1a;
+  --astra-style-danger: #92302a;
+  /* Backward-compat with existing names */
+  --astra-style-success: #3f6b4a;
+  --astra-style-success-bg: rgba(63, 107, 74, 0.10);
+  --astra-style-success-border: rgba(63, 107, 74, 0.28);
+  --astra-style-info: #1f4e7a;
+  --astra-style-info-bg: rgba(31, 78, 122, 0.08);
+  --astra-style-info-border: rgba(31, 78, 122, 0.22);
+  --astra-style-warning: #8a5a1a;
+  --astra-style-warning-bg: rgba(138, 90, 26, 0.10);
+  --astra-style-warning-border: rgba(138, 90, 26, 0.28);
+  --astra-style-danger: #92302a;
+  --astra-style-danger-bg: rgba(146, 48, 42, 0.10);
+  --astra-style-danger-border: rgba(146, 48, 42, 0.28);
 
-  /* Shadows */
-  --astra-style-shadow-sm: 0 1px 3px rgba(22, 16, 10, 0.08);
-  --astra-style-shadow-md: 0 4px 12px rgba(22, 16, 10, 0.08);
-  --astra-style-shadow-lg: 0 8px 24px rgba(22, 16, 10, 0.10);
+  /* ─── Shadows ─── */
+  --astra-style-shadow-sm: 0 1px 2px rgba(26, 22, 18, 0.06);
+  --astra-style-shadow-md: 0 6px 18px rgba(26, 22, 18, 0.07);
+  --astra-style-shadow-lg: 0 18px 48px rgba(26, 22, 18, 0.10);
 
-  --astra-style-focus-ring: 0 0 0 3px rgba(99, 102, 241, 0.30);
+  --astra-style-focus-ring: 0 0 0 3px rgba(31, 78, 122, 0.18);
 
-  /* Popup warm surface accents */
-  --astra-style-popup-bg-start: color-mix(in srgb, var(--astra-style-accent-warm) 7%, white);
-  --astra-style-popup-bg-mid: color-mix(in srgb, var(--astra-style-accent-warm) 4%, white);
-  --astra-style-popup-bg-soft: color-mix(in srgb, var(--astra-style-accent-warm) 7%, white);
-  --astra-style-popup-bg-subtle: color-mix(in srgb, var(--astra-style-accent-warm) 4%, white);
-  --astra-style-popup-border-warm: color-mix(in srgb, var(--astra-style-accent-warm) 28%, white);
-  --astra-style-popup-border-warm-strong: color-mix(in srgb, var(--astra-style-accent-warm) 42%, white);
-  --astra-style-popup-text-warm: color-mix(in srgb, var(--astra-style-accent-warm-hover) 66%, black);
-  --astra-style-popup-text-warm-strong: color-mix(in srgb, var(--astra-style-accent-warm-hover) 76%, black);
-  --astra-style-popup-shadow-warm-sm: 0 8px 18px rgba(124, 45, 18, 0.07);
-  --astra-style-popup-shadow-warm-md: 0 8px 20px color-mix(in srgb, var(--astra-style-accent-warm-hover) 12%, transparent);
-  --astra-style-popup-ring-warm: 0 0 0 3px color-mix(in srgb, var(--astra-style-accent-warm) 14%, transparent);
+  /* ─── Sticky note (Post-it yellow on warm paper) ─── */
+  --astra-style-sticky-bg: #f5e58a;
+  --astra-style-sticky-ink: #2a2412;
+  --astra-style-sticky-ink-2: #4a3f22;
+  --astra-style-sticky-muted: #8a7a48;
+  --astra-style-sticky-line: rgba(80, 64, 24, 0.18);
+  --astra-style-sticky-tape: rgba(255, 255, 255, 0.55);
+  --astra-style-sticky-shadow-1: rgba(140, 112, 40, 0.22);
+  --astra-style-sticky-shadow-2: rgba(60, 44, 16, 0.18);
+  --astra-style-sticky-shadow-3: rgba(255, 250, 210, 0.6);
 
-  /* Semantic status colors */
-  --astra-style-success: #166534;
-  --astra-style-success-bg: #ecfdf5;
-  --astra-style-success-border: #a7f3d0;
-  --astra-style-info: #1d4ed8;
-  --astra-style-info-bg: #eff6ff;
-  --astra-style-info-border: #bfdbfe;
-  --astra-style-warning: #b45309;
-  --astra-style-warning-bg: #fffbeb;
-  --astra-style-warning-border: #fcd34d;
-  --astra-style-danger: #b91c1c;
-  --astra-style-danger-bg: #fef2f2;
-  --astra-style-danger-border: #fecaca;
-
-  /* Code / selector editor */
+  /* ─── Code / selector editor ─── */
   --astra-style-code-bg: #1e293b;
   --astra-style-code-text: #e2e8f0;
   --astra-style-code-border: #334155;
+
+  /* ─── Radii ─── */
+  --astra-style-radius-sm: 4px;
+  --astra-style-radius-md: 8px;
+  --astra-style-radius-lg: 12px;
+  --astra-style-radius-xl: 16px;
+  --astra-style-radius-2xl: 24px;
+  --astra-style-radius-pill: 999px;
 }
 
-[data-astra-theme="dark"] {
+[data-astra-theme="dark"],
+[data-astra="twilight"] {
   color-scheme: dark;
 
-  /* Surface / background */
-  --astra-style-bg-app: #08090a;
-  --astra-style-bg-surface: #111214;
-  --astra-style-bg-elevated: #181a1f;
-  --astra-style-bg-subtle: #20232a;
-  --astra-style-bg-hover: #252932;
-  --astra-style-bg-input: #111214;
+  /* ─── Surfaces ─── */
+  --astra-style-bg-page: #0d1220;          /* deep navy twilight */
+  --astra-style-bg-app: #0d1220;
+  --astra-style-bg-surface: #141a2c;       /* card — navy */
+  --astra-style-bg-elevated: #1a2138;       /* elevated — brighter navy */
+  --astra-style-bg-sunken: #0a0f1c;         /* below surface — deepest */
+  --astra-style-bg-subtle: #0a0f1c;
+  --astra-style-bg-hover: #1d2540;
+  --astra-style-bg-input: #141a2c;
 
-  /* Text */
-  --astra-style-text-primary: #f7f8f8;
-  --astra-style-text-secondary: rgba(235, 237, 240, 0.72);
-  --astra-style-text-muted: rgba(235, 237, 240, 0.56);
-  --astra-style-text-hint: rgba(235, 237, 240, 0.48);
-  --astra-style-text-decorative: rgba(235, 237, 240, 0.34);
-  --astra-style-text-inverse: #08090a;
+  /* ─── Ink (text) ─── */
+  --astra-style-ink-1: #f2efe6;            /* warm white — primary */
+  --astra-style-ink-2: rgba(242, 239, 230, 0.74);
+  --astra-style-ink-3: rgba(242, 239, 230, 0.54);
+  --astra-style-ink-4: rgba(242, 239, 230, 0.36);
+  --astra-style-text-primary: #f2efe6;
+  --astra-style-text-secondary: rgba(242, 239, 230, 0.74);
+  --astra-style-text-muted: rgba(242, 239, 230, 0.54);
+  --astra-style-text-hint: rgba(242, 239, 230, 0.48);
+  --astra-style-text-decorative: rgba(242, 239, 230, 0.36);
+  --astra-style-text-inverse: #0d1220;
 
-  /* Borders */
-  --astra-style-border-subtle: rgba(255, 255, 255, 0.10);
-  --astra-style-border-strong: rgba(255, 255, 255, 0.18);
+  /* ─── Lines (borders) ─── */
+  --astra-style-line-1: rgba(242, 239, 230, 0.10);
+  --astra-style-line-2: rgba(242, 239, 230, 0.18);
+  --astra-style-border-subtle: rgba(242, 239, 230, 0.10);
+  --astra-style-border-strong: rgba(242, 239, 230, 0.18);
 
-  /* Primary accent (Linear-like blue/indigo on dark) */
-  --astra-style-accent-primary: #5e6ad2;
-  --astra-style-accent-primary-hover: #7580e6;
-  --astra-style-accent-primary-active: #4f5cc7;
-  --astra-style-accent-muted: rgba(94, 106, 210, 0.16);
-  --astra-style-accent-border: rgba(94, 106, 210, 0.36);
+  /* ─── Accent — pale star-gold ─── */
+  --astra-style-accent: #e5c98a;
+  --astra-style-accent-hover: #f1d99c;
+  --astra-style-accent-soft: rgba(229, 201, 138, 0.10);
+  --astra-style-accent-line: rgba(229, 201, 138, 0.28);
+  --astra-style-accent-primary: #e5c98a;
+  --astra-style-accent-primary-hover: #f1d99c;
+  --astra-style-accent-primary-active: #d4b876;
+  --astra-style-accent-muted: rgba(229, 201, 138, 0.10);
+  --astra-style-accent-border: rgba(229, 201, 138, 0.28);
 
-  /* Warm accent remains available for popup / learning-loop emphasis */
-  --astra-style-accent-warm: #fb923c;
-  --astra-style-accent-warm-hover: #f97316;
+  /* ─── Highlight — soft astra-blue ─── */
+  --astra-style-hl: #8aa4d6;
+  --astra-style-hl-soft: rgba(138, 164, 214, 0.14);
+  --astra-style-accent-warm: #8aa4d6;
+  --astra-style-accent-warm-hover: #9bb4de;
 
-  /* Radii */
-  --astra-style-radius-sm: 6px;
-  --astra-style-radius-md: 10px;
-  --astra-style-radius-lg: 14px;
-  --astra-style-radius-xl: 20px;
-  --astra-style-radius-pill: 999px;
-
-  /* Shadows */
-  --astra-style-shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.32);
-  --astra-style-shadow-md: 0 8px 24px rgba(0, 0, 0, 0.34);
-  --astra-style-shadow-lg: 0 18px 56px rgba(0, 0, 0, 0.42);
-
-  --astra-style-focus-ring: 0 0 0 3px rgba(94, 106, 210, 0.42);
-
-  /* Popup warm surface accents */
-  --astra-style-popup-bg-start: color-mix(in srgb, var(--astra-style-accent-warm) 10%, var(--astra-style-bg-surface));
-  --astra-style-popup-bg-mid: color-mix(in srgb, var(--astra-style-accent-warm) 6%, var(--astra-style-bg-app));
-  --astra-style-popup-bg-soft: color-mix(in srgb, var(--astra-style-accent-warm) 12%, var(--astra-style-bg-surface));
-  --astra-style-popup-bg-subtle: color-mix(in srgb, var(--astra-style-accent-warm) 6%, var(--astra-style-bg-surface));
-  --astra-style-popup-border-warm: color-mix(in srgb, var(--astra-style-accent-warm) 34%, transparent);
-  --astra-style-popup-border-warm-strong: color-mix(in srgb, var(--astra-style-accent-warm) 46%, transparent);
-  --astra-style-popup-text-warm: color-mix(in srgb, var(--astra-style-accent-warm) 76%, var(--astra-style-text-primary));
-  --astra-style-popup-text-warm-strong: color-mix(in srgb, var(--astra-style-accent-warm) 88%, var(--astra-style-text-primary));
-  --astra-style-popup-shadow-warm-sm: 0 10px 24px rgba(0, 0, 0, 0.28);
-  --astra-style-popup-shadow-warm-md: 0 14px 32px color-mix(in srgb, var(--astra-style-accent-warm) 18%, transparent);
-  --astra-style-popup-ring-warm: 0 0 0 3px color-mix(in srgb, var(--astra-style-accent-warm) 24%, transparent);
-
-  /* Semantic status colors */
-  --astra-style-success: #6ee7b7;
-  --astra-style-success-bg: rgba(16, 185, 129, 0.14);
-  --astra-style-success-border: rgba(110, 231, 183, 0.30);
+  /* ─── Status ─── */
+  --astra-style-ok: #94c9a3;
+  --astra-style-warn: #e5c98a;
+  --astra-style-danger: #e09083;
+  --astra-style-success: #94c9a3;
+  --astra-style-success-bg: rgba(148, 201, 163, 0.12);
+  --astra-style-success-border: rgba(148, 201, 163, 0.28);
   --astra-style-info: #93c5fd;
   --astra-style-info-bg: rgba(59, 130, 246, 0.14);
   --astra-style-info-border: rgba(147, 197, 253, 0.30);
-  --astra-style-warning: #fbbf24;
-  --astra-style-warning-bg: rgba(245, 158, 11, 0.14);
-  --astra-style-warning-border: rgba(252, 211, 77, 0.34);
-  --astra-style-danger: #fca5a5;
-  --astra-style-danger-bg: rgba(239, 68, 68, 0.14);
-  --astra-style-danger-border: rgba(252, 165, 165, 0.32);
+  --astra-style-warning: #e5c98a;
+  --astra-style-warning-bg: rgba(229, 201, 138, 0.14);
+  --astra-style-warning-border: rgba(229, 201, 138, 0.30);
+  --astra-style-danger: #e09083;
+  --astra-style-danger-bg: rgba(224, 144, 131, 0.14);
+  --astra-style-danger-border: rgba(224, 144, 131, 0.30);
 
-  /* Code / selector editor */
+  /* ─── Shadows ─── */
+  --astra-style-shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.4);
+  --astra-style-shadow-md: 0 8px 28px rgba(0, 0, 0, 0.42);
+  --astra-style-shadow-lg: 0 24px 64px rgba(0, 0, 0, 0.5);
+
+  --astra-style-focus-ring: 0 0 0 3px rgba(229, 201, 138, 0.22);
+
+  /* ─── Sticky note (muted gold paper on twilight) ─── */
+  --astra-style-sticky-bg: #d9c074;
+  --astra-style-sticky-ink: #1d1808;
+  --astra-style-sticky-ink-2: #3a3014;
+  --astra-style-sticky-muted: #6a5a28;
+  --astra-style-sticky-line: rgba(40, 32, 8, 0.28);
+  --astra-style-sticky-tape: rgba(255, 255, 255, 0.32);
+  --astra-style-sticky-shadow-1: rgba(0, 0, 0, 0.35);
+  --astra-style-sticky-shadow-2: rgba(0, 0, 0, 0.5);
+  --astra-style-sticky-shadow-3: rgba(255, 240, 190, 0.4);
+
+  /* ─── Code / selector editor ─── */
   --astra-style-code-bg: #0f1115;
   --astra-style-code-text: rgba(235, 237, 240, 0.82);
   --astra-style-code-border: rgba(255, 255, 255, 0.16);
+
+  /* ─── Radii (same as light) ─── */
+  --astra-style-radius-sm: 4px;
+  --astra-style-radius-md: 8px;
+  --astra-style-radius-lg: 12px;
+  --astra-style-radius-xl: 16px;
+  --astra-style-radius-2xl: 24px;
+  --astra-style-radius-pill: 999px;
 }
