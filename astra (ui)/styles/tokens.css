@@ -1,0 +1,205 @@
+/* ------------------------------------------------------------------ */
+/*  Astra — design tokens                                              */
+/*  Two parallel directions: "quiet" (paper / light) and "twilight"    */
+/*  Both share scale + radii; they diverge on color and surface mood.  */
+/* ------------------------------------------------------------------ */
+
+:root {
+  /* Type — shared scale */
+  --font-serif: "Source Serif 4", "Source Serif Pro", "Tiempos Text", "Songti SC", "Noto Serif SC", Georgia, serif;
+  --font-sans:  "Inter Tight", "Söhne", "Helvetica Neue", "PingFang SC", "Hiragino Sans GB", system-ui, sans-serif;
+  --font-mono:  "JetBrains Mono", "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+
+  --fs-12: 12px;
+  --fs-13: 13px;
+  --fs-14: 14px;
+  --fs-15: 15px;
+  --fs-16: 16px;
+  --fs-18: 18px;
+  --fs-20: 20px;
+  --fs-24: 24px;
+  --fs-28: 28px;
+  --fs-32: 32px;
+  --fs-40: 40px;
+  --fs-56: 56px;
+  --fs-72: 72px;
+
+  --lh-tight: 1.15;
+  --lh-snug: 1.35;
+  --lh-body: 1.55;
+  --lh-relaxed: 1.7;
+
+  --tracking-tight: -0.02em;
+  --tracking-snug: -0.01em;
+  --tracking-wide: 0.02em;
+  --tracking-caps: 0.14em;
+
+  /* Spacing */
+  --s-1: 4px;
+  --s-2: 8px;
+  --s-3: 12px;
+  --s-4: 16px;
+  --s-5: 20px;
+  --s-6: 24px;
+  --s-8: 32px;
+  --s-10: 40px;
+  --s-12: 48px;
+  --s-16: 64px;
+  --s-20: 80px;
+
+  /* Radii */
+  --r-sm: 4px;
+  --r-md: 8px;
+  --r-lg: 12px;
+  --r-xl: 16px;
+  --r-2xl: 24px;
+  --r-pill: 999px;
+}
+
+/* ============== Direction A — Quiet Reader (paper) ============== */
+[data-astra="quiet"] {
+  color-scheme: light;
+
+  /* Surfaces */
+  --bg-page: #f4efe6;          /* warm cream paper */
+  --bg-surface: #fbf8f1;       /* card */
+  --bg-elevated: #ffffff;
+  --bg-sunken: #ece5d8;
+  --bg-hover: #efe9dc;
+
+  /* Ink */
+  --ink-1: #1a1612;            /* primary */
+  --ink-2: #4a423a;            /* secondary */
+  --ink-3: #7a7068;            /* muted */
+  --ink-4: #a89e93;            /* hint */
+
+  /* Lines */
+  --line-1: #ddd3c2;
+  --line-2: #c8bca8;
+
+  /* Accent — restrained iron-blue, like fountain-pen ink */
+  --accent: #1f4e7a;           /* deep ink blue */
+  --accent-hover: #173a5c;
+  --accent-soft: rgba(31, 78, 122, 0.08);
+  --accent-line: rgba(31, 78, 122, 0.22);
+
+  /* Highlight — used for translated text underline / margin marks */
+  --hl: #c4633a;               /* terracotta */
+  --hl-soft: rgba(196, 99, 58, 0.10);
+
+  /* Status */
+  --ok: #3f6b4a;
+  --warn: #8a5a1a;
+  --danger: #92302a;
+
+  --shadow-sm: 0 1px 2px rgba(26, 22, 18, 0.06);
+  --shadow-md: 0 6px 18px rgba(26, 22, 18, 0.07);
+  --shadow-lg: 0 18px 48px rgba(26, 22, 18, 0.10);
+
+  --ring: 0 0 0 3px rgba(31, 78, 122, 0.18);
+
+  /* Sticky note — Post-it yellow on warm paper */
+  --sticky-bg: #f5e58a;          /* saturated but warm, not neon */
+  --sticky-ink: #2a2412;
+  --sticky-ink-2: #4a3f22;
+  --sticky-muted: #8a7a48;
+  --sticky-line: rgba(80, 64, 24, 0.18);
+  --sticky-tape: rgba(255, 255, 255, 0.55);
+  --sticky-shadow-1: rgba(140, 112, 40, 0.22);   /* close, offset down-right */
+  --sticky-shadow-2: rgba(60, 44, 16, 0.18);     /* drop shadow */
+  --sticky-shadow-3: rgba(255, 250, 210, 0.6);   /* top-left inner highlight */
+}
+
+/* ============== Direction B — Constellation (twilight) =========== */
+[data-astra="twilight"] {
+  color-scheme: dark;
+
+  --bg-page: #0d1220;
+  --bg-surface: #141a2c;
+  --bg-elevated: #1a2138;
+  --bg-sunken: #0a0f1c;
+  --bg-hover: #1d2540;
+
+  --ink-1: #f2efe6;            /* warm white */
+  --ink-2: rgba(242, 239, 230, 0.74);
+  --ink-3: rgba(242, 239, 230, 0.54);
+  --ink-4: rgba(242, 239, 230, 0.36);
+
+  --line-1: rgba(242, 239, 230, 0.10);
+  --line-2: rgba(242, 239, 230, 0.18);
+
+  /* Accent — pale star-gold */
+  --accent: #e5c98a;
+  --accent-hover: #f1d99c;
+  --accent-soft: rgba(229, 201, 138, 0.10);
+  --accent-line: rgba(229, 201, 138, 0.28);
+
+  /* Highlight — soft astra-blue */
+  --hl: #8aa4d6;
+  --hl-soft: rgba(138, 164, 214, 0.14);
+
+  --ok: #94c9a3;
+  --warn: #e5c98a;
+  --danger: #e09083;
+
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.4);
+  --shadow-md: 0 8px 28px rgba(0, 0, 0, 0.42);
+  --shadow-lg: 0 24px 64px rgba(0, 0, 0, 0.5);
+
+  --ring: 0 0 0 3px rgba(229, 201, 138, 0.22);
+
+  /* Sticky note on twilight — muted gold paper, not glowing */
+  --sticky-bg: #d9c074;
+  --sticky-ink: #1d1808;
+  --sticky-ink-2: #3a3014;
+  --sticky-muted: #6a5a28;
+  --sticky-line: rgba(40, 32, 8, 0.28);
+  --sticky-tape: rgba(255, 255, 255, 0.32);
+  --sticky-shadow-1: rgba(0, 0, 0, 0.35);
+  --sticky-shadow-2: rgba(0, 0, 0, 0.5);
+  --sticky-shadow-3: rgba(255, 240, 190, 0.4);
+}
+
+/* ============== Base ============== */
+.astra-root {
+  background: var(--bg-page);
+  color: var(--ink-1);
+  font-family: var(--font-sans);
+  font-size: var(--fs-15);
+  line-height: var(--lh-body);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+}
+
+.astra-root h1, .astra-root h2, .astra-root h3, .astra-root .display, .astra-root .serif {
+  font-family: var(--font-serif);
+  font-weight: 400;
+  letter-spacing: var(--tracking-tight);
+}
+
+.astra-root .eyebrow {
+  font-family: var(--font-sans);
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: var(--tracking-caps);
+  color: var(--ink-3);
+  font-weight: 500;
+}
+
+.astra-root .mono {
+  font-family: var(--font-mono);
+  font-size: var(--fs-12);
+  letter-spacing: 0;
+}
+
+/* utility for the canvas frames */
+.astra-frame {
+  background: var(--bg-page);
+  color: var(--ink-1);
+  font-family: var(--font-sans);
+  font-size: var(--fs-15);
+  line-height: var(--lh-body);
+  overflow: hidden;
+  position: relative;
+}

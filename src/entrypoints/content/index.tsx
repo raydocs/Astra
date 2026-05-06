@@ -735,17 +735,19 @@ function injectStyles() {
   style.textContent = `
     .astra-translation {
       display: block;
-      margin-top: 6px;
+      margin-top: 0.45em;
     }
     .astra-source[data-astra-source-hidden] {
       display: none !important;
     }
     .astra-translation-inner {
-      color: #64748b;
-      font-size: 0.92em;
-      line-height: 1.6;
-      border-left: 2px solid #6366f1;
-      padding-left: 8px;
+      color: color-mix(in srgb, currentColor 62%, transparent);
+      font-family: "Source Serif 4", "Source Serif Pro", "Tiempos Text", "Songti SC", "Noto Serif SC", Georgia, serif;
+      font-size: 0.94em;
+      font-style: italic;
+      line-height: 1.62;
+      border-left: 2px solid rgba(196, 99, 58, 0.46);
+      padding-left: 0.72em;
       display: block;
       user-select: text;
       -webkit-user-select: text;
@@ -755,7 +757,9 @@ function injectStyles() {
     }
     .astra-mode-translation-only .astra-translation-inner {
       color: inherit;
+      font-family: inherit;
       font-size: inherit;
+      font-style: inherit;
       line-height: inherit;
       border-left: none;
       padding-left: 0;
@@ -764,13 +768,13 @@ function injectStyles() {
       border-left: none;
       padding-left: 0;
       text-decoration: underline;
-      text-decoration-color: #6366f1;
+      text-decoration-color: rgba(196, 99, 58, 0.72);
       text-underline-offset: 2px;
     }
     .astra-theme-highlight .astra-translation-inner {
       border-left: none;
       padding-left: 0;
-      background: rgba(99, 102, 241, 0.08);
+      background: rgba(196, 99, 58, 0.10);
       padding: 2px 4px;
       border-radius: 3px;
     }

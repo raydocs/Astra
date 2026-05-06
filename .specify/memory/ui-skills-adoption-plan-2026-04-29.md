@@ -7,6 +7,8 @@
 
 ---
 
+**Updated 2026-05:** Web shares Style 1 tokens, defaults to **light**, and documents **`--accent-primary`** (legacy `--accent-blue`).
+
 ## Key Decisions
 
 1. **8 skills selected** from UI Skills catalog (4 core + 3 registry + 1 composite):
@@ -14,11 +16,11 @@
 
 2. **Tailwind-specific rules adapted to CSS tokens** — Astra uses CSS custom properties, not Tailwind. baseline-ui rules mapped to `astra-extension.css` equivalents.
 
-3. **System font kept for extension** — frontend-design skill recommends "distinctive fonts", but system-ui is the right choice for a utility browser extension. Web companion Apple font stack also stays.
+3. **Shared typography stack** — Style 1 uses **Inter Tight** + **Source Serif 4** + **JetBrains Mono** (see shared token CSS import). Extension and web should not regress to generic `system-ui`-only stacks on styled surfaces.
 
-4. **Indigo (#6366f1) confirmed as unified primary** — orange is accent for learning/CTA only, web blue (#0A84FF) is intentionally Apple-native for web companion.
+4. **Primary accent is semantic** — **`--astra-style-accent-primary`** / web **`--accent-primary`** (legacy alias `--accent-blue`), not a fixed indigo or iOS system blue for the web app alone.
 
-5. **Dark mode via @media (prefers-color-scheme)** not class toggle — extension has no settings UI for theme; OS-level detection is the right default.
+5. **Theme defaults** — **Web Companion** defaults to **`data-astra-theme="light"`** (Quiet Reader). Extension entrypoints keep their own theme attributes (quiet/twilight).
 
 6. **Component decomposition before visual redesign** — monolithic files (OptionsApp 2412 lines, web app.tsx 4400 lines) must be split before Phase 3 styling.
 
@@ -35,8 +37,8 @@
 
 ### Still Outstanding
 - Inline styles still dominate actual component code (migration ongoing)
-- Web companion tokens (`--bg-*`, `--accent-*`) completely separate from extension tokens (`--astra-*`)
-- No dark mode in extension surfaces
+- Web companion layout classes remain web-specific, but **semantic colors** align via **`astra-style1-tokens.css`**
+- Extension theme UX varies by surface (Quiet/Twilight attributes vs options)
 - `<label>` not associated with form controls (htmlFor/id)
 - Flashcard `<div onClick>` — not keyboard accessible
 - Progress bars missing ARIA roles
@@ -94,29 +96,24 @@
 
 ## Token Architecture
 
-### Extension Tokens (astra-extension.css)
+### Shared Style 1 (`src/assets/astra-style1-tokens.css`)
+
+Imported by **`astra-extension.css`** (extension `--astra-*` aliases) and **`web/src/styles.css`** (web `--bg-*`, `--accent-primary`, …). Defines Quiet Reader (light) and Constellation / Twilight (dark) palettes — **`--astra-style-accent-primary`** is direction-dependent (not a fixed indigo or system blue).
+
+### Web aliases (`web/src/styles.css`)
+
 ```css
---astra-brand: #6366f1;
---astra-text-primary: #0f172a;   /* 19.5:1 on white */
---astra-text-hint: #64748b;     /* 5.4:1 — replaces unsafe #94a3b8 */
---astra-transition-fast: 100ms ease;
---astra-transition-normal: 180ms ease;
---astra-focus-ring: 0 0 0 3px rgba(99, 102, 241, 0.30);
+--bg-primary: var(--astra-style-bg-app);
+--accent-primary: var(--astra-style-accent-primary);
+/* Legacy alias — prefer --accent-primary */
+--accent-blue: var(--accent-primary);
 ```
 
-### Web Tokens (styles.css) — separate namespace
-```css
---bg-primary: #000000;
---accent-blue: #0A84FF;
---label-primary: #FFFFFF;
---label-secondary: rgba(235, 235, 245, 0.6);
-```
+Default document theme: **`data-astra-theme="light"`**; PWA `theme-color` matches light `--astra-style-bg-app` (`#f4efe6`).
 
-### Planned: Unified semantic layer
-```css
-/* src/assets/astra-tokens.css — shared by both */
---astra-surface, --astra-on-surface, --astra-accent, --astra-accent-on
-```
+### Planned incremental tightening
+
+Optional shared semantic names (`--astra-surface`, …) **on top of** Style 1 — avoid maintaining a second hex source.
 
 ---
 

@@ -1,6 +1,6 @@
 /**
- * Subtitle translation — detects HTML5 video text tracks and creates
- * translated subtitle tracks alongside the originals.
+ * Subtitle translation — detects platform subtitle sources and creates
+ * translated HTML5 subtitle tracks alongside the originals.
  */
 
 import { translateTexts } from "@/utils/translate/translate"
@@ -9,74 +9,68 @@ import { hasResolvedProviderAccess, resolveSiteTranslationSettings } from "@/typ
 import { readAstraSession } from "@/utils/storage/auth"
 import { sanitizeTranslationContext } from "@/utils/privacy"
 import { getDocumentTranslationContext } from "./translation-context"
+import { bilibiliApiSubtitleSource } from "./video-platforms/bilibili-subtitles"
+import { genericTextTrackSubtitleSource } from "./video-platforms/generic-text-track-subtitles"
+import type { PlatformSubtitleSource, PlatformSubtitleTrack } from "./video-platforms/subtitle-source"
 
 const ASTRA_TRACK_LABEL_PREFIX = "Astra: "
 const BATCH_SIZE = 20
+const SOURCE_LOAD_TIMEOUT_MS = 2500
 
-interface ParsedCue {
-  startTime: number
-  endTime: number
-  text: string
-}
+const SUBTITLE_SOURCES: PlatformSubtitleSource[] = [
+  bilibiliApiSubtitleSource,
+  genericTextTrackSubtitleSource,
+]
 
-/**
- * Parse VTT cue text, stripping simple VTT formatting tags.
- */
-function stripVTTTags(text: string): string {
-  return text
-    .replace(/<\/?[^>]+>/g, "")
-    .replace(/&amp;/g, "&")
-    .replace(/&lt;/g, "<")
-    .replace(/&gt;/g, ">")
-    .trim()
-}
+const translatedTrackKeys = new WeakMap<HTMLVideoElement, Set<string>>()
 
-/**
- * Collect all text cues from a TextTrack.
- */
-function collectCues(track: TextTrack): ParsedCue[] {
-  if (!track.cues) return []
-
-  const cues: ParsedCue[] = []
-  for (let i = 0; i < track.cues.length; i++) {
-    const cue = track.cues[i]
-    if (cue instanceof VTTCue) {
-      const text = stripVTTTags(cue.text)
-      if (text) {
-        cues.push({ startTime: cue.startTime, endTime: cue.endTime, text })
-      }
-    }
+function getTranslatedKeys(video: HTMLVideoElement): Set<string> {
+  let keys = translatedTrackKeys.get(video)
+  if (!keys) {
+    keys = new Set<string>()
+    translatedTrackKeys.set(video, keys)
   }
-  return cues
+  return keys
 }
 
-/**
- * Check whether a track was injected by Astra.
- */
-function isAstraTrack(track: TextTrack): boolean {
-  return track.label.startsWith(ASTRA_TRACK_LABEL_PREFIX)
+function hasAstraTrackForTarget(video: HTMLVideoElement, targetLang: string): boolean {
+  const expectedLabel = `${ASTRA_TRACK_LABEL_PREFIX}${targetLang}`
+  return Array.from(video.textTracks).some((track) => track.label === expectedLabel)
+    || Array.from(video.querySelectorAll("track"))
+      .some((trackEl) => trackEl.label === expectedLabel)
 }
 
-/**
- * Create a translated subtitle track for a video element.
- */
-async function translateTrack(
+function buildTrackKey(track: PlatformSubtitleTrack, targetLang: string): string {
+  return `${track.platform}:${track.source}:${track.id}:${targetLang}`
+}
+
+function getSubtitleContext(privacyMode: boolean) {
+  const documentContext = getDocumentTranslationContext()
+  return privacyMode ? sanitizeTranslationContext(documentContext) : documentContext
+}
+
+function isYouTubeUrl(url: URL): boolean {
+  return url.hostname === "youtu.be"
+    || url.hostname === "youtube.com"
+    || url.hostname.endsWith(".youtube.com")
+    || url.hostname === "youtube-nocookie.com"
+    || url.hostname.endsWith(".youtube-nocookie.com")
+}
+
+async function translateSubtitleCueTrack(
   video: HTMLVideoElement,
-  sourceTrack: TextTrack,
+  sourceTrack: PlatformSubtitleTrack,
   targetLang: string,
   privacyMode: boolean,
-): Promise<void> {
-  const cues = collectCues(sourceTrack)
-  if (cues.length === 0) return
+): Promise<boolean> {
+  const cues = sourceTrack.cues.filter((cue) => cue.text.trim().length > 0)
+  if (cues.length === 0) return false
 
-  // Translate cue texts in batches
-  const allTexts = cues.map((c) => c.text)
   const translations: string[] = []
-  const documentContext = getDocumentTranslationContext()
-  const context = privacyMode ? sanitizeTranslationContext(documentContext) : documentContext
+  const context = getSubtitleContext(privacyMode)
 
-  for (let i = 0; i < allTexts.length; i += BATCH_SIZE) {
-    const batch = allTexts.slice(i, i + BATCH_SIZE)
+  for (let index = 0; index < cues.length; index += BATCH_SIZE) {
+    const batch = cues.slice(index, index + BATCH_SIZE).map((cue) => cue.text)
     const result = await translateTexts({
       texts: batch,
       targetLang,
@@ -85,35 +79,86 @@ async function translateTrack(
 
     if (!result.ok) {
       console.warn("[Astra] Subtitle translation batch failed:", result.error.message)
-      return
+      return false
     }
     translations.push(...result.translations)
   }
 
   if (translations.length !== cues.length) {
     console.warn("[Astra] Subtitle translation count mismatch")
-    return
+    return false
   }
 
-  // Create a new track element with translated cues
   const trackElement = document.createElement("track")
-  trackElement.kind = sourceTrack.kind === "captions" ? "captions" : "subtitles"
+  trackElement.kind = sourceTrack.kind
   trackElement.label = `${ASTRA_TRACK_LABEL_PREFIX}${targetLang}`
   trackElement.srclang = targetLang
+  trackElement.dataset.astraSubtitlePlatform = sourceTrack.platform
+  trackElement.dataset.astraSubtitleSource = sourceTrack.source
+  trackElement.dataset.astraSubtitleTrackId = sourceTrack.id
   video.appendChild(trackElement)
 
-  // Wait for the track to be added to the video's text tracks
-  const newTrack = video.textTracks[video.textTracks.length - 1]
-  if (!newTrack) return
+  try {
+    const newTrack = video.textTracks[video.textTracks.length - 1]
+    if (!newTrack) {
+      trackElement.remove()
+      return false
+    }
 
-  // Add translated cues
-  for (let i = 0; i < cues.length; i++) {
-    const vttCue = new VTTCue(cues[i].startTime, cues[i].endTime, translations[i])
-    newTrack.addCue(vttCue)
+    for (let index = 0; index < cues.length; index += 1) {
+      const cue = new VTTCue(cues[index].startTime, cues[index].endTime, translations[index])
+      newTrack.addCue(cue)
+    }
+
+    newTrack.mode = "showing"
+    return true
+  } catch (error) {
+    trackElement.remove()
+    console.warn("[Astra] Failed to create translated subtitle track", error)
+    return false
+  }
+}
+
+async function withSourceTimeout<T>(
+  source: PlatformSubtitleSource,
+  promise: Promise<T>,
+): Promise<T> {
+  let timeoutId: ReturnType<typeof setTimeout> | null = null
+  const timeout = new Promise<never>((_, reject) => {
+    timeoutId = setTimeout(() => {
+      reject(new Error(`[Astra] ${source.platform} subtitle source timed out`))
+    }, SOURCE_LOAD_TIMEOUT_MS)
+  })
+
+  try {
+    return await Promise.race([promise, timeout])
+  } finally {
+    if (timeoutId) clearTimeout(timeoutId)
+  }
+}
+
+async function loadBestSubtitleTrack(
+  video: HTMLVideoElement,
+  targetLang: string,
+): Promise<PlatformSubtitleTrack | null> {
+  const url = new URL(window.location.href)
+
+  for (const source of SUBTITLE_SOURCES) {
+    if (!source.canLoad(url, document)) continue
+
+    try {
+      const tracks = await withSourceTimeout(source, source.loadTracks(video, {
+        targetLang,
+        astraTrackLabelPrefix: ASTRA_TRACK_LABEL_PREFIX,
+      }))
+      const track = tracks.find((candidate) => candidate.cues.length > 0)
+      if (track) return track
+    } catch (error) {
+      console.warn(`[Astra] ${source.platform} subtitle source failed; trying fallback`, error)
+    }
   }
 
-  // Enable the translated track
-  newTrack.mode = "showing"
+  return null
 }
 
 /**
@@ -128,39 +173,27 @@ export async function translatePageSubtitles(): Promise<void> {
 
   if (!resolved.enabled || !hasResolvedProviderAccess(config.provider, session)) return
 
+  // YouTube has a dedicated hybrid video subtitle pipeline started alongside
+  // page translation. Skip the native <track> subtitle translator there so the
+  // two pipelines do not render duplicate translated captions.
+  if (isYouTubeUrl(new URL(window.location.href))) return
+
   const videos = document.querySelectorAll("video")
   if (videos.length === 0) return
 
   for (const video of videos) {
-    const tracks = Array.from(video.textTracks)
-    const sourceTrack = tracks.find(
-      (t) =>
-        !isAstraTrack(t)
-        && (t.kind === "subtitles" || t.kind === "captions")
-        && t.cues
-        && t.cues.length > 0,
-    )
+    if (hasAstraTrackForTarget(video, resolved.targetLang)) continue
 
+    const sourceTrack = await loadBestSubtitleTrack(video, resolved.targetLang)
     if (!sourceTrack) continue
 
-    // Skip if we already have a translated track for this video
-    const hasAstraTrack = tracks.some(isAstraTrack)
-    if (hasAstraTrack) continue
+    const trackKey = buildTrackKey(sourceTrack, resolved.targetLang)
+    const translatedKeys = getTranslatedKeys(video)
+    if (translatedKeys.has(trackKey)) continue
 
-    // Need cues loaded — set mode to hidden if disabled
-    const prevMode = sourceTrack.mode
-    if (sourceTrack.mode === "disabled") {
-      sourceTrack.mode = "hidden"
-    }
-
-    // Wait a tick for cues to populate if track was just enabled
-    await new Promise((resolve) => setTimeout(resolve, 100))
-
-    await translateTrack(video, sourceTrack, resolved.targetLang, config.privacyMode)
-
-    // Restore original mode
-    if (prevMode === "disabled") {
-      sourceTrack.mode = prevMode
+    const translated = await translateSubtitleCueTrack(video, sourceTrack, resolved.targetLang, config.privacyMode)
+    if (translated) {
+      translatedKeys.add(trackKey)
     }
   }
 }
@@ -171,6 +204,7 @@ export async function translatePageSubtitles(): Promise<void> {
 export function removeTranslatedSubtitles(): void {
   const videos = document.querySelectorAll("video")
   for (const video of videos) {
+    translatedTrackKeys.delete(video)
     const trackElements = video.querySelectorAll("track")
     for (const trackEl of trackElements) {
       if (trackEl.label.startsWith(ASTRA_TRACK_LABEL_PREFIX)) {

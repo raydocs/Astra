@@ -90,7 +90,7 @@ export default function GlobalSettingsSection({
 
   return (
     <details open style={{ marginBottom: 12 }}>
-      <summary className="astra-cursor-pointer" style={{ fontSize: 13, color: "var(--astra-accent-warm-hover)" }}>
+      <summary className="astra-cursor-pointer" style={{ fontSize: 13, color: "var(--astra-brand-hover)" }}>
         ⚙ {t("settingsTitle")}
       </summary>
       <div style={{ marginTop: 8 }}>

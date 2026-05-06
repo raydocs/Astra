@@ -490,6 +490,37 @@ describe("OptionsApp — Sites section", () => {
     return field
   }
 
+  it("renders the redesigned Settings shell (sidebar groups, breadcrumb, Translation default)", async () => {
+    expect(container.querySelector(".astra-settings-page")).not.toBeNull()
+    expect(container.querySelector(".astra-settings-page")?.getAttribute("data-astra-theme")).toBe("light")
+    expect(container.querySelector(".astra-settings-shell")).not.toBeNull()
+    expect(container.querySelector(".astra-settings-sidebar")).not.toBeNull()
+    expect(container.querySelector(".astra-settings-main")).not.toBeNull()
+
+    const groupEyebrows = Array.from(container.querySelectorAll(".astra-settings-nav-group__eyebrow"))
+      .map((el) => el.textContent?.trim())
+    expect(groupEyebrows).toEqual(expect.arrayContaining(["Reading", "Learning", "Engine", "Account"]))
+
+    expect(container.querySelector(".astra-settings-brand__mark")?.textContent).toBe("Astra")
+    expect(container.querySelector(".astra-settings-brand__version")?.textContent).toBe("v2.0")
+    expect(container.querySelector(".astra-settings-search__kbd")?.textContent).toContain("⌘K")
+
+    // Breadcrumb defaults to Translation per the design.
+    expect(container.querySelector(".astra-settings-breadcrumb__current")?.textContent).toBe("Translation")
+    expect(container.querySelector('[data-section="translation"]')?.getAttribute("aria-current")).toBe("page")
+
+    // Translation section eyebrow + serif headline are present.
+    const eyebrows = Array.from(container.querySelectorAll(".astra-settings-eyebrow"))
+      .map((el) => el.textContent?.trim().toLowerCase())
+    expect(eyebrows.some((value) => value?.includes("translation"))).toBe(true)
+    expect(container.querySelector(".astra-settings-headline")?.textContent).toBe("How Astra translates the page")
+
+    // Translation rows + segmented control + preview card exist.
+    expect(container.querySelector(".astra-settings-rows")).not.toBeNull()
+    expect(container.querySelector(".astra-settings-segmented")).not.toBeNull()
+    expect(container.querySelector(".astra-settings-preview")).not.toBeNull()
+  })
+
   it("navigates to the Sites section and shows empty state", async () => {
     await navigateToSites()
     expect(container.textContent).toContain("Sites")
@@ -585,6 +616,13 @@ describe("OptionsApp — Sites section", () => {
   })
 
   it("persists TTS settings from the general section", async () => {
+    // Settings now defaults to the Translation section (per redesign);
+    // navigate to General before exercising TTS controls.
+    await act(async () => {
+      clickButton("General")
+      await Promise.resolve()
+    })
+
     const ttsEnabled = container.querySelector("#tts-enabled") as HTMLInputElement
     const voiceSelect = Array.from(container.querySelectorAll("select")).find((select) =>
       Array.from(select.querySelectorAll("option")).some((option) => option.textContent === "Browser default")

@@ -32,8 +32,8 @@ const stepNumberStyle: React.CSSProperties = {
   width: 18,
   height: 18,
   borderRadius: "50%",
-  background: "var(--astra-popup-bg-start)",
-  color: "var(--astra-popup-text-warm-strong)",
+  background: "var(--astra-brand-muted)",
+  color: "var(--astra-brand)",
   fontSize: 11,
   fontWeight: 800,
   flex: "0 0 auto",
@@ -54,8 +54,8 @@ function recommendedButtonStyle(isRecommended: boolean): React.CSSProperties {
     padding: "8px 10px",
     fontSize: 12,
     fontWeight: 700,
-    border: isRecommended ? "2px solid var(--astra-accent-warm)" : undefined,
-    boxShadow: isRecommended ? "var(--astra-popup-ring-warm)" : undefined,
+    border: isRecommended ? "2px solid var(--astra-brand)" : undefined,
+    boxShadow: isRecommended ? "var(--astra-focus-ring)" : undefined,
   }
 }
 
@@ -69,7 +69,7 @@ function RecommendedMarker({ visible }: { visible: boolean }) {
         marginTop: 4,
         fontSize: 10,
         fontWeight: 800,
-        color: "var(--astra-popup-text-warm-strong)",
+        color: "var(--astra-text-primary)",
         textTransform: "uppercase",
         letterSpacing: "0.04em",
       }}
@@ -105,16 +105,16 @@ export default function LearningClosurePrimerCard({
       aria-label="Learning closure primer"
       style={{
         marginTop: 12,
-        background: "var(--astra-popup-bg-soft)",
-        border: "1px solid var(--astra-popup-border-warm)",
+        background: "var(--astra-bg-card)",
+        border: "1px solid var(--astra-border-strong)",
         borderRadius: 12,
         padding: 12,
-        boxShadow: "var(--astra-popup-shadow-warm-sm)",
+        boxShadow: "var(--astra-shadow-sm)",
       }}
     >
       <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 10 }}>
         <div>
-          <div style={{ fontSize: 12, fontWeight: 800, color: "var(--astra-popup-text-warm)", textTransform: "uppercase", letterSpacing: "0.04em" }}>
+          <div style={{ fontSize: 12, fontWeight: 800, color: "var(--astra-text-muted)", textTransform: "uppercase", letterSpacing: "0.04em" }}>
             {copy.eyebrow}
           </div>
           <div style={{ fontSize: 15, fontWeight: 800, color: "var(--astra-text-primary)", marginTop: 2 }}>
@@ -145,11 +145,11 @@ export default function LearningClosurePrimerCard({
           marginTop: 10,
           padding: "8px 10px",
           background: "var(--astra-bg-card)",
-          border: "1px solid var(--astra-popup-border-warm)",
+          border: "1px solid var(--astra-border)",
           borderRadius: 10,
         }}
       >
-        <div style={{ fontSize: 10, fontWeight: 800, color: "var(--astra-popup-text-warm-strong)", textTransform: "uppercase", letterSpacing: "0.04em" }}>
+        <div style={{ fontSize: 10, fontWeight: 800, color: "var(--astra-text-secondary)", textTransform: "uppercase", letterSpacing: "0.04em" }}>
           {packageSummary.eyebrow}
         </div>
         <div style={{ fontSize: 11, fontWeight: 800, color: "var(--astra-text-primary)", marginTop: 4, lineHeight: 1.35 }}>
@@ -163,10 +163,10 @@ export default function LearningClosurePrimerCard({
           style={{
             marginTop: 8,
             paddingTop: 8,
-            borderTop: "1px solid var(--astra-popup-border-warm)",
+            borderTop: "1px solid var(--astra-border)",
           }}
         >
-          <div style={{ fontSize: 10, fontWeight: 800, color: "var(--astra-popup-text-warm-strong)", textTransform: "uppercase", letterSpacing: "0.04em" }}>
+          <div style={{ fontSize: 10, fontWeight: 800, color: "var(--astra-text-secondary)", textTransform: "uppercase", letterSpacing: "0.04em" }}>
             {firstWinCopy.eyebrow}
           </div>
           <div style={{ fontSize: 11, fontWeight: 800, color: "var(--astra-text-primary)", marginTop: 3, lineHeight: 1.35 }}>

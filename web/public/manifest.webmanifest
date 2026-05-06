@@ -4,8 +4,8 @@
   "description": "Portable Astra workspaces for text, imported files, and account access with explicit extension handoff for live webpage translation.",
   "start_url": "./",
   "display": "standalone",
-  "background_color": "#020617",
-  "theme_color": "#0f172a",
+  "background_color": "#f4efe6",
+  "theme_color": "#f4efe6",
   "icons": [
     {
       "src": "./icon-48.png",

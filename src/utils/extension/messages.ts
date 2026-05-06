@@ -20,6 +20,7 @@ import {
   isRuntimeLearningContinuitySyncStatusResponse,
   isRuntimeSaveConfigResponse,
   isRuntimeTranslateResponse,
+  isRuntimeTranslationCacheStatsResponse,
 } from "@/types/messages"
 import {
   createTranslationError,
@@ -40,6 +41,10 @@ export type TranslationBatchRequestResult =
 export type LearningContinuitySyncCommitResult =
   | { ok: true; status: LearningContinuitySyncStatus }
   | { ok: false; error: TranslationError; status?: LearningContinuitySyncStatus }
+
+export type TranslationCacheStatsResult =
+  | { ok: true; stats: import("@/types/messages").TranslationCacheStats }
+  | { ok: false; error: TranslationError }
 
 function mapContentMessagingError(error: unknown): TranslationError {
   const message = error instanceof Error ? error.message : String(error)
@@ -257,6 +262,32 @@ export async function getLearningContinuitySyncStatus(): Promise<LearningContinu
     }
 
     return { ok: true, status: response.payload.status }
+  } catch (error) {
+    return { ok: false, error: mapRuntimeConfigMessagingError(error) }
+  }
+}
+
+export async function getTranslationCacheStats(): Promise<TranslationCacheStatsResult> {
+  try {
+    const response = await browser.runtime.sendMessage({
+      type: "runtime/translation-cache-stats",
+    }) as unknown
+
+    if (!isRuntimeTranslationCacheStatsResponse(response)) {
+      return {
+        ok: false,
+        error: createTranslationError(
+          "INVALID_RESPONSE",
+          "Received an invalid translation cache stats response.",
+        ),
+      }
+    }
+
+    if (response.type === "runtime/translation-cache-stats:error") {
+      return { ok: false, error: response.error }
+    }
+
+    return { ok: true, stats: response.payload }
   } catch (error) {
     return { ok: false, error: mapRuntimeConfigMessagingError(error) }
   }

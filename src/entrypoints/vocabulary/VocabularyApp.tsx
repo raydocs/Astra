@@ -965,8 +965,8 @@ export default function VocabularyApp() {
   }
 
   const containerStyle: React.CSSProperties = {
-    margin: "0 auto",
-    padding: "24px 20px",
+    margin: "0",
+    padding: "0",
     fontFamily: "var(--astra-font)",
     color: "var(--astra-text-primary)",
     lineHeight: 1.5,
@@ -1001,11 +1001,13 @@ export default function VocabularyApp() {
 
   const searchInputStyle: React.CSSProperties = {
     width: "100%",
-    padding: "8px 12px",
+    padding: "10px 14px",
+    fontFamily: "Source Serif 4, Georgia, serif",
+    fontStyle: "italic",
     fontSize: 14,
-    color: "var(--astra-text-primary)",
-    background: "var(--astra-bg-input)",
-    border: "1px solid var(--astra-border)",
+    color: "var(--astra-style-ink-1)",
+    background: "var(--astra-style-bg-surface)",
+    border: "1px solid var(--astra-style-line-1)",
     borderRadius: 8,
     outline: "none",
     boxSizing: "border-box",
@@ -1054,32 +1056,36 @@ export default function VocabularyApp() {
   }
 
   const cardStyle: React.CSSProperties = {
-    border: "1px solid var(--astra-border)",
-    borderRadius: 10,
-    padding: "12px 16px",
-    marginBottom: 10,
-    background: "var(--astra-bg-card)",
+    borderBottom: "1px solid var(--astra-style-line-1)",
+    padding: "16px 0",
+    marginBottom: 0,
+    background: "transparent",
   }
 
   const wordStyle: React.CSSProperties = {
-    fontSize: 16,
-    fontWeight: 600,
-    color: "var(--astra-text-primary)",
-    marginBottom: 4,
+    fontFamily: "Source Serif 4, Georgia, serif",
+    fontSize: 22,
+    fontWeight: 400,
+    letterSpacing: "-0.012em",
+    color: "var(--astra-style-ink-1)",
+    marginBottom: 2,
   }
 
   const translationStyle: React.CSSProperties = {
+    fontFamily: "Source Serif 4, Georgia, serif",
+    fontStyle: "italic",
     fontSize: 14,
-    color: "var(--astra-brand)",
+    color: "var(--astra-style-ink-2)",
     marginBottom: 6,
   }
 
   const contextStyle: React.CSSProperties = {
-    fontSize: 12,
-    color: "var(--astra-text-muted)",
-    fontStyle: "italic",
+    fontFamily: "Source Serif 4, Georgia, serif",
+    fontSize: 14,
+    color: "var(--astra-style-ink-2)",
+    fontStyle: "normal",
     marginBottom: 6,
-    lineHeight: 1.4,
+    lineHeight: 1.5,
   }
 
   const metaRowStyle: React.CSSProperties = {
@@ -1144,10 +1150,11 @@ export default function VocabularyApp() {
 
   const learningDeskCardStyle: React.CSSProperties = {
     marginBottom: 18,
-    padding: "16px 18px",
-    background: "linear-gradient(135deg, var(--astra-brand-muted) 0%, var(--astra-bg-primary) 55%, var(--astra-bg-primary) 100%)",
-    border: "1px solid var(--astra-brand-border)",
-    borderRadius: 14,
+    padding: "18px 22px",
+    background: "var(--astra-style-bg-surface)",
+    border: "1px solid var(--astra-style-line-1)",
+    borderRadius: 12,
+    boxShadow: "var(--astra-style-shadow-sm)",
   }
 
   const learningDeskActionStyle: React.CSSProperties = {
@@ -1221,34 +1228,217 @@ export default function VocabularyApp() {
       )}
     </div>
   )
+  const recentReadingForRail = [...readingItems]
+    .filter((item) => item.openedAt > 0 && item.status !== "archived")
+    .sort((a, b) => b.openedAt - a.openedAt)
+    .slice(0, 6)
+  const sourceGroups = (() => {
+    const counts = new Map<string, number>()
+    for (const entry of entries) {
+      const host = (entry.hostname ?? entry.sourceContext?.hostname ?? "").trim()
+      if (!host) continue
+      counts.set(host, (counts.get(host) ?? 0) + 1)
+    }
+    return Array.from(counts.entries())
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 5)
+  })()
+
   if (showListLoading || showReadingLoading) {
     return (
-      <div className="astra-container astra-container--medium" style={containerStyle}>
-        <p style={{ color: "var(--astra-text-hint)", textAlign: "center" }}>Loading...</p>
+      <div className="astra-library-shell" data-astra-theme="light" data-astra="quiet">
+        <div style={{ padding: "60px 32px", textAlign: "center", color: "var(--astra-style-ink-3)", fontStyle: "italic", fontFamily: "Source Serif 4, Georgia, serif" }}>
+          Loading…
+        </div>
       </div>
     )
   }
 
   return (
-    <div className="astra-container astra-container--medium" style={containerStyle}>
-      <div style={headerStyle}>
-        <h1 style={titleStyle}>
-          {t("vocabulary_title")}
-        </h1>
-        <span style={countBadgeStyle}>{formatMessage(t("vocabulary_countBadge"), entries.length, entries.length === 1 ? t("vocabulary_countWordSingular") : t("vocabulary_countWordPlural"))}</span>
-      </div>
+    <div className="astra-library-shell" data-astra-theme="light" data-astra="quiet">
+      <div className="astra-library-grid">
+        {/* ========== SIDEBAR ========== */}
+        <aside className="astra-library-sidebar" aria-label="Library navigation">
+          <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "0 6px 14px" }}>
+            <span
+              aria-hidden="true"
+              style={{
+                width: 22,
+                height: 22,
+                borderRadius: "50%",
+                border: "1.6px solid var(--astra-style-ink-1)",
+                display: "inline-flex",
+                alignItems: "center",
+                justifyContent: "center",
+              }}
+            >
+              <span style={{ width: 6, height: 6, borderRadius: "50%", background: "var(--astra-style-ink-1)" }} />
+            </span>
+            <span
+              className="astra-serif"
+              style={{
+                fontSize: 18,
+                letterSpacing: "-0.01em",
+                fontWeight: 500,
+                color: "var(--astra-style-ink-1)",
+              }}
+            >
+              Astra
+            </span>
+          </div>
 
-      <div style={tabBarStyle}>
-        <button type="button" style={tabStyle(activeTab === "list")} onClick={() => setActiveTab("list")}>
-          {t("vocabulary_tabList")}
-        </button>
-        <button type="button" style={tabStyle(activeTab === "review")} onClick={() => setActiveTab("review")}>
-          {dueCount > 0 ? formatMessage(t("vocabulary_tabReviewWithCount"), dueCount) : t("vocabulary_tabReview")}
-        </button>
-        <button type="button" style={tabStyle(activeTab === "reading")} onClick={() => setActiveTab("reading")}>
-          {t("vocabulary_tabReading")}
-        </button>
-      </div>
+          <div className="astra-eyebrow" style={{ padding: "8px 10px 4px" }}>
+            Words
+          </div>
+          <button
+            type="button"
+            className="astra-library-side-link"
+            aria-selected={activeTab === "list" && !activeTagFilter}
+            onClick={() => {
+              setActiveTab("list")
+              setActiveTagFilter(null)
+            }}
+          >
+            <span className="astra-library-side-link__icon" aria-hidden>◫</span>
+            <span style={{ flex: 1 }}>All saved</span>
+            <span className="astra-library-side-link__count">{entries.length}</span>
+          </button>
+          <button
+            type="button"
+            className="astra-library-side-link"
+            aria-selected={activeTab === "review"}
+            onClick={() => setActiveTab("review")}
+          >
+            <span className="astra-library-side-link__icon" aria-hidden>◷</span>
+            <span style={{ flex: 1 }}>Due today</span>
+            <span className="astra-library-side-link__count">{dueCount}</span>
+          </button>
+
+          {allTags.length > 0 && (
+            <>
+              <div className="astra-eyebrow" style={{ padding: "16px 10px 4px" }}>
+                By tag
+              </div>
+              {allTags.slice(0, 8).map((tag) => (
+                <button
+                  type="button"
+                  key={tag}
+                  className="astra-library-side-link"
+                  aria-selected={activeTagFilter === tag}
+                  onClick={() => {
+                    setActiveTab("list")
+                    setActiveTagFilter(activeTagFilter === tag ? null : tag)
+                  }}
+                >
+                  <span className="astra-library-side-link__icon" aria-hidden>#</span>
+                  <span style={{ flex: 1 }}>{tag}</span>
+                </button>
+              ))}
+            </>
+          )}
+
+          {sourceGroups.length > 0 && (
+            <>
+              <div className="astra-eyebrow" style={{ padding: "16px 10px 4px" }}>
+                By source
+              </div>
+              {sourceGroups.map(([host, count]) => (
+                <button
+                  type="button"
+                  key={host}
+                  className="astra-library-side-link"
+                  aria-selected={search === host}
+                  onClick={() => {
+                    setActiveTab("list")
+                    setSearch(search === host ? "" : host)
+                  }}
+                >
+                  <span className="astra-library-side-link__icon" aria-hidden>◯</span>
+                  <span style={{ flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                    {host}
+                  </span>
+                  <span className="astra-library-side-link__count">{count}</span>
+                </button>
+              ))}
+            </>
+          )}
+
+          <div className="astra-eyebrow" style={{ padding: "16px 10px 4px" }}>
+            Pages
+          </div>
+          <button
+            type="button"
+            className="astra-library-side-link"
+            aria-selected={activeTab === "reading"}
+            onClick={() => setActiveTab("reading")}
+          >
+            <span className="astra-library-side-link__icon" aria-hidden>❑</span>
+            <span style={{ flex: 1 }}>Reading queue</span>
+            <span className="astra-library-side-link__count">{readingCounts.recent}</span>
+          </button>
+        </aside>
+
+        {/* ========== MAIN COLUMN ========== */}
+        <section className="astra-library-main">
+          <header className="astra-library-main__header">
+            <h1 className="astra-library-title">
+              {activeTab === "list" ? (
+                <>
+                  All saved
+                  <span className="astra-library-title__count"> · {entries.length}</span>
+                </>
+              ) : activeTab === "review" ? (
+                t("vocabulary_tabReview")
+              ) : (
+                t("vocabulary_tabReading")
+              )}
+              <span style={{ display: "none" }}>{t("vocabulary_title")}</span>
+            </h1>
+            <div className="astra-library-search">
+              <span aria-hidden style={{ color: "var(--astra-style-ink-3)", fontSize: 13 }}>⌕</span>
+              <input
+                type="text"
+                placeholder={t("vocabulary_searchPlaceholder")}
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                aria-label={t("vocabulary_searchPlaceholder")}
+              />
+            </div>
+            <div role="tablist" style={{ display: "inline-flex", gap: 6 }}>
+              <button
+                type="button"
+                role="tab"
+                aria-selected={activeTab === "list"}
+                className="astra-library-tab-pill"
+                onClick={() => setActiveTab("list")}
+              >
+                {t("vocabulary_tabList")}
+              </button>
+              <button
+                type="button"
+                role="tab"
+                aria-selected={activeTab === "review"}
+                className="astra-library-tab-pill"
+                onClick={() => setActiveTab("review")}
+              >
+                {dueCount > 0 ? t("vocabulary_tabReviewWithCount", String(dueCount)) : t("vocabulary_tabReview")}
+              </button>
+              <button
+                type="button"
+                role="tab"
+                aria-selected={activeTab === "reading"}
+                className="astra-library-tab-pill"
+                onClick={() => setActiveTab("reading")}
+              >
+                {t("vocabulary_tabReading")}
+              </button>
+            </div>
+            <span style={{ display: "none" }}>
+              {formatMessage(t("vocabulary_countBadge"), entries.length, entries.length === 1 ? t("vocabulary_countWordSingular") : t("vocabulary_countWordPlural"))}
+            </span>
+          </header>
+
+          <div className="astra-library-main__body">
 
         {activeTab === "review" && (
           <>
@@ -1317,7 +1507,6 @@ export default function VocabularyApp() {
             </div>
             <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginBottom: 12 }}>
               <div style={{ background: "var(--astra-bg-card)", border: "1px solid var(--astra-info-border)", borderRadius: 10, padding: "10px 12px", minWidth: 120 }}>
-                <div style={{ fontSize: 11, fontWeight: 700, color: "var(--astra-text-muted)", marginBottom: 4 }}>Due review</div>
                 <div style={{ fontSize: 11, fontWeight: 700, color: "var(--astra-text-muted)", marginBottom: 4 }}>{t("vocabulary_statDueReview")}</div>
                 <div style={{ fontSize: 22, fontWeight: 800, color: dueCount > 0 ? "var(--astra-warning)" : "var(--astra-text-primary)" }}>{dueCount}</div>
               </div>
@@ -1332,7 +1521,7 @@ export default function VocabularyApp() {
             </div>
             <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
               <button type="button" style={learningDeskActionStyle} onClick={() => setActiveTab("review")}>
-                {dueCount > 0 ? formatMessage(t("vocabulary_actionStartReviewWithCount"), dueCount) : t("vocabulary_actionOpenReview")}
+                {dueCount > 0 ? t("vocabulary_actionStartReviewWithCount", String(dueCount)) : t("vocabulary_actionOpenReview")}
               </button>
               <button type="button" style={learningDeskActionStyle} onClick={() => setActiveTab("reading")}>
                 {t("vocabulary_actionOpenReadingQueue")}
@@ -1444,16 +1633,6 @@ export default function VocabularyApp() {
               </div>
             </div>
           )}
-          <div style={{ marginBottom: 12 }}>
-            <input
-              type="text"
-              placeholder={t("vocabulary_searchPlaceholder")}
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              style={searchInputStyle}
-            />
-          </div>
-
           <div style={toolbarStyle}>
             <span style={{ fontSize: 12, color: "var(--astra-text-muted)", marginRight: 4 }}>{t("vocabulary_sortLabel")}</span>
             <button
@@ -1549,12 +1728,12 @@ export default function VocabularyApp() {
                   <div style={translationStyle}>{entry.translation}</div>
                 )}
                 {sourceDisplay.surfaceLabel && (
-                  <div style={{ fontSize: 11, color: "var(--astra-brand)", fontWeight: 700, marginBottom: 4 }}>
+                  <div className="astra-eyebrow" style={{ marginBottom: 4 }}>
                     {sourceDisplay.surfaceLabel}
                   </div>
                 )}
                 {sourceDisplay.sourceLabel && (
-                  <div style={{ fontSize: 12, color: "var(--astra-text-secondary)", fontWeight: 600, marginBottom: 4 }}>
+                  <div style={{ fontFamily: "Source Serif 4, Georgia, serif", fontStyle: "italic", fontSize: 13, color: "var(--astra-style-ink-2)", marginBottom: 4 }}>
                     {sourceDisplay.sourceLabel}
                   </div>
                 )}
@@ -2176,6 +2355,140 @@ export default function VocabularyApp() {
           )}
         </>
       )}
+          </div>
+        </section>
+
+        {/* ========== RIGHT RAIL ========== */}
+        <aside className="astra-library-rail" aria-label="Reading history">
+          <div className="astra-eyebrow" style={{ marginBottom: 12 }}>
+            This month
+          </div>
+          <div style={{ display: "flex", alignItems: "baseline", gap: 8, marginBottom: 4 }}>
+            <span className="astra-library-rail__bignum">
+              {recentReadingForRail.length}
+            </span>
+            <span className="astra-library-rail__bignum-label">
+              recent reads
+            </span>
+          </div>
+          <div className="astra-library-rail__sub">
+            {entries.length} saved · {dueCount} due
+          </div>
+
+          {recentReadingForRail.length > 0 && activeTab !== "reading" && (
+            <>
+              <div className="astra-eyebrow" style={{ marginTop: 22, marginBottom: 8 }}>
+                Recent reading
+              </div>
+              {recentReadingForRail.map((item) => {
+                const dateLabel = item.openedAt
+                  ? new Date(item.openedAt).toLocaleDateString(undefined, { month: "short", day: "numeric" })
+                  : "—"
+                const linkedCount = entries.filter((entry) => matchOwnedReadingItemForVocabularyEntry([item], entry)?.id === item.id).length
+                return (
+                  <div key={item.id} className="astra-library-rail__article">
+                    <div className="astra-library-rail__date">{dateLabel}</div>
+                    <div>
+                      <button
+                        type="button"
+                        className="astra-library-rail__article-title"
+                        onClick={() => void openReadingItem(item)}
+                        style={{
+                          background: "transparent",
+                          border: 0,
+                          padding: 0,
+                          textAlign: "left",
+                          cursor: "pointer",
+                          width: "100%",
+                        }}
+                      >
+                        {item.title}
+                      </button>
+                      <div className="astra-library-rail__article-meta">
+                        <span className="astra-eyebrow">
+                          {(item.sourceUrl ? new URL(item.sourceUrl, "https://x").hostname.replace(/^www\./, "") : getReadingFormatBadgeLabel(item.sourceType))}
+                        </span>
+                        {linkedCount > 0 && (
+                          <span className="astra-library-rail__article-words">+{linkedCount}</span>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                )
+              })}
+            </>
+          )}
+
+          {learningDeskPageReviewTarget && (
+            <div
+              data-testid="learning-desk-page-review-rail-cta"
+              style={{
+                marginTop: 22,
+                padding: "12px 14px",
+                background: "var(--astra-style-success-bg)",
+                border: "1px solid var(--astra-style-success-border)",
+                borderRadius: 10,
+              }}
+            >
+              <div className="astra-eyebrow" style={{ marginBottom: 4, color: "var(--astra-style-ok)" }}>
+                Page review ready
+              </div>
+              <div style={{ fontSize: 12, color: "var(--astra-style-ok)", lineHeight: 1.45, marginBottom: 8, fontFamily: "Source Serif 4, Georgia, serif", fontStyle: "italic" }}>
+                {t("popup_studyPageSavedReviewHint", String(learningDeskPageReviewTarget.count))}
+              </div>
+              <button
+                type="button"
+                style={learningDeskActionStyle}
+                onClick={() => void openReadingPageReview(learningDeskPageReviewTarget)}
+              >
+                {t("popup_studyPageSavedReviewAction")}
+              </button>
+            </div>
+          )}
+
+          {accountContinuityAuthHydrated && !isAccountContinuitySignedIn && (
+            <div
+              data-testid="vocabulary-rail-continuity-card"
+              style={{
+                marginTop: 22,
+                padding: "14px 16px",
+                background: "var(--astra-style-bg-elevated)",
+                border: "1px solid var(--astra-style-line-1)",
+                borderRadius: 10,
+              }}
+            >
+              <div className="astra-eyebrow" style={{ marginBottom: 4 }}>
+                {accountContinuityCopy.eyebrow}
+              </div>
+              <div
+                className="astra-serif"
+                style={{ fontSize: 15, color: "var(--astra-style-ink-1)", lineHeight: 1.35, marginBottom: 6, letterSpacing: "-0.01em" }}
+              >
+                {accountContinuityCopy.title}
+              </div>
+              <div
+                style={{
+                  fontFamily: "Source Serif 4, Georgia, serif",
+                  fontStyle: "italic",
+                  fontSize: 12,
+                  color: "var(--astra-style-ink-2)",
+                  lineHeight: 1.55,
+                  marginBottom: 10,
+                }}
+              >
+                {accountContinuityCopy.bullets[0]}
+              </div>
+              <button
+                type="button"
+                style={{ ...learningDeskActionStyle, width: "100%" }}
+                onClick={openAccountContinuitySignIn}
+              >
+                {accountContinuityCopy.cta}
+              </button>
+            </div>
+          )}
+        </aside>
+      </div>
     </div>
   )
 }
