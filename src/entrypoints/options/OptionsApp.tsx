@@ -39,6 +39,7 @@ import { getRecentEvents, type TelemetryEvent } from "@/utils/telemetry"
 import { isTtsSupported, listVoices, type TTSVoiceOption } from "@/utils/tts"
 import { diagnoseProvider, PROVIDER_CAPABILITIES, type ProviderDiagnostics } from "@/utils/providers/capabilities"
 import { useViewportProfile } from "@/utils/ui/useViewportProfile"
+import { useAstraTheme } from "@/utils/ui/useAstraTheme"
 import { t } from "@/utils/i18n"
 
 type Section = "general" | "providers" | "translation" | "actions" | "sites" | "vocabulary" | "diagnostics" | "about"
@@ -2551,6 +2552,7 @@ function AboutSection({
 // --- Main component ---
 
 export default function OptionsApp() {
+  const { astraTheme, astraDirection } = useAstraTheme()
   const [section, setSection] = useState<Section>("translation")
   const [searchQuery, setSearchQuery] = useState("")
   const [config, setConfig] = useState<AstraConfig>(DEFAULT_ASTRA_CONFIG)
@@ -2903,7 +2905,7 @@ export default function OptionsApp() {
   })).filter((group) => group.items.length > 0)
 
   return (
-    <div className="astra-settings-page" data-astra-theme="light" data-astra="quiet">
+    <div className="astra-settings-page" data-astra-theme={astraTheme} data-astra={astraDirection}>
       <div className={`astra-settings-shell${isMobile ? " astra-settings-shell--compact" : ""}`}>
         {!isMobile && (
           <aside className="astra-settings-sidebar" aria-label="Settings sections">

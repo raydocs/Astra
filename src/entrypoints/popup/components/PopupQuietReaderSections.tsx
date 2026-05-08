@@ -1,3 +1,4 @@
+import type { ReactNode } from "react"
 import type { HoverTrigger, SiteConfig, TranslationMode, TranslationTheme } from "@/types/config"
 import type { PageStudyContext } from "@/types/messages"
 import { t } from "@/utils/i18n"
@@ -8,6 +9,69 @@ import {
   PopupSettingRow,
   PopupToggle,
 } from "./PopupDesignPrimitives"
+
+const lineIconStrokeWidth = 1.5
+
+function lineIcon(size: number, paths: ReactNode) {
+  return (
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={lineIconStrokeWidth}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      {paths}
+    </svg>
+  )
+}
+
+const IconGlobe = ({ size = 13 }: { size?: number }) =>
+  lineIcon(size, (
+    <>
+      <circle cx="12" cy="12" r="9" />
+      <path d="M3 12h18M12 3a14 14 0 0 1 0 18M12 3a14 14 0 0 0 0 18" />
+    </>
+  ))
+
+const IconLanguages = ({ size = 13 }: { size?: number }) =>
+  lineIcon(size, (
+    <>
+      <path d="M3 5h10M5 5v2a4 4 0 0 0 4 4M11 5v2a4 4 0 0 1-4 4" />
+      <path d="M11 19l4-9 4 9M12.5 16h5" />
+    </>
+  ))
+
+const IconHighlighter = ({ size = 13 }: { size?: number }) =>
+  lineIcon(size, (
+    <>
+      <path d="M12 19l-7 2 2-7 9-9 5 5-9 9z" />
+      <path d="M14 6l4 4" />
+    </>
+  ))
+
+const IconBook = ({ size = 13 }: { size?: number }) =>
+  lineIcon(size, (
+    <>
+      <path d="M4 4.5A1.5 1.5 0 0 1 5.5 3H19v15.5H6a2 2 0 0 0-2 2V4.5z" />
+      <path d="M4 19.5A2 2 0 0 1 6 17.5h13" />
+    </>
+  ))
+
+const IconClock = ({ size = 13 }: { size?: number }) =>
+  lineIcon(size, (
+    <>
+      <circle cx="12" cy="12" r="9" />
+      <path d="M12 7v5l3 2" />
+    </>
+  ))
+
+const IconChevronRight = ({ size = 13 }: { size?: number }) =>
+  lineIcon(size, <path d="M9 6l6 6-6 6" />)
 
 function pickHeroSubtitle(context: PageStudyContext | null): string | null {
   if (!context) return null
@@ -75,7 +139,7 @@ export function PopupSiteQuickCard({
   return (
     <PopupGroupCard eyebrow={t("popup_designThisSite")}>
       <PopupSettingRow
-        icon={<span aria-hidden="true">🌐</span>}
+        icon={<IconGlobe />}
         title={t("popup_autoTranslateSite")}
         subtitle={hostname}
         accessory={(
@@ -87,7 +151,7 @@ export function PopupSiteQuickCard({
         )}
       />
       <PopupSettingRow
-        icon={<span aria-hidden="true">A</span>}
+        icon={<IconLanguages />}
         title={t("popup_displayModeSite")}
         accessory={(
           <PopupSegmentedControl<TranslationMode>
@@ -102,7 +166,7 @@ export function PopupSiteQuickCard({
         )}
       />
       <PopupSettingRow
-        icon={<span aria-hidden="true">✎</span>}
+        icon={<IconHighlighter />}
         title={t("popup_styleSite")}
         accessory={(
           <PopupSegmentedControl<TranslationTheme>
@@ -138,14 +202,18 @@ export function PopupReadingQuickCard({
   return (
     <PopupGroupCard eyebrow={t("popup_readingEyebrow")}>
       <PopupSettingRow
-        icon={<span aria-hidden="true">📖</span>}
+        icon={<IconBook />}
         title={t("popup_deepReadAction")}
         onClick={onOpenDeepRead}
         disabled={deepReadDisabled}
-        accessory={<span aria-hidden="true" style={{ color: "var(--astra-text-muted)" }}>›</span>}
+        accessory={(
+          <span aria-hidden="true" style={{ color: "var(--astra-text-muted)", display: "inline-flex" }}>
+            <IconChevronRight />
+          </span>
+        )}
       />
       <PopupSettingRow
-        icon={<span aria-hidden="true">⌖</span>}
+        icon={<IconClock />}
         title={t("popup_hoverTranslateRow")}
         accessory={(
           <PopupToggle
@@ -202,8 +270,11 @@ export function PopupTodayLearning({
             </div>
             <div className="astra-popup-review-cta__hint">{t("popup_reviewCtaHint")}</div>
           </span>
-          <span className="astra-quiet-eyebrow" style={{ fontSize: 10, letterSpacing: "0.08em" }}>
+          <span className="astra-popup-review-cta__pill">
             {t("popup_reviewStart")}
+            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+              <path d="M5 12h14M13 6l6 6-6 6" />
+            </svg>
           </span>
         </button>
       )}

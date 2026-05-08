@@ -22,6 +22,7 @@ import {
 } from "@/utils/reading/document-file-handoff"
 import { extractPdfPages, type PdfPage, type PdfTextBlock } from "./pdf-extractor"
 import { translatePdfPage, type TranslatedBlock } from "./pdf-translator"
+import { useAstraTheme } from "@/utils/ui/useAstraTheme"
 
 type ReaderPhase = "idle" | "loading" | "translating" | "done" | "error"
 
@@ -102,6 +103,7 @@ function PathMarkerCard({ summary }: { summary: TranslationPathSummary }) {
 }
 
 export function PdfReaderApp() {
+  const { astraTheme, astraDirection } = useAstraTheme()
   const [phase, setPhase] = useState<ReaderPhase>("idle")
   const [error, setError] = useState<string | null>(null)
   const [pages, setPages] = useState<PageState[]>([])
@@ -291,17 +293,21 @@ export function PdfReaderApp() {
   return (
     <div
       className="astra-container astra-container--wide"
-      data-astra-theme="light"
+      data-astra-theme={astraTheme}
+      data-astra={astraDirection}
       style={containerStyle}
       onDragOver={(e) => e.preventDefault()}
       onDrop={handleFileDrop}
     >
-      <header style={headerStyle}>
-        <h1 style={{ margin: 0, fontSize: 18, color: "var(--astra-brand)" }}>Astra PDF Reader</h1>
-        {fileName && <span style={{ fontSize: 13, color: "var(--astra-text-muted)" }}>{fileName}</span>}
+      <header className="astra-reader-page-header">
+        <div className="astra-reader-page-header__brand">
+          <span className="astra-reader-page-header__mark" aria-hidden="true">A</span>
+          <h1 className="astra-reader-page-header__title">Astra PDF Reader</h1>
+        </div>
+        {fileName && <span className="astra-reader-page-header__file">{fileName}</span>}
         {phase === "translating" && (
-          <span style={{ fontSize: 12, color: "var(--astra-brand)" }}>
-            Translating page {progress.current}/{progress.total}...
+          <span className="astra-reader-page-header__status">
+            Translating page {progress.current}/{progress.total}…
           </span>
         )}
       </header>
@@ -406,14 +412,6 @@ const containerStyle: React.CSSProperties = {
   padding: 16,
 }
 
-const headerStyle: React.CSSProperties = {
-  display: "flex",
-  alignItems: "center",
-  gap: 12,
-  padding: "12px 0",
-  borderBottom: "1px solid var(--astra-border)",
-  marginBottom: 16,
-}
 
 const pagesContainerStyle: React.CSSProperties = {
   display: "flex",

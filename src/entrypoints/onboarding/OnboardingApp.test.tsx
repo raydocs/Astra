@@ -109,6 +109,11 @@ describe("OnboardingApp", () => {
       buttonByText("Continue")?.click()
       await Promise.resolve()
     })
+    // Step Style → Features
+    await act(async () => {
+      buttonByText("Continue")?.click()
+      await Promise.resolve()
+    })
 
     const closureCopy = container.querySelector('[data-testid="onboarding-closure-loop-copy"]') as HTMLElement
     expect(closureCopy?.dataset.copyVariant).toBe("loop_first")
@@ -156,6 +161,11 @@ describe("OnboardingApp", () => {
       buttonByText("Continue")?.click()
       await Promise.resolve()
     })
+    // Step Style → Features
+    await act(async () => {
+      buttonByText("Continue")?.click()
+      await Promise.resolve()
+    })
 
     const closureCopy = container.querySelector('[data-testid="onboarding-closure-loop-copy"]') as HTMLElement
     expect(closureCopy.dataset.copyVariant).toBe("outcome_first")
@@ -168,6 +178,11 @@ describe("OnboardingApp", () => {
       buttonByText("Get started")?.click()
       await Promise.resolve()
     })
+    await act(async () => {
+      buttonByText("Continue")?.click()
+      await Promise.resolve()
+    })
+    // Step Style → Features
     await act(async () => {
       buttonByText("Continue")?.click()
       await Promise.resolve()

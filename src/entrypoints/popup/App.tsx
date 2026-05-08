@@ -2128,12 +2128,12 @@ export default function App() {
                 void translate()
               }}
               className="astra-btn-primary astra-btn-ink-primary"
-              style={{ width: "100%", padding: "13px 16px", fontSize: 15, justifyContent: "space-between" }}
+              style={{ width: "100%", padding: "13px 18px", fontSize: 15, justifyContent: "space-between" }}
               disabled={translateDisabled}
             >
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
-                <path d="M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18Z" strokeLinecap="round" />
-                <path d="M2 12h20M12 2c3 3 5 6 5 10s-2 7-5 10M12 2C9 5 7 8 7 12s2 7 5 10" strokeLinecap="round" />
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                <path d="M3 5h10M5 5v2a4 4 0 0 0 4 4M11 5v2a4 4 0 0 1-4 4" />
+                <path d="M11 19l4-9 4 9M12.5 16h5" />
               </svg>
               <span style={{ flex: 1, textAlign: "left", marginLeft: 8 }}>{t("popup_translateThisPage")}</span>
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">

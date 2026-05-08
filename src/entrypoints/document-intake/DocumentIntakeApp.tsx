@@ -25,6 +25,7 @@ import {
   documentIntakeAcceptList,
   type DocumentIntakeDetection,
 } from "./file-kind"
+import { useAstraTheme } from "@/utils/ui/useAstraTheme"
 
 type IntakePhase = "idle" | "saving" | "ready" | "error"
 
@@ -89,6 +90,7 @@ function buildReaderUrl(
 }
 
 export function DocumentIntakeApp() {
+  const { astraTheme, astraDirection } = useAstraTheme()
   const [phase, setPhase] = useState<IntakePhase>("idle")
   const [error, setError] = useState<string | null>(null)
   const [result, setResult] = useState<IntakeResult | null>(null)
@@ -151,7 +153,7 @@ export function DocumentIntakeApp() {
     event.target.value = ""
   }, [handleFile])
 
-  const handleFileDrop = useCallback((event: React.DragEvent<HTMLDivElement>) => {
+  const handleFileDrop = useCallback((event: React.DragEvent<HTMLElement>) => {
     event.preventDefault()
     const file = event.dataTransfer.files[0]
     if (file) {
@@ -163,23 +165,24 @@ export function DocumentIntakeApp() {
   const resumeTarget = result ? buildOwnedReadingResumeTarget(result.item) : null
 
   return (
-    <main data-testid="document-intake-page" data-astra-theme="light" style={containerStyle}>
-      <header style={headerStyle}>
-        <div>
-          <div style={eyebrowStyle}>Unified Document Intake Hub v1</div>
-          <h1 style={{ margin: "4px 0 0", fontSize: 24, color: "#7c2d12" }}>Open a reading file in Astra</h1>
+    <main data-testid="document-intake-page" data-astra-theme={astraTheme} data-astra={astraDirection} style={containerStyle}>
+      <header className="astra-reader-page-header">
+        <div className="astra-reader-page-header__brand">
+          <span className="astra-reader-page-header__mark" aria-hidden="true">A</span>
+          <h1 className="astra-reader-page-header__title">Open a reading file</h1>
         </div>
+        <span className="astra-reader-page-header__status">Document intake hub</span>
         <button type="button" className="astra-btn-secondary" onClick={openReadingQueue} style={smallButtonStyle}>
           {t("vocabulary_actionOpenReadingQueue")}
         </button>
       </header>
 
-      <section
+      <label
         data-testid="document-intake-dropzone"
+        className="astra-drop-zone-cursor astra-reader-drop-zone"
         onDragOver={(event) => event.preventDefault()}
         onDrop={handleFileDrop}
         onClick={() => fileInputRef.current?.click()}
-        style={dropZoneStyle}
       >
         <input
           ref={fileInputRef}
@@ -189,12 +192,20 @@ export function DocumentIntakeApp() {
           onChange={handleFileSelect}
           style={{ display: "none" }}
         />
-        <div style={{ fontSize: 42, marginBottom: 10 }}>PDF · EPUB · SRT/VTT</div>
-        <div style={{ fontSize: 16, fontWeight: 700, color: "#0f172a" }}>Drop a file here or click to choose one</div>
-        <p style={mutedStyle}>
-          Astra detects the file kind, records a Reading queue row, then opens the existing PDF, EPUB, or subtitle reader.
-        </p>
-      </section>
+        <div className="astra-reader-drop-zone__content">
+          <div className="astra-reader-drop-zone__eyebrow">Bilingual reading</div>
+          <div className="astra-reader-drop-zone__title">Drop a file here or click to choose one</div>
+          <div className="astra-reader-drop-zone__description">
+            Astra detects the file kind, records a Reading queue row, then opens the existing PDF, ePub, or subtitle reader.
+          </div>
+          <div className="astra-reader-drop-zone__chips" aria-label="Supported file types">
+            <span className="astra-reader-drop-zone__chip">PDF</span>
+            <span className="astra-reader-drop-zone__chip">EPUB</span>
+            <span className="astra-reader-drop-zone__chip">SRT</span>
+            <span className="astra-reader-drop-zone__chip">VTT</span>
+          </div>
+        </div>
+      </label>
 
       <section style={noteStyle}>
         <strong>Local file handoff:</strong> Astra creates a short-lived one-time token so the reader can open this local file without an immediate reselect when possible.
@@ -246,61 +257,39 @@ export function DocumentIntakeApp() {
 const containerStyle: React.CSSProperties = {
   boxSizing: "border-box",
   minHeight: "100vh",
-  maxWidth: 840,
+  maxWidth: 920,
   margin: "0 auto",
-  padding: 24,
+  padding: "32px 28px 56px",
   fontFamily: "var(--astra-font)",
-  color: "var(--astra-text-primary)",
-  background: "var(--astra-bg-primary)",
-}
-
-const headerStyle: React.CSSProperties = {
-  display: "flex",
-  justifyContent: "space-between",
-  alignItems: "center",
-  gap: 12,
-  marginBottom: 18,
-}
-
-const eyebrowStyle: React.CSSProperties = {
-  fontSize: 12,
-  fontWeight: 800,
-  letterSpacing: "0.08em",
-  textTransform: "uppercase",
-  color: "var(--astra-brand)",
-}
-
-const dropZoneStyle: React.CSSProperties = {
-  border: "2px dashed var(--astra-brand-border)",
-  borderRadius: 18,
-  background: "var(--astra-bg-elevated)",
-  padding: "42px 24px",
-  textAlign: "center",
-  cursor: "pointer",
-  boxShadow: "var(--astra-shadow-md)",
+  color: "var(--astra-style-ink-1)",
+  background: "var(--astra-style-bg-page)",
 }
 
 const mutedStyle: React.CSSProperties = {
   margin: "8px 0 0",
-  color: "var(--astra-text-muted)",
-  lineHeight: 1.5,
+  color: "var(--astra-style-ink-3)",
+  lineHeight: 1.55,
+  fontSize: 13,
 }
 
 const noteStyle: React.CSSProperties = {
-  marginTop: 16,
-  padding: 12,
-  borderRadius: 12,
-  border: "1px solid var(--astra-warning-border)",
-  background: "var(--astra-warning-bg)",
-  color: "var(--astra-warning)",
+  marginTop: 14,
+  padding: "12px 14px",
+  borderRadius: "var(--astra-radius-md)",
+  border: "1px solid var(--astra-style-line-1)",
+  background: "var(--astra-style-bg-surface)",
+  color: "var(--astra-style-ink-2)",
   fontSize: 13,
-  lineHeight: 1.5,
+  lineHeight: 1.55,
 }
 
 const statusStyle: React.CSSProperties = {
-  marginTop: 16,
-  color: "var(--astra-warning)",
-  fontWeight: 700,
+  marginTop: 14,
+  color: "var(--astra-style-ink-2)",
+  fontFamily: "var(--astra-style-font-mono, JetBrains Mono, monospace)",
+  fontSize: 12,
+  letterSpacing: "0.04em",
+  textTransform: "uppercase",
 }
 
 const errorStyle: React.CSSProperties = {
@@ -314,22 +303,22 @@ const errorStyle: React.CSSProperties = {
 
 const readyStyle: React.CSSProperties = {
   marginTop: 16,
-  padding: 16,
-  borderRadius: 14,
-  border: "1px solid var(--astra-border-strong)",
-  background: "var(--astra-bg-card)",
+  padding: "16px 18px",
+  borderRadius: "var(--astra-radius-lg)",
+  border: "1px solid var(--astra-style-line-1)",
+  background: "var(--astra-style-bg-surface)",
 }
 
 const limitationStyle: React.CSSProperties = {
   ...mutedStyle,
-  color: "var(--astra-warning)",
-  fontWeight: 700,
+  color: "var(--astra-style-ink-2)",
+  fontStyle: "italic",
 }
 
 const handoffReadyStyle: React.CSSProperties = {
   ...mutedStyle,
   color: "var(--astra-success)",
-  fontWeight: 700,
+  fontWeight: 500,
 }
 
 const smallButtonStyle: React.CSSProperties = {

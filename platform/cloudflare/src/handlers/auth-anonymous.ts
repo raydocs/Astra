@@ -6,7 +6,10 @@ import {
   type AstraSession,
 } from "../../../../src/types/auth"
 import { buildAstraAnonymousIdentity } from "../../../../src/utils/astra/anonymous-identity"
-import { hashAstraCredentialSecret } from "../../../../src/utils/astra/credential-hash"
+import {
+  ASTRA_CREDENTIAL_HASH_ALGORITHM,
+  hashAstraCredentialSecret,
+} from "../../../../src/utils/astra/credential-hash"
 import {
   buildAstraSessionClaims,
   issueAstraSessionToken,
@@ -359,7 +362,7 @@ async function buildAnonymousSessionArtifacts(params: {
     status: "active",
     revokedAt: null,
     tokenHash,
-    tokenHashAlg: "sha256",
+    tokenHashAlg: ASTRA_CREDENTIAL_HASH_ALGORITHM,
     shadowUpdatedAt: params.issuedAt,
   }
 

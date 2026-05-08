@@ -1540,10 +1540,11 @@ function TextWorkspacePage(props: {
   onConfigChange: (patch: Parameters<typeof mergeWebConfig>[1]) => void
   onNavigate: (route: AppRoute) => void
 }) {
+  const { config, onConfigChange, onNavigate, session } = props
   const savedDraft = useMemo(() => readTextWorkspaceDraft(), [])
   const [sourceText, setSourceText] = useState(savedDraft?.sourceText ?? "")
   const [sourceLang, setSourceLang] = useState(savedDraft?.sourceLang ?? "")
-  const [targetLang, setTargetLang] = useState(savedDraft?.targetLang ?? props.config.targetLang)
+  const [targetLang, setTargetLang] = useState(savedDraft?.targetLang ?? config.targetLang)
   const [task, setTask] = useState<"translate" | "explain" | "custom">(savedDraft?.task ?? "translate")
   const [customPrompt, setCustomPrompt] = useState(savedDraft?.customPrompt ?? "")
   const [resultText, setResultText] = useState(savedDraft?.resultText ?? "")
@@ -1576,7 +1577,7 @@ function TextWorkspacePage(props: {
       || resultText.trim()
       || customPrompt.trim()
       || task !== "translate"
-      || targetLang !== props.config.targetLang,
+      || targetLang !== config.targetLang,
     )
 
     if (!hasContent && !importMeta) {
@@ -1594,11 +1595,11 @@ function TextWorkspacePage(props: {
       importedDraftTitle: importMeta?.title ?? null,
       importedDraftSource: importMeta?.source ?? null,
     })
-  }, [customPrompt, importMeta, props.config.targetLang, resultText, sourceLang, sourceText, targetLang, task])
+  }, [config.targetLang, customPrompt, importMeta, resultText, sourceLang, sourceText, targetLang, task])
 
   const runTranslation = useCallback(async () => {
-    if (!props.session) {
-      props.onNavigate("/account")
+    if (!session) {
+      onNavigate("/account")
       return
     }
 
@@ -1611,16 +1612,16 @@ function TextWorkspacePage(props: {
     setRunState("running")
     setRunError("")
 
-    props.onConfigChange({
-      ...props.config,
+    onConfigChange({
+      ...config,
       targetLang,
     })
 
     try {
       const result = await translateWithWebRelay({
-        session: props.session,
+        session,
         config: {
-          ...props.config,
+          ...config,
           targetLang,
         },
         request: {
@@ -1646,7 +1647,7 @@ function TextWorkspacePage(props: {
     } finally {
       setRunState("idle")
     }
-  }, [customPrompt, props, sourceLang, sourceText, targetLang, task])
+  }, [config, customPrompt, onConfigChange, onNavigate, session, sourceLang, sourceText, targetLang, task])
 
   const exportResult = useCallback(() => {
     if (!resultText.trim()) return
@@ -1656,7 +1657,7 @@ function TextWorkspacePage(props: {
   const clearWorkspace = useCallback(() => {
     setSourceText("")
     setSourceLang("")
-    setTargetLang(props.config.targetLang)
+    setTargetLang(config.targetLang)
     setTask("translate")
     setCustomPrompt("")
     setResultText("")
@@ -1665,7 +1666,7 @@ function TextWorkspacePage(props: {
     setImportMeta(null)
     setRestoredDraftAt(null)
     clearTextWorkspaceDraft()
-  }, [props.config.targetLang])
+  }, [config.targetLang])
 
   return (
     <>
@@ -1802,6 +1803,7 @@ function VideoNoteWorkspacePage(props: {
   deepLinkedJobId: string
   onNavigate: (route: AppRoute) => void
 }) {
+  const { deepLinkedJobId, onNavigate, session } = props
   const [sourceUrl, setSourceUrl] = useState("")
   const [jobId, setJobId] = useState("")
   const [workspace, setWorkspace] = useState<VideoNoteWorkspaceSnapshot | null>(null)
@@ -1838,10 +1840,10 @@ function VideoNoteWorkspacePage(props: {
   }, [workspace])
 
   useEffect(() => {
-    const trimmedDeepLinkedJobId = props.deepLinkedJobId.trim()
+    const trimmedDeepLinkedJobId = deepLinkedJobId.trim()
     if (!trimmedDeepLinkedJobId) return
     setJobId(trimmedDeepLinkedJobId)
-  }, [props.deepLinkedJobId])
+  }, [deepLinkedJobId])
 
   const applyJobStatus = useCallback((nextJob: {
     jobId: string
@@ -1893,10 +1895,10 @@ function VideoNoteWorkspacePage(props: {
   }, [])
 
   const requireSession = useCallback((): AstraSession | null => {
-    if (props.session) return props.session
-    props.onNavigate("/account")
+    if (session) return session
+    onNavigate("/account")
     return null
-  }, [props.onNavigate, props.session])
+  }, [onNavigate, session])
 
   const handleCreate = useCallback(async () => {
     const session = requireSession()
@@ -2005,8 +2007,7 @@ function VideoNoteWorkspacePage(props: {
   }, [applyArtifact, jobId, requireSession])
 
   useEffect(() => {
-    const trimmedDeepLinkedJobId = props.deepLinkedJobId.trim()
-    const session = props.session
+    const trimmedDeepLinkedJobId = deepLinkedJobId.trim()
     if (!trimmedDeepLinkedJobId || !session) return
     if (deepLinkAutoloadedJobIdRef.current === trimmedDeepLinkedJobId) return
 
@@ -2061,7 +2062,7 @@ function VideoNoteWorkspacePage(props: {
     return () => {
       cancelled = true
     }
-  }, [applyArtifact, applyJobStatus, props.deepLinkedJobId, props.session])
+  }, [applyArtifact, applyJobStatus, deepLinkedJobId, session])
 
   const clearSaved = useCallback(() => {
     setWorkspace(null)
@@ -2083,12 +2084,12 @@ function VideoNoteWorkspacePage(props: {
         <span className="status-pill">{workspace ? `cached · ${workspace.status}` : restoreState === "loading" ? "checking cache…" : "no cached note"}</span>
       </div>
 
-      {!props.session && (
+      {!session && (
         <InlineGate
           title="Sign in to use relay video-note jobs"
           copy="Video-note jobs and artifacts are authenticated relay resources."
           actionLabel="Open account workspace"
-          onAction={() => props.onNavigate("/account")}
+          onAction={() => onNavigate("/account")}
         />
       )}
 
@@ -2196,6 +2197,7 @@ function ArticleWorkspacePage(props: {
   onSendToText: (draft: Omit<TextTransferDraft, "createdAt">) => void
   onRecentImportsChange: () => void
 }) {
+  const { apiBaseUrl, articleImportBaseUrl, onRecentImportsChange, onSendToText } = props
   const [state, setState] = useState<"idle" | "loading" | "ready" | "error">("idle")
   const [restoreState, setRestoreState] = useState<"loading" | "ready">("loading")
   const [error, setError] = useState("")
@@ -2241,8 +2243,8 @@ function ArticleWorkspacePage(props: {
       importedAt: workspace.importedAt,
     })
     saveRecentImport(summarizeArticleImport(workspace))
-    props.onRecentImportsChange()
-  }, [props.onRecentImportsChange, workspace])
+    onRecentImportsChange()
+  }, [onRecentImportsChange, workspace])
 
   const runImport = useCallback(async () => {
     setState("loading")
@@ -2250,8 +2252,8 @@ function ArticleWorkspacePage(props: {
 
     try {
       const imported = await importReadableArticleFromUrl(importUrl, {
-        apiBaseUrl: props.apiBaseUrl,
-        platformBaseUrl: props.articleImportBaseUrl,
+        apiBaseUrl,
+        platformBaseUrl: articleImportBaseUrl,
       })
       setImportUrl(imported.url)
       setWorkspace({
@@ -2264,7 +2266,7 @@ function ArticleWorkspacePage(props: {
       setError(reason instanceof Error ? reason.message : "Article import failed.")
       setState("error")
     }
-  }, [importUrl, props.apiBaseUrl, props.articleImportBaseUrl])
+  }, [apiBaseUrl, articleImportBaseUrl, importUrl])
 
   const clearSaved = useCallback(() => {
     setWorkspace(null)
@@ -2272,8 +2274,8 @@ function ArticleWorkspacePage(props: {
     setError("")
     void clearArticleWorkspace()
     removeRecentImport("article")
-    props.onRecentImportsChange()
-  }, [props.onRecentImportsChange])
+    onRecentImportsChange()
+  }, [onRecentImportsChange])
 
   return (
     <section className="card">
@@ -2324,7 +2326,7 @@ function ArticleWorkspacePage(props: {
                 type="button"
                 className="button secondary"
                 disabled={!articleText.trim()}
-                onClick={() => props.onSendToText({
+                onClick={() => onSendToText({
                   title: workspace.title,
                   source: "article",
                   text: articleText,
@@ -2408,6 +2410,7 @@ function PdfWorkspacePage(props: {
   onSendToText: (draft: Omit<TextTransferDraft, "createdAt">) => void
   onRecentImportsChange: () => void
 }) {
+  const { onRecentImportsChange, onSendToText } = props
   const [state, setState] = useState<"idle" | "loading" | "ready" | "error">("idle")
   const [error, setError] = useState("")
   const [preview, setPreview] = useState<PdfPreviewState | null>(null)
@@ -2433,8 +2436,8 @@ function PdfWorkspacePage(props: {
     if (!preview) return
     void savePdfWorkspace(toPdfWorkspaceSnapshot(preview))
     saveRecentImport(summarizePdfImport(preview))
-    props.onRecentImportsChange()
-  }, [preview, props.onRecentImportsChange])
+    onRecentImportsChange()
+  }, [onRecentImportsChange, preview])
 
   const handleFile = useCallback(async (file: File) => {
     setState("loading")
@@ -2461,8 +2464,8 @@ function PdfWorkspacePage(props: {
     setError("")
     void clearPdfWorkspace()
     removeRecentImport("pdf")
-    props.onRecentImportsChange()
-  }, [props.onRecentImportsChange])
+    onRecentImportsChange()
+  }, [onRecentImportsChange])
 
   return (
     <FileShellCard
@@ -2492,7 +2495,7 @@ function PdfWorkspacePage(props: {
                 type="button"
                 className="button secondary"
                 disabled={!currentPageText.trim()}
-                onClick={() => props.onSendToText({
+                onClick={() => onSendToText({
                   title: `${preview.name} · page ${currentPage.pageNumber}`,
                   source: "pdf",
                   text: currentPageText,
@@ -2560,6 +2563,7 @@ function EpubWorkspacePage(props: {
   onSendToText: (draft: Omit<TextTransferDraft, "createdAt">) => void
   onRecentImportsChange: () => void
 }) {
+  const { onRecentImportsChange, onSendToText } = props
   const bookRef = useRef<Book | null>(null)
   const [state, setState] = useState<"idle" | "loading" | "ready" | "error">("idle")
   const [error, setError] = useState("")
@@ -2588,8 +2592,8 @@ function EpubWorkspacePage(props: {
     if (!preview) return
     void saveEpubWorkspace(toEpubWorkspaceSnapshot(preview))
     saveRecentImport(summarizeEpubImport(preview))
-    props.onRecentImportsChange()
-  }, [preview, props.onRecentImportsChange])
+    onRecentImportsChange()
+  }, [onRecentImportsChange, preview])
 
   const currentChapter = preview?.loadedChapters.find((chapter) => chapter.href === preview.selectedChapterHref)
     ?? preview?.loadedChapters[0]
@@ -2696,8 +2700,8 @@ function EpubWorkspacePage(props: {
     setError("")
     void clearEpubWorkspace()
     removeRecentImport("epub")
-    props.onRecentImportsChange()
-  }, [props.onRecentImportsChange])
+    onRecentImportsChange()
+  }, [onRecentImportsChange])
 
   return (
     <FileShellCard
@@ -2727,7 +2731,7 @@ function EpubWorkspacePage(props: {
                 type="button"
                 className="button secondary"
                 disabled={!currentChapterText.trim()}
-                onClick={() => props.onSendToText({
+                onClick={() => onSendToText({
                   title: `${preview.title} · ${currentChapter.label}`,
                   source: "epub",
                   text: currentChapterText,
@@ -2801,6 +2805,7 @@ function SubtitleWorkspacePage(props: {
   onNavigate: (route: AppRoute) => void
   onRecentImportsChange: () => void
 }) {
+  const { config, onNavigate, onRecentImportsChange, session } = props
   const [workspace, setWorkspace] = useState<SubtitleWorkspaceState | null>(null)
   const [state, setState] = useState<"idle" | "parsed" | "translating" | "done" | "error">("idle")
   const [error, setError] = useState("")
@@ -2823,8 +2828,8 @@ function SubtitleWorkspacePage(props: {
     if (!workspace) return
     void saveSubtitleWorkspace(toSubtitleWorkspaceSnapshot(workspace))
     saveRecentImport(summarizeSubtitleImport(workspace))
-    props.onRecentImportsChange()
-  }, [props.onRecentImportsChange, workspace])
+    onRecentImportsChange()
+  }, [onRecentImportsChange, workspace])
 
   const isDocument = workspace?.format === "markdown" || workspace?.format === "txt" || workspace?.format === "html"
   const items = isDocument ? (workspace?.documents ?? []) : (workspace?.cues ?? [])
@@ -2880,8 +2885,8 @@ function SubtitleWorkspacePage(props: {
   }, [])
 
   const translateAll = useCallback(async () => {
-    if (!props.session || !workspace) {
-      props.onNavigate("/account")
+    if (!session || !workspace) {
+      onNavigate("/account")
       return
     }
 
@@ -2894,11 +2899,11 @@ function SubtitleWorkspacePage(props: {
 
     try {
       const result = await translateWithWebRelay({
-        session: props.session,
-        config: props.config,
+        session,
+        config,
         request: {
           texts,
-          targetLang: props.config.targetLang,
+          targetLang: config.targetLang,
           task: "translate",
         },
       })
@@ -2921,7 +2926,7 @@ function SubtitleWorkspacePage(props: {
       setError(reason instanceof Error ? reason.message : "Translation failed.")
       setState("error")
     }
-  }, [isDocument, props, workspace])
+  }, [config, isDocument, onNavigate, session, workspace])
 
   const exportFile = useCallback(() => {
     if (!workspace) return
@@ -2948,17 +2953,17 @@ function SubtitleWorkspacePage(props: {
     setError("")
     void clearSubtitleWorkspace()
     removeRecentImport("subtitle")
-    props.onRecentImportsChange()
-  }, [props.onRecentImportsChange])
+    onRecentImportsChange()
+  }, [onRecentImportsChange])
 
   return (
     <>
-      {!props.session && (
+      {!session && (
         <InlineGate
           title="Translation uses your Astra session"
           copy="Parsing works locally without sign-in. Translating and export-ready bilingual output requires an Astra session."
           actionLabel="Open account workspace"
-          onAction={() => props.onNavigate("/account")}
+          onAction={() => onNavigate("/account")}
         />
       )}
 

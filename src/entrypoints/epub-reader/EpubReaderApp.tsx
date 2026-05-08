@@ -20,6 +20,7 @@ import {
   readDocumentFileBytes,
   type DocumentFileHandoffFailureReason,
 } from "@/utils/reading/document-file-handoff"
+import { useAstraTheme } from "@/utils/ui/useAstraTheme"
 
 type Phase = "idle" | "loading" | "reading" | "error"
 
@@ -51,6 +52,7 @@ async function getTargetLang(): Promise<string> {
 }
 
 export function EpubReaderApp() {
+  const { astraTheme, astraDirection } = useAstraTheme()
   const [phase, setPhase] = useState<Phase>("idle")
   const [error, setError] = useState<string | null>(null)
   const [reopenBanner, setReopenBanner] = useState<string | null>(null)
@@ -218,10 +220,13 @@ export function EpubReaderApp() {
   }, [])
 
   return (
-    <div className="astra-container astra-container--wide" style={containerStyle} data-astra-theme="light">
-      <header style={headerStyle}>
-        <h1 style={{ margin: 0, fontSize: 18, color: "var(--astra-brand)" }}>Astra ePub Reader</h1>
-        {bookTitle && <span style={{ fontSize: 13, color: "var(--astra-text-muted)" }}>{bookTitle}</span>}
+    <div className="astra-container astra-container--wide" style={containerStyle} data-astra-theme={astraTheme} data-astra={astraDirection}>
+      <header className="astra-reader-page-header">
+        <div className="astra-reader-page-header__brand">
+          <span className="astra-reader-page-header__mark" aria-hidden="true">A</span>
+          <h1 className="astra-reader-page-header__title">Astra ePub Reader</h1>
+        </div>
+        {bookTitle && <span className="astra-reader-page-header__file">{bookTitle}</span>}
       </header>
 
       {reopenBanner && (
@@ -331,15 +336,6 @@ const containerStyle: React.CSSProperties = {
   fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif',
   margin: "0 auto",
   padding: 16,
-}
-
-const headerStyle: React.CSSProperties = {
-  display: "flex",
-  alignItems: "center",
-  gap: 12,
-  padding: "12px 0",
-  borderBottom: "1px solid var(--astra-border)",
-  marginBottom: 16,
 }
 
 const tocStyle: React.CSSProperties = {

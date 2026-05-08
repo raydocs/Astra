@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react"
+import { useEffect, useRef, useState, type ReactNode } from "react"
 import { browser } from "#imports"
 import {
   buildLearningLoopAccountContinuityPopupSignInUrl,
@@ -11,6 +11,7 @@ import {
   type LearningLoopCopyVariant,
 } from "@/utils/learning-loop-events"
 import { saveConfig } from "@/utils/storage/config"
+import { useAstraTheme } from "@/utils/ui/useAstraTheme"
 
 const SOURCE_LANGUAGES = [
   { value: "en", label: "English" },
@@ -45,7 +46,7 @@ const EXPLAIN_MODE_OPTIONS = [
 ]
 
 const BRAND_COLOR = "var(--astra-brand)"
-const TOTAL_STEPS = 4
+const TOTAL_STEPS = 5
 
 const labelTextStyle: React.CSSProperties = {
   display: "block",
@@ -189,18 +190,68 @@ function StepDots({ current }: { current: number }) {
   )
 }
 
+type PreviewMode = "bilingual" | "translation-only"
+type PreviewStyle = "plain" | "underline" | "highlight"
+
+function OnboardingPreviewChips({
+  label,
+  options,
+  active,
+  onChange,
+}: {
+  label: string
+  options: { value: string, label: string }[]
+  active: string
+  onChange: (next: string) => void
+}) {
+  return (
+    <div className="astra-onboarding-preview-chips">
+      <span className="astra-onboarding-preview-chips__label">{label}</span>
+      <div className="astra-segmented" role="radiogroup" aria-label={label}>
+        {options.map((o) => {
+          const pressed = o.value === active
+          return (
+            <button
+              type="button"
+              key={o.value}
+              role="radio"
+              aria-checked={pressed}
+              aria-pressed={pressed}
+              className="astra-segmented__option"
+              onClick={() => onChange(o.value)}
+            >
+              {o.label}
+            </button>
+          )
+        })}
+      </div>
+    </div>
+  )
+}
+
 function OnboardingPreview({
   targetLang,
   languageLevel,
   explainMode,
+  previewMode,
+  setPreviewMode,
+  previewStyle,
+  setPreviewStyle,
 }: {
   targetLang: string
   languageLevel: string
   explainMode: string
+  previewMode: PreviewMode
+  setPreviewMode: (next: PreviewMode) => void
+  previewStyle: PreviewStyle
+  setPreviewStyle: (next: PreviewStyle) => void
 }) {
   const targetLabel = TARGET_LANGUAGES.find((lang) => lang.value === targetLang)?.label ?? targetLang
   const levelLabel = LEVEL_OPTIONS.find((level) => level.value === languageLevel)?.label ?? languageLevel
   const explainModeLabel = EXPLAIN_MODE_OPTIONS.find((mode) => mode.value === explainMode)?.label ?? explainMode
+
+  const showSource = previewMode === "bilingual"
+  const showTranslation = previewMode === "bilingual" || previewMode === "translation-only"
 
   return (
     <aside className="astra-onboarding-panel astra-onboarding-preview-pane" aria-label="Astra live preview">
@@ -220,19 +271,49 @@ function OnboardingPreview({
         <h2 className="astra-onboarding-preview-title">Why Solitude Is Important for Reading</h2>
         <div className="astra-onboarding-preview-subtitle">为什么独处对阅读如此重要</div>
 
-        <div className="astra-onboarding-preview-body">
-          <p>
-            Reading well requires a kind of <span className="astra-onboarding-preview-mark">attention</span> that the modern web has quietly <span className="astra-onboarding-preview-mark">eroded</span>. To <span className="astra-onboarding-preview-mark">inhabit</span> a difficult sentence, you have to be willing to sit with it.
-          </p>
-          <p className="astra-onboarding-preview-translation">
-            阅读得当需要一种现代网络已悄然侵蚀的专注力。要真正进入一句难懂的话，你必须愿意在它面前停留。
-          </p>
-          <p>
-            Astra runs <span className="astra-onboarding-preview-mark">underneath</span> the page, adding only what you ask for, never repainting what was already <span className="astra-onboarding-preview-mark">legible</span>.
-          </p>
-          <p className="astra-onboarding-preview-translation">
-            Astra 运行在页面之下，只补充你需要的部分，绝不重绘原本已可读的内容。
-          </p>
+        <div className="astra-onboarding-preview-controls">
+          <OnboardingPreviewChips
+            label="Display"
+            active={previewMode}
+            onChange={(v) => setPreviewMode(v as PreviewMode)}
+            options={[
+              { value: "bilingual", label: "Bilingual" },
+              { value: "translation-only", label: "Translated" },
+            ]}
+          />
+          <OnboardingPreviewChips
+            label="Style"
+            active={previewStyle}
+            onChange={(v) => setPreviewStyle(v as PreviewStyle)}
+            options={[
+              { value: "plain", label: "Plain" },
+              { value: "underline", label: "Underline" },
+              { value: "highlight", label: "Highlight" },
+            ]}
+          />
+        </div>
+
+        <div className="astra-onboarding-preview-body" data-preview-style={previewStyle}>
+          {showSource && (
+            <p>
+              Reading well requires a kind of <span className="astra-onboarding-preview-mark">attention</span> that the modern web has quietly <span className="astra-onboarding-preview-mark">eroded</span>. To <span className="astra-onboarding-preview-mark">inhabit</span> a difficult sentence, you have to be willing to sit with it.
+            </p>
+          )}
+          {showTranslation && (
+            <p className="astra-onboarding-preview-translation">
+              阅读得当需要一种现代网络已悄然侵蚀的专注力。要真正进入一句难懂的话，你必须愿意在它面前停留。
+            </p>
+          )}
+          {showSource && (
+            <p>
+              Astra runs <span className="astra-onboarding-preview-mark">underneath</span> the page, adding only what you ask for, never repainting what was already <span className="astra-onboarding-preview-mark">legible</span>.
+            </p>
+          )}
+          {showTranslation && (
+            <p className="astra-onboarding-preview-translation">
+              Astra 运行在页面之下，只补充你需要的部分，绝不重绘原本已可读的内容。
+            </p>
+          )}
         </div>
 
         <div className="astra-onboarding-preview-footer">
@@ -260,6 +341,85 @@ function StepWelcome({ onNext }: { onNext: () => void }) {
         className="astra-btn-onboarding-primary"
       >
         Get started
+        <OnboardingCtaIconArrow />
+      </button>
+    </div>
+  )
+}
+
+function StepStyle({
+  readingStyle,
+  onReadingStyleChange,
+  onNext,
+}: {
+  readingStyle: PreviewStyle
+  onReadingStyleChange: (next: PreviewStyle) => void
+  onNext: () => void
+}) {
+  const choices: { value: PreviewStyle, title: string, description: string, sample: ReactNode }[] = [
+    {
+      value: "underline",
+      title: "Underline",
+      description: "A quiet terracotta mark under translated words. The page stays itself.",
+      sample: (
+        <span>
+          To <span className="astra-onboarding-style-card__mark astra-onboarding-style-card__mark--underline">inhabit</span> a difficult sentence.
+        </span>
+      ),
+    },
+    {
+      value: "highlight",
+      title: "Highlight",
+      description: "A warm tint behind translated words. Easy to spot in long pages.",
+      sample: (
+        <span>
+          To <span className="astra-onboarding-style-card__mark astra-onboarding-style-card__mark--highlight">inhabit</span> a difficult sentence.
+        </span>
+      ),
+    },
+    {
+      value: "plain",
+      title: "Plain",
+      description: "No marks at all. Translation lives in the margin only.",
+      sample: <span>To inhabit a difficult sentence.</span>,
+    },
+  ]
+
+  return (
+    <div style={{ textAlign: "left" }}>
+      <h1 className="astra-onboarding-title">How would you like the translation to feel?</h1>
+      <p className="astra-onboarding-copy">
+        Three reading styles — pick whichever blends most quietly into the pages you read. You can change this later in Settings.
+      </p>
+
+      <div className="astra-onboarding-style-grid" role="radiogroup" aria-label="Reading style">
+        {choices.map((choice) => {
+          const selected = choice.value === readingStyle
+          return (
+            <button
+              type="button"
+              key={choice.value}
+              role="radio"
+              aria-checked={selected}
+              data-selected={selected ? "true" : "false"}
+              className="astra-onboarding-style-card"
+              onClick={() => onReadingStyleChange(choice.value)}
+            >
+              <span className="astra-quiet-eyebrow">{choice.title}</span>
+              <span className="astra-onboarding-style-card__sample">{choice.sample}</span>
+              <span className="astra-onboarding-style-card__desc">{choice.description}</span>
+            </button>
+          )
+        })}
+      </div>
+
+      <button
+        type="button"
+        onClick={onNext}
+        className="astra-btn-onboarding-primary"
+        style={{ marginTop: 24 }}
+      >
+        Continue
         <OnboardingCtaIconArrow />
       </button>
     </div>
@@ -638,11 +798,14 @@ function StepReady({
 }
 
 export default function OnboardingApp() {
+  const { astraTheme, astraDirection } = useAstraTheme()
   const [step, setStep] = useState(0)
   const [sourceLang, setSourceLang] = useState("en")
   const [targetLang, setTargetLang] = useState("zh-CN")
   const [languageLevel, setLanguageLevel] = useState("intermediate")
   const [explainMode, setExplainMode] = useState("deep")
+  const [readingStyle, setReadingStyle] = useState<"plain" | "underline" | "highlight">("underline")
+  const [previewMode, setPreviewMode] = useState<"bilingual" | "translation-only">("bilingual")
   const [learningLoopCopyVariant, setLearningLoopCopyVariantState] = useState<LearningLoopCopyVariant>(DEFAULT_LEARNING_LOOP_COPY_VARIANT)
   const [completing, setCompleting] = useState(false)
   const closureViewTrackedRef = useRef(false)
@@ -722,16 +885,18 @@ export default function OnboardingApp() {
       action: "continue",
       step: "features",
     })
-    setStep(3)
+    setStep(4)
   }
 
   const handleComplete = async () => {
     setCompleting(true)
     try {
+      const presentationTheme = readingStyle === "plain" ? "default" : readingStyle
       await saveConfig({
         targetLang,
         languageLevel: languageLevel as "beginner" | "intermediate" | "advanced",
         explainMode: explainMode as "beginner" | "exam" | "deep",
+        presentation: { theme: presentationTheme },
       })
       await browser.storage.local.set({ "astra.onboarding.completed": true })
       recordLearningLoopEvent("onboarding_completed", {
@@ -769,7 +934,7 @@ export default function OnboardingApp() {
   }
 
   return (
-    <div className="astra-onboarding-shell" data-astra-theme="light" data-astra="quiet">
+    <div className="astra-onboarding-shell" data-astra-theme={astraTheme} data-astra={astraDirection}>
       <main className="astra-onboarding-frame">
         <section className="astra-onboarding-panel astra-onboarding-panel--copy">
           <div className="astra-onboarding-brand-row">
@@ -852,8 +1017,15 @@ export default function OnboardingApp() {
                 onNext={() => setStep(2)}
               />
             )}
-            {step === 2 && <StepFeatures copyVariant={learningLoopCopyVariant} onContinue={handleFeaturesContinue} />}
-            {step === 3 && (
+            {step === 2 && (
+              <StepStyle
+                readingStyle={readingStyle}
+                onReadingStyleChange={setReadingStyle}
+                onNext={() => setStep(3)}
+              />
+            )}
+            {step === 3 && <StepFeatures copyVariant={learningLoopCopyVariant} onContinue={handleFeaturesContinue} />}
+            {step === 4 && (
               <StepReady
                 targetLang={targetLang}
                 copyVariant={learningLoopCopyVariant}
@@ -868,6 +1040,10 @@ export default function OnboardingApp() {
           targetLang={targetLang}
           languageLevel={languageLevel}
           explainMode={explainMode}
+          previewMode={previewMode}
+          setPreviewMode={setPreviewMode}
+          previewStyle={readingStyle}
+          setPreviewStyle={setReadingStyle}
         />
       </main>
     </div>
