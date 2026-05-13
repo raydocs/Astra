@@ -285,14 +285,14 @@ const ASTRA_CERT_PDF_PREVIEW: PdfPreviewState = {
 
 type AssetTile = { id: string; title: string; meta: string; route: AppRoute; tone: "local" | "history" | "vocab" | "empty" }
 
-const ASTRA_CERT_ASSET_TILES = [
+const ASTRA_CERT_ASSET_TILES: AssetTile[] = [
   { id: "cert-asset-deck", title: "marginalia · saved deck", meta: "284 words", route: "/assets", tone: "local" },
   { id: "cert-asset-wolf-hall", title: "Wolf Hall · ch.14 excerpt", meta: "8 highlights", route: "/files/epub", tone: "history" },
   { id: "cert-asset-tunnel", title: "六龜山隧道.jpg", meta: "shared 2026", route: "/assets", tone: "history" },
   { id: "cert-asset-calvino", title: "Calvino · cover.png", meta: "imported", route: "/files/pdf", tone: "local" },
   { id: "cert-asset-drive", title: "Drive My Car · ED", meta: "video still", route: "/video-notes", tone: "vocab" },
   { id: "cert-asset-new", title: "+ new asset", meta: "drop a file", route: "/assets", tone: "empty" },
-] satisfies AssetTile[]
+]
 
 const ASTRA_CERT_IMPORT_LIBRARY: ImportLibraryEntry[] = [
   {
