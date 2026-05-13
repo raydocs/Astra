@@ -967,7 +967,9 @@ function SelectionToolbarApp() {
     ? formatGlossaryEvidenceLabel(actionResult.matchedGlossaryTerms)
     : ""
   const explainAction = actions.find((action) => action.id === "explain")
-  const annotationActions = actions.filter((action) => isVisibleToolbarAction(action, certificationMode) && isAnnotationToolbarAction(action))
+  const annotationActions = actions
+    .filter(isAnnotationToolbarAction)
+    .filter((action) => isVisibleToolbarAction(action, certificationMode))
   const resultCardTitle = runningAction
     ? `${getResultCardTitle(runningAction, false)}…`
     : getResultCardTitle(actionResult?.actionId, saved)
