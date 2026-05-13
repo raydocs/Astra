@@ -987,7 +987,7 @@ function WorkspaceCertificationRouteCard(props: {
       </header>
 
       <div className="workspace-cert-row-list">
-        {props.rows.map((row, index) => (
+        {props.rows.map((row) => (
           <div key={`${props.route}-${row.title}`} className="workspace-cert-row">
             <div>
               <div className="workspace-cert-row-title">{row.title}</div>
@@ -4229,14 +4229,14 @@ function AssetLibraryPage(props: {
       id: `history-${entry.id}`,
       title: entry.title,
       meta: `${entry.hostname} · ${formatNumber(entry.wordsTranslated)} words`,
-      route: "/articles" as AppRoute,
+      route: "/articles",
       tone: "history",
     })),
     ...vocabularyEntries.slice(0, 4).map((entry) => ({
       id: `vocab-${entry.id}`,
       title: entry.text,
       meta: entry.translation || entry.explanation || "saved word",
-      route: "/assets" as AppRoute,
+      route: "/assets",
       tone: "vocab",
     })),
   ]
