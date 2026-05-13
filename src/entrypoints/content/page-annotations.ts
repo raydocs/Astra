@@ -55,10 +55,15 @@ function isSkippableNode(node: Node): boolean {
 function collectTextNodeSpans(root: ParentNode = document.body): TextNodeSpan[] {
   const spans: TextNodeSpan[] = []
   let offset = 0
-  const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, {
+  const ownerDocument = root.ownerDocument ?? document
+  const nodeFilter = ownerDocument.defaultView?.NodeFilter
+  const showText = nodeFilter?.SHOW_TEXT ?? 4
+  const filterReject = nodeFilter?.FILTER_REJECT ?? 2
+  const filterAccept = nodeFilter?.FILTER_ACCEPT ?? 1
+  const walker = ownerDocument.createTreeWalker(root, showText, {
     acceptNode(node) {
-      if (!node.textContent || isSkippableNode(node)) return NodeFilter.FILTER_REJECT
-      return NodeFilter.FILTER_ACCEPT
+      if (!node.textContent || isSkippableNode(node)) return filterReject
+      return filterAccept
     },
   })
 
