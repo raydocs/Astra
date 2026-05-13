@@ -60,6 +60,7 @@ pnpm relay:dev
 - `ASTRA_RELAY_PORT`
 - `ASTRA_RELAY_HOST`
 - `ASTRA_PUBLIC_BASE_URL`
+- `ASTRA_CORS_ALLOWED_ORIGINS`
 - `ASTRA_SESSION_SECRET`
 - `ASTRA_RELAY_EMAIL`
 - `ASTRA_RELAY_PASSWORD`
@@ -83,3 +84,4 @@ pnpm relay:dev
   - `pro`: `openai` + `gemini`, `2000` daily requests, `500_000` daily characters, `120` requests/minute
 - Billing endpoints currently return redirect URLs. By default they point at local mock routes derived from `ASTRA_PUBLIC_BASE_URL`, but you can override them with `ASTRA_BILLING_CHECKOUT_URL` and `ASTRA_BILLING_PORTAL_URL`.
 - For production you will still want durable sessions, billing checks, rate limiting, audit logs, and proper user storage.
+- Browser clients on a separate origin need `ASTRA_CORS_ALLOWED_ORIGINS` set to the deployed Pages origin, for example `https://astra.app,https://www.astra.app`.

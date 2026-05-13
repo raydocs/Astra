@@ -117,6 +117,40 @@ pnpm dev:web
 
 The web URL-import client tags requests with `x-astra-import-surface: web`, so the Worker can keep surface-specific overrides without changing non-import APIs.
 
+## Web + Cloudflare Pages rollout
+
+The web companion now serves the public site and login/free-start entry at `/`, then routes authenticated or anonymous sessions into the app shell.
+
+Production rollout has three moving pieces:
+
+1. Deploy the relay or platform API origin that will own `/v1/auth/anonymous`, `/v1/auth/session`, `/v1/translate`, and sync/account routes.
+2. Deploy this Worker if article import or Worker-fronted auth/sync routes should use Cloudflare. Keep proxy gates enabled until native routes are promoted.
+3. Build and publish the web shell to Cloudflare Pages:
+
+```bash
+cp web/.env.production.example web/.env.production
+# Set VITE_ASTRA_API_BASE_URL to the public relay or Worker API base, ending in /v1.
+# Set VITE_ASTRA_PLATFORM_BASE_URL to the public Worker base if article import is Worker-fronted.
+pnpm deploy:web:cloudflare
+```
+
+For the temporary free public launch, `platform/relay-lite` can serve the minimal managed API front door on Workers:
+
+```bash
+pnpm dlx wrangler secret put OPENROUTER_API_KEY --config platform/relay-lite/wrangler.jsonc
+pnpm dlx wrangler secret put ASTRA_SESSION_SECRET --config platform/relay-lite/wrangler.jsonc
+pnpm deploy:relay-lite:cloudflare
+```
+
+The first production deployment is currently available at `https://astra-relay-lite.courseshare.workers.dev/v1`.
+
+For browser-origin calls, configure CORS on both possible API front doors:
+
+- Node relay: `ASTRA_CORS_ALLOWED_ORIGINS=https://astra.app,https://www.astra.app`
+- Cloudflare Worker: `ASTRA_CORS_ALLOWED_ORIGINS=https://astra.app,https://www.astra.app`
+
+During early rollout, `*` is still useful for staging and local tests, but production should narrow this once the final domain is known.
+
 ## Reversible cutover seams
 
 ### `GET /v1/devices`

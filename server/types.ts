@@ -41,6 +41,7 @@ export interface RelayEnv {
   providerEntitlements: ProviderId[]
   billingCheckoutBaseURL: string
   billingPortalBaseURL: string
+  corsAllowedOrigins?: string[]
   openaiApiKey: string
   googleApiKey: string
   openrouterApiKey: string

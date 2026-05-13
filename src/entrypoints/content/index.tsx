@@ -737,6 +737,40 @@ function injectStyles() {
       display: block;
       margin-top: 0.45em;
     }
+    .astra-translation-error {
+      display: block;
+      margin-top: 0.5em;
+      padding: 0.22rem 0 0.24rem 0.72rem;
+      border-left: 1.5px solid rgba(141, 112, 80, 0.42);
+      color: color-mix(in srgb, currentColor 58%, transparent);
+      font-family: "Source Serif 4", "Source Serif Pro", "Tiempos Text", "Songti SC", "Noto Serif SC", Georgia, serif;
+      font-size: 0.88rem;
+      font-style: italic;
+      line-height: 1.45;
+    }
+    .astra-translation-error-text {
+      margin-right: 0.72em;
+    }
+    .astra-translation-error-retry {
+      appearance: none;
+      border: 0;
+      background: transparent;
+      color: color-mix(in srgb, currentColor 82%, transparent);
+      border-radius: 999px;
+      padding: 0.08em 0.18em;
+      font-family: "Inter Tight", "Söhne", "Helvetica Neue", system-ui, sans-serif;
+      font-size: 0.82rem;
+      font-style: normal;
+      line-height: 1.2;
+      cursor: pointer;
+    }
+    .astra-translation-error-retry:hover {
+      background: color-mix(in srgb, currentColor 8%, transparent);
+    }
+    .astra-translation-error-retry:focus-visible {
+      outline: 2px solid rgba(196, 99, 58, 0.45);
+      outline-offset: 2px;
+    }
     .astra-source[data-astra-source-hidden] {
       display: none !important;
     }
@@ -746,7 +780,7 @@ function injectStyles() {
       font-size: 0.94em;
       font-style: italic;
       line-height: 1.62;
-      border-left: 2px solid rgba(196, 99, 58, 0.46);
+      border-left: 2px solid rgba(196, 99, 58, 0.52);
       padding-left: 0.72em;
       display: block;
       user-select: text;
@@ -804,9 +838,36 @@ function injectStyles() {
       cursor: pointer;
       transition: opacity 0.2s ease;
     }
-    .astra-loading-dots {
-      color: var(--astra-text-hint);
+    .astra-loading .astra-translation-inner {
+      border-left-style: dashed;
+      border-left-color: rgba(141, 112, 80, 0.34);
+      color: color-mix(in srgb, currentColor 42%, transparent);
+    }
+    .astra-loading-lines {
+      display: flex;
+      flex-direction: column;
+      gap: 0.42em;
+      width: min(40rem, 96%);
+      padding: 0.08em 0 0.04em;
+    }
+    .astra-loading-line {
+      display: block;
+      height: 0.54em;
+      border-radius: 999px;
+      background: rgba(141, 112, 80, 0.26);
       animation: astra-pulse 1.5s ease-in-out infinite;
+    }
+    .astra-loading-line-long { width: 100%; }
+    .astra-loading-line-medium { width: 92%; }
+    .astra-loading-line-short { width: 43%; }
+    .astra-loading-dots {
+      position: absolute;
+      width: 1px;
+      height: 1px;
+      overflow: hidden;
+      clip: rect(0 0 0 0);
+      white-space: nowrap;
+      opacity: 0;
     }
     @keyframes astra-pulse {
       0%, 100% { opacity: 0.4; }

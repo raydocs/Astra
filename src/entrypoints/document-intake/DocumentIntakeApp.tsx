@@ -178,6 +178,7 @@ export function DocumentIntakeApp() {
       </header>
 
       <label
+        htmlFor="astra-document-intake-file-input"
         data-testid="document-intake-dropzone"
         className="astra-drop-zone-cursor astra-reader-drop-zone"
         onDragOver={(event) => event.preventDefault()}
@@ -186,6 +187,7 @@ export function DocumentIntakeApp() {
       >
         <input
           ref={fileInputRef}
+          id="astra-document-intake-file-input"
           data-testid="document-intake-file-input"
           type="file"
           accept={accept}
@@ -217,7 +219,9 @@ export function DocumentIntakeApp() {
       </section>
 
       {phase === "saving" && (
-        <div role="status" style={statusStyle}>Saving queue continuity and opening the reader…</div>
+        <div role="status" aria-live="polite" style={statusStyle}>
+          Saving queue continuity and opening the reader…
+        </div>
       )}
 
       {phase === "error" && error && (

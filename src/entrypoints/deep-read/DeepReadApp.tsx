@@ -221,7 +221,7 @@ export default function DeepReadApp() {
   const [config, setConfig] = useState<AstraConfig | null>(null)
   const [studyContext, setStudyContext] = useState<PageStudyContext | null>(null)
   const [snapshotSentences, setSnapshotSentences] = useState<string[]>([])
-  const [readingMode, setReadingMode] = useState<"focus" | "reading">("focus")
+  const [readingMode, setReadingMode] = useState<"focus" | "reading">("reading")
   const [displayMode, setDisplayMode] = useState<"bilingual" | "source" | "translated">("bilingual")
   const [studyLoop, setStudyLoop] = useState<StudyLoopViewModel | null>(null)
   const [pageDigest, setPageDigest] = useState<PageDigestRecord | null>(null)
@@ -407,6 +407,10 @@ export default function DeepReadApp() {
   const savedPageReviewActionLabel = pageSavedReviewSummary
     ? t("popup_studyPageSavedReviewAction")
     : dueCount > 0 ? `${t("popup_review")} (${dueCount})` : t("popup_review")
+  const readingProgressPercent = sentences.length > 0
+    ? Math.round(((selectedSentenceIndex + 1) / sentences.length) * 100)
+    : 0
+  const reachedReadingEnd = sentences.length > 0 && selectedSentenceIndex >= sentences.length - 1
 
   const stickyNotes = useMemo<DeepReadStickyNoteItem[]>(() => {
     const paragraphLabel = sentences.length > 0
@@ -824,6 +828,9 @@ export default function DeepReadApp() {
                   {selectedSentence
                     ? formatMessage(t("popup_deepReadSentenceProgress"), selectedSentenceIndex + 1, sentences.length)
                     : t("popup_studySummaryEmpty")}
+                  {sentences.length > 0 && (
+                    <span className="astra-deep-read-progress-percent"> · {readingProgressPercent}%</span>
+                  )}
                 </div>
               </div>
               <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
@@ -946,7 +953,7 @@ export default function DeepReadApp() {
                       Reading workspace
                     </div>
                     <div className="astra-deep-read-muted-copy">
-                      Select any visible sentence to sync the focus card and keep studying from there.
+                      Select any visible sentence to sync the focus card. Explanations and translations appear in the right margin only after you ask Astra for them.
                     </div>
                   </div>
                   {selectedSentenceAnchor?.sentenceHash && (
@@ -998,6 +1005,32 @@ export default function DeepReadApp() {
                   {selectedExplanation}
                 </div>
               </div>
+            )}
+
+            {sentences.length > 0 && (
+              <section className="astra-deep-read-finish-card" aria-label="Reading completion and review summary">
+                <div className="astra-micro-label astra-deep-read-finish-card__eyebrow">
+                  {reachedReadingEnd ? "Finish" : "Reading progress"}
+                </div>
+                <div className="astra-deep-read-finish-card__title">
+                  {reachedReadingEnd ? "Ready for a quiet review." : `${readingProgressPercent}% through this excerpt.`}
+                </div>
+                <p className="astra-deep-read-finish-card__copy">
+                  {pageSavedReviewSummary
+                    ? `${pageSavedReviewSummary.count} saved sentence${pageSavedReviewSummary.count === 1 ? "" : "s"} from this page can move into review without changing the SRS schedule.`
+                    : savedCount > 0
+                      ? `${savedCount} saved sentence${savedCount === 1 ? "" : "s"} from this page. Review becomes available as soon as the saved card is linked.`
+                      : "Save a sentence or ask for an explanation to build a review set from this page."}
+                </p>
+                <div className="astra-deep-read-finish-card__actions">
+                  <button type="button" className="astra-cta-secondary" onClick={openSavedPageReview}>
+                    {savedPageReviewActionLabel}
+                  </button>
+                  <button type="button" className="astra-btn-secondary" onClick={openVocabulary}>
+                    {t("popup_vocabulary")}
+                  </button>
+                </div>
+              </section>
             )}
 
             {savedSentenceIndices.has(selectedSentenceIndex) && (

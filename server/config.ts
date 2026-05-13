@@ -56,6 +56,14 @@ function parseOptionalText(raw: string | undefined): string | undefined {
   return trimmed ? trimmed : undefined
 }
 
+function parseCorsAllowedOrigins(raw: string | undefined): string[] {
+  const values = (raw ?? "*")
+    .split(",")
+    .map((item) => item.trim())
+    .filter(Boolean)
+  return values.length > 0 ? values : ["*"]
+}
+
 function parsePositiveInteger(raw: string | undefined, fallback: number): number {
   if (!raw?.trim()) return fallback
   const parsed = Number.parseInt(raw, 10)
@@ -88,6 +96,7 @@ export function loadRelayEnv(env: NodeJS.ProcessEnv = process.env): RelayEnv {
     providerEntitlements: parseProviderEntitlements(env.ASTRA_PROVIDER_ENTITLEMENTS),
     billingCheckoutBaseURL: env.ASTRA_BILLING_CHECKOUT_URL ?? `${origin}/billing/mock/checkout`,
     billingPortalBaseURL: env.ASTRA_BILLING_PORTAL_URL ?? `${origin}/billing/mock/portal`,
+    corsAllowedOrigins: parseCorsAllowedOrigins(env.ASTRA_CORS_ALLOWED_ORIGINS),
     openaiApiKey: env.OPENAI_API_KEY?.trim() ?? "",
     googleApiKey: env.GOOGLE_GENERATIVE_AI_API_KEY?.trim() ?? "",
     openrouterApiKey: env.OPENROUTER_API_KEY?.trim() ?? "",

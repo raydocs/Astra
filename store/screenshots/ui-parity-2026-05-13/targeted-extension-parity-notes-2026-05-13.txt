@@ -1,0 +1,4 @@
+production:popup-empty-state.png compact empty-library state extension=bbgbfdohdgdnoiacakjnfhlhhgnfclcn
+production:onboarding-permission-card.png browser-anchored ready permission scene
+production:review-card.png historical focused revealed review card; binary SRS disclosure was visible at capture time before four-grade scheduling implementation
+production:review-summary.png historical focused editorial summary after Good/remembered answer before four-grade scheduling implementation; recapture pending

@@ -22,10 +22,57 @@ import { handleSyncCompaction } from "./handlers/sync-compaction"
 import { handleSyncPull } from "./handlers/sync-pull"
 import { handleSyncPush } from "./handlers/sync-push"
 import { handleSyncRepair } from "./handlers/sync-repair"
-import { errorResponse } from "./lib/http"
+import { errorResponse, withResponseHeaders } from "./lib/http"
 import { proxyToNodeRelay } from "./lib/proxy"
 
+const CORS_ALLOW_HEADERS = [
+  "authorization",
+  "content-type",
+  "idempotency-key",
+  "x-astra-device-id",
+  "x-astra-import-surface",
+  "x-astra-operator-token",
+].join(", ")
+
+const CORS_ALLOW_METHODS = "GET, POST, PATCH, DELETE, OPTIONS"
+
+function resolveCorsOrigin(request: Request, ctx: AstraRequestContext): string | null {
+  const origin = request.headers.get("origin")?.trim()
+  if (!origin) return null
+  const allowedOrigins = ctx.config.corsAllowedOrigins ?? ["*"]
+  if (allowedOrigins.includes("*")) return "*"
+  return allowedOrigins.includes(origin) ? origin : null
+}
+
+function withCorsHeaders(request: Request, ctx: AstraRequestContext, response: Response): Response {
+  const allowedOrigin = resolveCorsOrigin(request, ctx)
+  if (!allowedOrigin) return response
+
+  const headers: Record<string, string> = {
+    "access-control-allow-origin": allowedOrigin,
+    "access-control-allow-methods": CORS_ALLOW_METHODS,
+    "access-control-allow-headers": CORS_ALLOW_HEADERS,
+    "access-control-max-age": "86400",
+  }
+  if (allowedOrigin !== "*") {
+    headers.vary = "Origin"
+  }
+  return withResponseHeaders(response, headers)
+}
+
 export async function routeRequest(
+  request: Request,
+  env: AstraPlatformEnv,
+  ctx: AstraRequestContext,
+): Promise<Response> {
+  if (request.method === "OPTIONS") {
+    return withCorsHeaders(request, ctx, new Response(null, { status: 204 }))
+  }
+
+  return withCorsHeaders(request, ctx, await routeRequestInner(request, env, ctx))
+}
+
+async function routeRequestInner(
   request: Request,
   env: AstraPlatformEnv,
   ctx: AstraRequestContext,

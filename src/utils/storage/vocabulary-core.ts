@@ -2,6 +2,7 @@ import { z } from "zod"
 
 import { ExplainModeSchema, LanguageLevelSchema, type ExplainMode, type LanguageLevel } from "@/types/config"
 import { createDefaultSrsFields } from "@/utils/srs/leitner"
+import type { ReviewGrade } from "@/utils/srs/leitner"
 import { buildSentenceHash } from "@/utils/sentence-anchor"
 
 export const VocabularySourceContextSurfaceSchema = z.enum([
@@ -50,6 +51,8 @@ export const VocabularyEntrySchema = z.object({
   nextReviewAt: z.number().optional(),
   reviewCount: z.number().optional(),
   lastReviewedAt: z.number().nullable().optional(),
+  lastReviewGrade: z.enum(["again", "hard", "good", "easy"]).nullable().optional(),
+  lastReviewGradeAt: z.number().nullable().optional(),
   note: z.string().max(1000).optional(),
   tags: z.array(z.string()).optional(),
   glossaryEnabled: z.boolean().optional(),
@@ -65,9 +68,32 @@ export const SyncedVocabularyEntrySchema = VocabularyEntrySchema.omit({
   nextReviewAt: true,
   reviewCount: true,
   lastReviewedAt: true,
+  lastReviewGrade: true,
+  lastReviewGradeAt: true,
 })
 
 export type SyncedVocabularyEntry = z.infer<typeof SyncedVocabularyEntrySchema>
+
+export const VocabularyReviewGradeSchema = z.enum(["again", "hard", "good", "easy"])
+
+export const VocabularyReviewScheduleRecordSchema = z.object({
+  vocabularyEntryId: z.string().trim().min(1),
+  srsBox: z.number().int().min(1).max(5),
+  nextReviewAt: z.number().int().nonnegative(),
+  reviewCount: z.number().int().nonnegative(),
+  lastReviewedAt: z.number().int().nonnegative().nullable().default(null),
+  lastReviewGrade: VocabularyReviewGradeSchema.nullable().default(null),
+  lastReviewGradeAt: z.number().int().nonnegative().nullable().default(null),
+  updatedAt: z.number().int().nonnegative(),
+}).strict()
+
+export type VocabularyReviewScheduleRecord = z.infer<typeof VocabularyReviewScheduleRecordSchema>
+
+export interface VocabularyReviewScheduleSyncMutationLike {
+  recordId: string
+  operation: "upsert" | "delete"
+  payload?: unknown
+}
 
 export interface VocabularySyncMutationLike {
   recordId: string
@@ -166,6 +192,129 @@ export function ensureSrsFields(entry: VocabularyEntry): VocabularyEntry {
     reviewCount: entry.reviewCount ?? defaults.reviewCount,
     lastReviewedAt: entry.lastReviewedAt ?? defaults.lastReviewedAt,
   }
+}
+
+export function buildDefaultVocabularyReviewScheduleRecord(
+  entry: VocabularyEntry,
+): VocabularyReviewScheduleRecord {
+  const withSrs = ensureSrsFields(entry)
+  const updatedAt = withSrs.lastReviewedAt ?? withSrs.savedAt
+  return VocabularyReviewScheduleRecordSchema.parse({
+    vocabularyEntryId: withSrs.id,
+    srsBox: withSrs.srsBox,
+    nextReviewAt: withSrs.nextReviewAt,
+    reviewCount: withSrs.reviewCount,
+    lastReviewedAt: withSrs.lastReviewedAt ?? null,
+    lastReviewGrade: withSrs.lastReviewGrade ?? null,
+    lastReviewGradeAt: withSrs.lastReviewGradeAt ?? null,
+    updatedAt,
+  })
+}
+
+export function buildSyncSafeVocabularyReviewScheduleRecord(
+  record: VocabularyReviewScheduleRecord,
+): VocabularyReviewScheduleRecord {
+  return VocabularyReviewScheduleRecordSchema.parse(record)
+}
+
+export function mergeVocabularyReviewScheduleRecord(
+  existing: VocabularyReviewScheduleRecord | null | undefined,
+  incoming: VocabularyReviewScheduleRecord,
+): VocabularyReviewScheduleRecord {
+  if (!existing) return buildSyncSafeVocabularyReviewScheduleRecord(incoming)
+  return buildSyncSafeVocabularyReviewScheduleRecord(
+    incoming.updatedAt >= existing.updatedAt ? incoming : existing,
+  )
+}
+
+export function applyVocabularyReviewScheduleToEntry(
+  entry: VocabularyEntry,
+  record: VocabularyReviewScheduleRecord | null | undefined,
+): VocabularyEntry {
+  if (!record || record.vocabularyEntryId !== entry.id) return ensureSrsFields(entry)
+  return ensureSrsFields({
+    ...entry,
+    srsBox: record.srsBox,
+    nextReviewAt: record.nextReviewAt,
+    reviewCount: record.reviewCount,
+    lastReviewedAt: record.lastReviewedAt,
+    lastReviewGrade: record.lastReviewGrade,
+    lastReviewGradeAt: record.lastReviewGradeAt,
+  })
+}
+
+export function applyVocabularyReviewScheduleRecordsToEntries(
+  entries: VocabularyEntry[],
+  records: VocabularyReviewScheduleRecord[],
+): VocabularyEntry[] {
+  const scheduleByEntryId = new Map(records.map((record) => [record.vocabularyEntryId, record]))
+  return entries.map((entry) => applyVocabularyReviewScheduleToEntry(entry, scheduleByEntryId.get(entry.id)))
+}
+
+export function buildVocabularyReviewScheduleSyncRecordMap(
+  records: VocabularyReviewScheduleRecord[],
+): Record<string, VocabularyReviewScheduleRecord> {
+  return Object.fromEntries(
+    records.map((record) => {
+      const synced = buildSyncSafeVocabularyReviewScheduleRecord(record)
+      return [synced.vocabularyEntryId, synced]
+    }),
+  )
+}
+
+export function applyVocabularyReviewScheduleSyncMutation(
+  records: VocabularyReviewScheduleRecord[],
+  mutation: VocabularyReviewScheduleSyncMutationLike,
+): VocabularyReviewScheduleRecord[] {
+  if (mutation.operation === "delete") {
+    return records.filter((record) => record.vocabularyEntryId !== mutation.recordId)
+  }
+
+  const incoming = VocabularyReviewScheduleRecordSchema.parse(mutation.payload)
+  if (incoming.vocabularyEntryId !== mutation.recordId) {
+    throw new Error("Vocabulary review schedule sync recordId must match payload.vocabularyEntryId")
+  }
+
+  const existingIndex = records.findIndex((record) => record.vocabularyEntryId === incoming.vocabularyEntryId)
+  if (existingIndex < 0) {
+    return [incoming, ...records]
+  }
+
+  const nextRecords = [...records]
+  nextRecords[existingIndex] = mergeVocabularyReviewScheduleRecord(records[existingIndex], incoming)
+  return nextRecords
+}
+
+export function applyVocabularyReviewScheduleSyncMutations(
+  records: VocabularyReviewScheduleRecord[],
+  mutations: VocabularyReviewScheduleSyncMutationLike[],
+): VocabularyReviewScheduleRecord[] {
+  return mutations.reduce(
+    (currentRecords, mutation) => applyVocabularyReviewScheduleSyncMutation(currentRecords, mutation),
+    records.map(buildSyncSafeVocabularyReviewScheduleRecord),
+  )
+}
+
+export function buildReviewedVocabularyReviewScheduleRecord(params: {
+  vocabularyEntryId: string
+  srsBox: number
+  nextReviewAt: number
+  reviewCount: number
+  lastReviewedAt: number | null
+  grade: ReviewGrade
+  updatedAt?: number
+}): VocabularyReviewScheduleRecord {
+  const updatedAt = params.updatedAt ?? params.lastReviewedAt ?? Date.now()
+  return VocabularyReviewScheduleRecordSchema.parse({
+    vocabularyEntryId: params.vocabularyEntryId,
+    srsBox: params.srsBox,
+    nextReviewAt: params.nextReviewAt,
+    reviewCount: params.reviewCount,
+    lastReviewedAt: params.lastReviewedAt,
+    lastReviewGrade: params.grade,
+    lastReviewGradeAt: params.lastReviewedAt ?? updatedAt,
+    updatedAt,
+  })
 }
 
 function stripUndefinedFields<T extends Record<string, unknown>>(value?: T | null): Partial<T> {

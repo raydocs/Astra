@@ -1,6 +1,7 @@
 import { act } from "react"
 import ReactDOM from "react-dom/client"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
+import { readFileSync } from "node:fs"
 
 const { saveConfigMock } = vi.hoisted(() => ({
   saveConfigMock: vi.fn(),
@@ -14,6 +15,8 @@ import { LEARNING_LOOP_COPY_VARIANT_STORAGE_KEY } from "@/utils/learning-loop-ev
 import { getRecentEvents } from "@/utils/telemetry"
 import OnboardingApp from "./OnboardingApp"
 
+const wxtConfigSource = readFileSync("wxt.config.ts", "utf8")
+
 describe("OnboardingApp", () => {
   let container: HTMLDivElement
   let root: ReactDOM.Root
@@ -21,6 +24,7 @@ describe("OnboardingApp", () => {
   beforeEach(async () => {
     vi.clearAllMocks()
     saveConfigMock.mockResolvedValue(undefined)
+    window.history.replaceState(null, "", "/onboarding.html")
     container = document.createElement("div")
     document.body.appendChild(container)
     root = ReactDOM.createRoot(container)
@@ -38,6 +42,7 @@ describe("OnboardingApp", () => {
       await Promise.resolve()
     })
     container.remove()
+    window.history.replaceState(null, "", "/onboarding.html")
   })
 
   function buttonByText(text: string) {
@@ -66,7 +71,37 @@ describe("OnboardingApp", () => {
     expect(container.textContent).toContain("Astra — AI Language Learning")
     expect(container.textContent).toContain("Not just a translator: turn real webpages into sentence explanations")
     expect(container.querySelector('[data-testid="onboarding-ios-bridge-diagnostics"]')).toBeNull()
+    expect(container.querySelector('[data-testid="onboarding-permission-certification-frame"]')).toBeNull()
     expect(buttonByText("Get started")).toBeDefined()
+  })
+
+  it("renders a truthful permission certification frame only with astraCert", async () => {
+    await act(async () => {
+      root.unmount()
+      await Promise.resolve()
+    })
+    window.history.replaceState(null, "", "/onboarding.html?astraCert=1")
+    root = ReactDOM.createRoot(container)
+    await act(async () => {
+      root.render(<OnboardingApp />)
+      await Promise.resolve()
+      await Promise.resolve()
+    })
+
+    const certificationFrame = container.querySelector('[data-testid="onboarding-permission-certification-frame"]') as HTMLElement
+    expect(certificationFrame).toBeTruthy()
+    expect(container.querySelector(".astra-onboarding-shell")).toBeNull()
+    expect(certificationFrame.textContent).toContain("Let Astra read pages in this build?")
+    expect(certificationFrame.textContent).toContain("Current broad access")
+    expect(certificationFrame.textContent).toContain("Declared host access")
+    expect(certificationFrame.textContent).toContain("activeTab support")
+    expect(certificationFrame.textContent).toContain("not a page-only picker")
+    expect(certificationFrame.textContent).toContain("Planned site controls")
+    expect(certificationFrame.textContent).toContain("page-only and per-site controls remain planned, not shipped")
+    expect(certificationFrame.textContent).not.toContain("Just this page")
+    expect(certificationFrame.textContent).not.toContain("This site forever")
+    expect(certificationFrame.textContent).not.toContain("All sites you visit")
+    expect(certificationFrame.textContent).not.toContain("Step 5 of 5")
   })
 
   it("shows onboarding iOS bridge diagnostics only when bridge state has signal", async () => {
@@ -211,6 +246,20 @@ describe("OnboardingApp", () => {
     expect(firstWinActivationCopy.textContent).toContain("Save one useful sentence from a real page")
     expect(firstWinActivationCopy.textContent).toContain("Translate a page, open Deep Read, explain one sentence, save it")
     expect(firstWinActivationCopy.textContent).toContain("same page context back")
+    const permissionDisclosure = container.querySelector('[data-testid="onboarding-permission-disclosure"]') as HTMLElement
+    expect(permissionDisclosure).toBeTruthy()
+    expect(permissionDisclosure.textContent).toContain("How Astra accesses pages in this build")
+    expect(permissionDisclosure.textContent).toContain("Current build: extension site access")
+    expect(permissionDisclosure.textContent).toContain("declares broad host access")
+    expect(permissionDisclosure.textContent).toContain("activeTab for toolbar/tab-triggered interactions")
+    expect(permissionDisclosure.textContent).toContain("does not yet ship a page-only consent picker")
+    expect(permissionDisclosure.textContent).toContain("Planned: always on this site")
+    expect(permissionDisclosure.textContent).toContain("narrower page-only and per-site permission controls are planned, not yet shipped")
+    expect(permissionDisclosure.textContent).toContain("Do not treat page-only or site-only consent as shipped")
+    expect(permissionDisclosure.textContent).not.toContain("Just this page")
+    expect(permissionDisclosure.textContent).not.toContain("All sites you visit")
+    expect(container.querySelector('[data-testid="onboarding-permission-certification-frame"]')).toBeNull()
+    expect(container.textContent).not.toContain("Let Astra read pages in this build?")
     const accountContinuityCopy = container.querySelector('[data-testid="onboarding-account-continuity-copy"]') as HTMLElement
     expect(accountContinuityCopy).toBeTruthy()
     expect(accountContinuityCopy.textContent).toContain("Account continuity")
@@ -266,5 +315,12 @@ describe("OnboardingApp", () => {
         explainMode: "deep",
       }),
     }))
+  })
+
+  it("keeps permission disclosure aligned with the current manifest source", () => {
+    expect(wxtConfigSource).toContain('"activeTab"')
+    expect(wxtConfigSource).toContain('host_permissions: ["*://*/*"]')
+    expect(wxtConfigSource).not.toContain("optional_host_permissions")
+    expect(wxtConfigSource).not.toContain("optional_permissions")
   })
 })

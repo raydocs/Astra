@@ -596,7 +596,7 @@ describe("VocabularyApp", () => {
     expect(container.textContent).toContain("Example article")
     expect(container.textContent).toContain("The ephemeral phase passes quickly.")
 
-    const sourceBadge = Array.from(container.querySelectorAll("div")).find((node) => node.textContent?.trim() === "Popup deep-read") as HTMLDivElement
+    const sourceBadge = container.querySelector('[data-role="vocabulary-entry-card"][data-entry-id="entry-1"]') as HTMLButtonElement
     expect(sourceBadge).toBeTruthy()
 
     await act(async () => {
@@ -655,7 +655,7 @@ describe("VocabularyApp", () => {
   })
 
   it("speaks the saved study sentence directly from the vocabulary card", async () => {
-    const sourceBadge = Array.from(container.querySelectorAll("div")).find((node) => node.textContent?.trim() === "Popup deep-read") as HTMLDivElement
+    const sourceBadge = container.querySelector('[data-role="vocabulary-entry-card"][data-entry-id="entry-1"]') as HTMLButtonElement
 
     await act(async () => {
       sourceBadge.click()
@@ -678,7 +678,7 @@ describe("VocabularyApp", () => {
   })
 
   it("opens the saved popup deep-read sentence back into deep read", async () => {
-    const sourceBadge = Array.from(container.querySelectorAll("div")).find((node) => node.textContent?.trim() === "Popup deep-read") as HTMLDivElement
+    const sourceBadge = container.querySelector('[data-role="vocabulary-entry-card"][data-entry-id="entry-1"]') as HTMLButtonElement
 
     await act(async () => {
       sourceBadge.click()
@@ -717,6 +717,10 @@ describe("VocabularyApp", () => {
     })
 
     expect(container.textContent).toContain("ephemeral")
+    expect(container.textContent).toContain("Search results")
+    expect(container.textContent).toContain("In saved words")
+    expect(container.textContent).not.toContain("In saved sentences")
+    expect(container.textContent).toContain("In article titles")
   })
 
   it("can expand long saved context instead of forcing the 200 character preview", async () => {
@@ -748,7 +752,7 @@ describe("VocabularyApp", () => {
     expect(container.textContent).toContain("Show full context")
     expect(container.textContent).toContain("...")
 
-    const expandButton = Array.from(container.querySelectorAll("button")).find((button) => button.textContent === "Show full context") as HTMLButtonElement
+    const expandButton = container.querySelector('[data-role="vocabulary-entry-card"][data-entry-id="entry-long"]') as HTMLButtonElement
     expect(expandButton).toBeTruthy()
 
     await act(async () => {

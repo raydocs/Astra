@@ -523,6 +523,7 @@ export function ImageTranslateApp() {
         >
           <input
             ref={fileInputRef}
+            id="astra-image-translation-file-input"
             data-testid="image-translation-file-input"
             type="file"
             accept="image/png,image/jpeg,image/webp,image/gif,image/bmp,image/svg+xml"
@@ -544,6 +545,7 @@ export function ImageTranslateApp() {
             >
               {busy ? "Working…" : "Choose image"}
             </button>
+            <label htmlFor="astra-image-translation-file-input" className="astra-sr-only">Choose image for Astra OCR translation</label>
             <div style={{ marginTop: 4, fontSize: 12, color: "var(--astra-style-ink-3)", fontFamily: "var(--astra-style-font-mono, JetBrains Mono, monospace)", letterSpacing: "0.04em" }}>
               Target language: <strong style={{ color: "var(--astra-style-ink-1)" }}>{targetLang}</strong>
               {selectedFileName ? ` · ${selectedFileName}` : ""}

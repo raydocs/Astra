@@ -158,6 +158,38 @@ function formatStatusTime(value: string | null): string {
   return parsed.toLocaleString()
 }
 
+function shouldShowDebugDiagnostics(): boolean {
+  if (import.meta.env.DEV) return true
+  try {
+    return new URLSearchParams(window.location.search).get("debug") === "1"
+  } catch {
+    return false
+  }
+}
+
+function shouldShowOnboardingCertificationFrame(): boolean {
+  try {
+    const searchParams = new URLSearchParams(window.location.search)
+    const hashParams = window.location.hash.includes("?")
+      ? new URLSearchParams(window.location.hash.split("?", 2)[1] ?? "")
+      : new URLSearchParams()
+
+    return searchParams.get("astraCert") === "1" || hashParams.get("astraCert") === "1"
+  } catch {
+    return false
+  }
+}
+
+function OnboardingPermissionSparkleIcon() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true">
+      <path d="M12 3.5v4M12 16.5v4M3.5 12h4M16.5 12h4" strokeLinecap="round" />
+      <path d="M7.75 7.75 6 6M16.25 7.75 18 6M7.75 16.25 6 18M16.25 16.25 18 18" strokeLinecap="round" />
+      <circle cx="12" cy="12" r="2.25" />
+    </svg>
+  )
+}
+
 function buildPopupSignInDeepLinkUrl(): string {
   return buildLearningLoopAccountContinuityPopupSignInUrl((path) => browser.runtime.getURL(path as "/popup.html"))
 }
@@ -645,6 +677,148 @@ function StepFeatures({
   )
 }
 
+function PermissionDisclosureCard() {
+  const rows = [
+    {
+      title: "Current build: extension site access",
+      subtitle: "Astra declares broad host access so page translation and selection tools can run on pages where you invoke them.",
+      current: true,
+    },
+    {
+      title: "Manifest support: active tab interactions",
+      subtitle: "The current manifest includes activeTab for toolbar/tab-triggered interactions, but Astra does not yet ship a page-only consent picker.",
+      current: false,
+    },
+    {
+      title: "Planned: always on this site",
+      subtitle: "Requires an optional host-permission picker plus settings controls to review and revoke per-site grants.",
+      current: false,
+    },
+  ]
+
+  return (
+    <div className="astra-onboarding-permission-card" data-testid="onboarding-permission-disclosure">
+      <div className="astra-onboarding-permission-card__title">How Astra accesses pages in this build</div>
+      <div className="astra-onboarding-permission-card__copy">
+        Astra reads article text in your browser, sends selected or translated text to your configured translation engine, and writes results alongside the page. This card describes the current browser-extension build: narrower page-only and per-site permission controls are planned, not yet shipped.
+      </div>
+      <div className="astra-onboarding-permission-card__choices" aria-label="Site access options">
+        {rows.map((row) => (
+          <div key={row.title} className="astra-onboarding-permission-card__choice" data-current={row.current ? "true" : undefined}>
+            <span className="astra-onboarding-permission-card__dot" aria-hidden="true" />
+            <span>
+              <span className="astra-onboarding-permission-card__choice-title">{row.title}</span>
+              <span className="astra-onboarding-permission-card__choice-subtitle">{row.subtitle}</span>
+            </span>
+          </div>
+        ))}
+      </div>
+      <div className="astra-onboarding-permission-card__footnote">
+        Browser permission prompts are controlled by Chrome/Firefox/Safari. Do not treat page-only or site-only consent as shipped until the manifest and runtime permission flow request, persist, and revoke those grants truthfully.
+      </div>
+    </div>
+  )
+}
+
+function OnboardingPermissionCertificationFrame({
+  astraTheme,
+  astraDirection,
+}: {
+  astraTheme: string
+  astraDirection: string
+}) {
+  const rows = [
+    {
+      title: "Current broad access",
+      subtitle: "Declared host access lets invoked translation and selection tools run.",
+      current: true,
+    },
+    {
+      title: "activeTab support",
+      subtitle: "Toolbar/tab interactions are supported; this is not a page-only picker.",
+      current: false,
+    },
+    {
+      title: "Planned site controls",
+      subtitle: "Future settings can request, persist, and revoke per-site grants.",
+      current: false,
+    },
+  ]
+
+  return (
+    <div
+      className="astra-onboarding-cert-permission-frame"
+      data-testid="onboarding-permission-certification-frame"
+      data-astra-theme={astraTheme}
+      data-astra={astraDirection}
+    >
+      <div className="astra-onboarding-cert-browser">
+        <div className="astra-onboarding-cert-browser__chrome" aria-hidden="true">
+          <span className="astra-onboarding-cert-browser__dots">
+            <span />
+            <span />
+            <span />
+          </span>
+          <div className="astra-onboarding-cert-browser__address">
+            <span className="astra-onboarding-cert-browser__globe" aria-hidden="true">⊕</span>
+            newyorker.com/2026/04/the-quiet-architecture-of-reading
+          </div>
+          <span className="astra-onboarding-cert-browser__extension" aria-hidden="true">
+            <OnboardingPermissionSparkleIcon />
+          </span>
+        </div>
+
+        <div className="astra-onboarding-cert-page" aria-hidden="true">
+          <span className="astra-onboarding-cert-page__headline" />
+          <span />
+          <span />
+          <span />
+          <span className="astra-onboarding-cert-page__short" />
+        </div>
+
+        <section className="astra-onboarding-cert-permission-card" aria-label="Astra page access permission preview">
+          <span className="astra-onboarding-cert-permission-card__tail" aria-hidden="true" />
+          <div className="astra-onboarding-cert-permission-card__intro">
+            <span className="astra-onboarding-cert-permission-card__icon" aria-hidden="true">
+              <OnboardingPermissionSparkleIcon />
+            </span>
+            <div>
+              <div className="astra-onboarding-cert-permission-card__title">Let Astra read pages in this build?</div>
+              <div className="astra-onboarding-cert-permission-card__host">newyorker.com</div>
+            </div>
+          </div>
+          <p className="astra-onboarding-cert-permission-card__copy">
+            Astra reads article text in your browser, sends selected or translated text to your configured engine, and writes results alongside the page. Nothing is stored unless you save a word.
+          </p>
+
+          <div className="astra-onboarding-cert-permission-card__choices" aria-label="Current access disclosure">
+            {rows.map((row) => (
+              <div key={row.title} className="astra-onboarding-cert-permission-card__choice" data-current={row.current ? "true" : undefined}>
+                <span className="astra-onboarding-cert-permission-card__dot" aria-hidden="true" />
+                <span>
+                  <span className="astra-onboarding-cert-permission-card__choice-title">{row.title}</span>
+                  <span className="astra-onboarding-cert-permission-card__choice-subtitle">{row.subtitle}</span>
+                </span>
+              </div>
+            ))}
+          </div>
+
+          <div className="astra-onboarding-cert-permission-card__actions">
+            <button type="button" className="astra-onboarding-cert-permission-card__button astra-onboarding-cert-permission-card__button--ghost">Not now</button>
+            <button type="button" className="astra-onboarding-cert-permission-card__button astra-onboarding-cert-permission-card__button--primary">
+              Allow
+              <OnboardingCtaIconArrow />
+            </button>
+          </div>
+          <div className="astra-onboarding-cert-permission-card__footnote">
+            Current build declares broad host access; page-only and per-site controls remain planned, not shipped.
+          </div>
+        </section>
+      </div>
+    </div>
+  )
+}
+
 function StepReady({
   targetLang,
   copyVariant,
@@ -668,137 +842,175 @@ function StepReady({
   }
 
   return (
-    <div>
-      <h1 className="astra-onboarding-title" style={{ fontSize: 34, marginBottom: 8 }}>You're All Set!</h1>
-      <p className="astra-onboarding-copy" style={{ marginBottom: 24 }}>
-        Your first real-page learning loop is ready.
-      </p>
-
-      <div style={summaryBoxStyle}>
-        <div style={{ fontSize: 15, color: "var(--astra-text-secondary)", lineHeight: 1.6 }}>
-          Astra will turn web pages into bilingual study context and reviewable cards in <strong style={{ color: BRAND_COLOR }}>{targetLabel}</strong>.
-        </div>
-        <div style={{ fontSize: 12, color: "var(--astra-text-muted)", marginTop: 8, lineHeight: 1.5 }}>
-          {copy.readyNote}
-        </div>
-        <div
-          data-testid="onboarding-commercial-package-copy"
-          style={{
-            marginTop: 12,
-            padding: "10px 12px",
-            background: "var(--astra-bg-primary)",
-            border: "1px solid var(--astra-border)",
-            borderRadius: 10,
-            textAlign: "left",
-          }}
-        >
-          <div style={{ fontSize: 11, fontWeight: 800, color: "var(--astra-text-secondary)", textTransform: "uppercase", letterSpacing: "0.04em" }}>
-            {packageCopy.eyebrow}
+    <div className="astra-onboarding-ready-step">
+      <div className="astra-onboarding-permission-scene" aria-label="Astra page access permission preview">
+        <div className="astra-onboarding-permission-browser" aria-hidden="true">
+          <div className="astra-onboarding-permission-browser__chrome">
+            <span />
+            <span />
+            <span />
+            <div>newyorker.com/2026/04/the-quiet-architecture-of-reading</div>
           </div>
-          <div style={{ fontSize: 13, fontWeight: 700, color: "var(--astra-text-primary)", marginTop: 4 }}>
-            {packageCopy.title}
-          </div>
-          <div style={{ fontSize: 12, color: "var(--astra-text-muted)", marginTop: 6, lineHeight: 1.5 }}>
-            {packageCopy.description}
-          </div>
-          <ul style={{ margin: "8px 0 0", paddingLeft: 16, color: "var(--astra-text-muted)", fontSize: 11, lineHeight: 1.45 }}>
-            {packageCopy.steps.map((step) => (
-              <li key={step}>{step}</li>
-            ))}
-          </ul>
-          <div style={{ fontSize: 11, color: "var(--astra-text-muted)", marginTop: 8, lineHeight: 1.45 }}>
-            {packageCopy.control}
-          </div>
-          <div style={{ fontSize: 10, color: "var(--astra-text-muted)", marginTop: 6, lineHeight: 1.45 }}>
-            {packageCopy.boundary}
+          <div className="astra-onboarding-permission-browser__page">
+            <span className="astra-onboarding-permission-browser__headline" />
+            <span />
+            <span />
+            <span />
           </div>
         </div>
-        <div
-          data-testid="onboarding-first-win-activation-copy"
-          style={{
-            marginTop: 12,
-            padding: "10px 12px",
-            borderRadius: 10,
-            background: "var(--astra-info-bg)",
-            border: "1px solid var(--astra-info-border)",
-            color: "var(--astra-info)",
-            lineHeight: 1.45,
-          }}
-        >
-          <div style={{ fontSize: 11, fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.04em" }}>
-            {firstWinCopy.eyebrow}
+        <div className="astra-onboarding-permission-float">
+          <PermissionDisclosureCard />
+          <div className="astra-onboarding-permission-float__actions">
+            <button type="button" className="astra-btn-outline-quiet" disabled={completing}>Not now</button>
+            <button
+              type="button"
+              onClick={onComplete}
+              disabled={completing}
+              className="astra-btn-onboarding-primary"
+            >
+              {completing ? "Setting up…" : "Start using Astra"}
+              {!completing && <OnboardingCtaIconArrow />}
+            </button>
           </div>
-          <div style={{ fontSize: 13, fontWeight: 800, marginTop: 4 }}>
-            {firstWinCopy.title}
-          </div>
-          <div style={{ fontSize: 12, marginTop: 4 }}>
-            {firstWinCopy.summary}
-          </div>
-        </div>
-        <div
-          data-testid="onboarding-account-continuity-copy"
-          style={{
-            marginTop: 12,
-            padding: "10px 12px",
-            borderRadius: 10,
-            background: "var(--astra-bg-elevated)",
-            border: "1px solid var(--astra-border-strong)",
-            color: "var(--astra-text-secondary)",
-            lineHeight: 1.45,
-            textAlign: "left",
-          }}
-        >
-          <div style={{ fontSize: 11, fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.04em", color: "var(--astra-text-muted)" }}>
-            {accountContinuityCopy.eyebrow}
-          </div>
-          <div style={{ fontSize: 13, fontWeight: 800, marginTop: 4, color: "var(--astra-text-primary)" }}>
-            {accountContinuityCopy.title}
-          </div>
-          <div style={{ fontSize: 12, marginTop: 4 }}>
-            {accountContinuityCopy.summary}
-          </div>
-          <div style={{ fontSize: 11, color: "var(--astra-text-muted)", marginTop: 6 }}>
-            {accountContinuityCopy.bullets[2]}
-          </div>
-          <div style={{ fontSize: 10, color: "var(--astra-text-hint)", marginTop: 6 }}>
-            {accountContinuityCopy.boundary}
-          </div>
-          <div
-            data-testid="onboarding-account-continuity-next-action-copy"
-            style={{ fontSize: 11, color: "var(--astra-text-secondary)", marginTop: 8, fontWeight: 700 }}
-          >
-            {accountContinuityCopy.nextAction}
-          </div>
-          <button
-            type="button"
-            data-testid="onboarding-account-continuity-sign-in-cta"
-            onClick={openAccountContinuitySignIn}
-            className="astra-btn-onboarding-primary"
-            style={{ width: "100%", marginTop: 8, padding: "8px 12px", fontSize: 12 }}
-          >
-            {accountContinuityCopy.cta}
-          </button>
-          <div style={{ fontSize: 10, color: "var(--astra-text-hint)", marginTop: 6 }}>
-            {accountContinuityCopy.ctaHelper}
+          <div className="astra-onboarding-permission-float__note">
+            Current broad extension site access is disclosed here; page-only and per-site controls remain planned, not shipped.
           </div>
         </div>
       </div>
 
-      <button
-        type="button"
-        onClick={onComplete}
-        disabled={completing}
-        className="astra-btn-onboarding-primary"
-      >
-        {completing ? "Setting up…" : "Start using Astra"}
-        {!completing && <OnboardingCtaIconArrow />}
-      </button>
+      <div className="astra-onboarding-ready-legacy" aria-hidden="true">
+        <h1 className="astra-onboarding-title" style={{ fontSize: 34, marginBottom: 8 }}>You're All Set!</h1>
+        <p className="astra-onboarding-copy" style={{ marginBottom: 24 }}>
+          Your first real-page learning loop is ready.
+        </p>
+
+        <div style={summaryBoxStyle}>
+          <div style={{ fontSize: 15, color: "var(--astra-text-secondary)", lineHeight: 1.6 }}>
+            Astra will turn web pages into bilingual study context and reviewable cards in <strong style={{ color: BRAND_COLOR }}>{targetLabel}</strong>.
+          </div>
+          <div style={{ fontSize: 12, color: "var(--astra-text-muted)", marginTop: 8, lineHeight: 1.5 }}>
+            {copy.readyNote}
+          </div>
+          <div
+            data-testid="onboarding-commercial-package-copy"
+            style={{
+              marginTop: 12,
+              padding: "10px 12px",
+              background: "var(--astra-bg-primary)",
+              border: "1px solid var(--astra-border)",
+              borderRadius: 10,
+              textAlign: "left",
+            }}
+          >
+            <div style={{ fontSize: 11, fontWeight: 800, color: "var(--astra-text-secondary)", textTransform: "uppercase", letterSpacing: "0.04em" }}>
+              {packageCopy.eyebrow}
+            </div>
+            <div style={{ fontSize: 13, fontWeight: 700, color: "var(--astra-text-primary)", marginTop: 4 }}>
+              {packageCopy.title}
+            </div>
+            <div style={{ fontSize: 12, color: "var(--astra-text-muted)", marginTop: 6, lineHeight: 1.5 }}>
+              {packageCopy.description}
+            </div>
+            <ul style={{ margin: "8px 0 0", paddingLeft: 16, color: "var(--astra-text-muted)", fontSize: 11, lineHeight: 1.45 }}>
+              {packageCopy.steps.map((step) => (
+                <li key={step}>{step}</li>
+              ))}
+            </ul>
+            <div style={{ fontSize: 11, color: "var(--astra-text-muted)", marginTop: 8, lineHeight: 1.45 }}>
+              {packageCopy.control}
+            </div>
+            <div style={{ fontSize: 10, color: "var(--astra-text-muted)", marginTop: 6, lineHeight: 1.45 }}>
+              {packageCopy.boundary}
+            </div>
+          </div>
+          <div
+            data-testid="onboarding-first-win-activation-copy"
+            style={{
+              marginTop: 12,
+              padding: "10px 12px",
+              borderRadius: 10,
+              background: "var(--astra-info-bg)",
+              border: "1px solid var(--astra-info-border)",
+              color: "var(--astra-info)",
+              lineHeight: 1.45,
+            }}
+          >
+            <div style={{ fontSize: 11, fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.04em" }}>
+              {firstWinCopy.eyebrow}
+            </div>
+            <div style={{ fontSize: 13, fontWeight: 800, marginTop: 4 }}>
+              {firstWinCopy.title}
+            </div>
+            <div style={{ fontSize: 12, marginTop: 4 }}>
+              {firstWinCopy.summary}
+            </div>
+          </div>
+          <div
+            data-testid="onboarding-account-continuity-copy"
+            style={{
+              marginTop: 12,
+              padding: "10px 12px",
+              borderRadius: 10,
+              background: "var(--astra-bg-elevated)",
+              border: "1px solid var(--astra-border-strong)",
+              color: "var(--astra-text-secondary)",
+              lineHeight: 1.45,
+              textAlign: "left",
+            }}
+          >
+            <div style={{ fontSize: 11, fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.04em", color: "var(--astra-text-muted)" }}>
+              {accountContinuityCopy.eyebrow}
+            </div>
+            <div style={{ fontSize: 13, fontWeight: 800, marginTop: 4, color: "var(--astra-text-primary)" }}>
+              {accountContinuityCopy.title}
+            </div>
+            <div style={{ fontSize: 12, marginTop: 4 }}>
+              {accountContinuityCopy.summary}
+            </div>
+            <div style={{ fontSize: 11, color: "var(--astra-text-muted)", marginTop: 6 }}>
+              {accountContinuityCopy.bullets[2]}
+            </div>
+            <div style={{ fontSize: 10, color: "var(--astra-text-hint)", marginTop: 6 }}>
+              {accountContinuityCopy.boundary}
+            </div>
+            <div
+              data-testid="onboarding-account-continuity-next-action-copy"
+              style={{ fontSize: 11, color: "var(--astra-text-secondary)", marginTop: 8, fontWeight: 700 }}
+            >
+              {accountContinuityCopy.nextAction}
+            </div>
+            <button
+              type="button"
+              data-testid="onboarding-account-continuity-sign-in-cta"
+              onClick={openAccountContinuitySignIn}
+              className="astra-btn-onboarding-primary"
+              style={{ width: "100%", marginTop: 8, padding: "8px 12px", fontSize: 12 }}
+            >
+              {accountContinuityCopy.cta}
+            </button>
+            <div style={{ fontSize: 10, color: "var(--astra-text-hint)", marginTop: 6 }}>
+              {accountContinuityCopy.ctaHelper}
+            </div>
+          </div>
+        </div>
+
+        <button
+          type="button"
+          onClick={onComplete}
+          disabled={completing}
+          className="astra-btn-onboarding-primary"
+        >
+          {completing ? "Setting up…" : "Start using Astra"}
+          {!completing && <OnboardingCtaIconArrow />}
+        </button>
+      </div>
     </div>
   )
 }
 
 export default function OnboardingApp() {
   const { astraTheme, astraDirection } = useAstraTheme()
+  const showCertificationPermissionFrame = shouldShowOnboardingCertificationFrame()
   const [step, setStep] = useState(0)
   const [sourceLang, setSourceLang] = useState("en")
   const [targetLang, setTargetLang] = useState("zh-CN")
@@ -815,11 +1027,13 @@ export default function OnboardingApp() {
     history: IosBootstrapHistoryEvent[]
   }>({ bridgeAvailable: false, status: null, history: [] })
   const [iosBridgeActionMessage, setIosBridgeActionMessage] = useState("")
-  const showIosBootstrapDiagnostics = iosBootstrapStatus.bridgeAvailable
-    || iosBootstrapStatus.history.length > 0
-    || Boolean(iosBootstrapStatus.status?.lastBootstrapAt)
-    || Boolean(iosBootstrapStatus.status?.lastSessionId)
-    || Boolean(iosBridgeActionMessage)
+  const showIosBootstrapDiagnostics = shouldShowDebugDiagnostics() && (
+    iosBootstrapStatus.bridgeAvailable
+      || iosBootstrapStatus.history.length > 0
+      || Boolean(iosBootstrapStatus.status?.lastBootstrapAt)
+      || Boolean(iosBootstrapStatus.status?.lastSessionId)
+      || Boolean(iosBridgeActionMessage)
+  )
 
   useEffect(() => {
     void fetchIosBootstrapRuntimeStatus().then(setIosBootstrapStatus)
@@ -933,9 +1147,13 @@ export default function OnboardingApp() {
     }
   }
 
+  if (showCertificationPermissionFrame) {
+    return <OnboardingPermissionCertificationFrame astraTheme={astraTheme} astraDirection={astraDirection} />
+  }
+
   return (
     <div className="astra-onboarding-shell" data-astra-theme={astraTheme} data-astra={astraDirection}>
-      <main className="astra-onboarding-frame">
+      <main className="astra-onboarding-frame" data-step={step === 4 ? "ready" : undefined}>
         <section className="astra-onboarding-panel astra-onboarding-panel--copy">
           <div className="astra-onboarding-brand-row">
             <div className="astra-quiet-wordmark">Astra</div>
@@ -1036,15 +1254,17 @@ export default function OnboardingApp() {
           </div>
         </section>
 
-        <OnboardingPreview
-          targetLang={targetLang}
-          languageLevel={languageLevel}
-          explainMode={explainMode}
-          previewMode={previewMode}
-          setPreviewMode={setPreviewMode}
-          previewStyle={readingStyle}
-          setPreviewStyle={setReadingStyle}
-        />
+        {step !== 4 && (
+          <OnboardingPreview
+            targetLang={targetLang}
+            languageLevel={languageLevel}
+            explainMode={explainMode}
+            previewMode={previewMode}
+            setPreviewMode={setPreviewMode}
+            previewStyle={readingStyle}
+            setPreviewStyle={setReadingStyle}
+          />
+        )}
       </main>
     </div>
   )

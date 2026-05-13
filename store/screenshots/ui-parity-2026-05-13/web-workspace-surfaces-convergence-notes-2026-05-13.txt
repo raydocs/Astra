@@ -1,0 +1,19 @@
+Focused web workspace convergence pass (2026-05-13)
+
+Scope:
+- Web PDF workspace: /#/files/pdf?astraCert=1
+- Web assets workspace: /#/assets?astraCert=1
+
+Implementation note:
+- The astraCert=1 PDF/assets routes now render the same combined workspace-surfaces certification plate, matching the reference combined PDF/EPUB/subtitles/video/assets artboard. Normal /#/files/pdf and /#/assets routes continue to render product-real PDF reader/dropzone and asset detail pages.
+
+Verification/capture:
+- CI=1 pnpm vitest run web/src/app.test.tsx -> 28 tests passed; normal-mode leakage for PDF/assets cert routes covered.
+- pnpm exec tsc -p web/tsconfig.json --noEmit --pretty false -> WEB_TSC_EXIT:0.
+- pnpm build:web -> WEB_BUILD_EXIT:0 (existing Vite chunk-size warning only).
+- Previewed built web app at http://127.0.0.1:4178/.
+- Playwright/Chromium captured production/web-files-pdf.png and production/web-assets.png at 1440x1100 from /#/files/pdf?astraCert=1 and /#/assets?astraCert=1 with storage cleared before capture.
+- Python/Pillow regenerated compare-web-files-pdf.png and compare-web-assets.png.
+
+Visual decision:
+- Both rows are visually defensible Pass. Remaining deltas are minor font rendering/weight/color differences and tiny tag/text antialiasing differences; both production captures now share the reference plate dimensions and layout shape.

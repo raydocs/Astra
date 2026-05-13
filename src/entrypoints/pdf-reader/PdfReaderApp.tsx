@@ -368,8 +368,35 @@ export function PdfReaderApp() {
       )}
 
       {phase === "loading" && (
-        <div style={{ padding: 24, textAlign: "center", color: "var(--astra-brand)" }}>
+        <div role="status" aria-live="polite" style={{ padding: 24, textAlign: "center", color: "var(--astra-brand)" }}>
           Loading PDF...
+        </div>
+      )}
+
+      {phase === "translating" && (
+        <div
+          role="progressbar"
+          aria-label="PDF translation progress"
+          aria-valuemin={0}
+          aria-valuemax={progress.total || 1}
+          aria-valuenow={progress.current}
+          style={{
+            height: 6,
+            margin: "0 0 16px",
+            overflow: "hidden",
+            borderRadius: 999,
+            background: "var(--astra-style-bg-elevated)",
+            border: "1px solid var(--astra-style-line-1)",
+          }}
+        >
+          <span
+            style={{
+              display: "block",
+              width: `${progress.total > 0 ? Math.min(100, Math.round((progress.current / progress.total) * 100)) : 0}%`,
+              height: "100%",
+              background: "var(--astra-style-accent-primary)",
+            }}
+          />
         </div>
       )}
 

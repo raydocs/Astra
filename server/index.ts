@@ -205,6 +205,17 @@ const BLOCKED_URL_HOSTS = new Set([
   "0.0.0.0",
 ])
 
+const CORS_ALLOW_HEADERS = [
+  "authorization",
+  "content-type",
+  "idempotency-key",
+  "x-astra-device-id",
+  "x-astra-import-surface",
+  "x-astra-operator-token",
+].join(", ")
+
+const CORS_ALLOW_METHODS = "GET, POST, PATCH, DELETE, OPTIONS"
+
 async function readJsonBody(request: IncomingMessage): Promise<unknown> {
   const chunks: Buffer[] = []
   for await (const chunk of request) {
@@ -228,6 +239,27 @@ function sendError(response: ServerResponse, status: number, message: string, co
       message,
     },
   })
+}
+
+function resolveCorsOrigin(request: IncomingMessage, env: RelayEnv): string | null {
+  const origin = request.headers.origin?.trim()
+  if (!origin) return null
+  const allowedOrigins = env.corsAllowedOrigins ?? ["*"]
+  if (allowedOrigins.includes("*")) return "*"
+  return allowedOrigins.includes(origin) ? origin : null
+}
+
+function applyCorsHeaders(request: IncomingMessage, response: ServerResponse, env: RelayEnv) {
+  const allowedOrigin = resolveCorsOrigin(request, env)
+  if (!allowedOrigin) return
+
+  response.setHeader("Access-Control-Allow-Origin", allowedOrigin)
+  response.setHeader("Access-Control-Allow-Methods", CORS_ALLOW_METHODS)
+  response.setHeader("Access-Control-Allow-Headers", CORS_ALLOW_HEADERS)
+  response.setHeader("Access-Control-Max-Age", "86400")
+  if (allowedOrigin !== "*") {
+    response.setHeader("Vary", "Origin")
+  }
 }
 
 function normalizeImportedArticleUrl(value: string): URL {
@@ -1013,6 +1045,13 @@ async function routeRequest(
 ) {
   try {
     const url = new URL(request.url ?? "/", `http://${request.headers.host ?? "localhost"}`)
+    applyCorsHeaders(request, response, env)
+
+    if (request.method === "OPTIONS") {
+      response.writeHead(204)
+      response.end()
+      return
+    }
 
     if (url.pathname === "/v1/auth/anonymous" && request.method === "POST") {
       await handleAnonymousAuth(request, response, users)

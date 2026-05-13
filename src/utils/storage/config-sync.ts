@@ -77,12 +77,19 @@ import {
 import {
   SyncedVocabularyEntrySchema,
   VOCABULARY_STORAGE_KEY,
+  VocabularyReviewScheduleRecordSchema,
+  applyVocabularyReviewScheduleRecordsToEntries,
+  applyVocabularyReviewScheduleSyncMutations,
   applyVocabularySyncMutations,
+  buildVocabularyReviewScheduleSyncRecordMap,
   buildVocabularySyncRecordMap,
   getVocabularyEntries,
   readSyncSafeVocabularyEntries,
+  readSyncSafeVocabularyReviewSchedules,
   replaceVocabularyEntries,
+  replaceVocabularyReviewSchedules,
   type SyncedVocabularyEntry,
+  type VocabularyReviewScheduleRecord,
 } from "./vocabulary"
 
 interface AstraBackup {
@@ -135,6 +142,7 @@ export interface AstraContinuityStatus {
     currentDevice: AstraDeviceListEntry | null
     configCollection: ContinuityCollectionStatus | null
     vocabularyCollection: ContinuityCollectionStatus | null
+    reviewScheduleCollection: ContinuityCollectionStatus | null
     readingHistoryCollection: ContinuityCollectionStatus | null
     studyProgressCollection: ContinuityCollectionStatus | null
   }
@@ -157,12 +165,14 @@ export interface AstraPhaseOneSyncResult {
   pushed: {
     config: number
     vocabulary: number
+    review_schedule: number
     reading_history: number
     study_progress: number
   }
   pulled: {
     config: number
     vocabulary: number
+    review_schedule: number
     reading_history: number
     study_progress: number
   }
@@ -177,6 +187,7 @@ export interface AstraPhaseOneSyncLocalStatus {
   cursors: {
     config: string | null
     vocabulary: string | null
+    review_schedule: string | null
     reading_history: string | null
     study_progress: string | null
   }
@@ -193,6 +204,10 @@ interface AstraPhaseOneSyncState {
     vocabulary: {
       cursor: string | null
       shadow: Record<string, SyncedVocabularyEntry>
+    }
+    review_schedule: {
+      cursor: string | null
+      shadow: Record<string, VocabularyReviewScheduleRecord>
     }
     reading_history: {
       cursor: string | null
@@ -239,6 +254,13 @@ const PhaseOneSyncStateSchema = z.object({
       cursor: null,
       shadow: {},
     }),
+    review_schedule: z.object({
+      cursor: z.string().trim().min(1).nullable().default(null),
+      shadow: z.record(z.string(), VocabularyReviewScheduleRecordSchema).default({}),
+    }).default({
+      cursor: null,
+      shadow: {},
+    }),
     reading_history: z.object({
       cursor: z.string().trim().min(1).nullable().default(null),
       shadow: z.record(z.string(), SyncedReadingHistoryEntrySchema).default({}),
@@ -256,6 +278,7 @@ const PhaseOneSyncStateSchema = z.object({
   }).default({
     config: { cursor: null, shadow: {} },
     vocabulary: { cursor: null, shadow: {} },
+    review_schedule: { cursor: null, shadow: {} },
     reading_history: { cursor: null, shadow: {} },
     study_progress: { cursor: null, shadow: {} },
   }),
@@ -277,6 +300,10 @@ function createEmptySyncState(accountEmail: string | null = null): AstraPhaseOne
         shadow: {},
       },
       vocabulary: {
+        cursor: null,
+        shadow: {},
+      },
+      review_schedule: {
         cursor: null,
         shadow: {},
       },
@@ -320,6 +347,7 @@ function buildPhaseOneSyncLocalStatus(state: AstraPhaseOneSyncState | null): Ast
     cursors: {
       config: state?.collections.config.cursor ?? null,
       vocabulary: state?.collections.vocabulary.cursor ?? null,
+      review_schedule: state?.collections.review_schedule.cursor ?? null,
       reading_history: state?.collections.reading_history.cursor ?? null,
       study_progress: state?.collections.study_progress.cursor ?? null,
     },
@@ -360,7 +388,7 @@ function buildContinuityCollectionStatus(
   }
 }
 
-function createClientMutationId(collection: "config" | "vocabulary" | "reading_history" | "study_progress", recordId: string, operation: "upsert" | "delete"): string {
+function createClientMutationId(collection: "config" | "vocabulary" | "review_schedule" | "reading_history" | "study_progress", recordId: string, operation: "upsert" | "delete"): string {
   return `${collection}:${recordId}:${operation}:${Date.now().toString(36)}:${Math.random().toString(36).slice(2, 10)}`
 }
 
@@ -476,7 +504,7 @@ function buildDeepReadSessionShadowByPageUrl(
 }
 
 function diffRecordMaps<T>(params: {
-  collection: "config" | "vocabulary" | "reading_history" | "study_progress"
+  collection: "config" | "vocabulary" | "review_schedule" | "reading_history" | "study_progress"
   current: Record<string, T>
   shadow: Record<string, T>
   deviceId: string
@@ -526,10 +554,6 @@ function buildContinuityLocalOnlySummary(config: AstraConfig): AstraConfigContin
       "owned_reading.localFileBytes",
       "owned_reading.localFileHandles",
       "study_progress.dailyStats",
-      "vocabulary.srsBox",
-      "vocabulary.nextReviewAt",
-      "vocabulary.reviewCount",
-      "vocabulary.lastReviewedAt",
     ],
   }
 }
@@ -640,6 +664,30 @@ function buildVocabularyPushMutations(params: {
   })
 }
 
+function buildReviewSchedulePushMutations(params: {
+  reviewScheduleShadow: Record<string, VocabularyReviewScheduleRecord>
+  reviewScheduleRecords: Record<string, VocabularyReviewScheduleRecord>
+  bootstrap: AstraSyncBootstrap
+  state: AstraPhaseOneSyncState
+  deviceId: string
+  nowIso: string
+}): AstraSyncMutationInput[] {
+  const isInitialBootstrap = !params.state.collections.review_schedule.cursor
+    && Object.keys(params.state.collections.review_schedule.shadow).length === 0
+
+  if (isInitialBootstrap && params.bootstrap.collections.review_schedule.cursor) {
+    return []
+  }
+
+  return diffRecordMaps({
+    collection: "review_schedule",
+    current: params.reviewScheduleRecords,
+    shadow: params.reviewScheduleShadow,
+    deviceId: params.deviceId,
+    nowIso: params.nowIso,
+  })
+}
+
 function buildReadingHistoryPushMutations(params: {
   readingHistoryShadow: Record<string, SyncedReadingHistoryEntry>
   readingHistoryRecords: Record<string, SyncedReadingHistoryEntry>
@@ -739,6 +787,21 @@ function applyVocabularyShadowMutation(
   }
 
   nextShadow[mutation.recordId] = SyncedVocabularyEntrySchema.parse(mutation.payload)
+  return nextShadow
+}
+
+function applyReviewScheduleShadowMutation(
+  shadow: Record<string, VocabularyReviewScheduleRecord>,
+  mutation: Pick<AstraSyncPullResponse["deltas"]["review_schedule"][number], "recordId" | "operation" | "payload">,
+): Record<string, VocabularyReviewScheduleRecord> {
+  const nextShadow = { ...shadow }
+
+  if (mutation.operation === "delete") {
+    delete nextShadow[mutation.recordId]
+    return nextShadow
+  }
+
+  nextShadow[mutation.recordId] = VocabularyReviewScheduleRecordSchema.parse(mutation.payload)
   return nextShadow
 }
 
@@ -858,6 +921,13 @@ function buildVocabularyShadowFromRepair(records: Array<{ recordId: string; payl
   return Object.fromEntries(records.map((record) => [
     record.recordId,
     SyncedVocabularyEntrySchema.parse(record.payload),
+  ]))
+}
+
+function buildReviewScheduleShadowFromRepair(records: Array<{ recordId: string; payload: unknown }>): Record<string, VocabularyReviewScheduleRecord> {
+  return Object.fromEntries(records.map((record) => [
+    record.recordId,
+    VocabularyReviewScheduleRecordSchema.parse(record.payload),
   ]))
 }
 

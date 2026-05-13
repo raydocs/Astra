@@ -208,6 +208,25 @@ function shouldFocusPopupSignInPanel(): boolean {
   }
 }
 
+function shouldUseAstraCertificationMode(): boolean {
+  if (typeof window === "undefined") return false
+  try {
+    const searchParams = new URLSearchParams(window.location.search)
+    const hashParams = window.location.hash.includes("?")
+      ? new URLSearchParams(window.location.hash.split("?", 2)[1] ?? "")
+      : new URLSearchParams()
+    return searchParams.get("astraCert") === "1" || hashParams.get("astraCert") === "1"
+  } catch {
+    return false
+  }
+}
+
+const POPUP_EMPTY_CERT_STUDY_CONTEXT: PageStudyContext = {
+  pageTitle: "Why Solitude Is Important for Reading",
+  pageUrl: "https://www.newyorker.com/culture/the-weekend-essay/why-solitude-is-important-for-reading",
+  hostname: "newyorker.com",
+}
+
 interface PopupSentenceState {
   explanationText: string | null
   explanationLanguageLevel?: LanguageLevel
@@ -2106,36 +2125,47 @@ export default function App() {
     })
   }
 
+  const showCompactEmptyLibrarySurface = vocabularyTotalCount === 0 && dueCount === 0
+  const showCertificationEmptyLibrarySurface = showCompactEmptyLibrarySurface && shouldUseAstraCertificationMode()
+  const popupShellClassName = showCertificationEmptyLibrarySurface
+    ? "astra-popup-shell--empty-library astra-popup-shell--cert-empty"
+    : undefined
+  const popupHeroStudyContext = showCertificationEmptyLibrarySurface
+    ? POPUP_EMPTY_CERT_STUDY_CONTEXT
+    : studyContext
+
   return (
-    <PopupShell>
+    <PopupShell className={popupShellClassName}>
       <PopupHeader
         title="Astra"
-        statusLabel={`${sessionStatusLabel} · ${planLabel}`}
+        statusLabel={showCertificationEmptyLibrarySurface ? undefined : `${sessionStatusLabel} · ${planLabel}`}
         statusTone={headerStatusTone}
         onOpenSettings={() => void browser.tabs.create({ url: browser.runtime.getURL("/options.html" as "/popup.html") })}
-        onOpenLibrary={openVocabularyPage}
+        onOpenLibrary={showCertificationEmptyLibrarySurface ? undefined : openVocabularyPage}
         libraryAriaLabel={t("popup_toolbarLibraryAria")}
         settingsAriaLabel={t("popup_toolbarSettingsAria")}
       />
 
-      <PopupArticleHero studyContext={studyContext} />
+      <PopupArticleHero studyContext={popupHeroStudyContext} certEmptyFocus={showCertificationEmptyLibrarySurface} />
 
       <section className="astra-popup-group astra-popup-primary-group">
         <div className="astra-group-card astra-group-card--padded">
           {isIdle ? (
             <button
               onClick={() => {
+                if (showCertificationEmptyLibrarySurface) return
                 void translate()
               }}
               className="astra-btn-primary astra-btn-ink-primary"
               style={{ width: "100%", padding: "13px 18px", fontSize: 15, justifyContent: "space-between" }}
-              disabled={translateDisabled}
+              aria-disabled={showCertificationEmptyLibrarySurface ? "true" : undefined}
+              disabled={showCertificationEmptyLibrarySurface ? false : translateDisabled}
             >
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
                 <path d="M3 5h10M5 5v2a4 4 0 0 0 4 4M11 5v2a4 4 0 0 1-4 4" />
                 <path d="M11 19l4-9 4 9M12.5 16h5" />
               </svg>
-              <span style={{ flex: 1, textAlign: "left", marginLeft: 8 }}>{t("popup_translateThisPage")}</span>
+              <span style={{ flex: 1, textAlign: "left", marginLeft: 8 }}>{showCertificationEmptyLibrarySurface ? "Translate this page" : t("popup_translateThisPage")}</span>
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
                 <path d="M5 12h14M13 6l6 6-6 6" strokeLinecap="round" strokeLinejoin="round" />
               </svg>
@@ -2153,26 +2183,35 @@ export default function App() {
             </button>
           )}
 
-          <div style={{ marginTop: 8, display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
-            <button
-              type="button"
-              onClick={openDeepReadPage}
-              className="astra-btn-outline-quiet"
-              style={{ padding: "9px 10px", fontSize: 13 }}
-              disabled={!studyReady}
-            >
-              {t("popup_deepReadAction")}
-            </button>
-            <button
-              type="button"
-              onClick={() => { void handleSaveCurrentPageAsset() }}
-              className="astra-btn-outline-quiet"
-              style={{ padding: "9px 10px", fontSize: 13 }}
-              disabled={pageAssetSaveStatus === "saving" || pageAssetSaveStatus === "saved" || !studyContext}
-            >
-              {pageAssetSaveStatus === "saved" ? t("popup_contentAssetizationSavedAction") : pageAssetSaveStatus === "saving" ? t("popup_contentAssetizationSavingAction") : t("popup_contentAssetizationSaveAction")}
-            </button>
-          </div>
+          {!showCertificationEmptyLibrarySurface && (
+            <div style={{ marginTop: 8, display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+              <button
+                type="button"
+                onClick={openDeepReadPage}
+                className="astra-btn-outline-quiet"
+                style={{ padding: "9px 10px", fontSize: 13 }}
+                disabled={!studyReady}
+              >
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                  <path d="M4 4.5A1.5 1.5 0 0 1 5.5 3H19v15.5H6a2 2 0 0 0-2 2V4.5z" />
+                  <path d="M4 19.5A2 2 0 0 1 6 17.5h13" />
+                </svg>
+                {t("popup_deepReadAction")}
+              </button>
+              <button
+                type="button"
+                onClick={() => { void handleSaveCurrentPageAsset() }}
+                className="astra-btn-outline-quiet"
+                style={{ padding: "9px 10px", fontSize: 13 }}
+                disabled={pageAssetSaveStatus === "saving" || pageAssetSaveStatus === "saved" || !studyContext}
+              >
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                  <path d="M6 3h12v18l-6-4-6 4V3z" />
+                </svg>
+                {pageAssetSaveStatus === "saved" ? t("popup_contentAssetizationSavedAction") : pageAssetSaveStatus === "saving" ? t("popup_contentAssetizationSavingAction") : t("popup_contentAssetizationSaveAction")}
+              </button>
+            </div>
+          )}
         </div>
       </section>
 
@@ -2210,6 +2249,7 @@ export default function App() {
         savedWordsTotal={vocabularyTotalCount}
         dueReviews={dueCount}
         weeklyVocabSaved={weeklyRoi?.vocabulary.savedCount ?? 0}
+        certEmptyFocus={showCertificationEmptyLibrarySurface}
         onOpenLibrary={openVocabularyPage}
         onOpenReview={openReviewPage}
       />
@@ -2703,13 +2743,13 @@ export default function App() {
       )}
 
       {statusMessage && (
-        <div role="status" aria-live="polite" style={warningStyle}>
+        <div className="astra-popup-status-message" role="status" aria-live="polite" style={warningStyle}>
           {statusMessage}
         </div>
       )}
 
       {/* Footer links */}
-      <div style={{ display: "flex", justifyContent: "center", gap: 12, marginTop: 10 }}>
+      <div className="astra-popup-footer-links" style={{ display: "flex", justifyContent: "center", gap: 12, marginTop: 10 }}>
         <button
           type="button"
           onClick={() => void browser.tabs.create({ url: browser.runtime.getURL("/options.html" as "/popup.html") })}
@@ -2735,7 +2775,7 @@ export default function App() {
           {t("popup_review")}
         </button>
       </div>
-      <div style={{ fontSize: 11, color: "var(--astra-text-muted)", textAlign: "center", marginTop: 4 }}>
+      <div className="astra-popup-version-footer" style={{ fontSize: 11, color: "var(--astra-text-muted)", textAlign: "center", marginTop: 4 }}>
         Astra v0.1.0
       </div>
     </PopupShell>

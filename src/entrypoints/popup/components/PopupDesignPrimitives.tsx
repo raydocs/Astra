@@ -3,11 +3,11 @@ import { useAstraTheme } from "@/utils/ui/useAstraTheme"
 
 export type PopupStatusTone = "ready" | "warning" | "muted"
 
-export function PopupShell({ children }: { children: ReactNode }) {
+export function PopupShell({ children, className }: { children: ReactNode; className?: string }) {
   const { astraTheme, astraDirection } = useAstraTheme()
   return (
     <div
-      className="astra-quiet-shell astra-popup-shell"
+      className={["astra-quiet-shell astra-popup-shell", className].filter(Boolean).join(" ")}
       data-astra={astraDirection}
       data-astra-theme={astraTheme}
     >

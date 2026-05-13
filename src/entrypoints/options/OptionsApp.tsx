@@ -597,6 +597,37 @@ function ProvidersSection({
   config: AstraConfig
   onProviderChange: (patch: Partial<AstraConfig["provider"]>) => void
 }) {
+  const providerRows = PROVIDER_OPTIONS.map((provider) => {
+    const active = provider.value === config.provider.id
+    const model = active ? (config.provider.model || getDefaultProviderModel(provider.value)) : getDefaultProviderModel(provider.value)
+    const hasDirectKey = active && Boolean(config.provider.apiKey?.trim())
+    const hasRelay = active && Boolean(config.provider.relayBaseURL?.trim())
+    const hasManagedToken = active && Boolean(config.provider.accessToken?.trim())
+    const status: "active" | "configured" | "off" = active
+      ? "active"
+      : "off"
+    const statusLabel = active
+      ? (hasDirectKey || hasRelay || hasManagedToken ? "Active" : "Selected · needs access")
+      : "Not configured"
+    const routeLabel = active
+      ? hasDirectKey
+        ? "Direct API key"
+        : hasRelay || hasManagedToken
+          ? "Astra relay"
+          : "Add a key or relay URL"
+      : "Select to configure"
+
+    return {
+      value: provider.value,
+      label: provider.label,
+      model,
+      active,
+      status,
+      statusLabel,
+      routeLabel,
+    }
+  })
+
   return (
     <div className="astra-settings-section">
       <SectionHeader
@@ -606,6 +637,30 @@ function ProvidersSection({
       />
 
       <h2 className="astra-section-heading astra-sr-only">Providers</h2>
+
+      <div className="astra-settings-provider-list" style={{ marginBottom: "var(--astra-space-5)" }} data-testid="options-provider-status-list">
+        {providerRows.map((provider) => (
+          <div key={provider.value} className="astra-settings-provider-row">
+            <span className="astra-settings-provider-row__initial" aria-hidden="true">{provider.label[0]}</span>
+            <div className="astra-settings-provider-row__body">
+              <div className="astra-settings-provider-row__title">{provider.label}</div>
+              <div className="astra-settings-provider-row__model">{provider.model} · {provider.routeLabel}</div>
+            </div>
+            <div className="astra-settings-provider-row__actions">
+              <span className="astra-settings-provider-status" data-status={provider.status}>{provider.statusLabel}</span>
+              <button
+                type="button"
+                className="astra-settings-provider-row__edit"
+                disabled={provider.active}
+                onClick={() => onProviderChange({ id: provider.value, model: getDefaultProviderModel(provider.value) })}
+              >
+                {provider.active ? "Editing below" : "Use provider"}
+                {!provider.active && <span aria-hidden="true">›</span>}
+              </button>
+            </div>
+          </div>
+        ))}
+      </div>
 
       <div style={fieldGroup}>
         <label htmlFor="options-provider-id" style={labelStyle}>Provider</label>

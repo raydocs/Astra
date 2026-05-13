@@ -521,6 +521,21 @@ describe("OptionsApp — Sites section", () => {
     expect(container.querySelector(".astra-settings-preview")).not.toBeNull()
   })
 
+  it("shows Engine provider rows with truthful active access status", async () => {
+    await act(async () => {
+      ;(container.querySelector('[data-section="providers"]') as HTMLButtonElement).click()
+      await Promise.resolve()
+    })
+
+    const providerList = container.querySelector('[data-testid="options-provider-status-list"]') as HTMLElement
+    expect(providerList).toBeTruthy()
+    expect(providerList.textContent).toContain("OpenAI")
+    expect(providerList.textContent).toContain("Selected · needs access")
+    expect(providerList.textContent).toContain("Add a key or relay URL")
+    expect(providerList.textContent).toContain("Gemini")
+    expect(providerList.textContent).toContain("Use provider")
+  })
+
   it("navigates to the Sites section and shows empty state", async () => {
     await navigateToSites()
     expect(container.textContent).toContain("Sites")

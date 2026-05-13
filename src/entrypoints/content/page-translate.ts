@@ -10,12 +10,15 @@ import { recordPageTranslation } from "@/utils/storage/reading-history"
 import { upsertOwnedArticleFromUrl } from "@/utils/storage/owned-reading"
 import {
   applySiteCustomCss,
+  clearInlineError,
   clearLoading,
   removeAllTranslations,
   removeSiteCustomCss,
   removeTranslationFor,
   replaceLoading,
+  showInlineError,
   showLoading,
+  ASTRA_INLINE_ERROR_RETRY_ATTR,
 } from "@/utils/dom/inject"
 import {
   containsRichTextPlaceholders,
@@ -150,6 +153,45 @@ function publishSessionState(
   })
 }
 
+function getIdleBlockCount(snapshot: TranslationProgressSnapshot): number {
+  return Math.max(
+    0,
+    snapshot.totalBlocks
+      - snapshot.queuedBlocks
+      - snapshot.inFlightBlocks
+      - snapshot.translatedBlocks
+      - snapshot.failedBlocks,
+  )
+}
+
+function hasActiveOrDeferredWork(snapshot: TranslationProgressSnapshot): boolean {
+  return snapshot.queuedBlocks > 0
+    || snapshot.inFlightBlocks > 0
+    || getIdleBlockCount(snapshot) > 0
+}
+
+function publishAfterBatchFailure(
+  session: TranslationSession,
+  error: TranslationError,
+): TranslationSnapshot {
+  const snapshot = getSessionProgress(session)
+  return publishSessionState(
+    session,
+    hasActiveOrDeferredWork(snapshot) ? "running" : "idle",
+    error,
+  )
+}
+
+function showQueuedLoading(session: TranslationSession, element: HTMLElement) {
+  if (session.presentation.mode === "translation-only") return
+
+  showLoading(element, {
+    mode: session.presentation.mode,
+    theme: session.presentation.theme,
+    targetLang: session.targetLang,
+  })
+}
+
 function publishIdleState(params: {
   sessionId: number
   targetLang: string | null
@@ -178,6 +220,23 @@ function installClickToggleHandler() {
   clickToggleHandler = (e: MouseEvent) => {
     const target = e.target
     if (!(target instanceof HTMLElement)) return
+    const retryEl = target.closest(`[${ASTRA_INLINE_ERROR_RETRY_ATTR}=\"1\"]`)
+    if (retryEl instanceof HTMLElement && currentSession) {
+      const blockElement = findTrackedBlockElement(currentSession, retryEl)
+      if (!blockElement) return
+      e.preventDefault()
+      e.stopPropagation()
+      const reset = currentSession.registry.resetRetryCount([blockElement])
+      if (reset.length === 0) return
+      clearInlineError(blockElement)
+      currentSession.registry.markQueued(reset)
+      currentSession.queue.push(...reset)
+      showQueuedLoading(currentSession, blockElement)
+      publishSessionState(currentSession, "running")
+      scheduleDrain(currentSession)
+      return
+    }
+
     const translationEl = target.closest("[data-astra-translation=\"1\"]")
     if (!translationEl || !(translationEl instanceof HTMLElement)) return
     e.stopPropagation()
@@ -280,6 +339,7 @@ function enqueueBlock(session: TranslationSession, element: HTMLElement) {
 
   session.registry.markQueued([element])
   session.queue.push(element)
+  showQueuedLoading(session, element)
 }
 
 function validateSiteRuleSelectors(selectors?: string[]): Pick<TranslationSelectorDiagnostics, "configured" | "valid" | "invalid"> {
@@ -517,12 +577,20 @@ function scheduleDrain(session: TranslationSession) {
             ...(usesRichTextPlaceholders ? { placeholderFormat: "astra-rich-text-v1" as const } : {}),
           })
         } catch (error) {
+          if (currentSession?.id !== session.id) {
+            return
+          }
+
           const { requeued, exhausted } = session.registry.markForRetry(
             inFlightInfo.map(({ element, revision }) => ({ element, revision })),
           )
 
           exhausted.forEach((element) => {
-            clearLoading(element)
+            showInlineError(element, "Astra couldn't translate this paragraph. The rest of the page can keep going.", {
+              mode: session.presentation.mode,
+              theme: session.presentation.theme,
+              targetLang: session.targetLang,
+            })
           })
 
           // Re-add requeued blocks to the session queue
@@ -533,10 +601,10 @@ function scheduleDrain(session: TranslationSession) {
           // Check if everything is done (no more work)
           const snapshot = session.registry.getSnapshot()
           if (snapshot.queuedBlocks === 0 && snapshot.inFlightBlocks === 0 && exhausted.length > 0) {
-            stopSession({
+            publishAfterBatchFailure(session, {
               code: "UNKNOWN",
               message: error instanceof Error ? error.message : "Translation failed.",
-            }, { preserveProgress: true })
+            })
             return
           }
 
@@ -554,7 +622,11 @@ function scheduleDrain(session: TranslationSession) {
           )
 
           exhausted.forEach((element) => {
-            clearLoading(element)
+            showInlineError(element, result.error.message || "Astra couldn't translate this paragraph.", {
+              mode: session.presentation.mode,
+              theme: session.presentation.theme,
+              targetLang: session.targetLang,
+            })
           })
 
           if (requeued.length > 0) {
@@ -563,7 +635,7 @@ function scheduleDrain(session: TranslationSession) {
 
           const snapshot = session.registry.getSnapshot()
           if (snapshot.queuedBlocks === 0 && snapshot.inFlightBlocks === 0 && exhausted.length > 0) {
-            stopSession(result.error, { preserveProgress: true })
+            publishAfterBatchFailure(session, result.error)
             return
           }
 
@@ -931,6 +1003,10 @@ export function retryFailedBlocks(): void {
 
   currentSession.registry.markQueued(reset)
   currentSession.queue.push(...reset)
+  const session = currentSession
+  reset.forEach((element) => {
+    showQueuedLoading(session, element)
+  })
   publishSessionState(currentSession, "running")
   // scheduleDrain is a no-op if a drain loop is already running;
   // the existing loop's .finally() will re-schedule when it sees queue items.

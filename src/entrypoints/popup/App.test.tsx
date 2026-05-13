@@ -676,6 +676,82 @@ describe("popup App", () => {
     })
   })
 
+  it("shows a quiet popup library empty state when there are no saved words or due reviews", async () => {
+    getDueVocabularyCountMock.mockResolvedValueOnce(0)
+    getVocabularyEntriesMock.mockResolvedValueOnce([])
+
+    await act(async () => {
+      window.dispatchEvent(new Event("focus"))
+      await Promise.resolve()
+      await Promise.resolve()
+      await Promise.resolve()
+      await Promise.resolve()
+    })
+
+    const emptyState = container.querySelector('[data-testid="popup-empty-library-state"]') as HTMLElement
+    expect(emptyState).toBeTruthy()
+    expect(emptyState.textContent).toContain("Your library starts empty.")
+    expect(emptyState.textContent).toContain("0 saved · 0 due")
+    expect(container.querySelector(".astra-quiet-header__status")).toBeTruthy()
+    expect(container.querySelector(".astra-popup-today-head")).toBeTruthy()
+    expect(container.querySelector(".astra-popup-shell--cert-empty")).toBeFalsy()
+    expect(container.querySelector(".astra-popup-shell--empty-library")).toBeFalsy()
+    expect(emptyState.textContent).toContain("Open library")
+    expect(emptyState.textContent).not.toContain("How it works")
+    expect(container.textContent).not.toContain("Why Solitude Is Important for Reading")
+    expect(container.textContent).not.toContain("newyorker.com · 12 min read")
+  })
+
+  it("uses astraCert=1 to show a focused first-run popup empty state without normal-mode actions", async () => {
+    await act(async () => {
+      root.unmount()
+      rootUnmounted = true
+      await Promise.resolve()
+    })
+    container.innerHTML = ""
+    window.history.pushState({}, "", "/popup.html?astraCert=1")
+    getDueVocabularyCountMock.mockResolvedValue(0)
+    getVocabularyEntriesMock.mockResolvedValue([])
+    root = ReactDOM.createRoot(container)
+    rootUnmounted = false
+
+    await act(async () => {
+      root.render(<App />)
+      await Promise.resolve()
+      await Promise.resolve()
+      await Promise.resolve()
+      await Promise.resolve()
+    })
+
+    const emptyState = container.querySelector('[data-testid="popup-empty-library-state"]') as HTMLElement
+    expect(emptyState).toBeTruthy()
+    expect(emptyState.textContent).toContain("Your library starts empty.")
+    expect(emptyState.textContent).toContain("Hover any word in a translated page and press ⌥S to keep it.")
+    expect(emptyState.textContent).toContain("0 saved · 0 due")
+    expect(emptyState.textContent).toContain("How it works")
+    expect(container.textContent).toContain("Why Solitude Is Important for Reading")
+    expect(container.textContent).toContain("newyorker.com · 12 min read")
+    expect(container.querySelector(".astra-popup-shell--cert-empty")).toBeTruthy()
+    expect(container.querySelector(".astra-quiet-header__status")).toBeFalsy()
+    expect(container.querySelector(".astra-popup-today-head")).toBeFalsy()
+    expect(container.querySelector('[aria-label="Library"]')).toBeFalsy()
+    expect(emptyState.textContent).not.toContain("Open library")
+    const translateButton = getButtons().find((button) => button.textContent === "Translate this page")
+    expect(translateButton).toBeTruthy()
+    expect(translateButton?.disabled).toBe(false)
+    expect(translateButton?.getAttribute("aria-disabled")).toBe("true")
+    await act(async () => {
+      translateButton?.click()
+      await Promise.resolve()
+    })
+    expect(startActiveTabTranslationMock).not.toHaveBeenCalled()
+    const howItWorksButton = getButtons().find((button) => button.textContent === "How it works")
+    expect(howItWorksButton?.getAttribute("aria-disabled")).toBe("true")
+    const primaryGroup = container.querySelector(".astra-popup-primary-group") as HTMLElement
+    expect(primaryGroup.textContent).not.toContain(t("popup_deepReadAction"))
+    expect(primaryGroup.textContent).not.toContain(t("popup_contentAssetizationSaveAction"))
+  })
+
   it("disables translation when active page URL is excluded by site path rules", async () => {
     browserMock.tabs.query.mockResolvedValue([{ id: 1, url: "https://example.com/blog/post" }])
     readConfigMock.mockResolvedValueOnce(createConfig({
@@ -1513,6 +1589,7 @@ describe("popup App", () => {
   it("opens and focuses the existing sign-in panel from popup ?focus=sign-in", async () => {
     await act(async () => {
       root.unmount()
+      rootUnmounted = true
       await Promise.resolve()
     })
     rootUnmounted = true

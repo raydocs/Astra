@@ -280,7 +280,7 @@ export function EpubReaderApp() {
       )}
 
       {phase === "loading" && (
-      <div style={{ padding: 24, textAlign: "center", color: "var(--astra-brand)" }}>Loading ePub...</div>
+      <div role="status" aria-live="polite" style={{ padding: 24, textAlign: "center", color: "var(--astra-brand)" }}>Loading ePub...</div>
       )}
 
       {phase === "reading" && (
@@ -311,7 +311,19 @@ export function EpubReaderApp() {
               <>
                 <h2 style={{ fontSize: 20, color: "#1e293b", marginBottom: 16 }}>{chapter.title}</h2>
                 {chapter.translating && (
-                  <div style={{ fontSize: 12, color: "var(--astra-brand)", marginBottom: 12 }}>Translating...</div>
+                  <div style={{ fontSize: 12, color: "var(--astra-brand)", marginBottom: 12 }} role="status" aria-live="polite">
+                    Translating...
+                    <div
+                      role="progressbar"
+                      aria-label="EPUB chapter translation progress"
+                      aria-valuemin={0}
+                      aria-valuemax={chapter.paragraphs.length || 1}
+                      aria-valuenow={chapter.translations.size}
+                      className="astra-reader-progressbar"
+                    >
+                      <span style={{ width: `${chapter.paragraphs.length > 0 ? Math.min(100, Math.round((chapter.translations.size / chapter.paragraphs.length) * 100)) : 0}%` }} />
+                    </div>
+                  </div>
                 )}
                 {chapter.paragraphs.map((para, i) => (
                   <div key={i} style={blockStyle}>
