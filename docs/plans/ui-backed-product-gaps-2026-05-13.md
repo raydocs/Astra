@@ -22,9 +22,9 @@ Build the missing runtime foundations before expanding more UI. The first implem
 ## Implementation Progress
 - [x] Work Item 1 — Account-scoped workspace and library foundation. Implemented normalized web library items, copy-first migration/journal/mapping, local multi-item APIs, metadata-only account import, `/assets` real-record sourcing, and storage health coverage. Verified with `pnpm vitest run web/src/lib/workspace-store.test.ts`, `tsc -p web/tsconfig.json --noEmit`, and `pnpm type-check`.
 - [x] Work Item 2 — Document/media metadata and extracted-text durability. Implemented library-item keyed document snapshots, extracted-text budget/chunk manifests, config-sync validation scaffolding, cloud materialization, and truthful re-import UI for original bytes. Verified with `pnpm vitest run web/src/lib/workspace-store.test.ts src/utils/astra/sync-push.test.ts` and `pnpm type-check`.
-- [ ] Work Item 3 — Cloud learning durability for review schedules and study stats.
-- [ ] Work Item 4 — Optional page/site permission controls.
-- [ ] Work Item 5 — Persistent Mark/Highlight/sticky-note annotations.
+- [x] Work Item 3 — Cloud learning durability for review schedules and study stats. Implemented `review_schedule` sync validation/collection handling across extension, server, Cloudflare, and relay-lite paths; review completion now records schedule state; old entries receive safe defaults; daily study stats remain explicitly local-only. Verified with `pnpm type-check`, focused frontend/storage tests, backend/platform sync tests, and relay-lite tests.
+- [x] Work Item 4 — Optional page/site permission controls. Implemented `src/utils/extension/page-permissions.ts` for page/current-origin/all-sites helpers, optional-host permission request/remove wrappers, runtime revoke policy, and broadcast reconciliation; wired background permission events, popup/onboarding controls, content-script stop/reconcile behavior, hover/selection/input no-op guards after revoke, cautious compatibility copy/docs, and focused tests. Verified with `pnpm vitest run src/utils/extension/page-permissions.test.ts src/entrypoints/content/index.test.ts src/entrypoints/onboarding/OnboardingApp.test.tsx src/entrypoints/popup/App.test.tsx` and `pnpm type-check`.
+- [x] Work Item 5 — Persistent Mark/Highlight/sticky-note annotations.
 - [ ] Work Item 6 — Page translation retry/session diagnostics.
 
 ## Work Items
@@ -116,6 +116,11 @@ Build the missing runtime foundations before expanding more UI. The first implem
 - Revoking a site stops future automatic actions for that origin and tells active content scripts to stop/reconcile.
 - Chrome/Firefox/Safari behavior is documented before copy changes claim support.
 
+**Implementation summary (2026-05-13)**
+- Changed files: `wxt.config.ts`; `src/utils/extension/page-permissions.ts`; background/content/onboarding/popup entrypoints; popup quiet-reader section; hover/selection/input content components; `test/utils/mockBrowser.ts`; focused tests; `docs/specs/optional-page-site-permissions.md`.
+- Verification: `pnpm vitest run src/utils/extension/page-permissions.test.ts src/entrypoints/content/index.test.ts src/entrypoints/onboarding/OnboardingApp.test.tsx src/entrypoints/popup/App.test.tsx` → 4 files / 99 tests passed (`FOCUSED_TEST_EXIT:0`); `pnpm type-check` → `TYPECHECK_EXIT:0`.
+- Deferred gaps: broad `host_permissions: ["*://*/*"]` remains intentionally disclosed; programmatic content-script injection for pages without an existing Astra script and Safari/iOS device-backed permission prompt parity are deferred.
+
 ### 5. Persistent Mark/Highlight/sticky-note annotations
 **Why after permission controls:** Annotation persistence needs a stable page access and anchoring policy.
 
@@ -137,6 +142,11 @@ Build the missing runtime foundations before expanding more UI. The first implem
 - Failed anchor resolution is shown without losing the saved annotation.
 - Storage cap behavior is deterministic and user-visible when reached.
 - Mark/Highlight do not create vocabulary entries unless the user chooses Save.
+
+**Implementation summary (2026-05-13)**
+- Changed files: `src/utils/storage/page-annotations.ts`; `src/entrypoints/content/page-annotations.ts`; selection toolbar/content entrypoint wiring and focused tests; `docs/specs/page-annotations-v1.md`.
+- Verification: `pnpm vitest run src/utils/storage/page-annotations.test.ts src/entrypoints/content/page-annotations.test.ts src/entrypoints/content/components/SelectionToolbar.test.tsx src/entrypoints/content/index.test.ts` → 4 files / 54 tests passed (`FOCUSED_TEST_EXIT:0`); `pnpm type-check` → `TYPECHECK_EXIT:0`.
+- Deferred gaps: v1 remains extension-local only with no account/cloud sync; sticky-note records are supported by the model/renderer but note-authoring UI is deferred; annotation list/library surfaces beyond the in-page panel are deferred.
 
 ### 6. Page translation retry/session diagnostics
 **Why separate:** Current retry UI works for the live session but not across navigation or teardown.

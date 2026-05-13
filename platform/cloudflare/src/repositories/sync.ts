@@ -535,7 +535,14 @@ export async function listShadowSyncCollectionRowsForUser(
     [userId],
   )
 
-  return rows.map(mapShadowSyncCollectionRow)
+  const mappedRows = rows.map(mapShadowSyncCollectionRow)
+  const collections = new Set(mappedRows.map((row) => row.collection))
+  const hasLegacyDefaultCollections = ["config", "vocabulary", "reading_history", "study_progress"]
+    .every((collection) => collections.has(collection as ShadowSyncCollection))
+  if (!collections.has("review_schedule") && hasLegacyDefaultCollections) {
+    return [...mappedRows, createDefaultCollectionRow(userId, "review_schedule")]
+  }
+  return mappedRows
 }
 
 export async function listShadowSyncMutationRowsForUser(

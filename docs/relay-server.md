@@ -67,7 +67,10 @@ pnpm relay:dev
 - `ASTRA_RELAY_PLAN`
 - `ASTRA_RELAY_SUBSCRIPTION_STATUS`
 - `ASTRA_PROVIDER_ENTITLEMENTS`
+- `ASTRA_RELAY_DATA_DIR`
+- `ASTRA_DATA_DIR`
 - `ASTRA_USER_DB_PATH`
+- `ASTRA_VIDEO_NOTE_STORE_PATH`
 - `ASTRA_BILLING_CHECKOUT_URL`
 - `ASTRA_BILLING_PORTAL_URL`
 - `OPENAI_API_KEY`
@@ -78,6 +81,7 @@ pnpm relay:dev
 - This is a minimal in-repo relay, not a production deployment target.
 - `DELETE /v1/auth/session` currently revokes the token in-memory for the current process.
 - The user store is file-backed and seeded from env vars only when the file does not exist yet.
+- Relay data path precedence is explicit file paths (`ASTRA_USER_DB_PATH`, `ASTRA_VIDEO_NOTE_STORE_PATH`) > `ASTRA_RELAY_DATA_DIR` > `ASTRA_DATA_DIR` > `server/data`.
 - Existing user DB files are migrated in-place with generated `id`, `billingEmail`, and `createdAt` fields when missing.
 - Current local plan policy:
   - `free`: `openai` only, `100` daily requests, `50_000` daily characters, `10` requests/minute

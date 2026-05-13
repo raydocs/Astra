@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 const {
   getVocabularyEntriesMock,
   updateVocabularyEntryMock,
+  recordVocabularyReviewScheduleMock,
   recordStudyEventMock,
   buildVocabularyReviewStudyEventMock,
   getStudyProgressMock,
@@ -17,6 +18,7 @@ const {
 } = vi.hoisted(() => ({
   getVocabularyEntriesMock: vi.fn(),
   updateVocabularyEntryMock: vi.fn(),
+  recordVocabularyReviewScheduleMock: vi.fn(),
   recordStudyEventMock: vi.fn(),
   buildVocabularyReviewStudyEventMock: vi.fn(),
   getStudyProgressMock: vi.fn(),
@@ -31,6 +33,7 @@ const {
 vi.mock("@/utils/storage/vocabulary", () => ({
   getVocabularyEntries: getVocabularyEntriesMock,
   updateVocabularyEntry: updateVocabularyEntryMock,
+  recordVocabularyReviewSchedule: recordVocabularyReviewScheduleMock,
   sanitizeVocabularyUrl: (url?: string | null) => {
     const trimmed = url?.trim()
     if (!trimmed) return undefined

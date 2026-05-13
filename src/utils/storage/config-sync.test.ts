@@ -3,7 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest"
 import { DEFAULT_ASTRA_CONFIG } from "@/types/config"
 import { ASTRA_AUTH_STORAGE_KEY, ASTRA_DEVICE_STORAGE_KEY } from "./auth"
 import { ASTRA_CONFIG_STORAGE_KEY } from "./config"
-import { VOCABULARY_STORAGE_KEY } from "./vocabulary"
+import { VOCABULARY_REVIEW_SCHEDULE_STORAGE_KEY, VOCABULARY_STORAGE_KEY } from "./vocabulary"
 import { READING_HISTORY_STORAGE_KEY } from "./reading-history"
 import { STUDY_PROGRESS_STORAGE_KEY } from "./study-progress"
 import { OWNED_READING_STORAGE_KEY } from "./owned-reading"
@@ -122,8 +122,8 @@ describe("config-sync", () => {
     expect(status.session.state).toBe("signed-out")
     expect(status.sync.deferredCollections).toEqual([])
     expect(status.sync.localOnly.localOnlyFields).toContain("study_progress.dailyStats")
-    expect(status.sync.localOnly.localOnlyFields).toContain("vocabulary.srsBox")
-    expect(status.sync.localOnly.localOnlyFields).toContain("vocabulary.nextReviewAt")
+    expect(status.sync.localOnly.localOnlyFields).not.toContain("vocabulary.srsBox")
+    expect(status.sync.localOnly.localOnlyFields).not.toContain("vocabulary.nextReviewAt")
     expect(status.sync.phaseOne.stateLastSuccessAt).toBeNull()
     expect(status.remote.available).toBe(false)
   })
@@ -418,7 +418,7 @@ describe("config-sync", () => {
         serverTime: "2026-04-09T01:00:00.000Z",
         accepted: [],
         rejected: [],
-        nextCursors: { config: "cfg-1", vocabulary: "voc-1", reading_history: null, study_progress: null },
+        nextCursors: { config: "cfg-1", vocabulary: "voc-1", review_schedule: null, reading_history: null, study_progress: null },
       })
 
       const result = await runPhaseOneCollectionSync()
@@ -490,24 +490,40 @@ describe("config-sync", () => {
         serverTime: "2026-04-09T01:00:30.000Z",
         accepted: [],
         rejected: [],
-        nextCursors: { config: null, vocabulary: "voc-1", reading_history: null, study_progress: null },
+        nextCursors: { config: null, vocabulary: "voc-1", review_schedule: null, reading_history: null, study_progress: null },
       })
       pullAstraSyncDeltasMock.mockResolvedValue({
         serverTime: "2026-04-09T01:00:40.000Z",
-        deltas: { config: [], vocabulary: [], reading_history: [], study_progress: [] },
-        nextCursors: { config: null, vocabulary: "voc-1", reading_history: null, study_progress: null },
+        deltas: { config: [], vocabulary: [], review_schedule: [], reading_history: [], study_progress: [] },
+        nextCursors: { config: null, vocabulary: "voc-1", review_schedule: null, reading_history: null, study_progress: null },
       })
 
       const result = await runPhaseOneCollectionSync()
 
       expect(result.pushed.vocabulary).toBe(1)
+      expect(result.pushed.review_schedule).toBe(1)
       expect(pushAstraSyncMutationsMock).toHaveBeenCalledWith(expect.objectContaining({
         deviceId: "device-123",
-        mutations: [expect.objectContaining({
-          collection: "vocabulary",
-          recordId: "word-local",
-          operation: "upsert",
-        })],
+        mutations: expect.arrayContaining([
+          expect.objectContaining({
+            collection: "vocabulary",
+            recordId: "word-local",
+            operation: "upsert",
+            payload: expect.not.objectContaining({ srsBox: expect.anything() }),
+          }),
+          expect.objectContaining({
+            collection: "review_schedule",
+            recordId: "word-local",
+            operation: "upsert",
+            payload: expect.objectContaining({
+              vocabularyEntryId: "word-local",
+              srsBox: 2,
+              nextReviewAt: 2000,
+              reviewCount: 1,
+              lastReviewedAt: 1500,
+            }),
+          }),
+        ]),
       }))
     })
 
@@ -567,7 +583,7 @@ describe("config-sync", () => {
         serverTime: "2026-04-09T01:00:30.000Z",
         accepted: [],
         rejected: [],
-        nextCursors: { config: null, vocabulary: null, reading_history: "hist-1", study_progress: null },
+        nextCursors: { config: null, vocabulary: null, review_schedule: null, reading_history: "hist-1", study_progress: null },
       })
       pullAstraSyncDeltasMock.mockResolvedValue({
         serverTime: "2026-04-09T01:00:40.000Z",
@@ -599,7 +615,7 @@ describe("config-sync", () => {
           }],
           study_progress: [],
         },
-        nextCursors: { config: null, vocabulary: null, reading_history: "hist-2", study_progress: null },
+        nextCursors: { config: null, vocabulary: null, review_schedule: null, reading_history: "hist-2", study_progress: null },
       })
 
       const result = await runPhaseOneCollectionSync()
@@ -692,12 +708,12 @@ describe("config-sync", () => {
         serverTime: "2026-04-09T01:00:30.000Z",
         accepted: [],
         rejected: [],
-        nextCursors: { config: "cfg-1", vocabulary: null, reading_history: null, study_progress: null },
+        nextCursors: { config: "cfg-1", vocabulary: null, review_schedule: null, reading_history: null, study_progress: null },
       })
       pullAstraSyncDeltasMock.mockResolvedValue({
         serverTime: "2026-04-09T01:00:40.000Z",
-        deltas: { config: [], vocabulary: [], reading_history: [], study_progress: [] },
-        nextCursors: { config: "cfg-1", vocabulary: null, reading_history: null, study_progress: null },
+        deltas: { config: [], vocabulary: [], review_schedule: [], reading_history: [], study_progress: [] },
+        nextCursors: { config: "cfg-1", vocabulary: null, review_schedule: null, reading_history: null, study_progress: null },
       })
 
       const result = await runPhaseOneCollectionSync()
@@ -832,7 +848,7 @@ describe("config-sync", () => {
           reading_history: [],
           study_progress: [],
         },
-        nextCursors: { config: "cfg-3", vocabulary: null, reading_history: null, study_progress: null },
+        nextCursors: { config: "cfg-3", vocabulary: null, review_schedule: null, reading_history: null, study_progress: null },
       })
 
       const result = await runPhaseOneCollectionSync()
@@ -912,12 +928,12 @@ describe("config-sync", () => {
         serverTime: "2026-04-09T01:00:30.000Z",
         accepted: [],
         rejected: [],
-        nextCursors: { config: "cfg-1", vocabulary: null, reading_history: null, study_progress: null },
+        nextCursors: { config: "cfg-1", vocabulary: null, review_schedule: null, reading_history: null, study_progress: null },
       })
       pullAstraSyncDeltasMock.mockResolvedValue({
         serverTime: "2026-04-09T01:00:40.000Z",
-        deltas: { config: [], vocabulary: [], reading_history: [], study_progress: [] },
-        nextCursors: { config: "cfg-1", vocabulary: null, reading_history: null, study_progress: null },
+        deltas: { config: [], vocabulary: [], review_schedule: [], reading_history: [], study_progress: [] },
+        nextCursors: { config: "cfg-1", vocabulary: null, review_schedule: null, reading_history: null, study_progress: null },
       })
 
       const result = await runPhaseOneCollectionSync()
@@ -1013,7 +1029,7 @@ describe("config-sync", () => {
           reading_history: [],
           study_progress: [],
         },
-        nextCursors: { config: "cfg-2", vocabulary: null, reading_history: null, study_progress: null },
+        nextCursors: { config: "cfg-2", vocabulary: null, review_schedule: null, reading_history: null, study_progress: null },
       })
 
       const result = await runPhaseOneCollectionSync()
@@ -1109,12 +1125,12 @@ describe("config-sync", () => {
         serverTime: "2026-04-09T01:00:30.000Z",
         accepted: [],
         rejected: [],
-        nextCursors: { config: "cfg-2", vocabulary: null, reading_history: null, study_progress: null },
+        nextCursors: { config: "cfg-2", vocabulary: null, review_schedule: null, reading_history: null, study_progress: null },
       })
       pullAstraSyncDeltasMock.mockResolvedValue({
         serverTime: "2026-04-09T01:00:40.000Z",
-        deltas: { config: [], vocabulary: [], reading_history: [], study_progress: [] },
-        nextCursors: { config: "cfg-2", vocabulary: null, reading_history: null, study_progress: null },
+        deltas: { config: [], vocabulary: [], review_schedule: [], reading_history: [], study_progress: [] },
+        nextCursors: { config: "cfg-2", vocabulary: null, review_schedule: null, reading_history: null, study_progress: null },
       })
 
       await runPhaseOneCollectionSync()
@@ -1189,7 +1205,7 @@ describe("config-sync", () => {
         serverTime: "2026-04-09T01:00:30.000Z",
         accepted: [],
         rejected: [],
-        nextCursors: { config: null, vocabulary: null, reading_history: null, study_progress: null },
+        nextCursors: { config: null, vocabulary: null, review_schedule: null, reading_history: null, study_progress: null },
       })
       pullAstraSyncDeltasMock.mockResolvedValue({
         serverTime: "2026-04-09T01:00:40.000Z",
@@ -1223,7 +1239,7 @@ describe("config-sync", () => {
             cursor: "progress-2",
           }],
         },
-        nextCursors: { config: null, vocabulary: null, reading_history: null, study_progress: "progress-2" },
+        nextCursors: { config: null, vocabulary: null, review_schedule: null, reading_history: null, study_progress: "progress-2" },
       })
 
       const result = await runPhaseOneCollectionSync()
@@ -1308,7 +1324,7 @@ describe("config-sync", () => {
         serverTime: "2026-04-09T01:00:30.000Z",
         accepted: [],
         rejected: [],
-        nextCursors: { config: null, vocabulary: null, reading_history: null, study_progress: "progress-1" },
+        nextCursors: { config: null, vocabulary: null, review_schedule: null, reading_history: null, study_progress: "progress-1" },
       })
       pullAstraSyncDeltasMock.mockResolvedValue({
         serverTime: "2026-04-09T01:00:40.000Z",
@@ -1342,7 +1358,7 @@ describe("config-sync", () => {
             cursor: "progress-2",
           }],
         },
-        nextCursors: { config: null, vocabulary: null, reading_history: null, study_progress: "progress-2" },
+        nextCursors: { config: null, vocabulary: null, review_schedule: null, reading_history: null, study_progress: "progress-2" },
       })
 
       const result = await runPhaseOneCollectionSync()
@@ -1392,6 +1408,16 @@ describe("config-sync", () => {
           },
         },
         [VOCABULARY_STORAGE_KEY]: [{ id: "stale-word", text: "stale", savedAt: 1000 }],
+        [VOCABULARY_REVIEW_SCHEDULE_STORAGE_KEY]: [{
+          vocabularyEntryId: "stale-word",
+          srsBox: 2,
+          nextReviewAt: 3000,
+          reviewCount: 1,
+          lastReviewedAt: 2000,
+          lastReviewGrade: "good",
+          lastReviewGradeAt: 2000,
+          updatedAt: 2000,
+        }],
         [READING_HISTORY_STORAGE_KEY]: [{
           id: "https://example.com/stale",
           url: "https://example.com/stale",
@@ -1530,7 +1556,7 @@ describe("config-sync", () => {
         serverTime: "2026-04-09T01:00:30.000Z",
         accepted: [],
         rejected: [],
-        nextCursors: { config: "cfg-2", vocabulary: "voc-2", reading_history: "hist-2", study_progress: "progress-2" },
+        nextCursors: { config: "cfg-2", vocabulary: "voc-2", review_schedule: "sched-2", reading_history: "hist-2", study_progress: "progress-2" },
       })
       pullAstraSyncDeltasMock.mockRejectedValue(new AstraApiError({
         status: 409,
@@ -1650,10 +1676,10 @@ describe("config-sync", () => {
       const result = await runPhaseOneCollectionSync()
 
       expect(result.skipped).toBe(false)
-      expect(result.pulled).toEqual({ config: 2, vocabulary: 1, reading_history: 1, study_progress: 1 })
+      expect(result.pulled).toEqual({ config: 2, vocabulary: 1, review_schedule: 0, reading_history: 1, study_progress: 1 })
       expect(repairAstraSyncStateMock).toHaveBeenCalledWith(expect.objectContaining({
         deviceId: "device-123",
-        request: { collections: ["config", "vocabulary", "reading_history", "study_progress"] },
+        request: { collections: ["config", "vocabulary", "review_schedule", "reading_history", "study_progress"] },
       }))
       expect(browser.__storage[ASTRA_CONFIG_STORAGE_KEY]).toMatchObject({
         targetLang: "ja",
@@ -1661,6 +1687,9 @@ describe("config-sync", () => {
       })
       expect(browser.__storage[VOCABULARY_STORAGE_KEY]).toEqual([
         expect.objectContaining({ id: "word-1", text: "fresh" }),
+      ])
+      expect(browser.__storage[VOCABULARY_REVIEW_SCHEDULE_STORAGE_KEY]).toEqual([
+        expect.objectContaining({ vocabularyEntryId: "stale-word", updatedAt: 2000 }),
       ])
       expect(browser.__storage[READING_HISTORY_STORAGE_KEY]).toEqual([
         expect.objectContaining({ id: "https://example.com/fresh" }),
@@ -1733,23 +1762,23 @@ describe("config-sync", () => {
         serverTime: "2026-04-09T01:00:30.000Z",
         accepted: [],
         rejected: [],
-        nextCursors: { config: null, vocabulary: null, reading_history: null, study_progress: null },
+        nextCursors: { config: null, vocabulary: null, review_schedule: null, reading_history: null, study_progress: null },
       })
       pullAstraSyncDeltasMock.mockResolvedValue({
         serverTime: "2026-04-09T01:00:40.000Z",
-        deltas: { config: [], vocabulary: [], reading_history: [], study_progress: [] },
-        nextCursors: { config: null, vocabulary: null, reading_history: null, study_progress: null },
+        deltas: { config: [], vocabulary: [], review_schedule: [], reading_history: [], study_progress: [] },
+        nextCursors: { config: null, vocabulary: null, review_schedule: null, reading_history: null, study_progress: null },
       })
 
       await runPhaseOneCollectionSync()
 
-      expect(pushAstraSyncMutationsMock).toHaveBeenCalledTimes(2)
-      expect(pushAstraSyncMutationsMock.mock.calls[0]?.[0]).toEqual(expect.objectContaining({
-        mutations: [expect.objectContaining({ recordId: "word-1" })],
-      }))
-      expect(pushAstraSyncMutationsMock.mock.calls[1]?.[0]).toEqual(expect.objectContaining({
-        mutations: [expect.objectContaining({ recordId: "word-2" })],
-      }))
+      expect(pushAstraSyncMutationsMock).toHaveBeenCalledTimes(4)
+      expect(pushAstraSyncMutationsMock.mock.calls.map((call) => call[0].mutations[0])).toEqual([
+        expect.objectContaining({ collection: "vocabulary", recordId: "word-1" }),
+        expect.objectContaining({ collection: "vocabulary", recordId: "word-2" }),
+        expect.objectContaining({ collection: "review_schedule", recordId: "word-1" }),
+        expect.objectContaining({ collection: "review_schedule", recordId: "word-2" }),
+      ])
     })
   })
 

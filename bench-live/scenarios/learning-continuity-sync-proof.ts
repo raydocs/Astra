@@ -1,8 +1,9 @@
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http"
-import { mkdir, writeFile } from "node:fs/promises"
+import { writeFile } from "node:fs/promises"
 import path from "node:path"
 
 import {
+  prepareLiveArtifactDir,
   withExtensionBrowserPage,
   LiveBrowserUnavailableError,
   ExtensionBuildNotFoundError,
@@ -341,8 +342,7 @@ export const learningContinuitySyncProofScenario: LiveScenarioDefinition<Learnin
   async run(runtime, context) {
     runtime.start(context.id, context.title)
     const relay = await createContinuityRelayServer()
-    const artifactDir = path.join(process.cwd(), "bench-live-results", context.runId)
-    await mkdir(artifactDir, { recursive: true })
+    const artifactDir = await prepareLiveArtifactDir(context.runId)
 
     const seededVocabulary = [{
       id: "continuity-vocab-1",

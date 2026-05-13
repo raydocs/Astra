@@ -12,6 +12,13 @@ import {
 } from "@/utils/learning-loop-events"
 import { saveConfig } from "@/utils/storage/config"
 import { useAstraTheme } from "@/utils/ui/useAstraTheme"
+import {
+  getPageAccessState,
+  requestPageAccess,
+  revokePageAccess,
+  type PageAccessState,
+  type PageAccessScope,
+} from "@/utils/extension/page-permissions"
 
 const SOURCE_LANGUAGES = [
   { value: "en", label: "English" },
@@ -686,12 +693,12 @@ function PermissionDisclosureCard() {
     },
     {
       title: "Manifest support: active tab interactions",
-      subtitle: "The current manifest includes activeTab for toolbar/tab-triggered interactions, but Astra does not yet ship a page-only consent picker.",
+      subtitle: "The current manifest includes activeTab for toolbar/tab-triggered interactions; page-only uses that temporary invocation path and does not persist host grants.",
       current: false,
     },
     {
-      title: "Planned: always on this site",
-      subtitle: "Requires an optional host-permission picker plus settings controls to review and revoke per-site grants.",
+      title: "Optional: always on this site",
+      subtitle: "Astra can request the current origin with browser.permissions where supported, and stores a runtime revoke policy so site automation stops immediately.",
       current: false,
     },
   ]
@@ -700,7 +707,7 @@ function PermissionDisclosureCard() {
     <div className="astra-onboarding-permission-card" data-testid="onboarding-permission-disclosure">
       <div className="astra-onboarding-permission-card__title">How Astra accesses pages in this build</div>
       <div className="astra-onboarding-permission-card__copy">
-        Astra reads article text in your browser, sends selected or translated text to your configured translation engine, and writes results alongside the page. This card describes the current browser-extension build: narrower page-only and per-site permission controls are planned, not yet shipped.
+        Astra reads article text in your browser, sends selected or translated text to your configured translation engine, and writes results alongside the page. This card describes the current browser-extension build: broad host access is still declared, with optional page/site controls layered on top where browser APIs support them.
       </div>
       <div className="astra-onboarding-permission-card__choices" aria-label="Site access options">
         {rows.map((row) => (
@@ -714,7 +721,54 @@ function PermissionDisclosureCard() {
         ))}
       </div>
       <div className="astra-onboarding-permission-card__footnote">
-        Browser permission prompts are controlled by Chrome/Firefox/Safari. Do not treat page-only or site-only consent as shipped until the manifest and runtime permission flow request, persist, and revoke those grants truthfully.
+        Browser permission prompts are controlled by Chrome/Firefox/Safari. The controls below use browser.permissions where available; Safari/iOS and broad-access builds may rely on Astra's runtime revoke policy instead of a browser prompt.
+      </div>
+    </div>
+  )
+}
+
+function PermissionControlPanel() {
+  const [state, setState] = useState<PageAccessState | null>(null)
+  const [message, setMessage] = useState("Checking page access…")
+
+  const refresh = async () => {
+    const nextState = await getPageAccessState()
+    setState(nextState)
+    setMessage(nextState.origin
+      ? `Current page context: ${nextState.origin}`
+      : "Open onboarding alongside an http(s) page to grant page or site access.")
+  }
+
+  useEffect(() => {
+    void refresh()
+  }, [])
+
+  const runAction = async (scope: PageAccessScope | "revoke-site") => {
+    const result = scope === "revoke-site"
+      ? await revokePageAccess("site")
+      : await requestPageAccess(scope)
+    setState(result.state)
+    setMessage(result.message)
+  }
+
+  return (
+    <div data-testid="onboarding-permission-controls" style={{ display: "grid", gap: 8 }}>
+      <div role="status" style={{ fontSize: 11, color: "var(--astra-text-muted)", lineHeight: 1.45 }}>
+        {message}
+      </div>
+      <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+        <button type="button" className="astra-btn-outline-quiet" disabled={!state?.activeTabAvailable} onClick={() => { void runAction("page") }}>
+          Page only
+        </button>
+        <button type="button" className="astra-btn-outline-quiet" disabled={!state?.sitePattern || (!state?.permissionsApiAvailable && state?.runtimeSiteState !== "revoked")} onClick={() => { void runAction("site") }}>
+          Allow this site
+        </button>
+        <button type="button" className="astra-btn-outline-quiet" disabled={!state?.sitePattern} onClick={() => { void runAction("revoke-site") }}>
+          Revoke site
+        </button>
+      </div>
+      <div style={{ fontSize: 10, color: "var(--astra-text-hint)", lineHeight: 1.4 }}>
+        Optional prompts are used where Chrome/Firefox/Safari expose browser.permissions. The current build still declares broad host access, so Astra also stores a runtime revoke policy to stop automation immediately.
       </div>
     </div>
   )
@@ -860,6 +914,7 @@ function StepReady({
         </div>
         <div className="astra-onboarding-permission-float">
           <PermissionDisclosureCard />
+          <PermissionControlPanel />
           <div className="astra-onboarding-permission-float__actions">
             <button type="button" className="astra-btn-outline-quiet" disabled={completing}>Not now</button>
             <button
@@ -873,7 +928,7 @@ function StepReady({
             </button>
           </div>
           <div className="astra-onboarding-permission-float__note">
-            Current broad extension site access is disclosed here; page-only and per-site controls remain planned, not shipped.
+            Current broad extension site access is disclosed here; page-only and per-site controls now use browser APIs where available, with Safari/iOS limitations called out.
           </div>
         </div>
       </div>

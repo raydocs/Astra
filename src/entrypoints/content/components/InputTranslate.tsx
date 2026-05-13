@@ -7,6 +7,7 @@ import { resolveSiteTranslationSettings } from "@/types/config"
 import { isSensitiveInput } from "@/utils/privacy"
 import { runInlineAction } from "../inline-actions"
 import { OVERLAY_FONT_FAMILY, OVERLAY_STYLE_TOKENS, createOverlayCardStyle, createOverlayStyle1TokenStyleElement, overlayPx } from "./overlayScale"
+import { isPageAccessAllowedForUrl } from "@/utils/extension/page-permissions"
 
 const HOST_ID = "astra-input-translate-host"
 const BRAND_COLOR = OVERLAY_STYLE_TOKENS.brand
@@ -286,6 +287,12 @@ function InputTranslateApp() {
     setOverlay(prev => ({ ...prev, translating: true, error: null }))
 
     try {
+      if (!await isPageAccessAllowedForUrl(window.location.href)) {
+        setOverlay(prev => ({ ...prev, error: "Astra page access revoked for this site" }))
+        setTimeout(() => setOverlay(prev => ({ ...prev, error: null })), 2000)
+        return
+      }
+
       const config = await readConfig()
       if (config.inputTranslation === "disabled") {
         setOverlay(prev => ({ ...prev, error: "Input translation disabled" }))

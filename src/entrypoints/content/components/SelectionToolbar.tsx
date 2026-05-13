@@ -28,6 +28,9 @@ import {
 import { OVERLAY_FONT_FAMILY, OVERLAY_STYLE_TOKENS, createOverlayCardStyle, createOverlayStyle1TokenStyleElement, overlayPx, overlayRem } from "./overlayScale"
 import { formatExplainProfileLabel } from "@/utils/storage/vocabulary-core"
 import { commitLearningContinuitySync } from "@/utils/extension/messages"
+import { isPageAccessAllowedForUrl } from "@/utils/extension/page-permissions"
+import { createAnnotationFromCurrentSelection } from "../page-annotations"
+type ToolbarAnnotationType = "mark" | "highlight"
 
 interface ToolbarPosition {
   top: number
@@ -40,7 +43,7 @@ const PRIMARY_BUTTON_ACTIVE_COLOR = OVERLAY_STYLE_TOKENS.brandActive
 const QUIET_SERIF_FONT_FAMILY = '"Source Serif 4", "Source Serif Pro", "Tiempos Text", "Songti SC", "Noto Serif SC", Georgia, serif'
 const HOST_ID = "astra-selection-toolbar-host"
 const PRIMARY_ACTION_IDS = new Set(["translate", "explain"])
-const HIDDEN_TOOLBAR_ACTION_IDS = new Set(["mark", "highlight"])
+const ANNOTATION_ACTION_IDS = new Set<ToolbarAnnotationType>(["mark", "highlight"])
 const CERTIFICATION_QUERY_KEY = "astraCert"
 const CERTIFICATION_FIXTURE_TITLE = "Selection toolbar parity fixture"
 
@@ -140,8 +143,12 @@ function isPrimaryLearningAction(actionId: string): boolean {
   return PRIMARY_ACTION_IDS.has(actionId)
 }
 
-function isVisibleToolbarAction(action: BuiltinAction): boolean {
-  return !HIDDEN_TOOLBAR_ACTION_IDS.has(action.id)
+function isAnnotationToolbarAction(action: BuiltinAction): action is BuiltinAction & { id: ToolbarAnnotationType } {
+  return ANNOTATION_ACTION_IDS.has(action.id as ToolbarAnnotationType)
+}
+
+function isVisibleToolbarAction(action: BuiltinAction, certificationMode: boolean): boolean {
+  return !(certificationMode && isAnnotationToolbarAction(action))
 }
 
 const isCoarsePointer = typeof window !== "undefined"
@@ -706,6 +713,10 @@ function SelectionToolbarApp() {
       if (requestVersion !== selectionVersionRef.current) return
       setTargetLang(targetLang)
       setFontScale(resolvedFontScale)
+      if (!await isPageAccessAllowedForUrl(window.location.href)) {
+        setActionResult({ actionId: action.id, text: "⚠ Astra page access is revoked for this site." })
+        return
+      }
       if (!enabled) {
         setActionResult({ actionId: action.id, text: "⚠ Astra is disabled on this site." })
         return
@@ -846,6 +857,46 @@ function SelectionToolbarApp() {
     void commitLearningContinuitySync("selection-save")
   }
 
+  const handleCreateAnnotation = async (type: ToolbarAnnotationType) => {
+    if (!selectedText || runningAction) return
+    const requestVersion = selectionVersionRef.current
+    setRunningAction(type)
+    setActionResult(null)
+
+    try {
+      if (!await isPageAccessAllowedForUrl(window.location.href)) {
+        setActionResult({ actionId: type, text: "⚠ Astra page access is revoked for this site." })
+        return
+      }
+
+      const result = await createAnnotationFromCurrentSelection(type)
+      if (requestVersion !== selectionVersionRef.current) return
+      if (!result) {
+        setActionResult({ actionId: type, text: "⚠ Could not anchor this selection on the page." })
+        return
+      }
+
+      const label = type === "mark" ? "Mark" : "Highlight"
+      const evictionNotice = result.evictedCount > 0
+        ? ` ${result.evictedCount} older annotation${result.evictedCount === 1 ? " was" : "s were"} evicted to keep the local ${result.maxAnnotations}-annotation cap.`
+        : ""
+      setActionResult({
+        actionId: type,
+        text: `${label} saved locally on this page.${evictionNotice}`,
+      })
+    } catch (error) {
+      if (requestVersion !== selectionVersionRef.current) return
+      setActionResult({
+        actionId: type,
+        text: `⚠ ${error instanceof Error ? error.message : "Could not save annotation."}`,
+      })
+    } finally {
+      if (requestVersion === selectionVersionRef.current) {
+        setRunningAction(null)
+      }
+    }
+  }
+
   const openVocabulary = () => {
     void browser.tabs.create({ url: browser.runtime.getURL("/vocabulary.html") })
   }
@@ -916,6 +967,7 @@ function SelectionToolbarApp() {
     ? formatGlossaryEvidenceLabel(actionResult.matchedGlossaryTerms)
     : ""
   const explainAction = actions.find((action) => action.id === "explain")
+  const annotationActions = actions.filter((action) => isVisibleToolbarAction(action, certificationMode) && isAnnotationToolbarAction(action))
   const resultCardTitle = runningAction
     ? `${getResultCardTitle(runningAction, false)}…`
     : getResultCardTitle(actionResult?.actionId, saved)
@@ -929,8 +981,8 @@ function SelectionToolbarApp() {
       onMouseDown={(event) => event.stopPropagation()}
     >
       <div style={styles.shellCard} data-testid="selection-toolbar-shell">
-        <div style={styles.buttonBar} aria-label={`Astra ${targetLang ?? ""}`.trim()}>
-          {actions.filter((action) => isVisibleToolbarAction(action) && isPrimaryLearningAction(action.id)).map((action) => {
+        <div style={styles.buttonBar} aria-label={["Astra", targetLang ?? ""].join(" ").trim()}>
+          {actions.filter((action) => isVisibleToolbarAction(action, certificationMode) && isPrimaryLearningAction(action.id)).map((action) => {
             const isActivePrimary = runningAction === action.id
             const isSelectedPrimary = actionResult?.actionId === action.id
 
@@ -982,6 +1034,27 @@ function SelectionToolbarApp() {
               {saved ? t("actionSaved") : t("actionSave")}
             </button>
           )}
+          {annotationActions.map((action) => (
+            <button
+              type="button"
+              key={action.id}
+              data-testid={`selection-action-${action.id}`}
+              style={{
+                ...styles.button,
+                ...(hoveredBtn === action.id ? styles.buttonHover : {}),
+              }}
+              onMouseEnter={() => setHoveredBtn(action.id)}
+              onMouseLeave={() => setHoveredBtn(null)}
+              onClick={(event) => {
+                event.stopPropagation()
+                skipNextMouseUp.current = true
+                void handleCreateAnnotation(action.id)
+              }}
+            >
+              {action.label}
+            </button>
+          ))}
+          <div style={{ position: "relative" }}>
           <button
             type="button"
             data-testid="selection-action-more"
@@ -1004,7 +1077,7 @@ function SelectionToolbarApp() {
           </button>
           {moreOpen && (
             <div role="menu" style={styles.menu} data-testid="selection-toolbar-more-menu">
-              {actions.filter((action) => isVisibleToolbarAction(action) && !isPrimaryLearningAction(action.id)).map((action) => (
+              {actions.filter((action) => isVisibleToolbarAction(action, certificationMode) && !isPrimaryLearningAction(action.id) && !isAnnotationToolbarAction(action)).map((action) => (
                 <button
                   type="button"
                   key={action.id}
@@ -1084,6 +1157,7 @@ function SelectionToolbarApp() {
               )}
             </div>
           )}
+        </div>
         </div>
       </div>
 

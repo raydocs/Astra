@@ -3,6 +3,7 @@ import { afterEach, describe, expect, it, vi } from "vitest"
 import type { D1PreparedStatement, D1RunResult } from "../bindings"
 import type { AstraRequestContext } from "../context"
 import type { AstraPlatformEnv, SyncPushWriteMode } from "../env"
+import type { SharedSyncMutationInput } from "../../../../src/utils/astra/sync-push"
 import { handleSyncPush } from "./sync-push"
 
 interface QueryRecord {
@@ -529,7 +530,7 @@ function createPushPayload() {
   }
 }
 
-function createRequest(mutations = [
+function createRequest(mutations: SharedSyncMutationInput[] = [
   {
     collection: "config",
     schemaVersion: 1,
@@ -636,6 +637,43 @@ describe("handleSyncPush", () => {
     expect(mockDb.queries.some((query) => query.sql.includes("INSERT INTO shadow_sync_mutations"))).toBe(true)
     expect(mockDb.queries.some((query) => query.sql.includes("UPDATE shadow_auth_sessions"))).toBe(true)
     expect(mockDb.queries.some((query) => query.sql.includes("UPDATE shadow_devices"))).toBe(true)
+  })
+
+  it("preserves review schedule payload updatedAt from the client in native D1 writes", async () => {
+    const { env, mockDb } = createEnv("native")
+    mockDb.seedShadowState()
+    const { ctx, flushWaitUntil } = createContext("native")
+    const clientUpdatedAt = 1_776_000_000_000
+    const request = createRequest([{
+      collection: "review_schedule",
+      schemaVersion: 1,
+      recordId: "word-1",
+      operation: "upsert",
+      clientMutationId: "mut-review-schedule-1",
+      deviceId: "device-current",
+      clientUpdatedAt: "2026-04-11T11:59:00.000Z",
+      payload: {
+        vocabularyEntryId: "word-1",
+        srsBox: 2,
+        nextReviewAt: clientUpdatedAt + 86_400_000,
+        reviewCount: 1,
+        lastReviewedAt: clientUpdatedAt,
+        lastReviewGrade: "good",
+        lastReviewGradeAt: clientUpdatedAt,
+        updatedAt: clientUpdatedAt,
+      },
+    }])
+
+    vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(new Response(JSON.stringify(createPushPayload()), {
+      status: 200,
+      headers: { "content-type": "application/json" },
+    }))
+
+    await handleSyncPush(request, env, ctx)
+    await flushWaitUntil()
+
+    const stored = mockDb.getStoredMutation("mut-review-schedule-1")
+    expect(JSON.parse(stored?.payload_json as string).updatedAt).toBe(clientUpdatedAt)
   })
 
   it("rejects oversized native sync-push batches with the Node-compatible limit error", async () => {

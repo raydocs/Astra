@@ -298,7 +298,7 @@ describe("Cloudflare shadow repositories", () => {
 
     expect(collections.reading_history.enabled).toBe(true)
     expect(collections.study_progress.enabled).toBe(false)
-    expect(mock.queries).toHaveLength(4)
+    expect(mock.queries).toHaveLength(5)
 
     mock.enqueueFirst({
       server_mutation_id: "srv_mut_123",
@@ -417,6 +417,7 @@ describe("Cloudflare shadow repositories", () => {
         shadow_updated_at: "2026-04-09T00:00:01.000Z",
       },
     ])
+    mock.enqueueAll([])
     mock.enqueueAll([])
     mock.enqueueAll([])
     mock.enqueueAll([

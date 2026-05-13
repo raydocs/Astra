@@ -21,6 +21,97 @@ function baseMutation(overrides: Partial<SharedSyncMutationInput>): SharedSyncMu
   }
 }
 
+describe("validateSyncMutationPayload review schedules", () => {
+  it("accepts sync-safe review schedule records with distinct four-grade metadata", () => {
+    const result = validateSyncMutationPayload(syncPreferences, baseMutation({
+      collection: "review_schedule",
+      recordId: "word-1",
+      clientMutationId: "test-review-schedule",
+      payload: {
+        vocabularyEntryId: "word-1",
+        srsBox: 3,
+        nextReviewAt: 1778707200000,
+        reviewCount: 4,
+        lastReviewedAt: 1778620800000,
+        lastReviewGrade: "hard",
+        lastReviewGradeAt: 1778620800000,
+        updatedAt: 1778620800000,
+      },
+    }))
+
+    expect("code" in result).toBe(false)
+  })
+
+  it("rejects review schedule payloads whose record id does not match the vocabulary entry id", () => {
+    const result = validateSyncMutationPayload(syncPreferences, baseMutation({
+      collection: "review_schedule",
+      recordId: "word-1",
+      clientMutationId: "test-review-schedule-mismatch",
+      payload: {
+        vocabularyEntryId: "word-2",
+        srsBox: 3,
+        nextReviewAt: 1778707200000,
+        reviewCount: 4,
+        lastReviewedAt: 1778620800000,
+        lastReviewGrade: "easy",
+        lastReviewGradeAt: 1778620800000,
+        updatedAt: 1778620800000,
+      },
+    }))
+
+    expect(result).toMatchObject({ code: "INVALID_SYNC_PAYLOAD" })
+  })
+})
+
+describe("validateSyncMutationPayload vocabulary", () => {
+  it("preserves sync-safe source context while stripping review schedule fields from vocabulary payloads", () => {
+    const result = validateSyncMutationPayload(syncPreferences, baseMutation({
+      collection: "vocabulary",
+      recordId: "word-1",
+      clientMutationId: "test-vocabulary-source-context",
+      payload: {
+        id: "word-1",
+        text: "hello",
+        translation: "你好",
+        savedAt: 1778620800000,
+        url: "https://example.com/article?utm=1#section",
+        sourceContext: {
+          surface: "popup_deep_read",
+          pageTitle: "Learning article",
+          pageUrl: "https://example.com/article",
+          hostname: "example.com",
+          sentenceText: "Hello world.",
+          languageLevel: "intermediate",
+          explainMode: "deep",
+        },
+        srsBox: 4,
+        nextReviewAt: 1778707200000,
+        reviewCount: 3,
+        lastReviewedAt: 1778620800000,
+      },
+    }))
+
+    expect("code" in result).toBe(false)
+    if ("code" in result) throw new Error(result.message)
+    expect(result).toMatchObject({
+      payload: expect.objectContaining({
+        id: "word-1",
+        url: "https://example.com/article",
+        sourceContext: expect.objectContaining({
+          languageLevel: "intermediate",
+          explainMode: "deep",
+        }),
+      }),
+    })
+    expect(result.payload).not.toMatchObject({
+      srsBox: expect.anything(),
+      nextReviewAt: expect.anything(),
+      reviewCount: expect.anything(),
+      lastReviewedAt: expect.anything(),
+    })
+  })
+})
+
 describe("validateSyncMutationPayload web document snapshots", () => {
   it("accepts manifest and bounded chunk records without original file bytes", () => {
     const manifest = validateSyncMutationPayload(syncPreferences, baseMutation({

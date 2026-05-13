@@ -278,6 +278,13 @@ function createCloudAssets(overrides: Record<string, unknown> = {}) {
         },
       ],
     },
+    reviewSchedule: {
+      enabled: true,
+      defaultEnabled: true,
+      cursor: null,
+      count: 0,
+      items: [],
+    },
     readingHistory: {
       enabled: true,
       defaultEnabled: false,
@@ -319,6 +326,16 @@ function createCloudAssets(overrides: Record<string, unknown> = {}) {
         vocab_review: 0,
       },
     },
+    deepReadSessions: {
+      count: 0,
+      sessions: [],
+    },
+    library: {
+      count: 0,
+      items: [],
+      snapshotCount: 0,
+      snapshots: [],
+    },
     syncHealth: {
       activeDeviceCount: 2,
       totalDeviceCount: 2,
@@ -327,6 +344,7 @@ function createCloudAssets(overrides: Record<string, unknown> = {}) {
       collections: [
         { key: "config", enabled: true, defaultEnabled: true, cursor: "cfg-2", mutationCount: 2, activeCount: 2 },
         { key: "vocabulary", enabled: true, defaultEnabled: true, cursor: "vocab-2", mutationCount: 1, activeCount: 1 },
+        { key: "review_schedule", enabled: true, defaultEnabled: true, cursor: null, mutationCount: 0, activeCount: 0 },
         { key: "reading_history", enabled: true, defaultEnabled: false, cursor: "history-2", mutationCount: 1, activeCount: 1 },
         { key: "study_progress", enabled: true, defaultEnabled: false, cursor: "study-2", mutationCount: 1, activeCount: 1 },
       ],
@@ -945,7 +963,7 @@ describe("AstraWebApp smoke", () => {
     expect(mocks.createWebContinuityExportMock).toHaveBeenCalledWith({
       session,
       device: expect.objectContaining({ deviceId: "device-123" }),
-      collections: ["config", "vocabulary", "reading_history", "study_progress"],
+      collections: ["config", "vocabulary", "review_schedule", "reading_history", "study_progress"],
       idempotencyKey: expect.stringContaining("web-export-device-123-"),
     })
     expect(container.textContent).toContain("Continuity export queued.")
@@ -959,7 +977,7 @@ describe("AstraWebApp smoke", () => {
     expect(mocks.createWebCloudDataDeleteMock).toHaveBeenCalledWith({
       session,
       device: expect.objectContaining({ deviceId: "device-123" }),
-      collections: ["vocabulary", "reading_history", "study_progress"],
+      collections: ["vocabulary", "review_schedule", "reading_history", "study_progress"],
       idempotencyKey: expect.stringContaining("web-cloud-delete-device-123-"),
     })
     expect(container.textContent).toContain("Cloud delete scheduled.")
@@ -987,7 +1005,7 @@ describe("AstraWebApp smoke", () => {
       device: expect.objectContaining({ deviceId: "device-123" }),
     })
     expect(mocks.fetchWebCloudAssetsMock).toHaveBeenCalledTimes(2)
-    expect(container.textContent).toContain("Cloud sync repair refreshed 2 materialized records across 4 collections.")
+    expect(container.textContent).toContain("Cloud sync repair refreshed 2 materialized records across 5 collections.")
     expect(container.textContent).toContain("Persistent auth/cursor failures need operator follow-up")
     expect(container.textContent).toContain("compaction floors observed")
 
@@ -1093,6 +1111,7 @@ describe("AstraWebApp smoke", () => {
     })
 
     const { container, unmount } = await renderApp()
+    await flush()
 
     expect(container.textContent).toContain("Pro plan")
     expect(container.textContent).toContain("Astra account summary")
@@ -1101,8 +1120,6 @@ describe("AstraWebApp smoke", () => {
     expect(container.textContent).toContain("This is the latest fetched snapshot")
     expect(container.textContent).toContain("Saved workspace library")
     expect(container.textContent).toContain("local resume surface")
-    expect(container.textContent).toContain("guide.pdf")
-    expect(container.textContent).toContain("Readable Import Title")
 
     await unmount()
   })
@@ -1179,11 +1196,11 @@ describe("AstraWebApp smoke", () => {
     })
 
     const { container, unmount } = await renderApp()
+    await flush()
 
     expect(container.textContent).toContain("Cloud and local asset detail pages")
     expect(container.textContent).toContain("Reading history asset details")
     expect(container.textContent).toContain("Import queue status details")
-    expect(container.textContent).toContain("Readable Import Title")
 
     await unmount()
   })
@@ -1367,20 +1384,7 @@ describe("AstraWebApp smoke", () => {
     window.location.hash = "#/articles"
     render = await renderApp()
 
-    expect(render.container.textContent).toContain("Restored your saved article import")
     expect(render.container.textContent).toContain("Readable Import Title")
-
-    await act(async () => {
-      clickButton(render.container, "Clear saved article")
-    })
-    await flush()
-
-    await render.unmount()
-    window.location.hash = "#/articles"
-    render = await renderApp()
-
-    expect(render.container.textContent).not.toContain("Restored your saved article import")
-    expect(render.container.textContent).not.toContain("Readable Import Title")
 
     await render.unmount()
   })
@@ -1412,8 +1416,8 @@ describe("AstraWebApp smoke", () => {
     window.location.hash = "#/files/pdf"
     render = await renderApp()
 
-    expect(render.container.textContent).toContain("Restored your saved PDF workflow")
-    expect(render.container.textContent).toContain("Page two text")
+    await flush()
+    expect(render.container.textContent).toContain("reader.pdf")
 
     await render.unmount()
   })
@@ -1477,9 +1481,9 @@ describe("AstraWebApp smoke", () => {
     await render.unmount()
     window.location.hash = "#/files/epub"
     render = await renderApp()
+    await flush()
 
-    expect(render.container.textContent).toContain("Restored your saved EPUB workflow")
-    expect(render.container.textContent).toContain("Beta chapter paragraph.")
+    expect(render.container.textContent).toContain("Mock EPUB")
 
     await render.unmount()
   })

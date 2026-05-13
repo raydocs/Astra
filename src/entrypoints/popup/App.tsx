@@ -128,6 +128,12 @@ import StudySection, {
 import UsageInsightsCard from "./components/UsageInsightsCard"
 import { warningStyle, labelStyle } from "./components/styles"
 import { formatExplainProfileLabel, formatGlossaryEvidenceLabel } from "@/utils/storage/vocabulary-core"
+import {
+  getPageAccessState,
+  requestPageAccess,
+  revokePageAccess,
+  type PageAccessState,
+} from "@/utils/extension/page-permissions"
 
 async function getActiveSiteKey(): Promise<string | null> {
   const tab = await resolveActiveHttpTab()
@@ -452,6 +458,8 @@ export default function App() {
   const [translationState, setTranslationState] = useState<TranslationSnapshot | null>(null)
   const [contentAvailable, setContentAvailable] = useState(true)
   const [activeSiteKey, setActiveSiteKey] = useState<string | null>(null)
+  const [pageAccessState, setPageAccessState] = useState<PageAccessState | null>(null)
+  const [pageAccessMessage, setPageAccessMessage] = useState("")
   const [authSession, setAuthSession] = useState<AstraSession | null>(null)
   const [authAccount, setAuthAccount] = useState<AstraAccount | null>(null)
   const [authUsage, setAuthUsage] = useState<AstraUsageSnapshot | null>(null)
@@ -824,6 +832,7 @@ export default function App() {
     }
     setPersistedConfig(config)
     setActiveSiteKey(siteKey)
+    setPageAccessState(await getPageAccessState(activeHttp ? { id: activeHttp.id, url: activeHttp.url } : null))
     setAuthSession(session)
     setAuthAccount(account)
     setAuthUsage(accountUsage)
@@ -1563,6 +1572,43 @@ export default function App() {
     })
   }
 
+  const refreshPageAccessState = async () => {
+    const activeHttp = await resolveActiveHttpTab()
+    setPageAccessState(await getPageAccessState(activeHttp ? { id: activeHttp.id, url: activeHttp.url } : null))
+  }
+
+  const handlePageAccessAction = async (action: "page" | "site" | "revoke-site" | "all-sites") => {
+    setPageAccessMessage("")
+    const activeHttp = await resolveActiveHttpTab()
+    const tab = activeHttp ? { id: activeHttp.id, url: activeHttp.url } : null
+    const result = action === "revoke-site"
+      ? await revokePageAccess("site", tab)
+      : await requestPageAccess(action === "all-sites" ? "all-sites" : action, tab)
+    setPageAccessState(result.state)
+    setPageAccessMessage(result.message)
+
+    if (action === "revoke-site" && activeSiteKey) {
+      const nextDraft: AstraConfig = {
+        ...configDraft,
+        sites: {
+          ...configDraft.sites,
+          [activeSiteKey]: {
+            ...(configDraft.sites[activeSiteKey] ?? { enabled: true, alwaysTranslate: false }),
+            enabled: false,
+            alwaysTranslate: false,
+          },
+        },
+      }
+      setConfigDraft(nextDraft)
+      await persistDraftConfig(nextDraft)
+      await stopActiveTabTranslation()
+    } else {
+      await refreshTranslationState()
+    }
+
+    await refreshPageAccessState()
+  }
+
   const handleSiteRulesQuickFix = (action: SiteRulesQuickFixAction) => {
     handleSiteRuleChange((siteRule) => {
       const nextRule: SiteConfig = { ...siteRule }
@@ -2236,6 +2282,12 @@ export default function App() {
             presentation: { ...configDraft.presentation, ...rule.presentation, theme },
           }))
         }}
+        permissionState={pageAccessState}
+        permissionStatusMessage={pageAccessMessage}
+        onGrantPageAccess={() => { void handlePageAccessAction("page") }}
+        onGrantSiteAccess={() => { void handlePageAccessAction("site") }}
+        onRevokeSiteAccess={() => { void handlePageAccessAction("revoke-site") }}
+        onGrantAllSitesAccess={() => { void handlePageAccessAction("all-sites") }}
       />
 
       <PopupReadingQuickCard

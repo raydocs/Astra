@@ -77,6 +77,7 @@ bench-live/
   entry.ts                   # live CLI 入口
   index.ts                   # live orchestration surface
   runtime.ts                 # live runtime event model
+  paths.ts                   # call-time path resolvers for local overrides
   driver.ts                  # browser / fixture / artifact helpers
   source-runtime.ts          # source-backed execution path
   scenarios/                 # standard live scenarios
@@ -215,13 +216,18 @@ deterministic bench 与 loop / executor / dispatch 的主 artifact 目录。
 
 ### `bench-live-results/`
 
-`bench-live/results.ts` 会把 live 结果持久化到：
+By default, `bench-live/results.ts` writes live results to `bench-live-results/`. Local runs may override the artifact root with `ASTRA_BENCH_LIVE_ARTIFACT_ROOT`; CI keeps the default path.
 
 - `bench-live-results/latest.result.json`
 - `bench-live-results/latest.result.md`
 - `bench-live-results/<run-id>/result.json`
 - `bench-live-results/<run-id>/result.md`
 - `bench-live-results/<run-id>/...` 目录下的截图、HTML snapshot、fixture HTML、调试 artifact
+
+Bench-live helpers also support local path overrides for built extension and fixture roots:
+
+- `ASTRA_BENCH_LIVE_EXTENSION_PATH` overrides the default `.output/chrome-mv3` extension path.
+- `ASTRA_BENCH_FIXTURE_ROOT` overrides the default `test/fixtures/pages` fixture root.
 
 ### `bench-opt-results/`
 

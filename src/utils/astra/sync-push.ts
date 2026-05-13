@@ -6,6 +6,10 @@ import {
   buildConfigSiteSyncRecordId,
   normalizeSiteKey,
 } from "../../types/config"
+import {
+  SyncedVocabularyEntrySchema,
+  VocabularyReviewScheduleRecordSchema,
+} from "../storage/vocabulary-core"
 
 export type SharedSyncCollection = "config" | "vocabulary" | "review_schedule" | "reading_history" | "study_progress"
 export type SharedSyncOperation = "upsert" | "delete"
@@ -35,31 +39,6 @@ export interface SharedSyncMutationRejection {
 
 const STUDY_STEPS_ORDER = ["read", "guided_read", "explain", "vocab_save", "vocab_review"] as const
 const StudyStepSchema = z.enum(STUDY_STEPS_ORDER)
-const SyncedVocabularyEntrySchema = z.object({
-  id: z.string().trim().min(1),
-  text: z.string().trim().min(1),
-  translation: z.string().trim().min(1).optional(),
-  explanation: z.string().trim().min(1).optional(),
-  context: z.string().trim().min(1).optional(),
-  url: z.string().trim().min(1).optional(),
-  hostname: z.string().trim().min(1).optional(),
-  savedAt: z.number().int().nonnegative(),
-  note: z.string().max(1000).optional(),
-  tags: z.array(z.string()).optional(),
-  glossaryEnabled: z.boolean().optional(),
-  glossaryScope: z.enum(["hostname", "global"]).optional(),
-  glossaryTargetText: z.string().trim().min(1).optional(),
-})
-const SyncedVocabularyReviewScheduleRecordSchema = z.object({
-  vocabularyEntryId: z.string().trim().min(1),
-  srsBox: z.number().int().min(1).max(5),
-  nextReviewAt: z.number().int().nonnegative(),
-  reviewCount: z.number().int().nonnegative(),
-  lastReviewedAt: z.number().int().nonnegative().nullable().default(null),
-  lastReviewGrade: z.enum(["again", "hard", "good", "easy"]).nullable().default(null),
-  lastReviewGradeAt: z.number().int().nonnegative().nullable().default(null),
-  updatedAt: z.number().int().nonnegative(),
-}).strict()
 const SyncedReadingHistoryEntrySchema = z.object({
   id: z.string().trim().min(1),
   url: z.string().trim().min(1),
@@ -363,7 +342,7 @@ export function validateSyncMutationPayload(
     }
 
     try {
-      const payload = SyncedVocabularyReviewScheduleRecordSchema.parse(mutation.payload)
+      const payload = VocabularyReviewScheduleRecordSchema.parse(mutation.payload)
       if (payload.vocabularyEntryId !== mutation.recordId) {
         return createSyncRejection(
           mutation,

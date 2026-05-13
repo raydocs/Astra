@@ -1,8 +1,8 @@
 import { mkdir, writeFile } from "node:fs/promises"
 import path from "node:path"
 
-import { DEFAULT_LIVE_ARTIFACT_ROOT } from "./driver"
 import type { LiveBenchRunOutcome } from "./index"
+import { resolveLiveArtifactRoot } from "./paths"
 
 export interface PersistedLiveBenchArtifacts {
   outputDir: string
@@ -14,13 +14,14 @@ export interface PersistedLiveBenchArtifacts {
 
 export async function persistLiveBenchRunOutcome(
   outcome: LiveBenchRunOutcome,
-  rootDir = DEFAULT_LIVE_ARTIFACT_ROOT,
+  rootDir?: string | null,
 ): Promise<PersistedLiveBenchArtifacts> {
-  const outputDir = path.resolve(rootDir, outcome.context.runId)
+  const resolvedRootDir = resolveLiveArtifactRoot(rootDir)
+  const outputDir = path.resolve(resolvedRootDir, outcome.context.runId)
   const runJsonPath = path.join(outputDir, "result.json")
   const runMarkdownPath = path.join(outputDir, "result.md")
-  const latestJsonPath = path.resolve(rootDir, "latest.result.json")
-  const latestMarkdownPath = path.resolve(rootDir, "latest.result.md")
+  const latestJsonPath = path.resolve(resolvedRootDir, "latest.result.json")
+  const latestMarkdownPath = path.resolve(resolvedRootDir, "latest.result.md")
 
   await mkdir(outputDir, { recursive: true })
   await writeFile(runJsonPath, JSON.stringify(outcome.result, null, 2))

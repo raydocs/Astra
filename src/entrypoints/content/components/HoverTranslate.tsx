@@ -10,6 +10,7 @@ import { hasInjectedTranslation } from "@/utils/dom/inject"
 import { findClosestTextBlock, findContentRoot } from "@/utils/dom/traversal"
 import { readConfig } from "@/utils/storage/config"
 import { getDueVocabularyCount, hasVocabularyEntryByText, saveVocabularyEntry } from "@/utils/storage/vocabulary"
+import { isPageAccessAllowedForUrl } from "@/utils/extension/page-permissions"
 
 import {
   getInteractionSuppressionState,
@@ -264,6 +265,11 @@ function HoverTranslateApp() {
 
       hoverTimer.current = window.setTimeout(() => {
         void (async () => {
+          if (!await isPageAccessAllowedForUrl(window.location.href)) {
+            hideOverlay()
+            return
+          }
+
           const config = await readConfig()
           const resolved = resolveSiteTranslationSettings(config, window.location.hostname)
 

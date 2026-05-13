@@ -19,6 +19,7 @@ type SessionPayload = {
 }
 
 const CORS_HEADERS = "authorization, content-type, idempotency-key, x-astra-device-id"
+const PROVIDER_ENTITLEMENTS = ["openai"] as const
 const SYNC_COLLECTIONS = ["config", "vocabulary", "review_schedule", "reading_history", "study_progress"] as const
 
 function json(data: unknown, init: ResponseInit = {}, extraHeaders: Record<string, string> = {}) {
@@ -147,7 +148,7 @@ function sessionResponse(request: Request, env: RelayLiteEnv, payload: SessionPa
     email: payload.email,
     plan: "free",
     subscriptionStatus: "active",
-    providerEntitlements: ["openai", "gemini"],
+    providerEntitlements: [...PROVIDER_ENTITLEMENTS],
     quota: usage(env).quota,
     usage: usage(env).usage,
     issuedAt: payload.issuedAt,
@@ -164,7 +165,7 @@ function account(request: Request, payload: SessionPayload) {
     createdAt: payload.issuedAt,
     plan: "free",
     subscriptionStatus: "active",
-    providerEntitlements: ["openai", "gemini"],
+    providerEntitlements: [...PROVIDER_ENTITLEMENTS],
   }
 }
 
@@ -186,23 +187,17 @@ function deviceEntry(payload: SessionPayload, requestDeviceId: string | null) {
 }
 
 function syncCollections() {
-  return {
-    config: { enabled: true, defaultEnabled: true, cursor: null },
-    vocabulary: { enabled: true, defaultEnabled: true, cursor: null },
-    review_schedule: { enabled: true, defaultEnabled: true, cursor: null },
-    reading_history: { enabled: false, defaultEnabled: false, cursor: null },
-    study_progress: { enabled: false, defaultEnabled: false, cursor: null },
-  }
+  return Object.fromEntries(SYNC_COLLECTIONS.map((collection) => [
+    collection,
+    { enabled: false, defaultEnabled: false, cursor: null },
+  ]))
 }
 
 function syncSummaryCollections() {
-  return {
-    config: { enabled: true, defaultEnabled: true, cursor: null, mutationCount: 0, activeCount: 0, lastSyncAt: null, compactionFloorCursor: null },
-    vocabulary: { enabled: true, defaultEnabled: true, cursor: null, mutationCount: 0, activeCount: 0, lastSyncAt: null, compactionFloorCursor: null },
-    review_schedule: { enabled: true, defaultEnabled: true, cursor: null, mutationCount: 0, activeCount: 0, lastSyncAt: null, compactionFloorCursor: null },
-    reading_history: { enabled: false, defaultEnabled: false, cursor: null, mutationCount: 0, activeCount: 0, lastSyncAt: null, compactionFloorCursor: null },
-    study_progress: { enabled: false, defaultEnabled: false, cursor: null, mutationCount: 0, activeCount: 0, lastSyncAt: null, compactionFloorCursor: null },
-  }
+  return Object.fromEntries(SYNC_COLLECTIONS.map((collection) => [
+    collection,
+    { enabled: false, defaultEnabled: false, cursor: null, mutationCount: 0, activeCount: 0, lastSyncAt: null, compactionFloorCursor: null },
+  ]))
 }
 
 async function createAnonymousSession(request: Request, env: RelayLiteEnv, headers: Record<string, string>) {

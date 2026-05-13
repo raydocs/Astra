@@ -21,6 +21,7 @@ import {
 import { executeTabCommand } from "./frame-coordinator"
 import { AstraError, toTranslationError } from "@/types/translation"
 import { toggleTabTranslation } from "@/utils/extension/messages"
+import { reconcileBrowserPermissionEvent } from "@/utils/extension/page-permissions"
 import {
   getProviderRoutingMetadataFromError,
   translateWithProviderDetailed,
@@ -652,6 +653,30 @@ export default defineBackground({
     })
 
     initializeTranslationUsageSession().catch(() => {})
+
+    if (browser.permissions?.onAdded) {
+      try {
+        browser.permissions.onAdded.addListener((permissions) => {
+          void reconcileBrowserPermissionEvent(permissions, true).catch((error) => {
+            console.warn("[Astra] Failed to reconcile added permissions:", error)
+          })
+        })
+      } catch {
+        // permissions events may be unavailable in compat/mobile builds.
+      }
+    }
+
+    if (browser.permissions?.onRemoved) {
+      try {
+        browser.permissions.onRemoved.addListener((permissions) => {
+          void reconcileBrowserPermissionEvent(permissions, false).catch((error) => {
+            console.warn("[Astra] Failed to reconcile removed permissions:", error)
+          })
+        })
+      } catch {
+        // permissions events may be unavailable in compat/mobile builds.
+      }
+    }
 
     browser.runtime.onMessage.addListener((message, _sender, sendResponse) => {
       if (isRuntimeTranslateBatchRequest(message)) {

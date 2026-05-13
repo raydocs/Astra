@@ -983,14 +983,22 @@ async function applyRepairRecovery(params: {
   const repairedVocabularyEntries = params.repair.collections.vocabulary.records.map((record) =>
     SyncedVocabularyEntrySchema.parse(record.payload)
   )
-  const repairedReviewSchedules = params.repair.collections.review_schedule.records.map((record) =>
-    VocabularyReviewScheduleRecordSchema.parse(record.payload)
-  )
+  const repairedReviewScheduleCollection = params.repair.collections.review_schedule ?? null
+  const repairedReviewSchedules = repairedReviewScheduleCollection
+    ? repairedReviewScheduleCollection.records.map((record) =>
+        VocabularyReviewScheduleRecordSchema.parse(record.payload)
+      )
+    : null
+
+  if (repairedReviewSchedules) {
+    await replaceVocabularyEntries(applyVocabularyReviewScheduleRecordsToEntries(repairedVocabularyEntries, repairedReviewSchedules))
+    await replaceVocabularyReviewSchedules(repairedReviewSchedules)
+  } else {
+    await replaceVocabularyEntries(repairedVocabularyEntries)
+  }
 
   await Promise.all([
     replaceConfig(mergedConfig),
-    replaceVocabularyEntries(applyVocabularyReviewScheduleRecordsToEntries(repairedVocabularyEntries, repairedReviewSchedules)),
-    replaceVocabularyReviewSchedules(repairedReviewSchedules),
     replaceReadingHistory(params.repair.collections.reading_history.records.map((record) =>
       SyncedReadingHistoryEntrySchema.parse(record.payload)
     )),
@@ -1013,10 +1021,12 @@ async function applyRepairRecovery(params: {
         cursor: params.repair.collections.vocabulary.latestCursor,
         shadow: buildVocabularyShadowFromRepair(params.repair.collections.vocabulary.records),
       },
-      review_schedule: {
-        cursor: params.repair.collections.review_schedule.latestCursor,
-        shadow: buildReviewScheduleShadowFromRepair(params.repair.collections.review_schedule.records),
-      },
+      review_schedule: repairedReviewScheduleCollection
+        ? {
+            cursor: repairedReviewScheduleCollection.latestCursor,
+            shadow: buildReviewScheduleShadowFromRepair(repairedReviewScheduleCollection.records),
+          }
+        : params.state.collections.review_schedule,
       reading_history: {
         cursor: params.repair.collections.reading_history.latestCursor,
         shadow: buildReadingHistoryShadowFromRepair(params.repair.collections.reading_history.records),
@@ -1395,7 +1405,7 @@ export async function runPhaseOneCollectionSync(): Promise<AstraPhaseOneSyncResu
       pulled: {
         config: repair.collections.config.records.length,
         vocabulary: repair.collections.vocabulary.records.length,
-        review_schedule: repair.collections.review_schedule.records.length,
+        review_schedule: repair.collections.review_schedule?.records.length ?? 0,
         reading_history: repair.collections.reading_history.records.length,
         study_progress: repair.collections.study_progress.records.length,
       },
@@ -1409,7 +1419,7 @@ export async function runPhaseOneCollectionSync(): Promise<AstraPhaseOneSyncResu
   const deepReadSessionConfigDeltas = configDeltas.filter((delta) => isDeepReadSessionConfigRecordId(delta.recordId))
   const vocabularyDeltas = pull.deltas.vocabulary
   const reviewScheduleDeltas = bootstrap.collections.review_schedule.enabled
-    ? pull.deltas.review_schedule
+    ? (pull.deltas.review_schedule ?? [])
     : []
   const readingHistoryDeltas = bootstrap.collections.reading_history.enabled
     ? pull.deltas.reading_history
@@ -1484,7 +1494,12 @@ export async function runPhaseOneCollectionSync(): Promise<AstraPhaseOneSyncResu
       reviewScheduleDeltas.map((delta) => ({
         recordId: delta.recordId,
         operation: delta.operation,
-        payload: delta.payload,
+        payload: delta.payload && delta.operation === "upsert"
+          ? {
+              ...delta.payload,
+              updatedAt: Date.parse(delta.serverUpdatedAt),
+            }
+          : delta.payload,
       })),
     )
     currentVocabularyEntries = applyVocabularyReviewScheduleRecordsToEntries(currentVocabularyEntries, nextReviewSchedules)

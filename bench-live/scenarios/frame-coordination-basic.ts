@@ -1,8 +1,9 @@
-import { mkdir, writeFile } from "node:fs/promises"
+import { writeFile } from "node:fs/promises"
 import path from "node:path"
 
 import type { FrameCoordinationExecution } from "../../bench/evaluators/frame-coordination"
 import {
+  prepareLiveArtifactDir,
   withLiveBrowserPage,
   LiveBrowserUnavailableError,
 } from "../driver"
@@ -92,8 +93,7 @@ export const frameCoordinationBasicScenario: LiveScenarioDefinition<LiveFrameCoo
       const capture = await withLiveBrowserPage(async (page, browserExecutablePath) => {
         // Build and serve the fixture HTML inline (no external file needed)
         const fixtureHtml = buildFrameCoordinationFixtureHtml()
-        const artifactDir = path.resolve(process.cwd(), "bench-live-results", context.runId)
-        await mkdir(artifactDir, { recursive: true })
+        const artifactDir = await prepareLiveArtifactDir(context.runId)
 
         const htmlPath = path.join(artifactDir, `${FIXTURE_NAME}.html`)
         await writeFile(htmlPath, fixtureHtml, "utf8")

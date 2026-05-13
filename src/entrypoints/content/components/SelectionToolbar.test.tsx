@@ -7,12 +7,14 @@ const {
   saveVocabularyEntryMock,
   getDueVocabularyCountMock,
   markSessionSaveMock,
+  createAnnotationFromCurrentSelectionMock,
 } = vi.hoisted(() => ({
   readConfigMock: vi.fn(),
   translateTextsMock: vi.fn(),
   saveVocabularyEntryMock: vi.fn(),
   getDueVocabularyCountMock: vi.fn(),
   markSessionSaveMock: vi.fn(),
+  createAnnotationFromCurrentSelectionMock: vi.fn(),
 }))
 
 vi.mock("@/utils/storage/config", () => ({
@@ -58,6 +60,10 @@ vi.mock("../learning-state", () => ({
   markSessionSave: markSessionSaveMock,
 }))
 
+vi.mock("../page-annotations", () => ({
+  createAnnotationFromCurrentSelection: createAnnotationFromCurrentSelectionMock,
+}))
+
 vi.mock("@/utils/reading/assist", () => ({
   generateGrammarGuide: vi.fn().mockResolvedValue({
     overview: "mock overview",
@@ -95,6 +101,7 @@ describe("SelectionToolbar interaction suppression", () => {
     saveVocabularyEntryMock.mockReset()
     getDueVocabularyCountMock.mockReset()
     markSessionSaveMock.mockReset()
+    createAnnotationFromCurrentSelectionMock.mockReset()
     document.getElementById(HOST_ID)?.remove()
     document.body.innerHTML = `<main><p id="target">Hello world</p></main>`
 
@@ -122,6 +129,11 @@ describe("SelectionToolbar interaction suppression", () => {
     translateTextsMock.mockResolvedValue({ ok: true, translations: ["你好"] })
     saveVocabularyEntryMock.mockResolvedValue(undefined)
     getDueVocabularyCountMock.mockResolvedValue(0)
+    createAnnotationFromCurrentSelectionMock.mockResolvedValue({
+      annotation: { id: "annotation-1" },
+      evictedCount: 0,
+      maxAnnotations: 500,
+    })
 
     await act(async () => {
       mountSelectionToolbar()
@@ -751,7 +763,7 @@ describe("SelectionToolbar interaction suppression", () => {
     expect(shadow.textContent).not.toContain("Old explanation")
   })
 
-  it("renders compact inline toolbar and default-enabled action buttons", async () => {
+  it("renders enabled Mark and Highlight annotation actions in normal mode", async () => {
     readConfigMock.mockResolvedValue({
       ...DEFAULT_ASTRA_CONFIG,
       customActions: [
@@ -793,10 +805,10 @@ describe("SelectionToolbar interaction suppression", () => {
     expect(buttonTexts).toContain("翻译")
     expect(buttonTexts).toContain("解释")
     expect(buttonTexts).toContain(t("actionSave"))
-    expect(buttonTexts).not.toContain("Mark")
-    expect(buttonTexts).not.toContain("Highlight")
-    expect(shadow.querySelector("[data-testid='selection-action-mark']")).toBeNull()
-    expect(shadow.querySelector("[data-testid='selection-action-highlight']")).toBeNull()
+    expect(buttonTexts).toContain("Mark")
+    expect(buttonTexts).toContain("Highlight")
+    expect(shadow.querySelector("[data-testid='selection-action-mark']")).toBeTruthy()
+    expect(shadow.querySelector("[data-testid='selection-action-highlight']")).toBeTruthy()
     const moreButton = shadow.querySelector("[data-testid='selection-action-more']") as HTMLButtonElement | null
     expect(moreButton).toBeTruthy()
     expect(moreButton?.getAttribute("aria-label")).toBe(t("actionMore"))
@@ -807,9 +819,43 @@ describe("SelectionToolbar interaction suppression", () => {
     })
 
     expect(shadow.querySelector("[data-testid='selection-toolbar-more-menu']")).toBeTruthy()
-    expect(shadow.querySelector("[data-testid='selection-action-mark']")).toBeNull()
-    expect(shadow.querySelector("[data-testid='selection-action-highlight']")).toBeNull()
-    expect(shadow.textContent).not.toContain("Mark")
+    expect(shadow.querySelector("[data-testid='selection-action-mark']")).toBeTruthy()
+    expect(shadow.querySelector("[data-testid='selection-action-highlight']")).toBeTruthy()
+  })
+
+  it("keeps Highlight distinct from vocabulary Save", async () => {
+    readConfigMock.mockResolvedValue({
+      ...DEFAULT_ASTRA_CONFIG,
+      customActions: [
+        {
+          id: "highlight",
+          label: "Highlight",
+          labelZh: "Highlight",
+          enabled: true,
+          systemPrompt: "Highlight {{text}}",
+        },
+      ],
+    })
+    const target = document.getElementById("target") as HTMLElement
+
+    await triggerDocumentMouseDown(target)
+    setSelection("Hello world")
+    await triggerDocumentMouseUp(target)
+
+    const host = document.getElementById(HOST_ID)!
+    const shadow = host.shadowRoot!
+    const highlightButton = shadow.querySelector("[data-testid='selection-action-highlight']") as HTMLButtonElement | null
+
+    await act(async () => {
+      highlightButton?.click()
+      await Promise.resolve()
+      await Promise.resolve()
+    })
+
+    expect(createAnnotationFromCurrentSelectionMock).toHaveBeenCalledWith("highlight")
+    expect(saveVocabularyEntryMock).not.toHaveBeenCalled()
+    expect(markSessionSaveMock).not.toHaveBeenCalled()
+    expect(shadow.querySelector("[data-testid='selection-result-card']")?.textContent).toContain("Highlight saved locally")
   })
 
   it("does not apply certification layout without the exact local fixture title", async () => {
@@ -834,6 +880,22 @@ describe("SelectionToolbar interaction suppression", () => {
     window.history.pushState(null, "", "/fixture?astraCert=1")
     readConfigMock.mockResolvedValue({
       ...DEFAULT_ASTRA_CONFIG,
+      customActions: [
+        {
+          id: "mark",
+          label: "Mark",
+          labelZh: "Mark",
+          enabled: true,
+          systemPrompt: "Mark {{text}}",
+        },
+        {
+          id: "highlight",
+          label: "Highlight",
+          labelZh: "Highlight",
+          enabled: true,
+          systemPrompt: "Highlight {{text}}",
+        },
+      ],
       presentation: {
         ...DEFAULT_ASTRA_CONFIG.presentation,
         fontSize: 1,

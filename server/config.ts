@@ -1,3 +1,5 @@
+import { join } from "node:path"
+
 import type { ProviderId } from "../src/types/config"
 import type { AstraPlan, AstraSubscriptionStatus } from "../src/types/auth"
 
@@ -73,6 +75,20 @@ function parsePositiveInteger(raw: string | undefined, fallback: number): number
   return parsed
 }
 
+function resolveRelayDataFilePath(
+  env: NodeJS.ProcessEnv,
+  explicitPath: string | undefined,
+  fileName: string,
+): string {
+  if (explicitPath !== undefined) return explicitPath
+
+  const dataDir = parseOptionalText(env.ASTRA_RELAY_DATA_DIR)
+    ?? parseOptionalText(env.ASTRA_DATA_DIR)
+    ?? "server/data"
+
+  return join(dataDir, fileName)
+}
+
 export function loadRelayEnv(env: NodeJS.ProcessEnv = process.env): RelayEnv {
   const port = Number(env.ASTRA_RELAY_PORT ?? "8787")
   const host = env.ASTRA_RELAY_HOST ?? "127.0.0.1"
@@ -87,8 +103,8 @@ export function loadRelayEnv(env: NodeJS.ProcessEnv = process.env): RelayEnv {
     sessionPublicBaseURL,
     sessionSecret: env.ASTRA_SESSION_SECRET ?? "astra-dev-secret",
     platformMirrorSecret: parseOptionalText(env.ASTRA_PLATFORM_MIRROR_SECRET),
-    userDbPath: env.ASTRA_USER_DB_PATH ?? "server/data/users.json",
-    videoNoteStorePath: env.ASTRA_VIDEO_NOTE_STORE_PATH ?? "server/data/video-notes.json",
+    userDbPath: resolveRelayDataFilePath(env, env.ASTRA_USER_DB_PATH, "users.json"),
+    videoNoteStorePath: resolveRelayDataFilePath(env, env.ASTRA_VIDEO_NOTE_STORE_PATH, "video-notes.json"),
     loginEmail: env.ASTRA_RELAY_EMAIL ?? "demo@astra.local",
     loginPassword: env.ASTRA_RELAY_PASSWORD ?? "astra-demo-pass",
     plan: parsePlan(env.ASTRA_RELAY_PLAN),

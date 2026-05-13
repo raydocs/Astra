@@ -415,6 +415,35 @@ describe("file user store", () => {
     expect(pull.deltas.config[0]?.clientMutationId).toBe("mut-1")
   })
 
+  it("preserves review schedule payload updatedAt from the client", async () => {
+    const env = await createEnv()
+    const store = new FileUserStore(env)
+    const clientUpdatedAt = 1_776_000_000_000
+
+    await store.pushSyncMutations("demo@astra.local", "device-sync", [{
+      collection: "review_schedule",
+      schemaVersion: 1,
+      recordId: "word-1",
+      operation: "upsert",
+      clientMutationId: "mut-review-schedule-1",
+      deviceId: "device-sync",
+      clientUpdatedAt: "2026-04-09T12:00:00.000Z",
+      payload: {
+        vocabularyEntryId: "word-1",
+        srsBox: 2,
+        nextReviewAt: clientUpdatedAt + 86_400_000,
+        reviewCount: 1,
+        lastReviewedAt: clientUpdatedAt,
+        lastReviewGrade: "good",
+        lastReviewGradeAt: clientUpdatedAt,
+        updatedAt: clientUpdatedAt,
+      },
+    }], new Date("2026-04-09T12:30:00.000Z"))
+
+    const db = JSON.parse(await readFile(env.userDbPath, "utf8"))
+    expect(db.syncMutations[0].payload.updatedAt).toBe(clientUpdatedAt)
+  })
+
   it("accepts reading history mutations after the collection is enabled", async () => {
     const env = await createEnv()
     const store = new FileUserStore(env)

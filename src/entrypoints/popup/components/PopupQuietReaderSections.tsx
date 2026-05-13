@@ -1,6 +1,7 @@
 import type { ReactNode } from "react"
 import type { HoverTrigger, SiteConfig, TranslationMode, TranslationTheme } from "@/types/config"
 import type { PageStudyContext } from "@/types/messages"
+import type { PageAccessState } from "@/utils/extension/page-permissions"
 import { t } from "@/utils/i18n"
 import {
   PopupGroupCard,
@@ -146,6 +147,12 @@ export function PopupSiteQuickCard({
   onAlwaysTranslateChange,
   onSiteModeChange,
   onSiteThemeChange,
+  permissionState,
+  permissionStatusMessage,
+  onGrantPageAccess,
+  onGrantSiteAccess,
+  onRevokeSiteAccess,
+  onGrantAllSitesAccess,
 }: {
   activeSiteKey: string | null
   hostname: string
@@ -155,10 +162,23 @@ export function PopupSiteQuickCard({
   onAlwaysTranslateChange: (value: boolean) => void
   onSiteModeChange: (mode: TranslationMode) => void
   onSiteThemeChange: (theme: TranslationTheme) => void
+  permissionState: PageAccessState | null
+  permissionStatusMessage: string
+  onGrantPageAccess: () => void
+  onGrantSiteAccess: () => void
+  onRevokeSiteAccess: () => void
+  onGrantAllSitesAccess: () => void
 }) {
   if (!activeSiteKey) return null
 
   const alwaysTranslate = rawSiteRule?.alwaysTranslate ?? false
+  const revoked = permissionState?.runtimeSiteState === "revoked"
+  const siteGranted = permissionState?.siteGranted || permissionState?.runtimeSiteState === "granted"
+  const permissionSubtitle = revoked
+    ? "Revoked in Astra; automatic actions stop for this origin."
+    : siteGranted
+      ? "Enabled for this origin; current build still declares broad host access."
+      : "Use page-only for this invocation or grant this origin where the browser supports it."
 
   return (
     <PopupGroupCard eyebrow={t("popup_designThisSite")} className="astra-popup-site-quick-card">
@@ -174,6 +194,34 @@ export function PopupSiteQuickCard({
           />
         )}
       />
+      <div style={{ padding: "10px 12px", borderTop: "1px solid var(--astra-border)", display: "grid", gap: 8 }}>
+        <div style={{ fontSize: 12, fontWeight: 800, color: "var(--astra-text-primary)" }}>Page access</div>
+        <div style={{ fontSize: 11, lineHeight: 1.45, color: "var(--astra-text-muted)" }}>
+          {permissionSubtitle}
+        </div>
+        {permissionStatusMessage && (
+          <div role="status" style={{ fontSize: 11, color: revoked ? "var(--astra-danger)" : "var(--astra-text-secondary)", lineHeight: 1.45 }}>
+            {permissionStatusMessage}
+          </div>
+        )}
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+          <button type="button" className="astra-btn-outline-quiet" onClick={onGrantPageAccess} disabled={!permissionState?.activeTabAvailable}>
+            Page only
+          </button>
+          <button type="button" className="astra-btn-outline-quiet" onClick={onGrantSiteAccess} disabled={!permissionState?.sitePattern || (!permissionState?.permissionsApiAvailable && permissionState?.runtimeSiteState !== "revoked")}>
+            Allow this site
+          </button>
+          <button type="button" className="astra-btn-outline-quiet" onClick={onRevokeSiteAccess} disabled={!permissionState?.sitePattern}>
+            Revoke site
+          </button>
+          <button type="button" className="astra-btn-outline-quiet" onClick={onGrantAllSitesAccess} disabled={!permissionState?.permissionsApiAvailable}>
+            All sites
+          </button>
+        </div>
+        <div style={{ fontSize: 10, lineHeight: 1.4, color: "var(--astra-text-hint)" }}>
+          Chrome/Firefox can expose optional host prompts; Safari/iOS support is build/runtime dependent. Broad host access remains disclosed until the manifest no longer needs it.
+        </div>
+      </div>
       <PopupSettingRow
         icon={<IconLanguages />}
         title={t("popup_displayModeSite")}

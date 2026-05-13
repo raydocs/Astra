@@ -891,7 +891,7 @@ describe("Astra account client", () => {
     expect(snapshot.pull).not.toBeNull()
     expect(snapshot.pull?.nextCursors.config).toBe("cfg-4")
     expect(fetchMock.mock.calls[2]?.[1]).toEqual(expect.objectContaining({
-      body: JSON.stringify({ cursors: { config: null, vocabulary: null, study_progress: null } }),
+      body: JSON.stringify({ cursors: { config: null, vocabulary: null, review_schedule: null, study_progress: null } }),
     }))
     expect(fetchMock).toHaveBeenCalledTimes(3)
   })
