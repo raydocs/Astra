@@ -4,7 +4,7 @@ ALTER TABLE shadow_sync_collections ADD COLUMN last_compacted_at TEXT;
 
 CREATE TABLE IF NOT EXISTS shadow_sync_record_state (
   user_id TEXT NOT NULL,
-  collection TEXT NOT NULL CHECK (collection IN ('config', 'vocabulary', 'reading_history', 'study_progress')),
+  collection TEXT NOT NULL CHECK (collection IN ('config', 'vocabulary', 'review_schedule', 'reading_history', 'study_progress')),
   record_id TEXT NOT NULL,
   is_deleted INTEGER NOT NULL CHECK (is_deleted IN (0, 1)),
   payload_json TEXT,
@@ -28,7 +28,7 @@ CREATE INDEX IF NOT EXISTS idx_shadow_sync_record_state_tombstones
 CREATE TABLE IF NOT EXISTS sync_compaction_runs (
   run_id TEXT PRIMARY KEY,
   user_id TEXT NOT NULL,
-  collection TEXT NOT NULL CHECK (collection IN ('config', 'vocabulary', 'reading_history', 'study_progress')),
+  collection TEXT NOT NULL CHECK (collection IN ('config', 'vocabulary', 'review_schedule', 'reading_history', 'study_progress')),
   status TEXT NOT NULL,
   cutoff_cursor_order INTEGER NOT NULL,
   floor_cursor TEXT,

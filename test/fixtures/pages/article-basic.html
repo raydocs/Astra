@@ -1,3 +1,21 @@
+<!--
+  TEST FIXTURE — NOT A PRODUCT PAGE.
+
+  This file is served on localhost by Playwright bench-live scenarios
+  (popup-deep-read-proof, page-translation-article-basic, dynamic-content-append,
+  fixture-playwright-smoke, and ~8 holdout scenarios) and consumed by unit tests
+  (page-translate.fixture.test.ts, contentHarness.test.ts, content/index.test.ts).
+
+  It is intentionally unstyled and minimal so that:
+    - article extraction algorithms see a clean main/article DOM root
+    - translation injection can be measured against a known node count
+    - reading-mode detection has a deterministic baseline
+    - snapshot tests stay stable across CI runs
+
+  Do NOT add CSS, classes, scripts, or visual polish. Any styling will
+  introduce flakiness in the live-bench suite and CI's live-browser job.
+  If you need a richer fixture, add a NEW file alongside this one.
+-->
 <main>
   <article>
     <h1>Astra turns long-form reading into bilingual learning.</h1>

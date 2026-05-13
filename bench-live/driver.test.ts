@@ -1,4 +1,4 @@
-import { mkdtemp, writeFile } from "node:fs/promises"
+import { mkdir, mkdtemp, writeFile } from "node:fs/promises"
 import os from "node:os"
 import path from "node:path"
 
@@ -9,9 +9,18 @@ import {
   LiveBrowserUnavailableError,
   prepareLiveArtifactDir,
   readFixtureHtml,
+  resolveExtensionManifestPath,
   resolveLiveBrowserExecutablePath,
   withLiveBrowserPage,
 } from "./driver"
+
+function restoreEnv(name: string, value: string | undefined) {
+  if (value === undefined) {
+    delete process.env[name]
+  } else {
+    process.env[name] = value
+  }
+}
 
 describe("bench-live driver", () => {
   it("reads fixture HTML from the shared fixture directory", async () => {
@@ -23,6 +32,48 @@ describe("bench-live driver", () => {
   it("creates an artifact directory under a provided root", async () => {
     const artifactDir = await prepareLiveArtifactDir("driver-test-run", "bench-live-results-test")
     expect(artifactDir.endsWith("/bench-live-results-test/driver-test-run")).toBe(true)
+  })
+
+  it("creates an artifact directory under ASTRA_BENCH_LIVE_ARTIFACT_ROOT", async () => {
+    const tempDir = await mkdtemp(path.join(os.tmpdir(), "astra-live-artifacts-"))
+    const originalArtifactRoot = process.env.ASTRA_BENCH_LIVE_ARTIFACT_ROOT
+    process.env.ASTRA_BENCH_LIVE_ARTIFACT_ROOT = tempDir
+
+    try {
+      const artifactDir = await prepareLiveArtifactDir("driver-env-run")
+      expect(artifactDir).toBe(path.join(tempDir, "driver-env-run"))
+    } finally {
+      restoreEnv("ASTRA_BENCH_LIVE_ARTIFACT_ROOT", originalArtifactRoot)
+    }
+  })
+
+  it("reads fixture HTML from ASTRA_BENCH_FIXTURE_ROOT", async () => {
+    const tempDir = await mkdtemp(path.join(os.tmpdir(), "astra-live-fixtures-"))
+    const originalFixtureRoot = process.env.ASTRA_BENCH_FIXTURE_ROOT
+    process.env.ASTRA_BENCH_FIXTURE_ROOT = tempDir
+    await writeFile(path.join(tempDir, "custom-fixture.html"), "<article>Custom fixture</article>")
+
+    try {
+      const html = await readFixtureHtml("custom-fixture")
+      expect(html).toContain("Custom fixture")
+    } finally {
+      restoreEnv("ASTRA_BENCH_FIXTURE_ROOT", originalFixtureRoot)
+    }
+  })
+
+  it("resolves extension manifest path from ASTRA_BENCH_LIVE_EXTENSION_PATH", async () => {
+    const tempDir = await mkdtemp(path.join(os.tmpdir(), "astra-live-extension-"))
+    const originalExtensionPath = process.env.ASTRA_BENCH_LIVE_EXTENSION_PATH
+    process.env.ASTRA_BENCH_LIVE_EXTENSION_PATH = tempDir
+    await mkdir(tempDir, { recursive: true })
+    await writeFile(path.join(tempDir, "manifest.json"), "{}")
+
+    try {
+      const manifestPath = await resolveExtensionManifestPath()
+      expect(manifestPath).toBe(path.join(tempDir, "manifest.json"))
+    } finally {
+      restoreEnv("ASTRA_BENCH_LIVE_EXTENSION_PATH", originalExtensionPath)
+    }
   })
 
   it("returns the override browser path when it exists", async () => {
@@ -55,7 +106,7 @@ describe("bench-live driver", () => {
       expect((error as Error).message).toContain(fakeBrowserPath)
       expect((error as Error).message).toContain("launch failed")
     } finally {
-      process.env.ASTRA_BENCH_LIVE_BROWSER_PATH = originalBrowserPath
+      restoreEnv("ASTRA_BENCH_LIVE_BROWSER_PATH", originalBrowserPath)
       launchSpy.mockRestore()
     }
   })

@@ -149,7 +149,7 @@ function toNullableNumber(value: number | string | null | undefined): number | n
 }
 
 function getDefaultEnabled(collection: ShadowSyncCollection): boolean {
-  return collection === "config" || collection === "vocabulary"
+  return collection === "config" || collection === "vocabulary" || collection === "review_schedule"
 }
 
 function createDefaultCollectionRow(
@@ -288,6 +288,7 @@ function buildCursorMap(
   return {
     config: rows.config.lastIssuedCursor,
     vocabulary: rows.vocabulary.lastIssuedCursor,
+    review_schedule: rows.review_schedule.lastIssuedCursor,
     reading_history: rows.reading_history.lastIssuedCursor,
     study_progress: rows.study_progress.lastIssuedCursor,
   }
@@ -475,6 +476,13 @@ export async function mirrorShadowSyncCollectionsFromUser(
       defaultEnabled: true,
       shadowUpdatedAt,
     }),
+    review_schedule: await upsertShadowSyncCollection(db, {
+      userId: params.userId,
+      collection: "review_schedule",
+      enabled: true,
+      defaultEnabled: true,
+      shadowUpdatedAt,
+    }),
     reading_history: await upsertShadowSyncCollection(db, {
       userId: params.userId,
       collection: "reading_history",
@@ -507,6 +515,7 @@ export async function listShadowSyncCollectionsForUser(
   return {
     config: mapped.config ?? createDefaultCollectionRow(userId, "config"),
     vocabulary: mapped.vocabulary ?? createDefaultCollectionRow(userId, "vocabulary"),
+    review_schedule: mapped.review_schedule ?? createDefaultCollectionRow(userId, "review_schedule"),
     reading_history: mapped.reading_history ?? createDefaultCollectionRow(userId, "reading_history"),
     study_progress: mapped.study_progress ?? createDefaultCollectionRow(userId, "study_progress"),
   }
@@ -526,7 +535,14 @@ export async function listShadowSyncCollectionRowsForUser(
     [userId],
   )
 
-  return rows.map(mapShadowSyncCollectionRow)
+  const mappedRows = rows.map(mapShadowSyncCollectionRow)
+  const collections = new Set(mappedRows.map((row) => row.collection))
+  const hasLegacyDefaultCollections = ["config", "vocabulary", "reading_history", "study_progress"]
+    .every((collection) => collections.has(collection as ShadowSyncCollection))
+  if (!collections.has("review_schedule") && hasLegacyDefaultCollections) {
+    return [...mappedRows, createDefaultCollectionRow(userId, "review_schedule")]
+  }
+  return mappedRows
 }
 
 export async function listShadowSyncMutationRowsForUser(
@@ -1108,6 +1124,7 @@ export async function pullShadowSyncMutations(
   const deltas = {
     config: [] as ShadowSyncMutationRow[],
     vocabulary: [] as ShadowSyncMutationRow[],
+    review_schedule: [] as ShadowSyncMutationRow[],
     reading_history: [] as ShadowSyncMutationRow[],
     study_progress: [] as ShadowSyncMutationRow[],
   }

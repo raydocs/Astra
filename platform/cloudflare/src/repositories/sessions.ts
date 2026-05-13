@@ -1,4 +1,5 @@
 import type { D1Database } from "../bindings"
+import { ASTRA_CREDENTIAL_HASH_ALGORITHM } from "../../../../src/utils/astra/credential-hash"
 import { assertD1Changed, assertD1Success, selectAll } from "../lib/d1"
 import type { ShadowSessionRow, ShadowSessionSnapshot } from "../types/shadow-state"
 
@@ -45,7 +46,7 @@ function normalizeShadowSession(snapshot: ShadowSessionSnapshot): ShadowSessionR
     lastVerifiedAt: snapshot.lastVerifiedAt ?? null,
     revokedAt: snapshot.revokedAt ?? null,
     tokenHash: snapshot.tokenHash ?? null,
-    tokenHashAlg: snapshot.tokenHash ? (snapshot.tokenHashAlg ?? "sha256") : null,
+    tokenHashAlg: snapshot.tokenHash ? (snapshot.tokenHashAlg ?? ASTRA_CREDENTIAL_HASH_ALGORITHM) : null,
     shadowUpdatedAt: snapshot.shadowUpdatedAt ?? new Date().toISOString(),
   }
 }

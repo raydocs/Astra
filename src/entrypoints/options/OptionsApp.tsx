@@ -39,6 +39,7 @@ import { getRecentEvents, type TelemetryEvent } from "@/utils/telemetry"
 import { isTtsSupported, listVoices, type TTSVoiceOption } from "@/utils/tts"
 import { diagnoseProvider, PROVIDER_CAPABILITIES, type ProviderDiagnostics } from "@/utils/providers/capabilities"
 import { useViewportProfile } from "@/utils/ui/useViewportProfile"
+import { useAstraTheme } from "@/utils/ui/useAstraTheme"
 import { t } from "@/utils/i18n"
 
 type Section = "general" | "providers" | "translation" | "actions" | "sites" | "vocabulary" | "diagnostics" | "about"
@@ -596,6 +597,37 @@ function ProvidersSection({
   config: AstraConfig
   onProviderChange: (patch: Partial<AstraConfig["provider"]>) => void
 }) {
+  const providerRows = PROVIDER_OPTIONS.map((provider) => {
+    const active = provider.value === config.provider.id
+    const model = active ? (config.provider.model || getDefaultProviderModel(provider.value)) : getDefaultProviderModel(provider.value)
+    const hasDirectKey = active && Boolean(config.provider.apiKey?.trim())
+    const hasRelay = active && Boolean(config.provider.relayBaseURL?.trim())
+    const hasManagedToken = active && Boolean(config.provider.accessToken?.trim())
+    const status: "active" | "configured" | "off" = active
+      ? "active"
+      : "off"
+    const statusLabel = active
+      ? (hasDirectKey || hasRelay || hasManagedToken ? "Active" : "Selected · needs access")
+      : "Not configured"
+    const routeLabel = active
+      ? hasDirectKey
+        ? "Direct API key"
+        : hasRelay || hasManagedToken
+          ? "Astra relay"
+          : "Add a key or relay URL"
+      : "Select to configure"
+
+    return {
+      value: provider.value,
+      label: provider.label,
+      model,
+      active,
+      status,
+      statusLabel,
+      routeLabel,
+    }
+  })
+
   return (
     <div className="astra-settings-section">
       <SectionHeader
@@ -605,6 +637,30 @@ function ProvidersSection({
       />
 
       <h2 className="astra-section-heading astra-sr-only">Providers</h2>
+
+      <div className="astra-settings-provider-list" style={{ marginBottom: "var(--astra-space-5)" }} data-testid="options-provider-status-list">
+        {providerRows.map((provider) => (
+          <div key={provider.value} className="astra-settings-provider-row">
+            <span className="astra-settings-provider-row__initial" aria-hidden="true">{provider.label[0]}</span>
+            <div className="astra-settings-provider-row__body">
+              <div className="astra-settings-provider-row__title">{provider.label}</div>
+              <div className="astra-settings-provider-row__model">{provider.model} · {provider.routeLabel}</div>
+            </div>
+            <div className="astra-settings-provider-row__actions">
+              <span className="astra-settings-provider-status" data-status={provider.status}>{provider.statusLabel}</span>
+              <button
+                type="button"
+                className="astra-settings-provider-row__edit"
+                disabled={provider.active}
+                onClick={() => onProviderChange({ id: provider.value, model: getDefaultProviderModel(provider.value) })}
+              >
+                {provider.active ? "Editing below" : "Use provider"}
+                {!provider.active && <span aria-hidden="true">›</span>}
+              </button>
+            </div>
+          </div>
+        ))}
+      </div>
 
       <div style={fieldGroup}>
         <label htmlFor="options-provider-id" style={labelStyle}>Provider</label>
@@ -2551,6 +2607,7 @@ function AboutSection({
 // --- Main component ---
 
 export default function OptionsApp() {
+  const { astraTheme, astraDirection } = useAstraTheme()
   const [section, setSection] = useState<Section>("translation")
   const [searchQuery, setSearchQuery] = useState("")
   const [config, setConfig] = useState<AstraConfig>(DEFAULT_ASTRA_CONFIG)
@@ -2903,7 +2960,7 @@ export default function OptionsApp() {
   })).filter((group) => group.items.length > 0)
 
   return (
-    <div className="astra-settings-page" data-astra-theme="light" data-astra="quiet">
+    <div className="astra-settings-page" data-astra-theme={astraTheme} data-astra={astraDirection}>
       <div className={`astra-settings-shell${isMobile ? " astra-settings-shell--compact" : ""}`}>
         {!isMobile && (
           <aside className="astra-settings-sidebar" aria-label="Settings sections">

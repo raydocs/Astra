@@ -7,6 +7,14 @@ import { describe, expect, it } from "vitest"
 import type { LiveBenchRunOutcome } from "./index"
 import { persistLiveBenchRunOutcome } from "./results"
 
+function restoreEnv(name: string, value: string | undefined) {
+  if (value === undefined) {
+    delete process.env[name]
+  } else {
+    process.env[name] = value
+  }
+}
+
 describe("persistLiveBenchRunOutcome", () => {
   it("writes per-run and latest result artifacts", async () => {
     const rootDir = await mkdtemp(path.join(os.tmpdir(), "astra-live-results-"))
@@ -166,5 +174,31 @@ describe("persistLiveBenchRunOutcome", () => {
     expect(artifacts.runJsonPath).toBe(path.join(rootDir, "live-test-run", "result.json"))
     expect(latestJson.runId).toBe("live-test-run")
     expect(runMarkdown).toBe("result text")
+  })
+
+  it("writes artifacts under ASTRA_BENCH_LIVE_ARTIFACT_ROOT when rootDir is omitted", async () => {
+    const rootDir = await mkdtemp(path.join(os.tmpdir(), "astra-live-results-env-"))
+    const originalArtifactRoot = process.env.ASTRA_BENCH_LIVE_ARTIFACT_ROOT
+    process.env.ASTRA_BENCH_LIVE_ARTIFACT_ROOT = rootDir
+
+    const outcome = {
+      context: { runId: "live-env-run" },
+      result: {
+        runId: "live-env-run",
+        text: "env result text",
+      },
+    } as LiveBenchRunOutcome
+
+    try {
+      const artifacts = await persistLiveBenchRunOutcome(outcome)
+      const latestJson = JSON.parse(await readFile(artifacts.latestJsonPath, "utf8")) as { runId: string }
+      const runMarkdown = await readFile(artifacts.runMarkdownPath, "utf8")
+
+      expect(artifacts.runJsonPath).toBe(path.join(rootDir, "live-env-run", "result.json"))
+      expect(latestJson.runId).toBe("live-env-run")
+      expect(runMarkdown).toBe("env result text")
+    } finally {
+      restoreEnv("ASTRA_BENCH_LIVE_ARTIFACT_ROOT", originalArtifactRoot)
+    }
   })
 })

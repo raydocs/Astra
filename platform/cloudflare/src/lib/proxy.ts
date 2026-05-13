@@ -45,18 +45,58 @@ export function buildNodeRelayDownstreamHeaders(response: Response, requestId: s
   return headers
 }
 
+const DEFAULT_MAX_NODE_RELAY_BODY_BYTES = 10 * 1024 * 1024
+
 export async function fetchNodeRelay(
   request: Request,
   ctx: AstraRequestContext,
   options: {
     pathOverride?: string
+    maxBodyBytes?: number
   } = {},
 ): Promise<Response> {
   const upstreamUrl = toNodeRelayUrl(request, ctx, options)
+  // Materialize the body so the Worker does not forward a live stream to Node.
+  // Callers that need to read the request later must pass a clone here.
+  const hasBody = request.method !== "GET" && request.method !== "HEAD"
+  if (hasBody && request.bodyUsed) {
+    throw new TypeError(`Cannot proxy ${request.method} ${upstreamUrl.pathname} after its body has already been consumed; pass request.clone() before reading the body.`)
+  }
+
+  const maxBodyBytes = options.maxBodyBytes ?? DEFAULT_MAX_NODE_RELAY_BODY_BYTES
+
+  if (hasBody && maxBodyBytes > 0) {
+    const contentLengthHeader = request.headers.get("content-length")
+    if (contentLengthHeader) {
+      const contentLength = Number(contentLengthHeader)
+      if (Number.isFinite(contentLength) && contentLength > maxBodyBytes) {
+        throw new RangeError(
+          `Cannot proxy ${request.method} ${upstreamUrl.pathname} because its request body is ${contentLength} bytes, which exceeds the ${maxBodyBytes} byte limit for Worker→Node relay requests.`,
+        )
+      }
+    }
+  }
+
+  let body: ArrayBuffer | undefined
+  if (hasBody) {
+    try {
+      body = await request.arrayBuffer()
+    } catch (error) {
+      const detail = error instanceof Error ? error.message : String(error)
+      throw new TypeError(`Cannot proxy ${request.method} ${upstreamUrl.pathname} because its request body could not be materialized: ${detail}`, { cause: error })
+    }
+
+    if (maxBodyBytes > 0 && body.byteLength > maxBodyBytes) {
+      throw new RangeError(
+        `Cannot proxy ${request.method} ${upstreamUrl.pathname} because its request body is ${body.byteLength} bytes, which exceeds the ${maxBodyBytes} byte limit for Worker→Node relay requests.`,
+      )
+    }
+  }
+
   return fetch(upstreamUrl, {
     method: request.method,
     headers: buildNodeRelayHeaders(request, ctx.requestId),
-    body: request.body,
+    body,
     redirect: "manual",
   })
 }

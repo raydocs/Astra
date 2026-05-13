@@ -21,6 +21,7 @@ import {
   type ImageTranslationOverlayQualitySummary,
   type TranslationQualitySummary,
 } from "@/utils/ocr/image-translation"
+import { useAstraTheme } from "@/utils/ui/useAstraTheme"
 
 interface TranslationRow {
   sourceText: string
@@ -49,27 +50,29 @@ type PreviewMode = "original" | "overlay" | "compare"
 
 const shellStyle: React.CSSProperties = {
   minHeight: "100vh",
-  background: "var(--astra-bg-primary)",
-  color: "var(--astra-text-primary)",
+  background: "var(--astra-style-bg-page)",
+  color: "var(--astra-style-ink-1)",
   fontFamily: "var(--astra-font)",
-  padding: 24,
+  padding: "32px 28px 56px",
   boxSizing: "border-box",
 }
 
 const panelStyle: React.CSSProperties = {
-  background: "var(--astra-bg-card)",
-  border: "1px solid var(--astra-border-strong)",
-  borderRadius: 16,
-  boxShadow: "var(--astra-shadow-md)",
+  background: "var(--astra-style-bg-surface)",
+  border: "1px solid var(--astra-style-line-1)",
+  borderRadius: "var(--astra-radius-lg)",
+  boxShadow: "none",
 }
 
 const buttonStyle: React.CSSProperties = {
   border: 0,
-  borderRadius: 999,
-  background: "var(--astra-brand)",
-  color: "var(--astra-text-on-brand)",
-  fontWeight: 700,
-  padding: "10px 16px",
+  borderRadius: "var(--astra-radius-md)",
+  background: "var(--astra-style-ink-1)",
+  color: "var(--astra-style-bg-page)",
+  fontWeight: 500,
+  fontSize: 13,
+  letterSpacing: "-0.005em",
+  padding: "10px 18px",
   cursor: "pointer",
 }
 
@@ -312,6 +315,7 @@ function CompareRows({ rows, showReasons = false }: { rows: TranslationRow[], sh
 }
 
 export function ImageTranslateApp() {
+  const { astraTheme, astraDirection } = useAstraTheme()
   const [targetLang, setTargetLang] = useState("zh-CN")
   const [phase, setPhase] = useState<PagePhase>("idle")
   const [previewMode, setPreviewMode] = useState<PreviewMode>("overlay")
@@ -496,44 +500,43 @@ export function ImageTranslateApp() {
   )
 
   return (
-    <main style={shellStyle} data-testid="image-translation-beta-page" data-astra-theme="light" data-astra="quiet">
+    <main style={shellStyle} data-testid="image-translation-beta-page" data-astra-theme={astraTheme} data-astra={astraDirection}>
       <div style={{ maxWidth: 1040, margin: "0 auto" }}>
-        <header style={{ marginBottom: 20 }}>
-          <div style={{ color: "var(--astra-brand)", fontWeight: 700, letterSpacing: 0.2 }}>Astra Labs · Beta</div>
-          <h1 style={{ margin: "6px 0", color: "var(--astra-text-primary)", fontSize: 34 }}>Image/OCR Translation Beta</h1>
-          <p style={{ margin: 0, maxWidth: 780, color: "var(--astra-text-secondary)", lineHeight: 1.55 }}>
-            Upload or paste an image, extract readable text, then translate it through Astra’s existing translation pipeline.
-            The translated overlay preview is approximate and not layout-preserving production quality; compare rows remain available as the reliable fallback.
-          </p>
+        <header className="astra-reader-page-header astra-reader-page-header--stacked">
+          <div className="astra-reader-page-header__brand">
+            <span className="astra-reader-page-header__mark" aria-hidden="true">A</span>
+            <h1 className="astra-reader-page-header__title">Image / OCR Translation</h1>
+          </div>
+          <span className="astra-reader-page-header__status">Astra Labs · Beta</span>
         </header>
+        <p className="astra-reader-page-header__lede">
+          Upload or paste an image, extract readable text, then translate it through Astra’s existing translation pipeline.
+          The translated overlay preview is approximate; compare rows remain available as the reliable fallback.
+        </p>
 
-        <section style={{ ...panelStyle, padding: 20, marginBottom: 16 }}>
-          <div
-            data-testid="image-translation-dropzone"
-            onPaste={handlePaste}
-            tabIndex={0}
-            style={{
-              border: "2px dashed var(--astra-brand-border)",
-              borderRadius: 14,
-              padding: 24,
-              textAlign: "center",
-              background: "var(--astra-bg-elevated)",
-              outline: "none",
-            }}
-          >
-            <h2 style={{ margin: "0 0 8px", color: "var(--astra-text-primary)", fontSize: 20 }}>Upload or paste an image</h2>
-            <p style={{ margin: "0 auto 14px", maxWidth: 640, color: "var(--astra-text-muted)", lineHeight: 1.5 }}>
-              PNG, JPEG, WebP, GIF, BMP, and SVG are accepted. Raster OCR depends on browser TextDetector support;
+        <div
+          data-testid="image-translation-dropzone"
+          onPaste={handlePaste}
+          tabIndex={0}
+          className="astra-drop-zone-cursor astra-reader-drop-zone"
+          style={{ marginBottom: 16, outline: "none" }}
+        >
+          <input
+            ref={fileInputRef}
+            id="astra-image-translation-file-input"
+            data-testid="image-translation-file-input"
+            type="file"
+            accept="image/png,image/jpeg,image/webp,image/gif,image/bmp,image/svg+xml"
+            onChange={handleInputChange}
+            style={{ display: "none" }}
+          />
+          <div className="astra-reader-drop-zone__content">
+            <div className="astra-reader-drop-zone__eyebrow">Image translation</div>
+            <div className="astra-reader-drop-zone__title">Upload or paste an image</div>
+            <div className="astra-reader-drop-zone__description">
+              PNG, JPEG, WebP, GIF, BMP, and SVG are accepted. Raster OCR depends on the browser&rsquo;s TextDetector;
               SVG text is extracted directly for a deterministic first slice.
-            </p>
-            <input
-              ref={fileInputRef}
-              data-testid="image-translation-file-input"
-              type="file"
-              accept="image/png,image/jpeg,image/webp,image/gif,image/bmp,image/svg+xml"
-              onChange={handleInputChange}
-              style={{ display: "none" }}
-            />
+            </div>
             <button
               type="button"
               style={{ ...buttonStyle, opacity: busy ? 0.72 : 1 }}
@@ -542,12 +545,13 @@ export function ImageTranslateApp() {
             >
               {busy ? "Working…" : "Choose image"}
             </button>
-            <div style={{ marginTop: 10, fontSize: 12, color: "var(--astra-text-secondary)" }}>
-              Target language: <strong>{targetLang}</strong>
+            <label htmlFor="astra-image-translation-file-input" className="astra-sr-only">Choose image for Astra OCR translation</label>
+            <div style={{ marginTop: 4, fontSize: 12, color: "var(--astra-style-ink-3)", fontFamily: "var(--astra-style-font-mono, JetBrains Mono, monospace)", letterSpacing: "0.04em" }}>
+              Target language: <strong style={{ color: "var(--astra-style-ink-1)" }}>{targetLang}</strong>
               {selectedFileName ? ` · ${selectedFileName}` : ""}
             </div>
           </div>
-        </section>
+        </div>
 
         {phase !== "idle" && (
           <section style={{ ...panelStyle, padding: 18, marginBottom: 16 }} aria-live="polite">

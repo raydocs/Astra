@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it } from "vitest"
 import { createMockBrowser, setMockBrowser } from "../../../test/utils/mockBrowser"
 import type { OwnedReadingThemePackPackagePayload } from "./owned-reading"
 import {
+  applyVocabularyReviewScheduleSyncMutationsToStorage,
   applyVocabularySyncMutations,
   buildSyncSafeVocabularyEntry,
   buildTerminologyGlossary,
@@ -10,12 +11,14 @@ import {
   getVocabularyCount,
   getVocabularyEntries,
   hasVocabularyEntryByText,
+  readSyncSafeVocabularyReviewSchedules,
   importVocabularyEntriesFromThemePackPayload,
   previewVocabularyEntriesFromThemePackPayload,
   listGlossaryEntriesForHostname,
   removeVocabularyEntry,
   saveVocabularyEntry,
   serializeGlossary,
+  VOCABULARY_STORAGE_KEY,
 } from "./vocabulary"
 
 describe("vocabulary storage", () => {
@@ -466,6 +469,85 @@ describe("vocabulary storage", () => {
     })
 
     expect(await buildTerminologyGlossary(undefined)).toBe("Line 1\\nLine 2 \\=> term => target\\nline \\=> value")
+  })
+
+  it("projects safe default review schedule records for old entries", async () => {
+    setMockBrowser(createMockBrowser({
+      [VOCABULARY_STORAGE_KEY]: [{
+        id: "old-word",
+        text: "legacy",
+        savedAt: 100,
+        srsBox: 2,
+        nextReviewAt: 200,
+      }],
+    }))
+
+    const entries = await getVocabularyEntries()
+    expect(entries[0]).toMatchObject({
+      id: "old-word",
+      srsBox: 2,
+      nextReviewAt: 200,
+      reviewCount: 0,
+      lastReviewedAt: null,
+    })
+
+    const schedules = await readSyncSafeVocabularyReviewSchedules()
+    expect(schedules).toEqual([expect.objectContaining({
+      vocabularyEntryId: "old-word",
+      srsBox: 2,
+      nextReviewAt: 200,
+      reviewCount: 0,
+      lastReviewedAt: null,
+      lastReviewGrade: null,
+      lastReviewGradeAt: null,
+      updatedAt: 100,
+    })])
+  })
+
+  it("applies review schedule sync records separately from vocabulary text records", async () => {
+    const entry = await saveVocabularyEntry({
+      text: "durable",
+      srsBox: 1,
+      nextReviewAt: 100,
+      reviewCount: 0,
+      lastReviewedAt: null,
+    })
+
+    await applyVocabularyReviewScheduleSyncMutationsToStorage([{
+      recordId: entry.id,
+      operation: "upsert",
+      payload: {
+        vocabularyEntryId: entry.id,
+        srsBox: 4,
+        nextReviewAt: 400,
+        reviewCount: 3,
+        lastReviewedAt: 350,
+        lastReviewGrade: "easy",
+        lastReviewGradeAt: 350,
+        updatedAt: Date.now() + 1_000,
+      },
+    }])
+
+    const entries = await getVocabularyEntries()
+    expect(entries[0]).toMatchObject({
+      id: entry.id,
+      text: "durable",
+      srsBox: 4,
+      nextReviewAt: 400,
+      reviewCount: 3,
+      lastReviewedAt: 350,
+      lastReviewGrade: "easy",
+      lastReviewGradeAt: 350,
+    })
+
+    const schedules = await readSyncSafeVocabularyReviewSchedules()
+    expect(schedules).toEqual([expect.objectContaining({
+      vocabularyEntryId: entry.id,
+      srsBox: 4,
+      nextReviewAt: 400,
+      reviewCount: 3,
+      lastReviewGrade: "easy",
+    })])
   })
 
   it("applies synced vocabulary updates while preserving local review progress", async () => {

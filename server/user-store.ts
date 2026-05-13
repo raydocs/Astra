@@ -374,6 +374,7 @@ function buildSyncCollectionSummaries(
   return {
     config: buildSyncCollectionSummary(db, user, "config"),
     vocabulary: buildSyncCollectionSummary(db, user, "vocabulary"),
+    review_schedule: buildSyncCollectionSummary(db, user, "review_schedule"),
     reading_history: buildSyncCollectionSummary(db, user, "reading_history"),
     study_progress: buildSyncCollectionSummary(db, user, "study_progress"),
   }
@@ -388,7 +389,7 @@ function buildSyncCollectionSummary(
     .filter((mutation) => mutation.email === user.email && mutation.collection === collection)
     .sort((a, b) => parseCursor(a.cursor) - parseCursor(b.cursor))
   const latestMutation = mutations.at(-1) ?? null
-  const defaultEnabled = collection === "config" || collection === "vocabulary"
+  const defaultEnabled = collection === "config" || collection === "vocabulary" || collection === "review_schedule"
   const enabled = collection === "reading_history"
     ? user.syncPreferences.reading_history
     : collection === "study_progress"
@@ -472,6 +473,7 @@ function buildCursorMap(value: string | null = null): Record<SyncCollection, str
   return {
     config: value,
     vocabulary: value,
+    review_schedule: value,
     reading_history: value,
     study_progress: value,
   }
@@ -1256,6 +1258,11 @@ export class FileUserStore {
           defaultEnabled: true,
           cursor: this.getLatestCursor(db, email, "vocabulary"),
         },
+        review_schedule: {
+          enabled: true,
+          defaultEnabled: true,
+          cursor: this.getLatestCursor(db, email, "review_schedule"),
+        },
         reading_history: {
           enabled: user.syncPreferences.reading_history,
           defaultEnabled: false,
@@ -1386,6 +1393,7 @@ export class FileUserStore {
       nextCursors: {
         config: this.getLatestCursor(db, email, "config"),
         vocabulary: this.getLatestCursor(db, email, "vocabulary"),
+        review_schedule: this.getLatestCursor(db, email, "review_schedule"),
         reading_history: this.getLatestCursor(db, email, "reading_history"),
         study_progress: this.getLatestCursor(db, email, "study_progress"),
       },
@@ -1404,6 +1412,7 @@ export class FileUserStore {
     const deltas = {
       config: [] as ServerSyncMutationRecord[],
       vocabulary: [] as ServerSyncMutationRecord[],
+      review_schedule: [] as ServerSyncMutationRecord[],
       reading_history: [] as ServerSyncMutationRecord[],
       study_progress: [] as ServerSyncMutationRecord[],
     }
@@ -1428,6 +1437,7 @@ export class FileUserStore {
       nextCursors: {
         config: deltas.config.at(-1)?.cursor ?? this.getLatestCursor(db, email, "config") ?? cursors.config ?? null,
         vocabulary: deltas.vocabulary.at(-1)?.cursor ?? this.getLatestCursor(db, email, "vocabulary") ?? cursors.vocabulary ?? null,
+        review_schedule: deltas.review_schedule.at(-1)?.cursor ?? this.getLatestCursor(db, email, "review_schedule") ?? cursors.review_schedule ?? null,
         reading_history: deltas.reading_history.at(-1)?.cursor ?? (Object.prototype.hasOwnProperty.call(cursors, "reading_history")
           ? (this.getLatestCursor(db, email, "reading_history") ?? cursors.reading_history ?? null)
           : null),

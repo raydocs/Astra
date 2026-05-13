@@ -3,10 +3,19 @@ import "fake-indexeddb/auto"
 import { beforeEach, describe, expect, it } from "vitest"
 
 import {
+  buildLibraryDocumentSnapshotSyncPayloads,
   clearAllPersistedWorkspaces,
+  DOCUMENT_SNAPSHOT_PAYLOAD_BUDGET,
   inspectWorkspaceStorageHealth,
+  listLibraryDocumentSnapshots,
+  listLibraryItems,
+  openLibraryItem,
   readArticleWorkspace,
   readImportLibrary,
+  readLibraryDocumentSnapshot,
+  readPdfWorkspace,
+  removeLibraryItem,
+  renameLibraryItem,
   repairWorkspaceStorageCorruption,
   resetWorkspaceStorageLifecycle,
   saveArticleWorkspace,
@@ -68,7 +77,7 @@ describe("workspace-store IndexedDB persistence", () => {
     window.localStorage.setItem(ARTICLE_WORKSPACE_STORAGE_KEY, JSON.stringify(snapshot))
 
     await expect(readArticleWorkspace()).resolves.toEqual(snapshot)
-    expect(window.localStorage.getItem(ARTICLE_WORKSPACE_STORAGE_KEY)).toBeNull()
+    expect(window.localStorage.getItem(ARTICLE_WORKSPACE_STORAGE_KEY)).toEqual(JSON.stringify(snapshot))
     await expect(readArticleWorkspace()).resolves.toEqual(snapshot)
   })
 
@@ -83,24 +92,98 @@ describe("workspace-store IndexedDB persistence", () => {
       importedAt: "2026-04-09T02:00:00.000Z",
     })
 
-    await expect(readImportLibrary()).resolves.toEqual([
-      {
-        source: "pdf",
-        route: "/files/pdf",
-        title: "guide.pdf",
-        summary: "7 pages",
-        detail: "Resume PDF workspace",
-        importedAt: "2026-04-09T02:00:00.000Z",
-      },
-      {
-        source: "article",
-        route: "/articles",
-        title: "Readable Import Title",
-        summary: "example.com",
-        detail: "Readable article import",
-        importedAt: "2026-04-09T00:00:00.000Z",
-      },
-    ])
+    const library = await readImportLibrary()
+    expect(library).toHaveLength(2)
+    expect(library[0]).toMatchObject({
+      source: "pdf",
+      route: "/files/pdf",
+      title: "guide.pdf",
+      summary: "7 pages",
+      detail: "Resume PDF workspace",
+      importedAt: "2026-04-09T02:00:00.000Z",
+      ownerMode: "local",
+      syncState: "local_only",
+    })
+    expect(library[1]).toMatchObject({
+      source: "article",
+      route: "/articles",
+      title: "Readable Import Title",
+      summary: "example.com",
+      detail: "Readable article import",
+      importedAt: "2026-04-09T00:00:00.000Z",
+      ownerMode: "local",
+      syncState: "local_only",
+    })
+    expect(library[0]?.id).toBeTruthy()
+    expect(library[1]?.id).toBeTruthy()
+  })
+
+  it("represents multiple local documents and can open, rename, and remove through library items", async () => {
+    await savePdfWorkspace({
+      fileName: "first.pdf",
+      sizeLabel: "100 KB",
+      pageCount: 1,
+      selectedPageNumber: 1,
+      pages: [{ pageNumber: 1, excerpt: "First", blocks: ["First"], blockCount: 1, wordCount: 1 }],
+      importedAt: "2026-04-09T01:00:00.000Z",
+    })
+    await savePdfWorkspace({
+      fileName: "second.pdf",
+      sizeLabel: "200 KB",
+      pageCount: 2,
+      selectedPageNumber: 1,
+      pages: [{ pageNumber: 1, excerpt: "Second", blocks: ["Second"], blockCount: 1, wordCount: 1 }],
+      importedAt: "2026-04-09T03:00:00.000Z",
+    })
+
+    const pdfItems = await listLibraryItems("pdf")
+    expect(pdfItems.map((item) => item.title)).toEqual(["second.pdf", "first.pdf"])
+
+    const documentSnapshots = await listLibraryDocumentSnapshots(pdfItems.map((item) => item.id))
+    expect(documentSnapshots.map((snapshot) => snapshot.libraryItemId).sort()).toEqual(pdfItems.map((item) => item.id).sort())
+    expect(documentSnapshots.every((snapshot) => snapshot.extractedText.status === "available")).toBe(true)
+
+    await renameLibraryItem(pdfItems[1].id, "Renamed first.pdf")
+    await openLibraryItem(pdfItems[1].id)
+    await expect(readPdfWorkspace()).resolves.toMatchObject({ fileName: "first.pdf" })
+
+    await removeLibraryItem(pdfItems[0].id)
+    const remaining = await listLibraryItems("pdf")
+    expect(remaining.map((item) => item.title)).toEqual(["Renamed first.pdf"])
+  })
+
+  it("chunks sync payloads and records oversized extracted-text failures without storing bytes", async () => {
+    const repeatedBlock = "A".repeat(DOCUMENT_SNAPSHOT_PAYLOAD_BUDGET.chunkThresholdChars + 128)
+    await savePdfWorkspace({
+      fileName: "chunked.pdf",
+      sizeLabel: "1 MB",
+      pageCount: 1,
+      selectedPageNumber: 1,
+      pages: [{ pageNumber: 1, excerpt: "Chunk", blocks: [repeatedBlock], blockCount: 1, wordCount: 1 }],
+      importedAt: "2026-04-09T04:00:00.000Z",
+    })
+    const chunkedItem = (await listLibraryItems("pdf"))[0]
+    const chunkedSnapshot = await readLibraryDocumentSnapshot(chunkedItem.id)
+    expect(chunkedSnapshot?.extractedText.status).toBe("available")
+    expect(chunkedSnapshot?.extractedText.chunkCount).toBeGreaterThan(1)
+    expect(chunkedSnapshot?.byteAvailability.originalFileBytesSynced).toBe(false)
+    const syncPayloads = buildLibraryDocumentSnapshotSyncPayloads(chunkedSnapshot!)
+    expect(syncPayloads.manifest.chunkCount).toBeGreaterThan(1)
+    expect(syncPayloads.chunks.every((chunk) => chunk.text.length <= DOCUMENT_SNAPSHOT_PAYLOAD_BUDGET.chunkSizeChars)).toBe(true)
+
+    await savePdfWorkspace({
+      fileName: "too-large.pdf",
+      sizeLabel: "8 MB",
+      pageCount: 1,
+      selectedPageNumber: 1,
+      pages: [{ pageNumber: 1, excerpt: "Too large", blocks: ["B".repeat(DOCUMENT_SNAPSHOT_PAYLOAD_BUDGET.maxExtractedTextChars + 1)], blockCount: 1, wordCount: 1 }],
+      importedAt: "2026-04-09T05:00:00.000Z",
+    })
+    const oversizedItem = (await listLibraryItems("pdf"))[0]
+    const oversizedSnapshot = await readLibraryDocumentSnapshot(oversizedItem.id)
+    expect(oversizedSnapshot?.extractedText.status).toBe("oversized")
+    expect(oversizedSnapshot?.snapshot).toBeNull()
+    expect(oversizedSnapshot?.extractedText.failureCode).toBe("EXTRACTED_TEXT_TOO_LARGE")
   })
 
   it("inspects IndexedDB and legacy health and flags corrupted records", async () => {

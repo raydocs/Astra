@@ -11,6 +11,7 @@ import { mountFloatBall } from "./components/FloatBall"
 import { mountSelectionToolbar } from "./components/SelectionToolbar"
 import { mountHoverTranslate } from "./components/HoverTranslate"
 import { mountInputTranslate } from "./components/InputTranslate"
+import { mountPageAnnotations, renderPageAnnotations } from "./page-annotations"
 import { isHoverCapable } from "@/utils/ui/useViewportProfile"
 import { translatePageSubtitles, removeTranslatedSubtitles } from "./subtitle-translate"
 import {
@@ -58,6 +59,13 @@ import {
   resolveSiteTranslationSettings,
 } from "@/types/config"
 import { readAstraSession } from "@/utils/storage/auth"
+import {
+  doesPageAccessChangeAffectUrl,
+  isPageAccessAllowedByPolicyValue,
+  isPageAccessAllowedForUrl,
+  isPageAccessChangeMessage,
+  PAGE_ACCESS_POLICY_STORAGE_KEY,
+} from "@/utils/extension/page-permissions"
 
 let siteUiMounted = false
 let inputUiMounted = false
@@ -74,6 +82,8 @@ let lastTranslationSettingsSnapshot: string | null = null
 let storageChangeGeneration = 0
 let reconcileGeneration = 0
 let providerHotSwitchGeneration = 0
+let pageAccessChangeGeneration = 0
+let pageAccessAllowedForCurrentUrl = true
 const spaWatcher = createSPANavigationWatcher()
 let spaRestartTimer: ReturnType<typeof setTimeout> | null = null
 
@@ -94,6 +104,8 @@ export function __resetContentEntrypointForTests() {
   storageChangeGeneration = 0
   reconcileGeneration = 0
   providerHotSwitchGeneration = 0
+  pageAccessChangeGeneration = 0
+  pageAccessAllowedForCurrentUrl = true
   spaWatcher.stop()
   if (spaRestartTimer !== null) {
     clearTimeout(spaRestartTimer)
@@ -114,6 +126,7 @@ export default defineContentScript({
   async main() {
     if (window.__ASTRA_INJECTED__) return
     window.__ASTRA_INJECTED__ = true
+    pageAccessAllowedForCurrentUrl = await isPageAccessAllowedForUrl(window.location.href)
 
     browser.runtime.onMessage.addListener((message, _sender, sendResponse) => {
       if (isContentCommand(message)) {
@@ -131,6 +144,14 @@ export default defineContentScript({
           })
 
         return true
+      }
+
+      if (isPageAccessChangeMessage(message)) {
+        if (doesPageAccessChangeAffectUrl(message, window.location.href)) {
+          void handlePageAccessChange()
+        }
+        sendResponse({ ok: true })
+        return false
       }
 
       if (isContentStudyContextCommand(message)) {
@@ -191,8 +212,16 @@ export default defineContentScript({
       return
     })
 
-    browser.storage.onChanged?.addListener((_changes, areaName) => {
+    browser.storage.onChanged?.addListener((changes, areaName) => {
       if (areaName !== "local") return
+      if (PAGE_ACCESS_POLICY_STORAGE_KEY in changes) {
+        pageAccessAllowedForCurrentUrl = isPageAccessAllowedByPolicyValue(
+          window.location.href,
+          changes[PAGE_ACCESS_POLICY_STORAGE_KEY]?.newValue,
+        )
+        void handlePageAccessChange()
+        return
+      }
       void handleStorageChange()
     })
 
@@ -217,6 +246,7 @@ export default defineContentScript({
 
       // SPA navigation: auto-restart translation on significant URL changes
       spaWatcher.start(() => {
+        void renderPageAnnotations()
         const state = getPageTranslationState()
         if (state.phase !== "idle") {
           stopPageTranslation()
@@ -311,6 +341,10 @@ async function startTranslationForCurrentSettings(
   configOverride?: Awaited<ReturnType<typeof readConfig>>,
   sessionOverride?: Awaited<ReturnType<typeof readAstraSession>>,
 ) {
+  if (!pageAccessAllowedForCurrentUrl) {
+    return false
+  }
+
   const [config, session] = await Promise.all([
     configOverride ? Promise.resolve(configOverride) : readConfig(),
     sessionOverride !== undefined ? Promise.resolve(sessionOverride) : readAstraSession(),
@@ -366,6 +400,38 @@ async function handleStorageChange() {
   })
 }
 
+async function handlePageAccessChange() {
+  const generation = ++pageAccessChangeGeneration
+  pageAccessAllowedForCurrentUrl = await isPageAccessAllowedForUrl(window.location.href)
+  if (pageAccessAllowedForCurrentUrl) {
+    const [config, session] = await Promise.all([
+      readConfig(),
+      readAstraSession(),
+    ])
+    if (generation !== pageAccessChangeGeneration) return
+    await reconcileSiteAutomation(config, session)
+    return
+  }
+
+  if (generation !== pageAccessChangeGeneration) return
+  removeCustomCss()
+  const state = getPageTranslationState()
+  if (state.phase !== "idle") {
+    stopPageTranslation()
+    removeTranslatedSubtitles()
+  }
+  if (isVideoPage()) {
+    stopVideoSubtitleTranslation()
+  }
+  stopMeetingCaptionTranslation()
+  autoTranslateSuppressedForPage = true
+  lastAutomationState = {
+    enabled: false,
+    alwaysTranslate: false,
+    providerReady: false,
+  }
+}
+
 async function reconcileSiteAutomation(
   configOverride?: Awaited<ReturnType<typeof readConfig>>,
   sessionOverride?: Awaited<ReturnType<typeof readAstraSession>>,
@@ -383,7 +449,8 @@ async function reconcileSiteAutomation(
   }
 
   const siteSettings = resolveSiteTranslationSettings(config, window.location.hostname)
-  const providerReady = hasResolvedSiteProviderAccess(config, window.location.hostname, session)
+  const accessAllowed = pageAccessAllowedForCurrentUrl
+  const providerReady = accessAllowed && hasResolvedSiteProviderAccess(config, window.location.hostname, session)
   const currentState = getPageTranslationState()
   let activeSessionHandled = false
   const translationSettingsSnapshot = buildTranslationSettingsSnapshot(siteSettings)
@@ -400,15 +467,17 @@ async function reconcileSiteAutomation(
 
   if (siteSettings.enabled) {
     ensureSiteUiMounted(config)
-    if (siteSettings.customCss) {
+    if (accessAllowed && siteSettings.customCss) {
       injectCustomCss(siteSettings.customCss)
     } else {
       removeCustomCss()
     }
+  } else {
+    removeCustomCss()
   }
 
-  if (!siteSettings.enabled || !providerReady) {
-    if (!siteSettings.enabled) {
+  if (!accessAllowed || !siteSettings.enabled || !providerReady) {
+    if (!accessAllowed || !siteSettings.enabled) {
       removeCustomCss()
     }
 
@@ -431,8 +500,8 @@ async function reconcileSiteAutomation(
     }
 
     lastAutomationState = {
-      enabled: siteSettings.enabled,
-      alwaysTranslate: siteSettings.alwaysTranslate,
+      enabled: accessAllowed && siteSettings.enabled,
+      alwaysTranslate: accessAllowed && siteSettings.alwaysTranslate,
       providerReady,
     }
     lastTranslationSettingsSnapshot = translationSettingsSnapshot
@@ -508,8 +577,8 @@ async function reconcileSiteAutomation(
   }
 
   lastAutomationState = {
-    enabled: siteSettings.enabled,
-    alwaysTranslate: siteSettings.alwaysTranslate,
+    enabled: accessAllowed && siteSettings.enabled,
+    alwaysTranslate: accessAllowed && siteSettings.alwaysTranslate,
     providerReady,
   }
   lastTranslationSettingsSnapshot = translationSettingsSnapshot
@@ -576,6 +645,7 @@ function ensureSiteUiMounted(config: Awaited<ReturnType<typeof readConfig>>) {
 
   if (!siteUiMounted) {
     mountSelectionToolbar()
+    mountPageAnnotations()
     // Only mount hover translation on devices with fine pointer (not touch-primary)
     if (isHoverCapable()) {
       mountHoverTranslate()
@@ -626,6 +696,17 @@ async function handleContentCommand(
   message: ContentCommand,
 ): Promise<ContentCommandResponse> {
   const config = await readConfig()
+  if (!pageAccessAllowedForCurrentUrl) {
+    const currentState = attachSubtitleQuality(
+      await mergeIdleStateForSite(getPageTranslationState(), window.location.hostname),
+    )
+    return {
+      ok: false,
+      error: createTranslationError("SITE_DISABLED", "Astra page access is revoked for this site."),
+      state: currentState,
+    }
+  }
+
   const overrides = "payload" in message ? message.payload : undefined
   const siteSettings = resolveSiteTranslationSettings(config, window.location.hostname, overrides)
   const currentState = attachSubtitleQuality(
@@ -737,6 +818,40 @@ function injectStyles() {
       display: block;
       margin-top: 0.45em;
     }
+    .astra-translation-error {
+      display: block;
+      margin-top: 0.5em;
+      padding: 0.22rem 0 0.24rem 0.72rem;
+      border-left: 1.5px solid rgba(141, 112, 80, 0.42);
+      color: color-mix(in srgb, currentColor 58%, transparent);
+      font-family: "Source Serif 4", "Source Serif Pro", "Tiempos Text", "Songti SC", "Noto Serif SC", Georgia, serif;
+      font-size: 0.88rem;
+      font-style: italic;
+      line-height: 1.45;
+    }
+    .astra-translation-error-text {
+      margin-right: 0.72em;
+    }
+    .astra-translation-error-retry {
+      appearance: none;
+      border: 0;
+      background: transparent;
+      color: color-mix(in srgb, currentColor 82%, transparent);
+      border-radius: 999px;
+      padding: 0.08em 0.18em;
+      font-family: "Inter Tight", "Söhne", "Helvetica Neue", system-ui, sans-serif;
+      font-size: 0.82rem;
+      font-style: normal;
+      line-height: 1.2;
+      cursor: pointer;
+    }
+    .astra-translation-error-retry:hover {
+      background: color-mix(in srgb, currentColor 8%, transparent);
+    }
+    .astra-translation-error-retry:focus-visible {
+      outline: 2px solid rgba(196, 99, 58, 0.45);
+      outline-offset: 2px;
+    }
     .astra-source[data-astra-source-hidden] {
       display: none !important;
     }
@@ -746,7 +861,7 @@ function injectStyles() {
       font-size: 0.94em;
       font-style: italic;
       line-height: 1.62;
-      border-left: 2px solid rgba(196, 99, 58, 0.46);
+      border-left: 2px solid rgba(196, 99, 58, 0.52);
       padding-left: 0.72em;
       display: block;
       user-select: text;
@@ -804,9 +919,36 @@ function injectStyles() {
       cursor: pointer;
       transition: opacity 0.2s ease;
     }
-    .astra-loading-dots {
-      color: var(--astra-text-hint);
+    .astra-loading .astra-translation-inner {
+      border-left-style: dashed;
+      border-left-color: rgba(141, 112, 80, 0.34);
+      color: color-mix(in srgb, currentColor 42%, transparent);
+    }
+    .astra-loading-lines {
+      display: flex;
+      flex-direction: column;
+      gap: 0.42em;
+      width: min(40rem, 96%);
+      padding: 0.08em 0 0.04em;
+    }
+    .astra-loading-line {
+      display: block;
+      height: 0.54em;
+      border-radius: 999px;
+      background: rgba(141, 112, 80, 0.26);
       animation: astra-pulse 1.5s ease-in-out infinite;
+    }
+    .astra-loading-line-long { width: 100%; }
+    .astra-loading-line-medium { width: 92%; }
+    .astra-loading-line-short { width: 43%; }
+    .astra-loading-dots {
+      position: absolute;
+      width: 1px;
+      height: 1px;
+      overflow: hidden;
+      clip: rect(0 0 0 0);
+      white-space: nowrap;
+      opacity: 0;
     }
     @keyframes astra-pulse {
       0%, 100% { opacity: 0.4; }

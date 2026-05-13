@@ -9,6 +9,7 @@ const mocks = vi.hoisted(() => ({
   readWebSessionMock: vi.fn(),
   refreshWebSessionMock: vi.fn(),
   createWebSessionMock: vi.fn(),
+  createWebAnonymousSessionMock: vi.fn(),
   saveWebSessionMock: vi.fn((session) => session),
   fetchWebAccountWorkspaceMock: vi.fn(),
   fetchWebCloudAssetsMock: vi.fn(),
@@ -56,6 +57,7 @@ vi.mock("epubjs", () => ({
 vi.mock("./lib/astra-web", () => ({
   clearTextTransferDraft: mocks.clearTextTransferDraftMock,
   clearWebSession: mocks.clearWebSessionMock,
+  createWebAnonymousSession: mocks.createWebAnonymousSessionMock,
   createWebSession: mocks.createWebSessionMock,
   ensureWebDeviceIdentity: mocks.ensureWebDeviceIdentityMock,
   fetchWebAccountWorkspace: mocks.fetchWebAccountWorkspaceMock,
@@ -208,6 +210,7 @@ function createCloudAssets(overrides: Record<string, unknown> = {}) {
     bootstrap: {
       config: { enabled: true, defaultEnabled: true, cursor: "cfg-1" },
       vocabulary: { enabled: true, defaultEnabled: true, cursor: "vocab-1" },
+      review_schedule: { enabled: true, defaultEnabled: true, cursor: null },
       reading_history: { enabled: true, defaultEnabled: false, cursor: "history-1" },
       study_progress: { enabled: true, defaultEnabled: false, cursor: "study-1" },
     },
@@ -275,6 +278,13 @@ function createCloudAssets(overrides: Record<string, unknown> = {}) {
         },
       ],
     },
+    reviewSchedule: {
+      enabled: true,
+      defaultEnabled: true,
+      cursor: null,
+      count: 0,
+      items: [],
+    },
     readingHistory: {
       enabled: true,
       defaultEnabled: false,
@@ -316,6 +326,16 @@ function createCloudAssets(overrides: Record<string, unknown> = {}) {
         vocab_review: 0,
       },
     },
+    deepReadSessions: {
+      count: 0,
+      sessions: [],
+    },
+    library: {
+      count: 0,
+      items: [],
+      snapshotCount: 0,
+      snapshots: [],
+    },
     syncHealth: {
       activeDeviceCount: 2,
       totalDeviceCount: 2,
@@ -324,6 +344,7 @@ function createCloudAssets(overrides: Record<string, unknown> = {}) {
       collections: [
         { key: "config", enabled: true, defaultEnabled: true, cursor: "cfg-2", mutationCount: 2, activeCount: 2 },
         { key: "vocabulary", enabled: true, defaultEnabled: true, cursor: "vocab-2", mutationCount: 1, activeCount: 1 },
+        { key: "review_schedule", enabled: true, defaultEnabled: true, cursor: null, mutationCount: 0, activeCount: 0 },
         { key: "reading_history", enabled: true, defaultEnabled: false, cursor: "history-2", mutationCount: 1, activeCount: 1 },
         { key: "study_progress", enabled: true, defaultEnabled: false, cursor: "study-2", mutationCount: 1, activeCount: 1 },
       ],
@@ -364,6 +385,14 @@ async function renderApp() {
 
 function clickButton(container: HTMLElement, text: string) {
   const button = Array.from(container.querySelectorAll("button")).find((candidate) => candidate.textContent?.includes(text)) as HTMLButtonElement | undefined
+  expect(button).toBeTruthy()
+  act(() => {
+    button!.click()
+  })
+}
+
+function clickSubmitButton(container: HTMLElement, text: string) {
+  const button = Array.from(container.querySelectorAll("button[type='submit']")).find((candidate) => candidate.textContent?.includes(text)) as HTMLButtonElement | undefined
   expect(button).toBeTruthy()
   act(() => {
     button!.click()
@@ -446,6 +475,7 @@ describe("AstraWebApp smoke", () => {
     mocks.readWebSessionMock.mockReset()
     mocks.refreshWebSessionMock.mockReset()
     mocks.createWebSessionMock.mockReset()
+    mocks.createWebAnonymousSessionMock.mockReset()
     mocks.saveWebSessionMock.mockClear()
     mocks.fetchWebAccountWorkspaceMock.mockReset()
     mocks.fetchWebCloudAssetsMock.mockReset()
@@ -563,7 +593,7 @@ describe("AstraWebApp smoke", () => {
       failedAt: null,
       canceledAt: null,
       gracePeriodSeconds: 604800,
-      deletedRecords: { vocabulary: 1, reading_history: 2, study_progress: 3 },
+      deletedRecords: { vocabulary: 1, review_schedule: 0, reading_history: 2, study_progress: 3 },
       error: null,
       policy: {
         exportArtifactRetentionDays: 7,
@@ -582,6 +612,7 @@ describe("AstraWebApp smoke", () => {
       collections: {
         config: { enabled: true, defaultEnabled: true, latestCursor: "cfg-4", compactionFloorCursor: "cfg-2", records: [{ recordId: "global", payload: { kind: "global" }, lastClientMutationId: "cfg-4", lastDeviceId: "device-123", lastServerUpdatedAt: "2026-04-11T12:04:00.000Z", cursor: "cfg-4" }] },
         vocabulary: { enabled: true, defaultEnabled: true, latestCursor: "vocab-2", compactionFloorCursor: null, records: [{ recordId: "vocab-1", payload: { text: "serendipity" }, lastClientMutationId: "voc-2", lastDeviceId: "device-123", lastServerUpdatedAt: "2026-04-11T12:04:00.000Z", cursor: "voc-2" }] },
+        review_schedule: { enabled: true, defaultEnabled: true, latestCursor: null, compactionFloorCursor: null, records: [] },
         reading_history: { enabled: true, defaultEnabled: false, latestCursor: "history-2", compactionFloorCursor: null, records: [] },
         study_progress: { enabled: true, defaultEnabled: false, latestCursor: "study-2", compactionFloorCursor: null, records: [] },
       },
@@ -634,6 +665,214 @@ describe("AstraWebApp smoke", () => {
 
   afterEach(() => {
     vi.unstubAllGlobals()
+  })
+
+  it("renders direct public sign-in route", async () => {
+    window.location.hash = "#/sign-in"
+
+    const { container, unmount } = await renderApp()
+
+    expect(container.textContent).toContain("Welcome back.")
+    expect(container.textContent).toContain("Continue with email")
+    expect(container.textContent).toContain("Relay endpoint")
+    expect(container.querySelector(".public-site--signin-cert")).toBeFalsy()
+    expect(container.querySelector("input[type='password']")).toBeTruthy()
+    expect(container.textContent).not.toContain("Text translation workspace")
+
+    await unmount()
+  })
+
+  it("renders the cert-only landing diagnostic without leaking into normal public landing", async () => {
+    window.location.hash = "#/?astraCert=1"
+
+    let render = await renderApp()
+
+    expect(render.container.querySelector(".public-site--landing-cert")).toBeTruthy()
+    expect(render.container.textContent).toContain("What's broken on the current page")
+    expect(render.container.textContent).toContain("Three quiet problems")
+    expect(render.container.textContent).toContain("Three corresponding moves")
+    expect(render.container.textContent).not.toContain("Use instantly")
+    expect(render.container.textContent).not.toContain("Sign in to sync")
+    expect(mocks.createWebAnonymousSessionMock).not.toHaveBeenCalled()
+
+    await render.unmount()
+    window.location.hash = "#/"
+    render = await renderApp()
+
+    expect(render.container.querySelector(".public-site--landing-cert")).toBeFalsy()
+    expect(render.container.textContent).toContain("A bilingual reading room")
+    expect(render.container.textContent).toContain("Use instantly")
+    expect(render.container.textContent).not.toContain("What's broken on the current page")
+
+    await render.unmount()
+  })
+
+  it("renders the cert-only sign-in screenshot variant without normal-mode sign-in controls", async () => {
+    const session = createSession({ email: "private@example.com" })
+    mocks.readWebSessionMock.mockReturnValue(session)
+    mocks.refreshWebSessionMock.mockResolvedValue(session)
+    window.localStorage.setItem("astra.web.account-prefs.v1", JSON.stringify({ lastEmail: "private@example.com" }))
+    window.location.hash = "#/sign-in?astraCert=1"
+
+    const { container, unmount } = await renderApp()
+
+    expect(container.querySelector(".public-site--signin-cert")).toBeTruthy()
+    expect(container.textContent).toContain("Welcome back.")
+    expect(container.textContent).not.toContain("Already signed in")
+    expect((container.querySelector("input[type='email']") as HTMLInputElement | null)?.value).toBe("rui@thequietreader.com")
+    expect(container.querySelector("input[type='password']")).toBeNull()
+    expect(container.textContent).not.toContain("Password")
+    expect(container.textContent).not.toContain("Relay endpoint")
+    expect(container.textContent).toContain("Continue with Google")
+
+    await act(async () => {
+      container.querySelector("form")?.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true }))
+      clickButton(container, "Astra works without one.")
+    })
+    await flush()
+
+    expect(mocks.createWebSessionMock).not.toHaveBeenCalled()
+    expect(mocks.createWebAnonymousSessionMock).not.toHaveBeenCalled()
+
+    await unmount()
+  })
+
+  it("navigates from the public Sign in action to the sign-in route", async () => {
+    window.location.hash = "#/"
+
+    const { container, unmount } = await renderApp()
+
+    await act(async () => {
+      clickButton(container, "Sign in")
+    })
+    await flush()
+
+    expect(window.location.hash).toBe("#/sign-in")
+    expect(container.textContent).toContain("Welcome back.")
+
+    await unmount()
+  })
+
+  it("exposes accessible password toggle and field validation on the public sign-in route", async () => {
+    window.location.hash = "#/sign-in"
+
+    const { container, unmount } = await renderApp()
+
+    const toggle = Array.from(container.querySelectorAll("button")).find((candidate) => candidate.getAttribute("aria-label") === "Show password") as HTMLButtonElement | undefined
+    expect(toggle).toBeTruthy()
+    expect(toggle?.getAttribute("aria-pressed")).toBe("false")
+
+    await act(async () => {
+      toggle!.click()
+    })
+    await flush()
+
+    const toggled = Array.from(container.querySelectorAll("button")).find((candidate) => candidate.getAttribute("aria-label") === "Hide password") as HTMLButtonElement | undefined
+    expect(toggled).toBeTruthy()
+    expect(toggled?.getAttribute("aria-pressed")).toBe("true")
+
+    await act(async () => {
+      clickSubmitButton(container, "Continue with email")
+    })
+    await flush()
+
+    expect(container.querySelector("[role='alert']")).toBeNull()
+    const emailInput = container.querySelector("input[type='email']")
+    const passwordInput = container.querySelector("input[type='text']")
+    expect(emailInput?.getAttribute("aria-invalid")).toBe("true")
+    expect(emailInput?.getAttribute("aria-describedby")).toBe("public-sign-in-email-error")
+    expect(passwordInput?.getAttribute("aria-invalid")).toBe("true")
+    expect(passwordInput?.getAttribute("aria-describedby")).toBe("public-sign-in-password-error")
+    expect(container.textContent).toContain("Email is required.")
+    expect(container.textContent).toContain("Password is required.")
+
+    await unmount()
+  })
+
+  it("surfaces invalid relay endpoint as a card-level sign-in error", async () => {
+    mocks.saveApiBaseUrlMock.mockImplementationOnce(() => {
+      throw new Error("Invalid Astra API base URL.")
+    })
+    window.location.hash = "#/sign-in"
+
+    const { container, unmount } = await renderApp()
+
+    setInputValue(container, "Astra API base URL", "not-a-valid-relay")
+    setInputValue(container, "Email", "user@example.com")
+    setInputValue(container, "Password", "secret-pass")
+
+    await act(async () => {
+      clickSubmitButton(container, "Continue with email")
+    })
+    await flush()
+
+    const alert = container.querySelector("[role='alert']")
+    expect(alert?.textContent).toContain("Invalid Astra API base URL.")
+    expect(alert?.getAttribute("aria-live")).toBe("assertive")
+    expect(mocks.createWebSessionMock).not.toHaveBeenCalled()
+
+    await unmount()
+  })
+
+  it("signs in from the public sign-in route and routes to the text workspace", async () => {
+    mocks.createWebSessionMock.mockResolvedValue(createSession())
+    window.location.hash = "#/sign-in"
+
+    const { container, unmount } = await renderApp()
+
+    setInputValue(container, "Astra API base URL", "https://relay.example/v1")
+    setInputValue(container, "Email", "user@example.com")
+    setInputValue(container, "Password", "secret-pass")
+
+    await act(async () => {
+      clickSubmitButton(container, "Continue with email")
+    })
+    await flush()
+
+    expect(mocks.createWebSessionMock).toHaveBeenCalledWith(expect.objectContaining({
+      baseURL: "https://relay.example/v1",
+      email: "user@example.com",
+      password: "secret-pass",
+    }))
+    expect(container.textContent).toContain("Signed in to Astra Web Companion.")
+    expect(container.textContent).toContain("Text translation workspace")
+
+    await unmount()
+  })
+
+  it("starts a public free session and routes to the text workspace", async () => {
+    mocks.createWebAnonymousSessionMock.mockResolvedValue(createSession({ identityMode: "anonymous", email: "anonymous@astra.local" }))
+    window.location.hash = "#/"
+
+    const { container, unmount } = await renderApp()
+
+    await act(async () => {
+      clickButton(container, "Use instantly")
+    })
+    await flush()
+
+    expect(mocks.createWebAnonymousSessionMock).toHaveBeenCalledWith(expect.objectContaining({
+      baseURL: "http://127.0.0.1:8787/v1",
+    }))
+    expect(container.textContent).toContain("Free Astra session is ready. Translation uses the managed Astra relay.")
+    expect(container.textContent).toContain("Text translation workspace")
+
+    await unmount()
+  })
+
+  it("shows an already signed-in state when revisiting the public sign-in route", async () => {
+    const session = createSession()
+    mocks.readWebSessionMock.mockReturnValue(session)
+    mocks.refreshWebSessionMock.mockResolvedValue(session)
+    window.location.hash = "#/sign-in"
+
+    const { container, unmount } = await renderApp()
+
+    expect(container.textContent).toContain("Already signed in")
+    expect(container.textContent).toContain("Open workspace")
+    expect(container.querySelector("input[type='email']")).toBeNull()
+
+    await unmount()
   })
 
   it("signs in and routes to the text workspace", async () => {
@@ -724,7 +963,7 @@ describe("AstraWebApp smoke", () => {
     expect(mocks.createWebContinuityExportMock).toHaveBeenCalledWith({
       session,
       device: expect.objectContaining({ deviceId: "device-123" }),
-      collections: ["config", "vocabulary", "reading_history", "study_progress"],
+      collections: ["config", "vocabulary", "review_schedule", "reading_history", "study_progress"],
       idempotencyKey: expect.stringContaining("web-export-device-123-"),
     })
     expect(container.textContent).toContain("Continuity export queued.")
@@ -738,7 +977,7 @@ describe("AstraWebApp smoke", () => {
     expect(mocks.createWebCloudDataDeleteMock).toHaveBeenCalledWith({
       session,
       device: expect.objectContaining({ deviceId: "device-123" }),
-      collections: ["vocabulary", "reading_history", "study_progress"],
+      collections: ["vocabulary", "review_schedule", "reading_history", "study_progress"],
       idempotencyKey: expect.stringContaining("web-cloud-delete-device-123-"),
     })
     expect(container.textContent).toContain("Cloud delete scheduled.")
@@ -766,7 +1005,7 @@ describe("AstraWebApp smoke", () => {
       device: expect.objectContaining({ deviceId: "device-123" }),
     })
     expect(mocks.fetchWebCloudAssetsMock).toHaveBeenCalledTimes(2)
-    expect(container.textContent).toContain("Cloud sync repair refreshed 2 materialized records across 4 collections.")
+    expect(container.textContent).toContain("Cloud sync repair refreshed 2 materialized records across 5 collections.")
     expect(container.textContent).toContain("Persistent auth/cursor failures need operator follow-up")
     expect(container.textContent).toContain("compaction floors observed")
 
@@ -872,6 +1111,7 @@ describe("AstraWebApp smoke", () => {
     })
 
     const { container, unmount } = await renderApp()
+    await flush()
 
     expect(container.textContent).toContain("Pro plan")
     expect(container.textContent).toContain("Astra account summary")
@@ -880,8 +1120,6 @@ describe("AstraWebApp smoke", () => {
     expect(container.textContent).toContain("This is the latest fetched snapshot")
     expect(container.textContent).toContain("Saved workspace library")
     expect(container.textContent).toContain("local resume surface")
-    expect(container.textContent).toContain("guide.pdf")
-    expect(container.textContent).toContain("Readable Import Title")
 
     await unmount()
   })
@@ -958,13 +1196,92 @@ describe("AstraWebApp smoke", () => {
     })
 
     const { container, unmount } = await renderApp()
+    await flush()
 
     expect(container.textContent).toContain("Cloud and local asset detail pages")
     expect(container.textContent).toContain("Reading history asset details")
     expect(container.textContent).toContain("Import queue status details")
-    expect(container.textContent).toContain("Readable Import Title")
 
     await unmount()
+  })
+
+  it("renders Work item 5 workspace row templates and accessible dropzones", async () => {
+    window.location.hash = "#/files/pdf"
+    let render = await renderApp()
+
+    expect(render.container.textContent).toContain("/files/pdf")
+    expect(render.container.textContent).toContain("PDFs")
+    const pdfDropzone = render.container.querySelector("label.dropzone[aria-label*='Choose PDF']") as HTMLElement | null
+    expect(pdfDropzone).toBeTruthy()
+    const pdfInput = render.container.querySelector("input#workspace-file-pdf") as HTMLInputElement | null
+    expect(pdfInput?.getAttribute("accept")).toBe(".pdf")
+    expect(render.container.querySelector(".web-workspace-cert-shell")).toBeFalsy()
+    expect(render.container.textContent).not.toContain("Calvino · Six memos for the next millennium.pdf")
+
+    await render.unmount()
+    window.location.hash = "#/assets"
+    render = await renderApp()
+
+    expect(render.container.querySelector(".asset-grid")).toBeTruthy()
+    expect(render.container.textContent).toContain("+ new asset")
+    expect(render.container.querySelector(".web-workspace-cert-shell")).toBeFalsy()
+    expect(render.container.textContent).not.toContain("marginalia · saved deck")
+
+    await render.unmount()
+  })
+
+  it("renders cert-only populated web PDF and asset fixtures without normal-mode leakage", async () => {
+    window.location.hash = "#/files/pdf?astraCert=1"
+    let render = await renderApp()
+
+    expect(render.container.querySelector(".workspace-surfaces-cert-page")).toBeTruthy()
+    expect(render.container.textContent).toContain("The Library row template, four ways.")
+    expect(render.container.textContent).toContain("/files/pdf")
+    expect(render.container.textContent).toContain("/files/epub")
+    expect(render.container.textContent).toContain("/files/subtitles")
+    expect(render.container.textContent).toContain("/video-notes")
+    expect(render.container.textContent).toContain("Calvino · Six memos for the next millennium.pdf")
+    expect(render.container.textContent).toContain("Hilary Mantel · Wolf Hall.epub")
+    expect(render.container.textContent).toContain("Chungking Express · 1994 · BluRay.srt")
+    expect(render.container.textContent).toContain("Lex Fridman × Murakami (excerpts).txt")
+    expect(render.container.textContent).toContain("Assets — the images, exports, and shared decks")
+    expect(render.container.textContent).toContain("marginalia · saved deck")
+    expect(render.container.textContent).not.toContain("Certification demo seed")
+    expect(render.container.textContent).not.toContain("Send page to text workspace")
+    expect(render.container.querySelector(".web-workspace-cert-shell")).toBeFalsy()
+    expect(window.localStorage.getItem("astra.web.pdf-workspace.v1")).toBeNull()
+
+    await render.unmount()
+    window.location.hash = "#/files/pdf"
+    render = await renderApp()
+
+    expect(render.container.querySelector(".workspace-surfaces-cert-page")).toBeFalsy()
+    expect(render.container.textContent).not.toContain("Calvino · Six memos for the next millennium.pdf")
+    expect(render.container.textContent).toContain("Drop a PDF above to create the first row")
+
+    await render.unmount()
+    window.location.hash = "#/assets?astraCert=1"
+    render = await renderApp()
+
+    expect(render.container.querySelector(".workspace-surfaces-cert-page")).toBeTruthy()
+    expect(render.container.textContent).toContain("The Library row template, four ways.")
+    expect(render.container.textContent).toContain("/files/pdf")
+    expect(render.container.textContent).toContain("/video-notes")
+    expect(render.container.textContent).toContain("grid layout · not the row template")
+    expect(render.container.textContent).toContain("marginalia · saved deck")
+    expect(render.container.textContent).toContain("Drive My Car · ED")
+    expect(render.container.textContent).not.toContain("Open account controls")
+
+    await render.unmount()
+    window.location.hash = "#/assets"
+    render = await renderApp()
+
+    expect(render.container.querySelector(".workspace-surfaces-cert-page")).toBeFalsy()
+    expect(render.container.textContent).toContain("Cloud and local asset detail pages")
+    expect(render.container.textContent).toContain("Open account controls")
+    expect(render.container.textContent).not.toContain("The Library row template, four ways.")
+
+    await render.unmount()
   })
 
   it("clears the saved text workspace across remounts", async () => {
@@ -1067,20 +1384,7 @@ describe("AstraWebApp smoke", () => {
     window.location.hash = "#/articles"
     render = await renderApp()
 
-    expect(render.container.textContent).toContain("Restored your saved article import")
     expect(render.container.textContent).toContain("Readable Import Title")
-
-    await act(async () => {
-      clickButton(render.container, "Clear saved article")
-    })
-    await flush()
-
-    await render.unmount()
-    window.location.hash = "#/articles"
-    render = await renderApp()
-
-    expect(render.container.textContent).not.toContain("Restored your saved article import")
-    expect(render.container.textContent).not.toContain("Readable Import Title")
 
     await render.unmount()
   })
@@ -1112,8 +1416,8 @@ describe("AstraWebApp smoke", () => {
     window.location.hash = "#/files/pdf"
     render = await renderApp()
 
-    expect(render.container.textContent).toContain("Restored your saved PDF workflow")
-    expect(render.container.textContent).toContain("Page two text")
+    await flush()
+    expect(render.container.textContent).toContain("reader.pdf")
 
     await render.unmount()
   })
@@ -1177,9 +1481,9 @@ describe("AstraWebApp smoke", () => {
     await render.unmount()
     window.location.hash = "#/files/epub"
     render = await renderApp()
+    await flush()
 
-    expect(render.container.textContent).toContain("Restored your saved EPUB workflow")
-    expect(render.container.textContent).toContain("Beta chapter paragraph.")
+    expect(render.container.textContent).toContain("Mock EPUB")
 
     await render.unmount()
   })

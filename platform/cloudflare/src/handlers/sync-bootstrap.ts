@@ -88,6 +88,11 @@ function normalizeSyncBootstrap(bootstrap: AstraSyncBootstrap) {
         defaultEnabled: bootstrap.collections.vocabulary.defaultEnabled,
         cursor: bootstrap.collections.vocabulary.cursor,
       },
+      review_schedule: {
+        enabled: bootstrap.collections.review_schedule.enabled,
+        defaultEnabled: bootstrap.collections.review_schedule.defaultEnabled,
+        cursor: bootstrap.collections.review_schedule.cursor,
+      },
       reading_history: {
         enabled: bootstrap.collections.reading_history.enabled,
         defaultEnabled: bootstrap.collections.reading_history.defaultEnabled,
@@ -120,6 +125,11 @@ function mapShadowBootstrapToNodeShape(
         enabled: shadow.collections.vocabulary.enabled,
         defaultEnabled: shadow.collections.vocabulary.defaultEnabled,
         cursor: shadow.collections.vocabulary.lastIssuedCursor,
+      },
+      review_schedule: {
+        enabled: shadow.collections.review_schedule.enabled,
+        defaultEnabled: shadow.collections.review_schedule.defaultEnabled,
+        cursor: shadow.collections.review_schedule.lastIssuedCursor,
       },
       reading_history: {
         enabled: shadow.collections.reading_history.enabled,

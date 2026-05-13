@@ -97,7 +97,7 @@ describe("extension message helpers", () => {
           stateLastRunAt: null,
           stateLastSuccessAt: "2026-04-09T01:00:00.000Z",
           stateLastError: null,
-          cursors: { config: null, vocabulary: "voc-1", reading_history: null, study_progress: "progress-1" },
+          cursors: { config: null, vocabulary: "voc-1", review_schedule: null, reading_history: null, study_progress: "progress-1" },
         },
       },
     })
@@ -129,7 +129,7 @@ describe("extension message helpers", () => {
           stateLastRunAt: "2026-04-09T01:00:00.000Z",
           stateLastSuccessAt: null,
           stateLastError: null,
-          cursors: { config: null, vocabulary: null, reading_history: null, study_progress: null },
+          cursors: { config: null, vocabulary: null, review_schedule: null, reading_history: null, study_progress: null },
         },
       },
     })

@@ -10,16 +10,55 @@ export interface RegistrableBlock {
   element: HTMLElement
   sourceText: string
   requestText: string
+  fingerprint?: string
 }
 
 export type BlockState = "idle" | "queued" | "in-flight" | "translated" | "failed"
 
 export const MAX_BLOCK_RETRIES = 2
 
+function hashString(value: string): string {
+  let hash = 2166136261
+  for (let i = 0; i < value.length; i += 1) {
+    hash ^= value.charCodeAt(i)
+    hash = Math.imul(hash, 16777619)
+  }
+  return (hash >>> 0).toString(36)
+}
+
+function normalizeFingerprintText(value: string): string {
+  return value.replace(/\s+/g, " ").trim().slice(0, 500)
+}
+
+function getElementPathFingerprint(element: HTMLElement): string {
+  const parts: string[] = []
+  let current: HTMLElement | null = element
+
+  while (current && current !== document.body && current !== document.documentElement && parts.length < 8) {
+    const parent: HTMLElement | null = current.parentElement
+    const currentTagName = current.tagName
+    const tag = currentTagName.toLowerCase()
+    const index = parent
+      ? Array.from(parent.children).filter((child: Element) => child.tagName === currentTagName).indexOf(current) + 1
+      : 1
+    parts.push(`${tag}:nth-of-type(${Math.max(1, index)})`)
+    current = parent
+  }
+
+  return parts.reverse().join(">") || element.tagName.toLowerCase()
+}
+
+export function buildBlockFingerprint(block: Pick<RegistrableBlock, "element" | "sourceText" | "requestText">): string {
+  const text = normalizeFingerprintText(block.requestText || block.sourceText)
+  const path = getElementPathFingerprint(block.element)
+  return `${hashString(path)}-${hashString(text)}`
+}
+
 export interface TrackedBlock {
   element: HTMLElement
   sourceText: string
   requestText: string
+  fingerprint: string
   revision: number
   state: BlockState
   retryCount: number
@@ -111,6 +150,7 @@ export function createBlockRegistry(): BlockRegistry {
           element: tb.element,
           sourceText: tb.sourceText,
           requestText: tb.requestText,
+          fingerprint: tb.fingerprint ?? buildBlockFingerprint(tb),
           revision: 0,
           state: "idle",
           retryCount: 0,
@@ -228,6 +268,11 @@ export function createBlockRegistry(): BlockRegistry {
       decrementStateCounter(block.state)
       block.sourceText = next.sourceText
       block.requestText = next.requestText
+      block.fingerprint = buildBlockFingerprint({
+        element,
+        sourceText: next.sourceText,
+        requestText: next.requestText,
+      })
       block.revision++
       block.lastTranslation = undefined
       block.retryCount = 0

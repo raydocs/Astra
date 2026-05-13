@@ -1,0 +1,4 @@
+production:popup-empty-state.png astraCert=1 focused first-run empty state extension=bbgbfdohdgdnoiacakjnfhlhhgnfclcn
+production:review-card.png astraCert=1 deterministic revealed unalterable card
+production:review-summary.png astraCert=1 deterministic 18-word summary
+superseded for review rows: four-grade SRS scheduling/copy was implemented after this capture; recapture pending.

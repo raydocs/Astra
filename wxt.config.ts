@@ -41,6 +41,10 @@ export default defineConfig({
       },
       permissions,
       host_permissions: ["*://*/*"],
+      // Runtime controls can request/revoke narrower host grants where the browser supports
+      // optional host permissions. Broad host access remains declared for this build and is
+      // still disclosed truthfully in onboarding/popup copy.
+      optional_host_permissions: ["http://*/*", "https://*/*"],
       // Omnibox integration only in full builds (compat builds may not support omnibox API)
       ...(!isCompatChannel && {
         omnibox: { keyword: "astra" },

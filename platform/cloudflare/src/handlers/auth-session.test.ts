@@ -510,6 +510,8 @@ describe("handleAuthSession", () => {
     expect(fetchSpy).toHaveBeenCalledTimes(1)
     expect(mockDb.queries.some((query) => query.sql.includes("INSERT INTO auth_issue_requests"))).toBe(true)
     expect(mockDb.queries.some((query) => query.sql.includes("INSERT INTO shadow_auth_sessions"))).toBe(true)
+    const sessionInsert = mockDb.queries.find((query) => query.sql.includes("INSERT INTO shadow_auth_sessions"))
+    expect(sessionInsert?.bindings[5]).toBe("sha256_v1")
 
     const replaySetup = createEnv("proxy", "proxy", "native")
     const replayContext = createContext("proxy", "proxy", "native")
@@ -583,6 +585,10 @@ describe("handleAuthSession", () => {
     expect(replayPayload.sessionId).toBe(firstPayload.sessionId)
     expect(replayPayload.sessionToken).toBe(firstPayload.sessionToken)
     expect(fetchSpy).toHaveBeenCalledTimes(1)
+    expect(replaySetup.mockDb.queries.some((query) => (
+      query.sql.includes("FROM shadow_users")
+      && query.bindings[0] === "usr_demo"
+    ))).toBe(true)
   })
 
   it("returns a guarded 503 on ambiguous mirror-back and succeeds when retried with the same key", async () => {
@@ -706,7 +712,7 @@ describe("handleAuthSession", () => {
 
     expect(response.status).toBe(401)
     expect(response.headers.get("x-astra-platform-route")).toBe("native-auth-gate")
-    expect(payload.error.code).toBe("CONFIG_MISSING")
+    expect(payload.error.code).toBe("INVALID_CREDENTIALS")
     expect(fetchSpy).toHaveBeenCalledTimes(0)
   })
 

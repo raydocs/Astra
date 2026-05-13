@@ -275,6 +275,7 @@ describe("OptionsApp — Sites section", () => {
         collections: {
           config: { enabled: true, defaultEnabled: true, cursor: "cfg-3" },
           vocabulary: { enabled: false, defaultEnabled: false, cursor: null },
+          review_schedule: { enabled: true, defaultEnabled: true, cursor: null },
           reading_history: { enabled: false, defaultEnabled: false, cursor: null },
           study_progress: { enabled: false, defaultEnabled: false, cursor: null },
         },
@@ -291,12 +292,14 @@ describe("OptionsApp — Sites section", () => {
             deltas: {
               config: [],
               vocabulary: [],
+              review_schedule: [],
               reading_history: [],
               study_progress: [],
             },
             nextCursors: {
               config: "cfg-4",
               vocabulary: null,
+              review_schedule: null,
               reading_history: null,
               study_progress: null,
             },
@@ -309,6 +312,7 @@ describe("OptionsApp — Sites section", () => {
       collections: {
         config: { enabled: true, defaultEnabled: true, cursor: "cfg-3" },
         vocabulary: { enabled: false, defaultEnabled: false, cursor: null },
+        review_schedule: { enabled: true, defaultEnabled: true, cursor: null },
         reading_history: { enabled: true, defaultEnabled: false, cursor: "hist-3" },
         study_progress: { enabled: false, defaultEnabled: false, cursor: null },
       },
@@ -519,6 +523,21 @@ describe("OptionsApp — Sites section", () => {
     expect(container.querySelector(".astra-settings-rows")).not.toBeNull()
     expect(container.querySelector(".astra-settings-segmented")).not.toBeNull()
     expect(container.querySelector(".astra-settings-preview")).not.toBeNull()
+  })
+
+  it("shows Engine provider rows with truthful active access status", async () => {
+    await act(async () => {
+      ;(container.querySelector('[data-section="providers"]') as HTMLButtonElement).click()
+      await Promise.resolve()
+    })
+
+    const providerList = container.querySelector('[data-testid="options-provider-status-list"]') as HTMLElement
+    expect(providerList).toBeTruthy()
+    expect(providerList.textContent).toContain("OpenAI")
+    expect(providerList.textContent).toContain("Selected · needs access")
+    expect(providerList.textContent).toContain("Add a key or relay URL")
+    expect(providerList.textContent).toContain("Gemini")
+    expect(providerList.textContent).toContain("Use provider")
   })
 
   it("navigates to the Sites section and shows empty state", async () => {

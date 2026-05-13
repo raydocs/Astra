@@ -170,6 +170,18 @@ function getInitialTab(): ActiveTab {
   return "list"
 }
 
+function hasAstraCertificationParam(): boolean {
+  try {
+    const searchParams = new URLSearchParams(window.location.search)
+    const hashParams = window.location.hash.includes("?")
+      ? new URLSearchParams(window.location.hash.split("?", 2)[1] ?? "")
+      : new URLSearchParams()
+    return searchParams.get("astraCert") === "1" || hashParams.get("astraCert") === "1"
+  } catch {
+    return false
+  }
+}
+
 interface ReadingArticleSummary {
   pageUrl: string
   hostname: string
@@ -517,6 +529,7 @@ function formatLocalDayLabel(date: string): string {
 
 export default function VocabularyApp() {
   const [activeTab, setActiveTab] = useState<ActiveTab>(getInitialTab)
+  const [certificationMode] = useState(hasAstraCertificationParam)
   const [readingSubTab, setReadingSubTab] = useState<ReadingSubTab>("recent")
   const [readingSortMode, setReadingSortMode] = useState<ReadingSortMode>("opened")
   const [readingItems, setReadingItems] = useState<OwnedReadingItem[]>([])
@@ -539,7 +552,6 @@ export default function VocabularyApp() {
   const [dailyStatsInfoOpen, setDailyStatsInfoOpen] = useState(false)
   const [speakingEntryId, setSpeakingEntryId] = useState<string | null>(null)
   const [explainingEntryId, setExplainingEntryId] = useState<string | null>(null)
-  const [expandedContextEntryIds, setExpandedContextEntryIds] = useState<Set<string>>(() => new Set())
   const [accountContinuityAuthState, setAccountContinuityAuthState] = useState<LearningLoopAccountContinuityAuthState | "unknown">("unknown")
   const [themePackImportStatus, setThemePackImportStatus] = useState<string>("")
   const [pendingThemePackImport, setPendingThemePackImport] = useState<PendingThemePackImport | null>(null)
@@ -952,18 +964,6 @@ export default function VocabularyApp() {
     }
   }
 
-  const toggleExpandedContext = (entryId: string) => {
-    setExpandedContextEntryIds((current) => {
-      const next = new Set(current)
-      if (next.has(entryId)) {
-        next.delete(entryId)
-      } else {
-        next.add(entryId)
-      }
-      return next
-    })
-  }
-
   const containerStyle: React.CSSProperties = {
     margin: "0",
     padding: "0",
@@ -1243,6 +1243,23 @@ export default function VocabularyApp() {
       .sort((a, b) => b[1] - a[1])
       .slice(0, 5)
   })()
+  const normalizedSearch = search.trim().toLowerCase()
+  const sentenceSearchResults = normalizedSearch
+    ? sorted.filter((entry) => [
+      entry.sourceContext?.sentenceText,
+      entry.context,
+      entry.sourceContext?.articleExcerpt,
+      entry.sourceContext?.contentSummary,
+    ].filter(Boolean).some((value) => value!.toLowerCase().includes(normalizedSearch))).slice(0, 5)
+    : []
+  const articleSearchResults = normalizedSearch
+    ? readingItems.filter((item) => [
+      item.title,
+      item.sourceUrl,
+      item.readingHistoryRecordId,
+      item.studyProgressRecordId,
+    ].filter(Boolean).some((value) => value!.toLowerCase().includes(normalizedSearch))).slice(0, 5)
+    : []
 
   if (showListLoading || showReadingLoading) {
     return (
@@ -1255,8 +1272,8 @@ export default function VocabularyApp() {
   }
 
   return (
-    <div className="astra-library-shell" data-astra-theme="light" data-astra="quiet">
-      <div className="astra-library-grid">
+    <div className={`astra-library-shell${activeTab === "review" ? " astra-library-shell--review" : ""}${activeTab === "review" && certificationMode ? " astra-library-shell--review-cert" : ""}`} data-astra-theme="light" data-astra="quiet">
+      <div className={`astra-library-grid${activeTab === "review" ? " astra-library-grid--review" : ""}`}>
         {/* ========== SIDEBAR ========== */}
         <aside className="astra-library-sidebar" aria-label="Library navigation">
           <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "0 6px 14px" }}>
@@ -1693,6 +1710,65 @@ export default function VocabularyApp() {
             </div>
           )}
 
+          {search && (sorted.length > 0 || sentenceSearchResults.length > 0 || articleSearchResults.length > 0) && (
+            <section className="astra-library-search-groups" aria-label="Grouped library search results">
+              <div className="astra-eyebrow">Search results</div>
+              {sorted.length > 0 && (
+                <div className="astra-library-search-group">
+                  <div className="astra-library-search-group__title">In saved words ({sorted.length})</div>
+                  <div className="astra-library-search-group__chips">
+                    {sorted.slice(0, 6).map((entry) => (
+                      <button
+                        type="button"
+                        key={`word-result:${entry.id}`}
+                        className="astra-library-search-chip"
+                        onClick={() => setExpandedId(entry.id)}
+                      >
+                        <span className="astra-library-search-chip__word">{entry.text}</span>
+                        {entry.translation && <span className="astra-library-search-chip__gloss">{entry.translation}</span>}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+              {sentenceSearchResults.length > 0 && (
+                <div className="astra-library-search-group">
+                  <div className="astra-library-search-group__title">In saved sentences ({sentenceSearchResults.length})</div>
+                  {sentenceSearchResults.map((entry) => {
+                    const sentence = entry.sourceContext?.sentenceText || entry.context || ""
+                    return (
+                      <button
+                        type="button"
+                        key={`sentence-result:${entry.id}`}
+                        className="astra-library-search-sentence"
+                        onClick={() => setExpandedId(entry.id)}
+                      >
+                        <span>{sentence}</span>
+                        <span className="astra-library-search-sentence__meta">{entry.text} · {entry.hostname ?? entry.sourceContext?.hostname ?? "saved"}</span>
+                      </button>
+                    )
+                  })}
+                </div>
+              )}
+              {articleSearchResults.length > 0 && (
+                <div className="astra-library-search-group">
+                  <div className="astra-library-search-group__title">In article titles ({articleSearchResults.length})</div>
+                  {articleSearchResults.map((item) => (
+                    <button
+                      type="button"
+                      key={`article-result:${item.id}`}
+                      className="astra-library-search-article"
+                      onClick={() => void openReadingItem(item)}
+                    >
+                      <span>{item.title}</span>
+                      <span className="astra-library-search-sentence__meta">{getOwnedReadingSourceTypeLabel(item.sourceType)}</span>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </section>
+          )}
+
           {sorted.length === 0 && (
             <div style={emptyStyle}>
               {search
@@ -1702,13 +1778,13 @@ export default function VocabularyApp() {
           )}
 
           {sorted.map((entry) => (
-            <div key={entry.id} style={cardStyle}>
+            <div key={entry.id} className="astra-library-saved-card" style={cardStyle}>
               {(() => {
                 const sourceDisplay = deriveVocabularySourceDisplay(entry)
                 const linkedReadingItem = matchOwnedReadingItemForVocabularyEntry(linkedOwnedReadingItems, entry)
                 const linkedReadingResumeTarget = linkedReadingItem ? buildOwnedReadingResumeTarget(linkedReadingItem) : null
                 const linkedReadingProgress = linkedReadingItem ? describeOwnedReadingProgress(linkedReadingItem) : null
-                const isContextExpanded = expandedContextEntryIds.has(entry.id)
+                const isContextExpanded = expandedId === entry.id
                 const snippet = sourceDisplay.snippet
                 const snippetLong = snippet.length > 200
                 const visibleSnippet = snippetLong && !isContextExpanded
@@ -1717,60 +1793,48 @@ export default function VocabularyApp() {
 
                 return (
                   <>
-              <div
+              <button
+                type="button"
                 data-role="vocabulary-entry-card"
                 data-entry-id={entry.id}
-                className="astra-cursor-pointer"
+                className="astra-library-entry-summary"
                 onClick={() => setExpandedId(expandedId === entry.id ? null : entry.id)}
+                aria-expanded={expandedId === entry.id}
               >
-                <div style={wordStyle}>{entry.text}</div>
+                <span style={wordStyle}>{entry.text}</span>
                 {entry.translation && (
-                  <div style={translationStyle}>{entry.translation}</div>
+                  <span style={translationStyle}>{entry.translation}</span>
                 )}
                 {sourceDisplay.surfaceLabel && (
-                  <div className="astra-eyebrow" style={{ marginBottom: 4 }}>
+                  <span className="astra-eyebrow" style={{ marginBottom: 4 }}>
                     {sourceDisplay.surfaceLabel}
-                  </div>
+                  </span>
                 )}
                 {sourceDisplay.sourceLabel && (
-                  <div style={{ fontFamily: "Source Serif 4, Georgia, serif", fontStyle: "italic", fontSize: 13, color: "var(--astra-style-ink-2)", marginBottom: 4 }}>
+                  <span style={{ fontFamily: "Source Serif 4, Georgia, serif", fontStyle: "italic", fontSize: 13, color: "var(--astra-style-ink-2)", marginBottom: 4 }}>
                     {sourceDisplay.sourceLabel}
-                  </div>
+                  </span>
                 )}
                 {sourceDisplay.snippet && (
-                  <div style={contextStyle}>
+                  <span style={contextStyle}>
                     {visibleSnippet}
-                  </div>
+                  </span>
                 )}
                 {snippetLong && (
-                  <button
-                    type="button"
-                    onClick={(event) => {
-                      event.stopPropagation()
-                      toggleExpandedContext(entry.id)
-                    }}
-                    className="astra-cursor-pointer"
-                    style={{
-                      border: "none",
-                      background: "none",
-                      color: "var(--astra-info)",
-                      borderRadius: 0,
-                      padding: 0,
-                      marginBottom: 6,
-                      fontSize: 12,
-                      fontWeight: 700,
-                    }}
+                  <span
+                    className="astra-library-entry-summary__more"
+                    aria-hidden="true"
                   >
-                    {isContextExpanded ? t("vocabulary_contextShowLess") : t("vocabulary_contextShowMore")}
-                  </button>
+                    {expandedId === entry.id ? t("vocabulary_contextShowLess") : t("vocabulary_contextShowMore")}
+                  </span>
                 )}
                 {entry.note && expandedId !== entry.id && (
-                  <div style={{ fontSize: 12, color: "var(--astra-text-muted)", marginBottom: 4 }}>
+                  <span style={{ fontSize: 12, color: "var(--astra-text-muted)", marginBottom: 4 }}>
                     Note: {entry.note.length > 80 ? `${entry.note.slice(0, 80)}...` : entry.note}
-                  </div>
+                  </span>
                 )}
                 {(entry.tags ?? []).length > 0 && (
-                  <div style={{ display: "flex", gap: 4, flexWrap: "wrap", marginBottom: 6 }}>
+                  <span style={{ display: "flex", gap: 4, flexWrap: "wrap", marginBottom: 6 }}>
                     {entry.tags!.map((tag) => (
                       <span
                         key={tag}
@@ -1786,9 +1850,9 @@ export default function VocabularyApp() {
                         {tag}
                       </span>
                     ))}
-                  </div>
+                  </span>
                 )}
-              </div>
+              </button>
 
               {expandedId === entry.id && (
                 <div style={{ marginTop: 8, borderTop: "1px solid var(--astra-border)", paddingTop: 8 }}>
@@ -2217,7 +2281,7 @@ export default function VocabularyApp() {
               const deepReadNextStepTarget = row.deepReadNextStepTarget
 
               return (
-            <div key={item.id} style={cardStyle} data-testid={`reading-row-${item.id}`}>
+            <div key={item.id} className="astra-library-reading-row" style={cardStyle} data-testid={`reading-row-${item.id}`}>
                 <div style={{ ...wordStyle, display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
                   <span>{item.title}</span>
                   <span

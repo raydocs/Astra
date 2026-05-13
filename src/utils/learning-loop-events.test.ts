@@ -117,7 +117,7 @@ describe("learning loop events", () => {
     expect(LEARNING_LOOP_ACCOUNT_CONTINUITY_COPY.bullets).toEqual([
       expect.stringContaining("same source pages and saved card context"),
       expect.stringContaining("saved cards"),
-      expect.stringContaining("SRS schedule timing remains local-only"),
+      expect.stringContaining("review schedules synced safely"),
     ])
     expect(LEARNING_LOOP_ACCOUNT_CONTINUITY_COPY.cta).toBe("Sign in to keep continuity")
     expect(LEARNING_LOOP_ACCOUNT_CONTINUITY_COPY.ctaHelper).toContain("existing Astra sign-in panel")
@@ -140,7 +140,7 @@ describe("learning loop events", () => {
     expect(LEARNING_LOOP_ACCOUNT_CONTINUITY_COPY.nextAction).toContain("popup sign-in panel")
     expect(buildLearningLoopAccountContinuityPopupSignInUrl((path) => `chrome-extension://test-id${path}`)).toBe("chrome-extension://test-id/popup.html?focus=sign-in")
     expect(LEARNING_LOOP_ACCOUNT_CONTINUITY_COPY.boundary).toContain("No billing change")
-    expect(LEARNING_LOOP_ACCOUNT_CONTINUITY_COPY.boundary).toContain("SRS schedule timing stays local-only")
+    expect(LEARNING_LOOP_ACCOUNT_CONTINUITY_COPY.boundary).toContain("daily study stats stay local-only")
     expect(LEARNING_LOOP_COMMERCIAL_SURFACE_COPY.popupPrimer.eyebrow).toBe("Free start · connected practice")
     expect(LEARNING_LOOP_COMMERCIAL_SURFACE_COPY.popupPrimer.summary).toContain("Generic translators/readers stop after the answer")
     expect(LEARNING_LOOP_COMMERCIAL_SURFACE_COPY.popupPrimer.summary).toContain("review path attached")

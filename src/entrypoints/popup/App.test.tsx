@@ -339,6 +339,7 @@ function createAccountSummary(overrides: Record<string, unknown> = {}) {
       collections: {
         config: { enabled: true, defaultEnabled: true, cursor: "cfg-3", mutationCount: 3, activeCount: 1, lastSyncAt: null, compactionFloorCursor: null },
         vocabulary: { enabled: false, defaultEnabled: false, cursor: null, mutationCount: 0, activeCount: 0, lastSyncAt: null, compactionFloorCursor: null },
+        review_schedule: { enabled: true, defaultEnabled: true, cursor: null, mutationCount: 0, activeCount: 0, lastSyncAt: null, compactionFloorCursor: null },
         reading_history: { enabled: false, defaultEnabled: false, cursor: null, mutationCount: 0, activeCount: 0, lastSyncAt: null, compactionFloorCursor: null },
         study_progress: { enabled: false, defaultEnabled: false, cursor: null, mutationCount: 0, activeCount: 0, lastSyncAt: null, compactionFloorCursor: null },
       },
@@ -362,7 +363,7 @@ function createLearningContinuitySyncStatus(
     stateLastRunAt: "2026-04-09T01:04:00.000Z",
     stateLastSuccessAt: "2026-04-09T01:05:00.000Z",
     stateLastError: null,
-    cursors: { config: "cfg-3", vocabulary: "voc-7", reading_history: "hist-2", study_progress: "progress-4" },
+    cursors: { config: "cfg-3", vocabulary: "voc-7", review_schedule: null, reading_history: "hist-2", study_progress: "progress-4" },
     ...patch,
   }
 }
@@ -429,6 +430,7 @@ describe("popup App", () => {
         collections: {
           config: { enabled: true, defaultEnabled: true, cursor: "cfg-3" },
           vocabulary: { enabled: false, defaultEnabled: false, cursor: null },
+          review_schedule: { enabled: true, defaultEnabled: true, cursor: null },
           reading_history: { enabled: false, defaultEnabled: false, cursor: null },
           study_progress: { enabled: false, defaultEnabled: false, cursor: null },
         },
@@ -461,12 +463,14 @@ describe("popup App", () => {
                 cursor: "cfg-4",
               }],
               vocabulary: [],
+              review_schedule: [],
               reading_history: [],
               study_progress: [],
             },
             nextCursors: {
               config: "cfg-4",
               vocabulary: null,
+              review_schedule: null,
               reading_history: null,
               study_progress: null,
             },
@@ -674,6 +678,82 @@ describe("popup App", () => {
       translationTheme: "default",
       contentScope: "page",
     })
+  })
+
+  it("shows a quiet popup library empty state when there are no saved words or due reviews", async () => {
+    getDueVocabularyCountMock.mockResolvedValueOnce(0)
+    getVocabularyEntriesMock.mockResolvedValueOnce([])
+
+    await act(async () => {
+      window.dispatchEvent(new Event("focus"))
+      await Promise.resolve()
+      await Promise.resolve()
+      await Promise.resolve()
+      await Promise.resolve()
+    })
+
+    const emptyState = container.querySelector('[data-testid="popup-empty-library-state"]') as HTMLElement
+    expect(emptyState).toBeTruthy()
+    expect(emptyState.textContent).toContain("Your library starts empty.")
+    expect(emptyState.textContent).toContain("0 saved · 0 due")
+    expect(container.querySelector(".astra-quiet-header__status")).toBeTruthy()
+    expect(container.querySelector(".astra-popup-today-head")).toBeTruthy()
+    expect(container.querySelector(".astra-popup-shell--cert-empty")).toBeFalsy()
+    expect(container.querySelector(".astra-popup-shell--empty-library")).toBeFalsy()
+    expect(emptyState.textContent).toContain("Open library")
+    expect(emptyState.textContent).not.toContain("How it works")
+    expect(container.textContent).not.toContain("Why Solitude Is Important for Reading")
+    expect(container.textContent).not.toContain("newyorker.com · 12 min read")
+  })
+
+  it("uses astraCert=1 to show a focused first-run popup empty state without normal-mode actions", async () => {
+    await act(async () => {
+      root.unmount()
+      rootUnmounted = true
+      await Promise.resolve()
+    })
+    container.innerHTML = ""
+    window.history.pushState({}, "", "/popup.html?astraCert=1")
+    getDueVocabularyCountMock.mockResolvedValue(0)
+    getVocabularyEntriesMock.mockResolvedValue([])
+    root = ReactDOM.createRoot(container)
+    rootUnmounted = false
+
+    await act(async () => {
+      root.render(<App />)
+      await Promise.resolve()
+      await Promise.resolve()
+      await Promise.resolve()
+      await Promise.resolve()
+    })
+
+    const emptyState = container.querySelector('[data-testid="popup-empty-library-state"]') as HTMLElement
+    expect(emptyState).toBeTruthy()
+    expect(emptyState.textContent).toContain("Your library starts empty.")
+    expect(emptyState.textContent).toContain("Hover any word in a translated page and press ⌥S to keep it.")
+    expect(emptyState.textContent).toContain("0 saved · 0 due")
+    expect(emptyState.textContent).toContain("How it works")
+    expect(container.textContent).toContain("Why Solitude Is Important for Reading")
+    expect(container.textContent).toContain("newyorker.com · 12 min read")
+    expect(container.querySelector(".astra-popup-shell--cert-empty")).toBeTruthy()
+    expect(container.querySelector(".astra-quiet-header__status")).toBeFalsy()
+    expect(container.querySelector(".astra-popup-today-head")).toBeFalsy()
+    expect(container.querySelector('[aria-label="Library"]')).toBeFalsy()
+    expect(emptyState.textContent).not.toContain("Open library")
+    const translateButton = getButtons().find((button) => button.textContent === "Translate this page")
+    expect(translateButton).toBeTruthy()
+    expect(translateButton?.disabled).toBe(false)
+    expect(translateButton?.getAttribute("aria-disabled")).toBe("true")
+    await act(async () => {
+      translateButton?.click()
+      await Promise.resolve()
+    })
+    expect(startActiveTabTranslationMock).not.toHaveBeenCalled()
+    const howItWorksButton = getButtons().find((button) => button.textContent === "How it works")
+    expect(howItWorksButton?.getAttribute("aria-disabled")).toBe("true")
+    const primaryGroup = container.querySelector(".astra-popup-primary-group") as HTMLElement
+    expect(primaryGroup.textContent).not.toContain(t("popup_deepReadAction"))
+    expect(primaryGroup.textContent).not.toContain(t("popup_contentAssetizationSaveAction"))
   })
 
   it("disables translation when active page URL is excluded by site path rules", async () => {
@@ -1396,23 +1476,23 @@ describe("popup App", () => {
     const continuityCard = container.querySelector('[data-testid="learning-continuity-commit-card"]')
     expect(continuityCard?.textContent).toContain("Learning continuity commit")
     expect(continuityCard?.textContent).toContain("synced")
-    expect(continuityCard?.textContent).toContain("SRS schedule remains local-only")
+    expect(continuityCard?.textContent).toContain("Review schedule sync enabled")
     const accountContinuityCard = container.querySelector('[data-testid="popup-account-continuity-card"]') as HTMLElement
     expect(accountContinuityCard).toBeTruthy()
     expect(accountContinuityCard.textContent).toContain("Continuity is connected for this account")
     expect(accountContinuityCard.textContent).toContain("Connected proof")
     expect(accountContinuityCard.textContent).toContain("no sign-in action is needed")
-    expect(accountContinuityCard.textContent).toContain("SRS schedule timing stays local-only")
+    expect(accountContinuityCard.textContent).toContain("daily study stats stay local-only")
     expect(container.querySelector('[data-testid="popup-account-continuity-sign-in-cta"]')).toBeNull()
     expect(container.querySelector('[data-testid="study-account-continuity-nudge"]')?.textContent).toContain("Continuity is connected for this account")
-    expect(container.querySelector('[data-testid="study-account-continuity-nudge"]')?.textContent).toContain("SRS schedule timing stays local-only")
+    expect(container.querySelector('[data-testid="study-account-continuity-nudge"]')?.textContent).toContain("daily study stats stay local-only")
     expect(container.querySelector('[data-testid="study-account-continuity-sign-in-cta"]')).toBeNull()
     expect(container.textContent).toContain("Astra continuity · 1 device · 1 active")
     expect(container.textContent).toContain("Config bootstrap: enabled · Cursor cfg-3")
     expect(container.textContent).toContain("Reading history sync: off · Optional")
     expect(container.textContent).toContain("Study progress sync: off · Optional · Daily stats stay local")
     expect(container.textContent).toContain("Learning continuity commit: synced")
-    expect(container.textContent).toContain("Config, vocabulary, reading history, and study progress continuity ready · SRS schedule fields stay local")
+    expect(container.textContent).toContain("Config, vocabulary, review schedules, reading history, and study progress continuity ready · Daily study stats stay local")
     expect(container.textContent).toContain("Plan and daily quota mirror Astra account summary.")
   })
 
@@ -1513,6 +1593,7 @@ describe("popup App", () => {
   it("opens and focuses the existing sign-in panel from popup ?focus=sign-in", async () => {
     await act(async () => {
       root.unmount()
+      rootUnmounted = true
       await Promise.resolve()
     })
     rootUnmounted = true

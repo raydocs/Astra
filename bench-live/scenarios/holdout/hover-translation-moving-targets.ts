@@ -1,8 +1,9 @@
-import { mkdir, readFile, writeFile } from "node:fs/promises"
+import { readFile, writeFile } from "node:fs/promises"
 import path from "node:path"
 
 import type { HoverExecution } from "../../../bench/evaluators/hover"
 import {
+  prepareLiveArtifactDir,
   withLiveBrowserPage,
   LiveBrowserUnavailableError,
 } from "../../driver"
@@ -65,8 +66,7 @@ export const hoverTranslationMovingTargetsHoldoutScenario: LiveScenarioDefinitio
     runtime.log("Starting hover moving-target holdout scenario.")
 
     try {
-      const artifactDir = path.join(process.cwd(), "bench-live-results", context.runId)
-      await mkdir(artifactDir, { recursive: true })
+      const artifactDir = await prepareLiveArtifactDir(context.runId)
       const html = buildFixtureHtml()
       const htmlPath = path.join(artifactDir, `${FIXTURE_NAME}.html`)
       await writeFile(htmlPath, html, "utf8")

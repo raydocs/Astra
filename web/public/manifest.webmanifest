@@ -1,8 +1,9 @@
 {
-  "name": "Astra Web Companion",
-  "short_name": "Astra Web",
-  "description": "Portable Astra workspaces for text, imported files, and account access with explicit extension handoff for live webpage translation.",
+  "name": "Astra",
+  "short_name": "Astra",
+  "description": "A bilingual reading room for the pages you import.",
   "start_url": "./",
+  "scope": "./",
   "display": "standalone",
   "background_color": "#f4efe6",
   "theme_color": "#f4efe6",

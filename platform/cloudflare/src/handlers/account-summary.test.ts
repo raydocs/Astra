@@ -274,6 +274,7 @@ function createSummaryPayload() {
       collections: {
         config: { enabled: true, defaultEnabled: true, cursor: "1", mutationCount: 1, activeCount: 1, lastSyncAt: "2026-04-11T11:40:00.000Z", compactionFloorCursor: null },
         vocabulary: { enabled: true, defaultEnabled: true, cursor: null, mutationCount: 0, activeCount: 0, lastSyncAt: null, compactionFloorCursor: null },
+        review_schedule: { enabled: true, defaultEnabled: true, cursor: null, mutationCount: 0, activeCount: 0, lastSyncAt: null, compactionFloorCursor: null },
         reading_history: { enabled: true, defaultEnabled: false, cursor: "2", mutationCount: 1, activeCount: 1, lastSyncAt: "2026-04-11T11:45:00.000Z", compactionFloorCursor: null },
         study_progress: { enabled: false, defaultEnabled: false, cursor: null, mutationCount: 0, activeCount: 0, lastSyncAt: null, compactionFloorCursor: null },
       },
@@ -406,6 +407,16 @@ function enqueueShadowState(mockDb: ReturnType<typeof createMockDb>, options: { 
       last_issued_cursor_order: null,
       last_server_updated_at: null,
       shadow_updated_at: "2026-04-11T11:40:00.000Z",
+    },
+    {
+      user_id: "usr_demo",
+      collection: "review_schedule",
+      enabled: 1,
+      default_enabled: 1,
+      last_issued_cursor: null,
+      last_issued_cursor_order: null,
+      last_server_updated_at: null,
+      shadow_updated_at: "2026-04-10T10:06:00.000Z",
     },
     {
       user_id: "usr_demo",

@@ -287,6 +287,7 @@ describe("astra-web continuity control-plane", () => {
         collections: {
           config: { enabled: true, defaultEnabled: true, cursor: "1", mutationCount: 1, activeCount: 1, lastSyncAt: "2026-04-11T12:00:00.000Z", compactionFloorCursor: null },
           vocabulary: { enabled: true, defaultEnabled: true, cursor: null, mutationCount: 0, activeCount: 0, lastSyncAt: null, compactionFloorCursor: null },
+          review_schedule: { enabled: true, defaultEnabled: true, cursor: null, mutationCount: 0, activeCount: 0, lastSyncAt: null, compactionFloorCursor: null },
           reading_history: { enabled: false, defaultEnabled: false, cursor: null, mutationCount: 0, activeCount: 0, lastSyncAt: null, compactionFloorCursor: null },
           study_progress: { enabled: false, defaultEnabled: false, cursor: null, mutationCount: 0, activeCount: 0, lastSyncAt: null, compactionFloorCursor: null },
         },
@@ -373,6 +374,7 @@ describe("astra-web continuity control-plane", () => {
       collections: {
         config: { enabled: true, defaultEnabled: true, latestCursor: "cfg-4", compactionFloorCursor: "cfg-2", records: [{ recordId: "global", payload: { kind: "global" }, lastClientMutationId: "cfg-4", lastDeviceId: "device-current", lastServerUpdatedAt: "2026-04-11T11:59:00.000Z", cursor: "cfg-4" }] },
         vocabulary: { enabled: true, defaultEnabled: true, latestCursor: "voc-1", compactionFloorCursor: null, records: [] },
+        review_schedule: { enabled: true, defaultEnabled: true, latestCursor: null, compactionFloorCursor: null, records: [] },
         reading_history: { enabled: false, defaultEnabled: false, latestCursor: null, compactionFloorCursor: null, records: [] },
         study_progress: { enabled: false, defaultEnabled: false, latestCursor: null, compactionFloorCursor: null, records: [] },
       },

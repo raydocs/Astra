@@ -1,3 +1,5 @@
+import { mkdir } from "node:fs/promises"
+
 import { describe, expect, it, vi } from "vitest"
 
 const driverMocks = vi.hoisted(() => {
@@ -10,6 +12,11 @@ const driverMocks = vi.hoisted(() => {
 
   return {
     LiveBrowserUnavailableError,
+    prepareLiveArtifactDir: vi.fn(async (runId: string) => {
+      const artifactDir = `/tmp/astra-live/${runId}`
+      await mkdir(artifactDir, { recursive: true })
+      return artifactDir
+    }),
     withLiveBrowserPage: vi.fn(async (callback: (page: unknown, browserExecutablePath: string) => Promise<unknown>) => {
       const consoleListeners: Array<(msg: { type: () => string; text: () => string }) => void> = []
       const page = {

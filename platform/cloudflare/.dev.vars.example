@@ -10,6 +10,8 @@ ASTRA_SESSION_SECRET=replace-with-relay-session-secret
 ASTRA_PLATFORM_MIRROR_SECRET=
 # Optional public front-door base for issued sessions during auth authority rollout
 SESSION_PUBLIC_BASE_URL=
+# Comma-separated browser origins allowed to call platform APIs, or * during local/dev rollout
+ASTRA_CORS_ALLOWED_ORIGINS=*
 # Keep these aligned with the relay when native anonymous/session issuance is enabled
 ASTRA_FREE_DAILY_REQUESTS=200
 ASTRA_FREE_DAILY_CHARACTERS=200000

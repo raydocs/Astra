@@ -105,6 +105,7 @@ describe("FloatBall", () => {
     getLearningStateMock.mockReturnValue(idleLearningState)
     toggleCurrentTabTranslationMock.mockResolvedValue(undefined)
     readConfigMock.mockResolvedValue(DEFAULT_ASTRA_CONFIG)
+    window.history.replaceState({}, "", "/article")
 
     vi.stubGlobal("PointerEvent", Event)
     Object.defineProperty(HTMLElement.prototype, "setPointerCapture", {
@@ -306,6 +307,97 @@ describe("FloatBall", () => {
 
     expect(retryFailedBlocksMock).toHaveBeenCalledTimes(1)
     expect(toggleCurrentTabTranslationMock).not.toHaveBeenCalled()
+  })
+
+  it("keeps certification progress display and status hiding behind astraCert", async () => {
+    window.history.replaceState({}, "", "/article?astraCert=1&astraCertProgressDone=14&astraCertProgressTotal=38&astraCertHideStatus=1")
+    subscribePageTranslationStateMock.mockImplementation((listener: (snapshot: TranslationSnapshot) => void) => {
+      listener(snap({
+        phase: "running",
+        progress: {
+          totalBlocks: 4,
+          translatedBlocks: 0,
+          queuedBlocks: 4,
+          inFlightBlocks: 0,
+          failedBlocks: 0,
+        },
+      }))
+      return () => {}
+    })
+
+    await act(async () => {
+      mountFloatBall()
+      await Promise.resolve()
+      await Promise.resolve()
+    })
+
+    const host = document.getElementById("astra-float-ball-host") as HTMLDivElement
+    const shadow = host.shadowRoot as ShadowRoot
+    const progressPill = shadow.querySelector('[data-testid="astra-translation-progress-pill"]') as HTMLDivElement | null
+
+    expect(progressPill?.textContent).toContain("14/38")
+    expect(progressPill?.textContent).toContain("Stop")
+    expect(shadow.querySelector('div[title]')).toBeNull()
+  })
+
+  it("does not leak certification progress overrides into normal mode", async () => {
+    subscribePageTranslationStateMock.mockImplementation((listener: (snapshot: TranslationSnapshot) => void) => {
+      listener(snap({
+        phase: "running",
+        progress: {
+          totalBlocks: 4,
+          translatedBlocks: 0,
+          queuedBlocks: 4,
+          inFlightBlocks: 0,
+          failedBlocks: 0,
+        },
+      }))
+      return () => {}
+    })
+
+    await act(async () => {
+      mountFloatBall()
+      await Promise.resolve()
+      await Promise.resolve()
+    })
+
+    const host = document.getElementById("astra-float-ball-host") as HTMLDivElement
+    const shadow = host.shadowRoot as ShadowRoot
+    const progressPill = shadow.querySelector('[data-testid="astra-translation-progress-pill"]') as HTMLDivElement | null
+
+    expect(progressPill?.textContent).toContain("0/4")
+    expect(progressPill?.textContent).not.toContain("14/38")
+    expect(shadow.querySelector('div[title]')).not.toBeNull()
+  })
+
+  it("can hide all page-translation chrome only in certification mode", async () => {
+    window.history.replaceState({}, "", "/article?astraCert=1&astraCertHideProgress=1&astraCertHideStatus=1")
+    subscribePageTranslationStateMock.mockImplementation((listener: (snapshot: TranslationSnapshot) => void) => {
+      listener(snap({
+        phase: "running",
+        progress: {
+          totalBlocks: 1,
+          translatedBlocks: 0,
+          queuedBlocks: 0,
+          inFlightBlocks: 0,
+          failedBlocks: 1,
+        },
+        lastError: { code: "PROVIDER_REQUEST_FAILED", message: "Failed to fetch" },
+      }))
+      return () => {}
+    })
+
+    await act(async () => {
+      mountFloatBall()
+      await Promise.resolve()
+      await Promise.resolve()
+    })
+
+    const host = document.getElementById("astra-float-ball-host") as HTMLDivElement
+    const shadow = host.shadowRoot as ShadowRoot
+
+    expect(shadow.querySelector('[data-testid="astra-translation-progress-pill"]')).toBeNull()
+    expect(shadow.querySelector('div[title]')).toBeNull()
   })
 
   it("applies resolved font scaling to tooltip and progress badge", async () => {

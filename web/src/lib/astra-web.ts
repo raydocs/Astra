@@ -64,6 +64,7 @@ import {
   repairAstraSyncState,
   fetchAstraDevices,
   fetchAstraUsageSnapshot,
+  pushAstraSyncMutations,
   revokeAstraDevice,
   updateAstraSyncCollectionPreference,
 } from "@/utils/astra/account"
@@ -87,6 +88,18 @@ import {
   type TranslationCacheContext,
 } from "@/utils/cache/translation-cache"
 import { translateWithRelay } from "@/utils/providers/relay"
+import {
+  buildLibraryDocumentSnapshotSyncPayloads,
+  LibraryDocumentSnapshotSyncChunkSchema,
+  LibraryDocumentSnapshotSyncManifestSchema,
+  LibraryItemSchema,
+  listLibraryDocumentSnapshots,
+  toLibraryDocumentSnapshotChunkRecordId,
+  toLibraryDocumentSnapshotManifestRecordId,
+  type LibraryDocumentSnapshotSyncChunk,
+  type LibraryDocumentSnapshotSyncManifest,
+  type LibraryItem,
+} from "./workspace-store"
 
 const WEB_API_BASE_URL_STORAGE_KEY = "astra.web.api-base-url.v1"
 const WEB_CONFIG_STORAGE_KEY = "astra.web.config.v1"
@@ -94,6 +107,7 @@ const WEB_SESSION_STORAGE_KEY = "astra.web.session.v1"
 const WEB_DEVICE_STORAGE_KEY = "astra.web.device.v1"
 const WEB_TEXT_TRANSFER_STORAGE_KEY = "astra.web.text-transfer.v1"
 const WEB_AUTH_SIGN_IN_KEY_STORAGE_KEY = "astra.web.auth-sign-in-key.v1"
+const WEB_AUTH_ANONYMOUS_KEY_STORAGE_KEY = "astra.web.auth-anonymous-key.v1"
 
 const DEFAULT_API_BASE_URL = "http://127.0.0.1:8787/v1"
 const DEFAULT_OPENAI_MODEL = "gpt-5.4-nano"
@@ -129,6 +143,13 @@ interface WebCloudStudyProgressCoverage {
   explain: number
   vocab_save: number
   vocab_review: number
+}
+
+export interface WebCloudLibraryDocumentSnapshot {
+  libraryItemId: string
+  manifest: LibraryDocumentSnapshotSyncManifest
+  chunks: LibraryDocumentSnapshotSyncChunk[]
+  complete: boolean
 }
 
 const WebSyncedDeepReadSessionRecordSchema = z.object({
@@ -245,6 +266,12 @@ export interface WebCloudAssetsWorkspace {
     count: number
     sessions: WebSyncedDeepReadSessionRecord[]
   }
+  library: {
+    count: number
+    items: LibraryItem[]
+    snapshotCount: number
+    snapshots: WebCloudLibraryDocumentSnapshot[]
+  }
   syncHealth: {
     activeDeviceCount: number
     totalDeviceCount: number
@@ -285,6 +312,8 @@ const MAX_BATCH_CHARS = 8000
 const MAX_CONCURRENCY = 4
 const WEB_OWNED_READING_CONFIG_RECORD_PREFIX = "__owned_reading_metadata_v1__:"
 const WEB_DEEP_READ_SESSION_CONFIG_RECORD_PREFIX = "__deep_read_session_v1__:"
+const WEB_LIBRARY_CONFIG_RECORD_PREFIX = "__web_library_metadata_v1__:"
+const WEB_LIBRARY_DOCUMENT_SNAPSHOT_RECORD_PREFIX = "__web_library_document_snapshot_v1__:"
 
 function createEmptyStudyProgressCoverage(): WebCloudStudyProgressCoverage {
   return {
@@ -308,6 +337,112 @@ function summarizeStudyProgressCoverage(pages: SyncedStudyPageProgress[]): WebCl
 function isWebPrivateConfigRecordId(recordId: string): boolean {
   return recordId.startsWith(WEB_OWNED_READING_CONFIG_RECORD_PREFIX)
     || recordId.startsWith(WEB_DEEP_READ_SESSION_CONFIG_RECORD_PREFIX)
+    || recordId.startsWith(WEB_LIBRARY_CONFIG_RECORD_PREFIX)
+    || recordId.startsWith(WEB_LIBRARY_DOCUMENT_SNAPSHOT_RECORD_PREFIX)
+}
+
+function parseWebLibraryItems(
+  mutations: Array<{ recordId: string; operation: "upsert" | "delete"; payload?: unknown; serverUpdatedAt?: string }>,
+): LibraryItem[] {
+  const byId = new Map<string, LibraryItem>()
+  const deleted = new Set<string>()
+
+  for (const mutation of mutations) {
+    if (!mutation.recordId.startsWith(WEB_LIBRARY_CONFIG_RECORD_PREFIX)) continue
+    const libraryItemId = mutation.recordId.slice(WEB_LIBRARY_CONFIG_RECORD_PREFIX.length)
+    if (!libraryItemId) continue
+
+    if (mutation.operation === "delete") {
+      byId.delete(libraryItemId)
+      deleted.add(libraryItemId)
+      continue
+    }
+
+    if (deleted.has(libraryItemId)) {
+      deleted.delete(libraryItemId)
+    }
+
+    const parsed = LibraryItemSchema.safeParse(mutation.payload)
+    if (parsed.success && !parsed.data.removedAt) {
+      byId.set(parsed.data.id, parsed.data)
+    }
+  }
+
+  return Array.from(byId.values()).sort((left, right) => new Date(right.updatedAt).getTime() - new Date(left.updatedAt).getTime())
+}
+
+function parseWebLibraryDocumentSnapshots(
+  mutations: Array<{ recordId: string; operation: "upsert" | "delete"; payload?: unknown; serverUpdatedAt?: string }>,
+): WebCloudLibraryDocumentSnapshot[] {
+  const manifests = new Map<string, LibraryDocumentSnapshotSyncManifest>()
+  const chunks = new Map<string, LibraryDocumentSnapshotSyncChunk[]>()
+  const deleted = new Set<string>()
+
+  for (const mutation of mutations) {
+    if (!mutation.recordId.startsWith(WEB_LIBRARY_DOCUMENT_SNAPSHOT_RECORD_PREFIX)) continue
+    const manifestMatch = /^__web_library_document_snapshot_v1__:(.+):manifest$/.exec(mutation.recordId)
+    const chunkMatch = /^__web_library_document_snapshot_v1__:(.+):chunk:(\d+)$/.exec(mutation.recordId)
+    const libraryItemId = manifestMatch?.[1] ?? chunkMatch?.[1] ?? null
+    if (!libraryItemId) continue
+
+    if (mutation.operation === "delete") {
+      manifests.delete(libraryItemId)
+      chunks.delete(libraryItemId)
+      deleted.add(libraryItemId)
+      continue
+    }
+
+    if (deleted.has(libraryItemId)) deleted.delete(libraryItemId)
+
+    if (manifestMatch) {
+      const parsed = LibraryDocumentSnapshotSyncManifestSchema.safeParse(mutation.payload)
+      if (parsed.success && parsed.data.libraryItemId === libraryItemId) {
+        manifests.set(libraryItemId, parsed.data)
+      }
+      continue
+    }
+
+    if (chunkMatch) {
+      const parsed = LibraryDocumentSnapshotSyncChunkSchema.safeParse(mutation.payload)
+      if (parsed.success && parsed.data.libraryItemId === libraryItemId) {
+        const list = chunks.get(libraryItemId) ?? []
+        list[parsed.data.chunkIndex] = parsed.data
+        chunks.set(libraryItemId, list)
+      }
+    }
+  }
+
+  return Array.from(manifests.entries())
+    .map(([libraryItemId, manifest]) => {
+      const orderedChunks = (chunks.get(libraryItemId) ?? []).filter(Boolean).sort((left, right) => left.chunkIndex - right.chunkIndex)
+      return {
+        libraryItemId,
+        manifest,
+        chunks: orderedChunks,
+        complete: manifest.extractedTextStatus !== "available" || (orderedChunks.length === manifest.chunkCount && orderedChunks.every((chunk, index) => chunk.chunkIndex === index)),
+      }
+    })
+    .sort((left, right) => right.manifest.updatedAt - left.manifest.updatedAt)
+}
+
+function toLibraryMetadataRecordId(itemId: string): string {
+  return `${WEB_LIBRARY_CONFIG_RECORD_PREFIX}${itemId}`
+}
+
+function createWebClientMutationId(prefix: string): string {
+  const cryptoApi = globalThis.crypto
+  if (cryptoApi && "randomUUID" in cryptoApi) {
+    return `${prefix}:${cryptoApi.randomUUID()}`
+  }
+  return `${prefix}:${Date.now().toString(36)}:${Math.random().toString(36).slice(2)}`
+}
+
+function chunkMutations<T>(mutations: T[], size: number): T[][] {
+  const chunks: T[][] = []
+  for (let index = 0; index < mutations.length; index += size) {
+    chunks.push(mutations.slice(index, index + size))
+  }
+  return chunks
 }
 
 function parseWebDeepReadSessions(
@@ -579,6 +714,23 @@ function clearPendingWebSignInAttempt() {
   removeStorage(WEB_AUTH_SIGN_IN_KEY_STORAGE_KEY)
 }
 
+function readPendingAnonymousSessionKey(): string | null {
+  const key = readStringStorage(WEB_AUTH_ANONYMOUS_KEY_STORAGE_KEY)?.trim()
+  if (!key) {
+    removeStorage(WEB_AUTH_ANONYMOUS_KEY_STORAGE_KEY)
+    return null
+  }
+  return key
+}
+
+function savePendingAnonymousSessionKey(idempotencyKey: string) {
+  writeStringStorage(WEB_AUTH_ANONYMOUS_KEY_STORAGE_KEY, idempotencyKey.trim())
+}
+
+function clearPendingAnonymousSessionKey() {
+  removeStorage(WEB_AUTH_ANONYMOUS_KEY_STORAGE_KEY)
+}
+
 export function readWebSession(): AstraSession | null {
   return readJsonStorage(WEB_SESSION_STORAGE_KEY, AstraSessionSchema)
 }
@@ -596,9 +748,11 @@ export function clearWebSession() {
 export function readWebConfig(): AstraConfig {
   const stored = readJsonStorage(WEB_CONFIG_STORAGE_KEY, AstraConfigSchema)
   return AstraConfigSchema.parse({
+    ...DEFAULT_ASTRA_CONFIG,
     ...(stored ?? {}),
     connectionMode: "astra",
     provider: {
+      ...DEFAULT_ASTRA_CONFIG.provider,
       ...(stored?.provider ?? {}),
       accessToken: "",
       apiKey: "",
@@ -704,6 +858,152 @@ export async function createWebSession(params: {
     })
   } catch (error) {
     throw error
+  }
+}
+
+export async function createWebAnonymousSession(params: {
+  baseURL: string
+  device: AstraDeviceIdentity
+}): Promise<AstraSession> {
+  const baseURL = normalizeApiBaseUrl(params.baseURL)
+  const pendingKey = readPendingAnonymousSessionKey()
+  const idempotencyKey = pendingKey ?? createOpaqueIdempotencyKey()
+
+  if (!pendingKey) {
+    savePendingAnonymousSessionKey(idempotencyKey)
+  }
+
+  try {
+    const response = await fetch(`${baseURL}/auth/anonymous`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Idempotency-Key": idempotencyKey,
+        "X-Astra-Device-Id": params.device.deviceId,
+      },
+      body: JSON.stringify({
+        deviceId: params.device.deviceId,
+        installId: params.device.deviceId,
+        device: {
+          label: params.device.label,
+          platform: params.device.platform,
+          browserFamily: params.device.browserFamily,
+          appKind: params.device.appKind,
+          appVersion: params.device.appVersion,
+        },
+      }),
+    })
+
+    if (!response.ok) {
+      const error = await readAuthRequestFailure(response, "Astra free start failed")
+      if (error.fallbackReason !== "mirror_back_commit_unknown") {
+        clearPendingAnonymousSessionKey()
+      }
+      throw new Error(error.message)
+    }
+
+    clearPendingAnonymousSessionKey()
+    return normalizeSessionPayload(await response.json(), {
+      deviceId: params.device.deviceId,
+      identityMode: "anonymous",
+      relayBaseURL: baseURL,
+    })
+  } catch (error) {
+    throw error
+  }
+}
+
+export async function importWebLibraryMetadataToAccount(params: {
+  session: AstraSession
+  device: AstraDeviceIdentity
+  items: LibraryItem[]
+}): Promise<{ accepted: number; rejected: number; metadataAccepted: number; snapshotAccepted: number; snapshotRejected: number; oversizedSnapshots: number }> {
+  const now = new Date().toISOString()
+  const activeItems = params.items.filter((item) => !item.removedAt)
+  const documentSnapshots = new Map((await listLibraryDocumentSnapshots(activeItems.map((item) => item.id))).map((snapshot) => [snapshot.libraryItemId, snapshot]))
+  const metadataMutations = activeItems.map((item) => {
+    const payload = LibraryItemSchema.parse({
+      ...item,
+      ownerMode: "account",
+      accountId: params.session.email,
+      syncState: "synced",
+      updatedAt: now,
+      metadata: {
+        ...item.metadata,
+        originalFileBytesSynced: false,
+        requiresReimportForBinaryView: true,
+      },
+    })
+    return {
+      collection: "config" as const,
+      schemaVersion: 1,
+      recordId: toLibraryMetadataRecordId(item.id),
+      operation: "upsert" as const,
+      clientMutationId: createWebClientMutationId(`web-library:${item.id}`),
+      deviceId: params.device.deviceId,
+      clientUpdatedAt: now,
+      payload,
+    }
+  })
+
+  const snapshotMutations = activeItems.flatMap((item) => {
+    const snapshot = documentSnapshots.get(item.id)
+    if (!snapshot) return []
+    const payloads = buildLibraryDocumentSnapshotSyncPayloads(snapshot)
+    return [
+      {
+        collection: "config" as const,
+        schemaVersion: 1,
+        recordId: toLibraryDocumentSnapshotManifestRecordId(item.id),
+        operation: "upsert" as const,
+        clientMutationId: createWebClientMutationId(`web-library-snapshot:${item.id}:manifest`),
+        deviceId: params.device.deviceId,
+        clientUpdatedAt: now,
+        payload: payloads.manifest,
+      },
+      ...payloads.chunks.map((chunk) => ({
+        collection: "config" as const,
+        schemaVersion: 1,
+        recordId: toLibraryDocumentSnapshotChunkRecordId(item.id, chunk.chunkIndex),
+        operation: "upsert" as const,
+        clientMutationId: createWebClientMutationId(`web-library-snapshot:${item.id}:chunk:${chunk.chunkIndex}`),
+        deviceId: params.device.deviceId,
+        clientUpdatedAt: now,
+        payload: chunk,
+      })),
+    ]
+  })
+
+  const mutations = [...metadataMutations, ...snapshotMutations]
+  if (mutations.length === 0) {
+    return { accepted: 0, rejected: 0, metadataAccepted: 0, snapshotAccepted: 0, snapshotRejected: 0, oversizedSnapshots: 0 }
+  }
+
+  const accepted: Array<{ recordId: string }> = []
+  const rejected: Array<{ clientMutationId: string }> = []
+  for (const batch of chunkMutations(mutations, 40)) {
+    const response = await pushAstraSyncMutations({
+      baseURL: params.session.relayBaseURL,
+      sessionToken: params.session.sessionToken,
+      deviceId: params.device.deviceId,
+      mutations: batch,
+    })
+    accepted.push(...response.accepted)
+    rejected.push(...response.rejected)
+  }
+
+  const snapshotRecordPrefix = WEB_LIBRARY_DOCUMENT_SNAPSHOT_RECORD_PREFIX
+  const metadataAccepted = accepted.filter((entry) => entry.recordId.startsWith(WEB_LIBRARY_CONFIG_RECORD_PREFIX)).length
+  const snapshotAccepted = accepted.filter((entry) => entry.recordId.startsWith(snapshotRecordPrefix)).length
+  const snapshotRejected = rejected.filter((entry) => entry.clientMutationId.includes("web-library-snapshot:")).length
+
+  return {
+    accepted: accepted.length,
+    rejected: rejected.length,
+    metadataAccepted,
+    snapshotAccepted,
+    snapshotRejected,
+    oversizedSnapshots: Array.from(documentSnapshots.values()).filter((snapshot) => snapshot.extractedText.status === "oversized").length,
   }
 }
 
@@ -920,6 +1220,8 @@ export async function fetchWebCloudAssets(params: {
   const configMutations = snapshot.pull?.deltas.config ?? []
   const appConfigMutations = configMutations.filter((mutation) => !isWebPrivateConfigRecordId(mutation.recordId))
   const deepReadSessions = parseWebDeepReadSessions(configMutations)
+  const libraryItems = parseWebLibraryItems(configMutations)
+  const librarySnapshots = parseWebLibraryDocumentSnapshots(configMutations)
   const vocabularyMutations = snapshot.pull?.deltas.vocabulary ?? []
   const readingHistoryMutations = snapshot.pull?.deltas.reading_history ?? []
   const studyProgressMutations = snapshot.pull?.deltas.study_progress ?? []
@@ -1005,6 +1307,12 @@ export async function fetchWebCloudAssets(params: {
     deepReadSessions: {
       count: deepReadSessions.length,
       sessions: deepReadSessions,
+    },
+    library: {
+      count: libraryItems.length,
+      items: libraryItems,
+      snapshotCount: librarySnapshots.length,
+      snapshots: librarySnapshots,
     },
     syncHealth: {
       activeDeviceCount: snapshot.devices.filter((entry) => entry.status === "active").length,

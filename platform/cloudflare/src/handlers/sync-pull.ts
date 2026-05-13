@@ -35,6 +35,7 @@ const SyncPullRequestSchema = z.object({
   cursors: z.object({
     config: z.string().trim().min(1).nullable().optional(),
     vocabulary: z.string().trim().min(1).nullable().optional(),
+    review_schedule: z.string().trim().min(1).nullable().optional(),
     reading_history: z.string().trim().min(1).nullable().optional(),
     study_progress: z.string().trim().min(1).nullable().optional(),
   }).partial().default({}),
@@ -122,6 +123,7 @@ function normalizeSyncPull(pull: AstraSyncPullResponse) {
     deltas: {
       config: pull.deltas.config.map(normalizeSyncPullMutation),
       vocabulary: pull.deltas.vocabulary.map(normalizeSyncPullMutation),
+      review_schedule: pull.deltas.review_schedule.map(normalizeSyncPullMutation),
       reading_history: pull.deltas.reading_history.map(normalizeSyncPullMutation),
       study_progress: pull.deltas.study_progress.map(normalizeSyncPullMutation),
     },
@@ -165,6 +167,7 @@ function mapShadowPullToNodeShape(
     deltas: {
       config: shadow.deltas.config.map((mutation) => mapShadowMutationToNodeShape(mutation, params)),
       vocabulary: shadow.deltas.vocabulary.map((mutation) => mapShadowMutationToNodeShape(mutation, params)),
+      review_schedule: shadow.deltas.review_schedule.map((mutation) => mapShadowMutationToNodeShape(mutation, params)),
       reading_history: shadow.deltas.reading_history.map((mutation) => mapShadowMutationToNodeShape(mutation, params)),
       study_progress: shadow.deltas.study_progress.map((mutation) => mapShadowMutationToNodeShape(mutation, params)),
     },
@@ -177,6 +180,7 @@ function computeLimitPerCollection(pull: AstraSyncPullResponse): number {
     500,
     pull.deltas.config.length,
     pull.deltas.vocabulary.length,
+    pull.deltas.review_schedule.length,
     pull.deltas.reading_history.length,
     pull.deltas.study_progress.length,
   )

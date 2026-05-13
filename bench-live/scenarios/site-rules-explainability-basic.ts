@@ -1,8 +1,9 @@
 import { createServer } from "node:http"
-import { mkdir, writeFile } from "node:fs/promises"
+import { writeFile } from "node:fs/promises"
 import path from "node:path"
 
 import {
+  prepareLiveArtifactDir,
   ExtensionBuildNotFoundError,
   LiveBrowserUnavailableError,
   openExtensionActionPopup,
@@ -107,8 +108,7 @@ export const siteRulesExplainabilityBasicScenario: LiveScenarioDefinition<SiteRu
     const consoleErrors: string[] = []
 
     try {
-      const artifactDir = path.join(process.cwd(), "bench-live-results", context.runId)
-      await mkdir(artifactDir, { recursive: true })
+      const artifactDir = await prepareLiveArtifactDir(context.runId)
 
       const liveConfig = {
         version: 1,

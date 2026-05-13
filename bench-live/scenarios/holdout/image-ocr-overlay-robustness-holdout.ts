@@ -1,8 +1,9 @@
 import { createServer } from "node:http"
-import { mkdir, writeFile } from "node:fs/promises"
+import { writeFile } from "node:fs/promises"
 import path from "node:path"
 
 import {
+  prepareLiveArtifactDir,
   withExtensionBrowserPage,
   LiveBrowserUnavailableError,
   ExtensionBuildNotFoundError,
@@ -111,8 +112,7 @@ export const imageOcrOverlayRobustnessHoldoutScenario: LiveScenarioDefinition<Im
 
     try {
       relayServer = await createImageOcrOverlayRelayServer()
-      const artifactDir = path.join(process.cwd(), "bench-live-results", context.runId)
-      await mkdir(artifactDir, { recursive: true })
+      const artifactDir = await prepareLiveArtifactDir(context.runId)
       const svgPath = path.join(artifactDir, "image-ocr-overlay-robustness-holdout.svg")
       await writeFile(svgPath, `<svg xmlns="http://www.w3.org/2000/svg" width="720" height="320" viewBox="0 0 720 320"><rect width="720" height="320" fill="#fff7ed"/><text x="48" y="72" font-size="26">Safe Header</text><text x="52" y="76" font-size="26">Overlap Header</text><text x="48" y="140" font-size="26">Safe Footer</text><text x="54" y="144" font-size="26">Overlap Footer</text></svg>`, "utf8")
 

@@ -12,6 +12,7 @@ import type { ProviderId } from "../../../../src/types/config"
 export const SHADOW_SYNC_COLLECTIONS = [
   "config",
   "vocabulary",
+  "review_schedule",
   "reading_history",
   "study_progress",
 ] as const
