@@ -19,7 +19,7 @@ type SessionPayload = {
 }
 
 const CORS_HEADERS = "authorization, content-type, idempotency-key, x-astra-device-id"
-const SYNC_COLLECTIONS = ["config", "vocabulary", "reading_history", "study_progress"] as const
+const SYNC_COLLECTIONS = ["config", "vocabulary", "review_schedule", "reading_history", "study_progress"] as const
 
 function json(data: unknown, init: ResponseInit = {}, extraHeaders: Record<string, string> = {}) {
   return new Response(JSON.stringify(data), {
@@ -189,6 +189,7 @@ function syncCollections() {
   return {
     config: { enabled: true, defaultEnabled: true, cursor: null },
     vocabulary: { enabled: true, defaultEnabled: true, cursor: null },
+    review_schedule: { enabled: true, defaultEnabled: true, cursor: null },
     reading_history: { enabled: false, defaultEnabled: false, cursor: null },
     study_progress: { enabled: false, defaultEnabled: false, cursor: null },
   }
@@ -198,6 +199,7 @@ function syncSummaryCollections() {
   return {
     config: { enabled: true, defaultEnabled: true, cursor: null, mutationCount: 0, activeCount: 0, lastSyncAt: null, compactionFloorCursor: null },
     vocabulary: { enabled: true, defaultEnabled: true, cursor: null, mutationCount: 0, activeCount: 0, lastSyncAt: null, compactionFloorCursor: null },
+    review_schedule: { enabled: true, defaultEnabled: true, cursor: null, mutationCount: 0, activeCount: 0, lastSyncAt: null, compactionFloorCursor: null },
     reading_history: { enabled: false, defaultEnabled: false, cursor: null, mutationCount: 0, activeCount: 0, lastSyncAt: null, compactionFloorCursor: null },
     study_progress: { enabled: false, defaultEnabled: false, cursor: null, mutationCount: 0, activeCount: 0, lastSyncAt: null, compactionFloorCursor: null },
   }

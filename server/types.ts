@@ -17,7 +17,7 @@ import type { AstraSessionClaims } from "../src/utils/astra/session-token"
 import type { ProviderTranslationRequest } from "../src/utils/providers/types"
 import type { D1Database } from "../platform/cloudflare/src/bindings"
 
-export const SYNC_COLLECTIONS = ["config", "vocabulary", "reading_history", "study_progress"] as const
+export const SYNC_COLLECTIONS = ["config", "vocabulary", "review_schedule", "reading_history", "study_progress"] as const
 
 export type SyncCollection = (typeof SYNC_COLLECTIONS)[number]
 export type SyncOperation = "upsert" | "delete"

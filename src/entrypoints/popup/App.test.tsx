@@ -339,6 +339,7 @@ function createAccountSummary(overrides: Record<string, unknown> = {}) {
       collections: {
         config: { enabled: true, defaultEnabled: true, cursor: "cfg-3", mutationCount: 3, activeCount: 1, lastSyncAt: null, compactionFloorCursor: null },
         vocabulary: { enabled: false, defaultEnabled: false, cursor: null, mutationCount: 0, activeCount: 0, lastSyncAt: null, compactionFloorCursor: null },
+        review_schedule: { enabled: true, defaultEnabled: true, cursor: null, mutationCount: 0, activeCount: 0, lastSyncAt: null, compactionFloorCursor: null },
         reading_history: { enabled: false, defaultEnabled: false, cursor: null, mutationCount: 0, activeCount: 0, lastSyncAt: null, compactionFloorCursor: null },
         study_progress: { enabled: false, defaultEnabled: false, cursor: null, mutationCount: 0, activeCount: 0, lastSyncAt: null, compactionFloorCursor: null },
       },
@@ -362,7 +363,7 @@ function createLearningContinuitySyncStatus(
     stateLastRunAt: "2026-04-09T01:04:00.000Z",
     stateLastSuccessAt: "2026-04-09T01:05:00.000Z",
     stateLastError: null,
-    cursors: { config: "cfg-3", vocabulary: "voc-7", reading_history: "hist-2", study_progress: "progress-4" },
+    cursors: { config: "cfg-3", vocabulary: "voc-7", review_schedule: null, reading_history: "hist-2", study_progress: "progress-4" },
     ...patch,
   }
 }
@@ -429,6 +430,7 @@ describe("popup App", () => {
         collections: {
           config: { enabled: true, defaultEnabled: true, cursor: "cfg-3" },
           vocabulary: { enabled: false, defaultEnabled: false, cursor: null },
+          review_schedule: { enabled: true, defaultEnabled: true, cursor: null },
           reading_history: { enabled: false, defaultEnabled: false, cursor: null },
           study_progress: { enabled: false, defaultEnabled: false, cursor: null },
         },
@@ -461,12 +463,14 @@ describe("popup App", () => {
                 cursor: "cfg-4",
               }],
               vocabulary: [],
+              review_schedule: [],
               reading_history: [],
               study_progress: [],
             },
             nextCursors: {
               config: "cfg-4",
               vocabulary: null,
+              review_schedule: null,
               reading_history: null,
               study_progress: null,
             },
@@ -1472,23 +1476,23 @@ describe("popup App", () => {
     const continuityCard = container.querySelector('[data-testid="learning-continuity-commit-card"]')
     expect(continuityCard?.textContent).toContain("Learning continuity commit")
     expect(continuityCard?.textContent).toContain("synced")
-    expect(continuityCard?.textContent).toContain("SRS schedule remains local-only")
+    expect(continuityCard?.textContent).toContain("Review schedule sync enabled")
     const accountContinuityCard = container.querySelector('[data-testid="popup-account-continuity-card"]') as HTMLElement
     expect(accountContinuityCard).toBeTruthy()
     expect(accountContinuityCard.textContent).toContain("Continuity is connected for this account")
     expect(accountContinuityCard.textContent).toContain("Connected proof")
     expect(accountContinuityCard.textContent).toContain("no sign-in action is needed")
-    expect(accountContinuityCard.textContent).toContain("SRS schedule timing stays local-only")
+    expect(accountContinuityCard.textContent).toContain("daily study stats stay local-only")
     expect(container.querySelector('[data-testid="popup-account-continuity-sign-in-cta"]')).toBeNull()
     expect(container.querySelector('[data-testid="study-account-continuity-nudge"]')?.textContent).toContain("Continuity is connected for this account")
-    expect(container.querySelector('[data-testid="study-account-continuity-nudge"]')?.textContent).toContain("SRS schedule timing stays local-only")
+    expect(container.querySelector('[data-testid="study-account-continuity-nudge"]')?.textContent).toContain("daily study stats stay local-only")
     expect(container.querySelector('[data-testid="study-account-continuity-sign-in-cta"]')).toBeNull()
     expect(container.textContent).toContain("Astra continuity · 1 device · 1 active")
     expect(container.textContent).toContain("Config bootstrap: enabled · Cursor cfg-3")
     expect(container.textContent).toContain("Reading history sync: off · Optional")
     expect(container.textContent).toContain("Study progress sync: off · Optional · Daily stats stay local")
     expect(container.textContent).toContain("Learning continuity commit: synced")
-    expect(container.textContent).toContain("Config, vocabulary, reading history, and study progress continuity ready · SRS schedule fields stay local")
+    expect(container.textContent).toContain("Config, vocabulary, review schedules, reading history, and study progress continuity ready · Daily study stats stay local")
     expect(container.textContent).toContain("Plan and daily quota mirror Astra account summary.")
   })
 

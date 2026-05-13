@@ -39,6 +39,7 @@ function groupRecordStateByCollection(rows: ShadowSyncRecordStateRow[]) {
   return {
     config: grouped.get("config") ?? [],
     vocabulary: grouped.get("vocabulary") ?? [],
+    review_schedule: grouped.get("review_schedule") ?? [],
     reading_history: grouped.get("reading_history") ?? [],
     study_progress: grouped.get("study_progress") ?? [],
   }

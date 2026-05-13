@@ -980,11 +980,17 @@ async function applyRepairRecovery(params: {
     buildSyncSafeConfig(repairedConfig, CONFIG_SYNC_OPTIONS),
   )
 
+  const repairedVocabularyEntries = params.repair.collections.vocabulary.records.map((record) =>
+    SyncedVocabularyEntrySchema.parse(record.payload)
+  )
+  const repairedReviewSchedules = params.repair.collections.review_schedule.records.map((record) =>
+    VocabularyReviewScheduleRecordSchema.parse(record.payload)
+  )
+
   await Promise.all([
     replaceConfig(mergedConfig),
-    replaceVocabularyEntries(params.repair.collections.vocabulary.records.map((record) =>
-      SyncedVocabularyEntrySchema.parse(record.payload)
-    )),
+    replaceVocabularyEntries(applyVocabularyReviewScheduleRecordsToEntries(repairedVocabularyEntries, repairedReviewSchedules)),
+    replaceVocabularyReviewSchedules(repairedReviewSchedules),
     replaceReadingHistory(params.repair.collections.reading_history.records.map((record) =>
       SyncedReadingHistoryEntrySchema.parse(record.payload)
     )),
@@ -1006,6 +1012,10 @@ async function applyRepairRecovery(params: {
       vocabulary: {
         cursor: params.repair.collections.vocabulary.latestCursor,
         shadow: buildVocabularyShadowFromRepair(params.repair.collections.vocabulary.records),
+      },
+      review_schedule: {
+        cursor: params.repair.collections.review_schedule.latestCursor,
+        shadow: buildReviewScheduleShadowFromRepair(params.repair.collections.review_schedule.records),
       },
       reading_history: {
         cursor: params.repair.collections.reading_history.latestCursor,
@@ -1100,10 +1110,12 @@ export function buildContinuityStatus(params: {
   const remoteDevices = params.remote?.devices ?? []
   const bootstrapConfig = params.remote?.bootstrap?.collections.config ?? null
   const bootstrapVocabulary = params.remote?.bootstrap?.collections.vocabulary ?? null
+  const bootstrapReviewSchedule = params.remote?.bootstrap?.collections.review_schedule ?? null
   const bootstrapReadingHistory = params.remote?.bootstrap?.collections.reading_history ?? null
   const bootstrapStudyProgress = params.remote?.bootstrap?.collections.study_progress ?? null
   const pullConfigDeltas = params.remote?.pull?.deltas.config ?? []
   const pullVocabularyDeltas = params.remote?.pull?.deltas.vocabulary ?? []
+  const pullReviewScheduleDeltas = params.remote?.pull?.deltas.review_schedule ?? []
   const pullReadingHistoryDeltas = params.remote?.pull?.deltas.reading_history ?? []
   const pullStudyProgressDeltas = params.remote?.pull?.deltas.study_progress ?? []
   const currentDevice = remoteDevices.find((entry) =>
@@ -1151,6 +1163,12 @@ export function buildContinuityStatus(params: {
         pullVocabularyDeltas.length,
         !!params.remote?.pull,
       ),
+      reviewScheduleCollection: buildContinuityCollectionStatus(
+        bootstrapReviewSchedule,
+        params.remote?.pull?.nextCursors.review_schedule,
+        pullReviewScheduleDeltas.length,
+        !!params.remote?.pull,
+      ),
       readingHistoryCollection: buildContinuityCollectionStatus(
         bootstrapReadingHistory,
         params.remote?.pull?.nextCursors.reading_history,
@@ -1177,8 +1195,8 @@ export async function runPhaseOneCollectionSync(): Promise<AstraPhaseOneSyncResu
     return {
       skipped: true,
       reason: "no-session",
-      pushed: { config: 0, vocabulary: 0, reading_history: 0, study_progress: 0 },
-      pulled: { config: 0, vocabulary: 0, reading_history: 0, study_progress: 0 },
+      pushed: { config: 0, vocabulary: 0, review_schedule: 0, reading_history: 0, study_progress: 0 },
+      pulled: { config: 0, vocabulary: 0, review_schedule: 0, reading_history: 0, study_progress: 0 },
       rejected: 0,
     }
   }
@@ -1187,8 +1205,8 @@ export async function runPhaseOneCollectionSync(): Promise<AstraPhaseOneSyncResu
     return {
       skipped: true,
       reason: "anonymous-session",
-      pushed: { config: 0, vocabulary: 0, reading_history: 0, study_progress: 0 },
-      pulled: { config: 0, vocabulary: 0, reading_history: 0, study_progress: 0 },
+      pushed: { config: 0, vocabulary: 0, review_schedule: 0, reading_history: 0, study_progress: 0 },
+      pulled: { config: 0, vocabulary: 0, review_schedule: 0, reading_history: 0, study_progress: 0 },
       rejected: 0,
     }
   }
@@ -1198,16 +1216,17 @@ export async function runPhaseOneCollectionSync(): Promise<AstraPhaseOneSyncResu
     return {
       skipped: true,
       reason: "missing-relay-base-url",
-      pushed: { config: 0, vocabulary: 0, reading_history: 0, study_progress: 0 },
-      pulled: { config: 0, vocabulary: 0, reading_history: 0, study_progress: 0 },
+      pushed: { config: 0, vocabulary: 0, review_schedule: 0, reading_history: 0, study_progress: 0 },
+      pulled: { config: 0, vocabulary: 0, review_schedule: 0, reading_history: 0, study_progress: 0 },
       rejected: 0,
     }
   }
 
-  const [state, config, vocabularySyncEntries, readingHistorySyncEntries, studyProgressSyncEntries, ownedReadingSyncEntries, deepReadSessionSyncEntries, bootstrap] = await Promise.all([
+  const [state, config, vocabularySyncEntries, reviewScheduleSyncEntries, readingHistorySyncEntries, studyProgressSyncEntries, ownedReadingSyncEntries, deepReadSessionSyncEntries, bootstrap] = await Promise.all([
     readPhaseOneSyncState(session.email),
     readConfig(),
     readSyncSafeVocabularyEntries(),
+    readSyncSafeVocabularyReviewSchedules(),
     readSyncSafeReadingHistory(),
     readSyncSafeStudyProgressPages(),
     readSyncSafeOwnedReadingItems(),
@@ -1227,6 +1246,7 @@ export async function runPhaseOneCollectionSync(): Promise<AstraPhaseOneSyncResu
   })
 
   const vocabularyRecords = buildVocabularySyncRecordMap(vocabularySyncEntries)
+  const reviewScheduleRecords = buildVocabularyReviewScheduleSyncRecordMap(reviewScheduleSyncEntries)
   const readingHistoryRecords = buildReadingHistorySyncRecordMap(readingHistorySyncEntries)
   const studyProgressRecords = buildStudyProgressSyncRecordMap(studyProgressSyncEntries)
   const ownedReadingRecords = buildOwnedReadingSyncRecordMap(ownedReadingSyncEntries)
@@ -1268,6 +1288,16 @@ export async function runPhaseOneCollectionSync(): Promise<AstraPhaseOneSyncResu
         nowIso,
       })
     : []
+  const reviewScheduleMutations = bootstrap.collections.review_schedule.enabled
+    ? buildReviewSchedulePushMutations({
+        reviewScheduleShadow: state.collections.review_schedule.shadow,
+        reviewScheduleRecords,
+        bootstrap,
+        state,
+        deviceId: device.deviceId,
+        nowIso,
+      })
+    : []
   const readingHistoryMutations = bootstrap.collections.reading_history.enabled
     ? buildReadingHistoryPushMutations({
         readingHistoryShadow: state.collections.reading_history.shadow,
@@ -1288,7 +1318,7 @@ export async function runPhaseOneCollectionSync(): Promise<AstraPhaseOneSyncResu
         nowIso,
       })
     : []
-  const pushMutations = [...configMutations, ...ownedReadingConfigMutations, ...deepReadSessionConfigMutations, ...vocabularyMutations, ...readingHistoryMutations, ...studyProgressMutations]
+  const pushMutations = [...configMutations, ...ownedReadingConfigMutations, ...deepReadSessionConfigMutations, ...vocabularyMutations, ...reviewScheduleMutations, ...readingHistoryMutations, ...studyProgressMutations]
 
   let rejected = 0
   if (pushMutations.length > 0) {
@@ -1313,6 +1343,9 @@ export async function runPhaseOneCollectionSync(): Promise<AstraPhaseOneSyncResu
       cursors: {
         config: state.collections.config.cursor,
         vocabulary: state.collections.vocabulary.cursor,
+        ...(bootstrap.collections.review_schedule.enabled
+          ? { review_schedule: state.collections.review_schedule.cursor }
+          : {}),
         ...(bootstrap.collections.reading_history.enabled
           ? { reading_history: state.collections.reading_history.cursor }
           : {}),
@@ -1334,6 +1367,7 @@ export async function runPhaseOneCollectionSync(): Promise<AstraPhaseOneSyncResu
         collections: [
           "config",
           "vocabulary",
+          ...(bootstrap.collections.review_schedule.enabled ? ["review_schedule" as const] : []),
           ...(bootstrap.collections.reading_history.enabled ? ["reading_history" as const] : []),
           ...(bootstrap.collections.study_progress.enabled ? ["study_progress" as const] : []),
         ],
@@ -1354,12 +1388,14 @@ export async function runPhaseOneCollectionSync(): Promise<AstraPhaseOneSyncResu
       pushed: {
         config: configMutations.length + ownedReadingConfigMutations.length + deepReadSessionConfigMutations.length,
         vocabulary: vocabularyMutations.length,
+        review_schedule: reviewScheduleMutations.length,
         reading_history: readingHistoryMutations.length,
         study_progress: studyProgressMutations.length,
       },
       pulled: {
         config: repair.collections.config.records.length,
         vocabulary: repair.collections.vocabulary.records.length,
+        review_schedule: repair.collections.review_schedule.records.length,
         reading_history: repair.collections.reading_history.records.length,
         study_progress: repair.collections.study_progress.records.length,
       },
@@ -1372,6 +1408,9 @@ export async function runPhaseOneCollectionSync(): Promise<AstraPhaseOneSyncResu
   const ownedReadingConfigDeltas = configDeltas.filter((delta) => isOwnedReadingConfigRecordId(delta.recordId))
   const deepReadSessionConfigDeltas = configDeltas.filter((delta) => isDeepReadSessionConfigRecordId(delta.recordId))
   const vocabularyDeltas = pull.deltas.vocabulary
+  const reviewScheduleDeltas = bootstrap.collections.review_schedule.enabled
+    ? pull.deltas.review_schedule
+    : []
   const readingHistoryDeltas = bootstrap.collections.reading_history.enabled
     ? pull.deltas.reading_history
     : []
@@ -1379,9 +1418,10 @@ export async function runPhaseOneCollectionSync(): Promise<AstraPhaseOneSyncResu
     ? pull.deltas.study_progress
     : []
 
-  const [latestConfig, latestVocabularyEntries, latestReadingHistoryEntries, latestStudyProgress, latestOwnedReadingItems, latestDeepReadSessions] = await Promise.all([
+  const [latestConfig, latestVocabularyEntries, latestReviewSchedules, latestReadingHistoryEntries, latestStudyProgress, latestOwnedReadingItems, latestDeepReadSessions] = await Promise.all([
     readConfig(),
     getVocabularyEntries(),
+    readSyncSafeVocabularyReviewSchedules(),
     getReadingHistory(),
     getStudyProgress(),
     listOwnedReadingItems(),
@@ -1424,16 +1464,32 @@ export async function runPhaseOneCollectionSync(): Promise<AstraPhaseOneSyncResu
     await replaceDeepReadSessions(nextDeepReadSessions)
   }
 
+  let currentVocabularyEntries = latestVocabularyEntries
   if (vocabularyDeltas.length > 0) {
     const nextVocabularyEntries = applyVocabularySyncMutations(
-      latestVocabularyEntries,
+      currentVocabularyEntries,
       vocabularyDeltas.map((delta) => ({
         recordId: delta.recordId,
         operation: delta.operation,
         payload: delta.payload,
       })),
     )
+    currentVocabularyEntries = nextVocabularyEntries
     await replaceVocabularyEntries(nextVocabularyEntries)
+  }
+
+  if (reviewScheduleDeltas.length > 0) {
+    const nextReviewSchedules = applyVocabularyReviewScheduleSyncMutations(
+      latestReviewSchedules,
+      reviewScheduleDeltas.map((delta) => ({
+        recordId: delta.recordId,
+        operation: delta.operation,
+        payload: delta.payload,
+      })),
+    )
+    currentVocabularyEntries = applyVocabularyReviewScheduleRecordsToEntries(currentVocabularyEntries, nextReviewSchedules)
+    await replaceVocabularyReviewSchedules(nextReviewSchedules)
+    await replaceVocabularyEntries(currentVocabularyEntries)
   }
 
   if (readingHistoryDeltas.length > 0) {
@@ -1470,6 +1526,14 @@ export async function runPhaseOneCollectionSync(): Promise<AstraPhaseOneSyncResu
     vocabularyShadow = applyVocabularyShadowMutation(vocabularyShadow, delta)
   }
 
+  let reviewScheduleShadow = state.collections.review_schedule.shadow
+  for (const delta of reviewScheduleDeltas) {
+    reviewScheduleShadow = applyReviewScheduleShadowMutation(reviewScheduleShadow, delta)
+  }
+  if (!bootstrap.collections.review_schedule.enabled) {
+    reviewScheduleShadow = state.collections.review_schedule.shadow
+  }
+
   let readingHistoryShadow = state.collections.reading_history.shadow
   for (const delta of readingHistoryDeltas) {
     readingHistoryShadow = applyReadingHistoryShadowMutation(readingHistoryShadow, delta)
@@ -1493,6 +1557,12 @@ export async function runPhaseOneCollectionSync(): Promise<AstraPhaseOneSyncResu
       vocabulary: {
         cursor: pull.nextCursors.vocabulary,
         shadow: vocabularyShadow,
+      },
+      review_schedule: {
+        cursor: bootstrap.collections.review_schedule.enabled
+          ? pull.nextCursors.review_schedule
+          : state.collections.review_schedule.cursor,
+        shadow: reviewScheduleShadow,
       },
       reading_history: {
         cursor: bootstrap.collections.reading_history.enabled
@@ -1519,12 +1589,14 @@ export async function runPhaseOneCollectionSync(): Promise<AstraPhaseOneSyncResu
     pushed: {
       config: configMutations.length + ownedReadingConfigMutations.length + deepReadSessionConfigMutations.length,
       vocabulary: vocabularyMutations.length,
+      review_schedule: reviewScheduleMutations.length,
       reading_history: readingHistoryMutations.length,
       study_progress: studyProgressMutations.length,
     },
     pulled: {
       config: configDeltas.length,
       vocabulary: vocabularyDeltas.length,
+      review_schedule: reviewScheduleDeltas.length,
       reading_history: readingHistoryDeltas.length,
       study_progress: studyProgressDeltas.length,
     },

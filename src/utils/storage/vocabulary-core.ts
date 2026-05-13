@@ -181,7 +181,12 @@ export function buildSyncSafeVocabularyEntry(
 }
 
 export function ensureSrsFields(entry: VocabularyEntry): VocabularyEntry {
-  if (entry.srsBox !== undefined && entry.nextReviewAt !== undefined) {
+  if (
+    entry.srsBox !== undefined
+    && entry.nextReviewAt !== undefined
+    && entry.reviewCount !== undefined
+    && entry.lastReviewedAt !== undefined
+  ) {
     return entry
   }
   const defaults = createDefaultSrsFields(entry.savedAt)

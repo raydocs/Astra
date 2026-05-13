@@ -80,7 +80,7 @@ const ArticleImportSchema = z.object({
 })
 
 const SyncMutationSchema = z.object({
-  collection: z.enum(["config", "vocabulary", "reading_history", "study_progress"]),
+  collection: z.enum(["config", "vocabulary", "review_schedule", "reading_history", "study_progress"]),
   schemaVersion: z.number().int().positive(),
   recordId: z.string().trim().min(1),
   operation: z.enum(["upsert", "delete"]),
@@ -98,6 +98,7 @@ const SyncPullSchema = z.object({
   cursors: z.object({
     config: z.string().trim().min(1).nullable().optional(),
     vocabulary: z.string().trim().min(1).nullable().optional(),
+    review_schedule: z.string().trim().min(1).nullable().optional(),
     reading_history: z.string().trim().min(1).nullable().optional(),
     study_progress: z.string().trim().min(1).nullable().optional(),
   }).partial().default({}),

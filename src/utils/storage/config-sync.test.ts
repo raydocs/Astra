@@ -148,6 +148,7 @@ describe("config-sync", () => {
         collections: {
           config: { cursor: "cfg-1", shadow: {} },
           vocabulary: { cursor: "voc-2", shadow: {} },
+          review_schedule: { cursor: null, shadow: {} },
           reading_history: { cursor: "hist-3", shadow: {} },
           study_progress: { cursor: "progress-4", shadow: {} },
         },
@@ -232,6 +233,7 @@ describe("config-sync", () => {
           collections: {
             config: { enabled: true, defaultEnabled: true, cursor: "cfg-3" },
             vocabulary: { enabled: false, defaultEnabled: false, cursor: null },
+            review_schedule: { enabled: true, defaultEnabled: true, cursor: null },
             reading_history: { enabled: false, defaultEnabled: false, cursor: null },
             study_progress: { enabled: false, defaultEnabled: false, cursor: null },
           },
@@ -263,12 +265,14 @@ describe("config-sync", () => {
               cursor: "cfg-4",
             }],
             vocabulary: [],
+            review_schedule: [],
             reading_history: [],
             study_progress: [],
           },
           nextCursors: {
             config: "cfg-4",
             vocabulary: null,
+            review_schedule: null,
             reading_history: null,
             study_progress: null,
           },
@@ -338,6 +342,7 @@ describe("config-sync", () => {
         collections: {
           config: { enabled: true, defaultEnabled: true, cursor: "cfg-1" },
           vocabulary: { enabled: true, defaultEnabled: true, cursor: "voc-1" },
+          review_schedule: { enabled: true, defaultEnabled: true, cursor: null },
           reading_history: { enabled: false, defaultEnabled: false, cursor: null },
           study_progress: { enabled: false, defaultEnabled: false, cursor: null },
         },
@@ -404,6 +409,7 @@ describe("config-sync", () => {
         nextCursors: {
           config: "cfg-2",
           vocabulary: "voc-2",
+          review_schedule: null,
           reading_history: null,
           study_progress: null,
         },
@@ -473,6 +479,7 @@ describe("config-sync", () => {
         collections: {
           config: { enabled: true, defaultEnabled: true, cursor: null },
           vocabulary: { enabled: true, defaultEnabled: true, cursor: null },
+          review_schedule: { enabled: true, defaultEnabled: true, cursor: null },
           reading_history: { enabled: false, defaultEnabled: false, cursor: null },
           study_progress: { enabled: false, defaultEnabled: false, cursor: null },
         },
@@ -549,6 +556,7 @@ describe("config-sync", () => {
         collections: {
           config: { enabled: true, defaultEnabled: true, cursor: null },
           vocabulary: { enabled: true, defaultEnabled: true, cursor: null },
+          review_schedule: { enabled: true, defaultEnabled: true, cursor: null },
           reading_history: { enabled: true, defaultEnabled: false, cursor: null },
           study_progress: { enabled: false, defaultEnabled: false, cursor: null },
         },
@@ -566,6 +574,7 @@ describe("config-sync", () => {
         deltas: {
           config: [],
           vocabulary: [],
+          review_schedule: [],
           reading_history: [{
             collection: "reading_history",
             schemaVersion: 1,
@@ -672,6 +681,7 @@ describe("config-sync", () => {
         collections: {
           config: { enabled: true, defaultEnabled: true, cursor: null },
           vocabulary: { enabled: true, defaultEnabled: true, cursor: null },
+          review_schedule: { enabled: true, defaultEnabled: true, cursor: null },
           reading_history: { enabled: false, defaultEnabled: false, cursor: null },
           study_progress: { enabled: false, defaultEnabled: false, cursor: null },
         },
@@ -763,6 +773,7 @@ describe("config-sync", () => {
         collections: {
           config: { enabled: true, defaultEnabled: true, cursor: "cfg-1" },
           vocabulary: { enabled: true, defaultEnabled: true, cursor: null },
+          review_schedule: { enabled: true, defaultEnabled: true, cursor: null },
           reading_history: { enabled: false, defaultEnabled: false, cursor: null },
           study_progress: { enabled: false, defaultEnabled: false, cursor: null },
         },
@@ -817,6 +828,7 @@ describe("config-sync", () => {
             },
           ],
           vocabulary: [],
+          review_schedule: [],
           reading_history: [],
           study_progress: [],
         },
@@ -889,6 +901,7 @@ describe("config-sync", () => {
         collections: {
           config: { enabled: true, defaultEnabled: true, cursor: null },
           vocabulary: { enabled: false, defaultEnabled: false, cursor: null },
+          review_schedule: { enabled: true, defaultEnabled: true, cursor: null },
           reading_history: { enabled: false, defaultEnabled: false, cursor: null },
           study_progress: { enabled: false, defaultEnabled: false, cursor: null },
         },
@@ -962,6 +975,7 @@ describe("config-sync", () => {
         collections: {
           config: { enabled: true, defaultEnabled: true, cursor: "cfg-1" },
           vocabulary: { enabled: false, defaultEnabled: false, cursor: null },
+          review_schedule: { enabled: true, defaultEnabled: true, cursor: null },
           reading_history: { enabled: false, defaultEnabled: false, cursor: null },
           study_progress: { enabled: false, defaultEnabled: false, cursor: null },
         },
@@ -995,6 +1009,7 @@ describe("config-sync", () => {
             cursor: "cfg-2",
           }],
           vocabulary: [],
+          review_schedule: [],
           reading_history: [],
           study_progress: [],
         },
@@ -1040,6 +1055,7 @@ describe("config-sync", () => {
               },
             },
             vocabulary: { cursor: null, shadow: {} },
+            review_schedule: { cursor: null, shadow: {} },
             reading_history: { cursor: null, shadow: {} },
             study_progress: { cursor: null, shadow: {} },
           },
@@ -1082,6 +1098,7 @@ describe("config-sync", () => {
         collections: {
           config: { enabled: true, defaultEnabled: true, cursor: "cfg-1" },
           vocabulary: { enabled: true, defaultEnabled: true, cursor: null },
+          review_schedule: { enabled: true, defaultEnabled: true, cursor: null },
           reading_history: { enabled: false, defaultEnabled: false, cursor: null },
           study_progress: { enabled: false, defaultEnabled: false, cursor: null },
         },
@@ -1161,6 +1178,7 @@ describe("config-sync", () => {
         collections: {
           config: { enabled: true, defaultEnabled: true, cursor: null },
           vocabulary: { enabled: true, defaultEnabled: true, cursor: null },
+          review_schedule: { enabled: true, defaultEnabled: true, cursor: null },
           reading_history: { enabled: false, defaultEnabled: false, cursor: null },
           study_progress: { enabled: false, defaultEnabled: false, cursor: null },
         },
@@ -1178,6 +1196,7 @@ describe("config-sync", () => {
         deltas: {
           config: [],
           vocabulary: [],
+          review_schedule: [],
           reading_history: [],
           study_progress: [{
             collection: "study_progress",
@@ -1278,6 +1297,7 @@ describe("config-sync", () => {
         collections: {
           config: { enabled: true, defaultEnabled: true, cursor: null },
           vocabulary: { enabled: true, defaultEnabled: true, cursor: null },
+          review_schedule: { enabled: true, defaultEnabled: true, cursor: null },
           reading_history: { enabled: false, defaultEnabled: false, cursor: null },
           study_progress: { enabled: true, defaultEnabled: false, cursor: null },
         },
@@ -1295,6 +1315,7 @@ describe("config-sync", () => {
         deltas: {
           config: [],
           vocabulary: [],
+          review_schedule: [],
           reading_history: [],
           study_progress: [{
             collection: "study_progress",
@@ -1455,6 +1476,7 @@ describe("config-sync", () => {
               },
             },
             vocabulary: { cursor: "voc-1", shadow: {} },
+            review_schedule: { cursor: null, shadow: {} },
             reading_history: { cursor: "hist-1", shadow: {} },
             study_progress: { cursor: "progress-1", shadow: {} },
           },
@@ -1497,6 +1519,7 @@ describe("config-sync", () => {
         collections: {
           config: { enabled: true, defaultEnabled: true, cursor: "cfg-2" },
           vocabulary: { enabled: true, defaultEnabled: true, cursor: "voc-2" },
+          review_schedule: { enabled: true, defaultEnabled: true, cursor: null },
           reading_history: { enabled: true, defaultEnabled: false, cursor: "hist-2" },
           study_progress: { enabled: true, defaultEnabled: false, cursor: "progress-2" },
         },
@@ -1699,6 +1722,7 @@ describe("config-sync", () => {
         collections: {
           config: { enabled: true, defaultEnabled: true, cursor: null },
           vocabulary: { enabled: true, defaultEnabled: true, cursor: null },
+          review_schedule: { enabled: true, defaultEnabled: true, cursor: null },
           reading_history: { enabled: false, defaultEnabled: false, cursor: null },
           study_progress: { enabled: false, defaultEnabled: false, cursor: null },
         },

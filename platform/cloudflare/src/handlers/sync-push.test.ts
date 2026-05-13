@@ -522,6 +522,7 @@ function createPushPayload() {
     nextCursors: {
       config: "1",
       vocabulary: null,
+      review_schedule: null,
       reading_history: null,
       study_progress: null,
     },

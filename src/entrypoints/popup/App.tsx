@@ -2628,7 +2628,7 @@ export default function App() {
                 </div>
               )}
               <div>
-                Config, vocabulary, reading history, and study progress continuity ready · SRS schedule fields stay local
+                Config, vocabulary, review schedules, reading history, and study progress continuity ready · Daily study stats stay local
               </div>
               {localOnlyLabel && (
                 <div>

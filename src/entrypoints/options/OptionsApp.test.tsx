@@ -275,6 +275,7 @@ describe("OptionsApp — Sites section", () => {
         collections: {
           config: { enabled: true, defaultEnabled: true, cursor: "cfg-3" },
           vocabulary: { enabled: false, defaultEnabled: false, cursor: null },
+          review_schedule: { enabled: true, defaultEnabled: true, cursor: null },
           reading_history: { enabled: false, defaultEnabled: false, cursor: null },
           study_progress: { enabled: false, defaultEnabled: false, cursor: null },
         },
@@ -291,12 +292,14 @@ describe("OptionsApp — Sites section", () => {
             deltas: {
               config: [],
               vocabulary: [],
+              review_schedule: [],
               reading_history: [],
               study_progress: [],
             },
             nextCursors: {
               config: "cfg-4",
               vocabulary: null,
+              review_schedule: null,
               reading_history: null,
               study_progress: null,
             },
@@ -309,6 +312,7 @@ describe("OptionsApp — Sites section", () => {
       collections: {
         config: { enabled: true, defaultEnabled: true, cursor: "cfg-3" },
         vocabulary: { enabled: false, defaultEnabled: false, cursor: null },
+        review_schedule: { enabled: true, defaultEnabled: true, cursor: null },
         reading_history: { enabled: true, defaultEnabled: false, cursor: "hist-3" },
         study_progress: { enabled: false, defaultEnabled: false, cursor: null },
       },

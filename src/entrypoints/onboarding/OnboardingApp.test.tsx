@@ -268,7 +268,7 @@ describe("OnboardingApp", () => {
     expect(accountContinuityText).toContain("saved learning cards")
     expect(accountContinuityText).toContain("reading queue")
     expect(accountContinuityText).toContain("study progress")
-    expect(accountContinuityCopy.textContent).toContain("SRS schedule timing remains local-only")
+    expect(accountContinuityCopy.textContent).toContain("review schedules synced safely")
     expect(accountContinuityCopy.textContent).toContain("No billing change")
     const accountContinuityNextAction = container.querySelector('[data-testid="onboarding-account-continuity-next-action-copy"]') as HTMLElement
     expect(accountContinuityNextAction).toBeTruthy()

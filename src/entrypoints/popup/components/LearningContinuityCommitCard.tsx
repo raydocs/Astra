@@ -141,7 +141,7 @@ export default function LearningContinuityCommitCard({
       )}
 
       <div style={{ fontSize: 11, color: "var(--astra-text-muted)", marginTop: 8, lineHeight: 1.45 }}>
-        Local-first: you can keep studying offline; SRS schedule remains local-only.
+        Local-first: you can keep studying offline; Review schedule sync enabled.
       </div>
 
       <button

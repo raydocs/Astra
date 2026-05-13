@@ -131,11 +131,13 @@ type AuthState = "idle" | "refreshing" | "signing-in" | "signing-out"
 const CONTINUITY_EXPORT_COLLECTION_OPTIONS: AstraContinuityExportCollection[] = [
   "config",
   "vocabulary",
+  "review_schedule",
   "reading_history",
   "study_progress",
 ]
 const CONTINUITY_DELETE_COLLECTION_OPTIONS: AstraContinuityDeleteCollection[] = [
   "vocabulary",
+  "review_schedule",
   "reading_history",
   "study_progress",
 ]
@@ -2409,7 +2411,7 @@ function OverviewPage(props: {
 
           {!props.session ? (
             <div className="stack list">
-              <div className="helper-copy">Sign in to inspect config, vocabulary, reading history, study progress, and sync health surfaces.</div>
+              <div className="helper-copy">Sign in to inspect config, vocabulary, review schedules, reading history, study progress, and sync health surfaces.</div>
             </div>
           ) : props.cloudState === "loading" && !props.cloudAssets ? (
             <div className="helper-copy">Loading cloud snapshot…</div>
@@ -5012,7 +5014,7 @@ function AccountPage(props: {
             <div className="section-heading">
               <div>
                 <div className="card-title">Synced cloud assets</div>
-                <div className="card-copy">Latest fetched continuity snapshot for cloud-safe config, vocabulary, optional reading history, and per-page study progress.</div>
+                <div className="card-copy">Latest fetched continuity snapshot for cloud-safe config, vocabulary, review schedules, optional reading history, and per-page study progress.</div>
               </div>
               <div className="row gap wrap">
                 <span className={`status-pill${props.cloudState === "ready" ? " success" : ""}`}>
@@ -5264,7 +5266,7 @@ function AccountPage(props: {
                 <div className="section-heading">
                   <div>
                     <div className="card-title">Continuity export</div>
-                    <div className="card-copy">Exports the current cloud continuity snapshot for config, vocabulary, reading history, and study progress.</div>
+                    <div className="card-copy">Exports the current cloud continuity snapshot for config, vocabulary, review schedules, reading history, and study progress.</div>
                   </div>
                   <div className="row gap wrap">
                     <button type="button" className="button secondary" onClick={() => void refreshContinuityExport()} disabled={!continuityExportJob || exportBusy || downloadBusy}>

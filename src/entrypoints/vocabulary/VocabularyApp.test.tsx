@@ -892,7 +892,7 @@ describe("VocabularyApp", () => {
     expect(listProof.textContent).toContain("saved learning cards")
     expect(listProof.textContent).toContain("Connected proof")
     expect(listProof.textContent).toContain("no sign-in action is needed")
-    expect(listProof.textContent).toContain("SRS schedule timing stays local-only")
+    expect(listProof.textContent).toContain("daily study stats stay local-only")
     expect(container.querySelector('[data-testid="vocabulary-account-continuity-sign-in-cta"]')).toBeNull()
 
     const reviewBtn = [...container.querySelectorAll("button")].find((b) => b.textContent?.trim() === "Review (1)")
@@ -905,7 +905,7 @@ describe("VocabularyApp", () => {
     const reviewProof = container.querySelector('[data-testid="vocabulary-review-continuity-proof"]') as HTMLElement
     expect(reviewProof.textContent).toContain("Continuity is connected for this account")
     expect(reviewProof.textContent).toContain("no sign-in action is needed")
-    expect(reviewProof.textContent).toContain("SRS schedule timing stays local-only")
+    expect(reviewProof.textContent).toContain("daily study stats stay local-only")
     expect(container.querySelector('[data-testid="vocabulary-review-continuity-proof-sign-in-cta"]')).toBeNull()
 
     const readingBtn = [...container.querySelectorAll("button")].find((b) => b.textContent?.trim() === "Reading")
@@ -919,7 +919,7 @@ describe("VocabularyApp", () => {
     const readingProof = container.querySelector('[data-testid="vocabulary-reading-continuity-proof"]') as HTMLElement
     expect(readingProof.textContent).toContain("Continuity is connected for this account")
     expect(readingProof.textContent).toContain("no sign-in action is needed")
-    expect(readingProof.textContent).toContain("SRS schedule timing stays local-only")
+    expect(readingProof.textContent).toContain("daily study stats stay local-only")
     expect(container.querySelector('[data-testid="vocabulary-reading-continuity-proof-sign-in-cta"]')).toBeNull()
   })
 

@@ -173,6 +173,7 @@ describe("Astra account client", () => {
         collections: {
           config: { enabled: true, defaultEnabled: true, cursor: "1", mutationCount: 1, activeCount: 1, lastSyncAt: "2026-04-09T01:05:00.000Z", compactionFloorCursor: null },
           vocabulary: { enabled: true, defaultEnabled: true, cursor: null, mutationCount: 0, activeCount: 0, lastSyncAt: null, compactionFloorCursor: null },
+          review_schedule: { enabled: true, defaultEnabled: true, cursor: null, mutationCount: 0, activeCount: 0, lastSyncAt: null, compactionFloorCursor: null },
           reading_history: { enabled: false, defaultEnabled: false, cursor: null, mutationCount: 0, activeCount: 0, lastSyncAt: null, compactionFloorCursor: null },
           study_progress: { enabled: false, defaultEnabled: false, cursor: null, mutationCount: 0, activeCount: 0, lastSyncAt: null, compactionFloorCursor: null },
         },
@@ -507,6 +508,7 @@ describe("Astra account client", () => {
       collections: {
         config: { enabled: true, defaultEnabled: true, cursor: "cfg-3" },
         vocabulary: { enabled: false, defaultEnabled: false, cursor: null },
+        review_schedule: { enabled: true, defaultEnabled: true, cursor: null },
         reading_history: { enabled: false, defaultEnabled: false, cursor: null },
         study_progress: { enabled: false, defaultEnabled: false, cursor: null },
       },
@@ -554,6 +556,7 @@ describe("Astra account client", () => {
       nextCursors: {
         config: "cfg-4",
         vocabulary: null,
+        review_schedule: null,
         reading_history: null,
         study_progress: null,
       },
@@ -596,12 +599,14 @@ describe("Astra account client", () => {
       deltas: {
         config: [],
         vocabulary: [],
+        review_schedule: [],
         reading_history: [],
         study_progress: [],
       },
       nextCursors: {
         config: "cfg-4",
         vocabulary: null,
+        review_schedule: null,
         reading_history: null,
         study_progress: null,
       },
@@ -636,6 +641,7 @@ describe("Astra account client", () => {
       collections: {
         config: { enabled: true, defaultEnabled: true, latestCursor: "3", compactionFloorCursor: "2", records: [{ recordId: "global", payload: { kind: "global", config: { version: 1, targetLang: "ja", connectionMode: "astra", hoverTrigger: "alt", contentScope: "page", inputTranslation: "enabled", inputTranslationMode: "replace", languageLevel: "intermediate", privacyMode: false, provider: { id: "openai", model: "gpt-5.4-nano" }, tts: { enabled: true, engine: "browser", rate: 0.9, pitch: 1, highlightSentences: true }, presentation: { mode: "bilingual", theme: "default", fontSize: 0.92, translationColor: "#64748b" } } }, lastClientMutationId: "cfg-1", lastDeviceId: "device-123", lastServerUpdatedAt: "2026-04-11T11:59:00.000Z", cursor: "3" }] },
         vocabulary: { enabled: true, defaultEnabled: true, latestCursor: null, compactionFloorCursor: null, records: [] },
+        review_schedule: { enabled: true, defaultEnabled: true, latestCursor: null, compactionFloorCursor: null, records: [] },
         reading_history: { enabled: false, defaultEnabled: false, latestCursor: null, compactionFloorCursor: null, records: [] },
         study_progress: { enabled: false, defaultEnabled: false, latestCursor: null, compactionFloorCursor: null, records: [] },
       },
@@ -687,6 +693,7 @@ describe("Astra account client", () => {
         collections: {
           config: { enabled: true, defaultEnabled: true, cursor: "cfg-3" },
           vocabulary: { enabled: true, defaultEnabled: true, cursor: "voc-3" },
+          review_schedule: { enabled: true, defaultEnabled: true, cursor: null },
           reading_history: { enabled: true, defaultEnabled: false, cursor: "hist-3" },
           study_progress: { enabled: false, defaultEnabled: false, cursor: null },
         },
@@ -713,6 +720,7 @@ describe("Astra account client", () => {
         collections: {
           config: { enabled: true, defaultEnabled: true, latestCursor: "cfg-4", compactionFloorCursor: "cfg-2", records: [{ recordId: "global", payload: { kind: "global", config: { version: 1, targetLang: "ja", connectionMode: "astra", hoverTrigger: "alt", contentScope: "page", inputTranslation: "enabled", inputTranslationMode: "replace", languageLevel: "intermediate", privacyMode: false, provider: { id: "openai", model: "gpt-5.4-nano" }, tts: { enabled: true, engine: "browser", rate: 0.9, pitch: 1, highlightSentences: true }, presentation: { mode: "bilingual", theme: "default", fontSize: 0.92, translationColor: "#64748b" } } }, lastClientMutationId: "cfg-4", lastDeviceId: "device-123", lastServerUpdatedAt: "2026-04-09T01:06:00.000Z", cursor: "cfg-4" }] },
           vocabulary: { enabled: true, defaultEnabled: true, latestCursor: "voc-4", compactionFloorCursor: null, records: [{ recordId: "word-1", payload: { id: "word-1", text: "hello", translation: "こんにちは", savedAt: 1000 }, lastClientMutationId: "voc-4", lastDeviceId: "device-123", lastServerUpdatedAt: "2026-04-09T01:06:00.000Z", cursor: "voc-4" }] },
+          review_schedule: { enabled: true, defaultEnabled: true, latestCursor: null, compactionFloorCursor: null, records: [] },
           reading_history: { enabled: true, defaultEnabled: false, latestCursor: "hist-4", compactionFloorCursor: null, records: [] },
           study_progress: { enabled: false, defaultEnabled: false, latestCursor: null, compactionFloorCursor: null, records: [] },
         },
@@ -739,6 +747,7 @@ describe("Astra account client", () => {
       collections: {
         config: { enabled: true, defaultEnabled: true, cursor: "cfg-3" },
         vocabulary: { enabled: true, defaultEnabled: true, cursor: "voc-3" },
+        review_schedule: { enabled: true, defaultEnabled: true, cursor: null },
         reading_history: { enabled: true, defaultEnabled: false, cursor: "hist-3" },
         study_progress: { enabled: false, defaultEnabled: false, cursor: null },
       },
@@ -781,6 +790,7 @@ describe("Astra account client", () => {
       collections: {
         config: { enabled: true, defaultEnabled: true, cursor: "cfg-3" },
         vocabulary: { enabled: true, defaultEnabled: true, cursor: "voc-3" },
+        review_schedule: { enabled: true, defaultEnabled: true, cursor: null },
         reading_history: { enabled: false, defaultEnabled: false, cursor: null },
         study_progress: { enabled: true, defaultEnabled: false, cursor: "progress-3" },
       },
@@ -839,6 +849,7 @@ describe("Astra account client", () => {
         collections: {
           config: { enabled: true, defaultEnabled: true, cursor: "cfg-3" },
           vocabulary: { enabled: false, defaultEnabled: false, cursor: null },
+          review_schedule: { enabled: true, defaultEnabled: true, cursor: null },
           reading_history: { enabled: false, defaultEnabled: false, cursor: null },
           study_progress: { enabled: true, defaultEnabled: false, cursor: "progress-3" },
         },
@@ -854,12 +865,14 @@ describe("Astra account client", () => {
         deltas: {
           config: [],
           vocabulary: [],
+          review_schedule: [],
           reading_history: [],
           study_progress: [],
         },
         nextCursors: {
           config: "cfg-4",
           vocabulary: null,
+          review_schedule: null,
           reading_history: null,
           study_progress: null,
         },

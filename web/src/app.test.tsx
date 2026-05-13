@@ -210,6 +210,7 @@ function createCloudAssets(overrides: Record<string, unknown> = {}) {
     bootstrap: {
       config: { enabled: true, defaultEnabled: true, cursor: "cfg-1" },
       vocabulary: { enabled: true, defaultEnabled: true, cursor: "vocab-1" },
+      review_schedule: { enabled: true, defaultEnabled: true, cursor: null },
       reading_history: { enabled: true, defaultEnabled: false, cursor: "history-1" },
       study_progress: { enabled: true, defaultEnabled: false, cursor: "study-1" },
     },
@@ -574,7 +575,7 @@ describe("AstraWebApp smoke", () => {
       failedAt: null,
       canceledAt: null,
       gracePeriodSeconds: 604800,
-      deletedRecords: { vocabulary: 1, reading_history: 2, study_progress: 3 },
+      deletedRecords: { vocabulary: 1, review_schedule: 0, reading_history: 2, study_progress: 3 },
       error: null,
       policy: {
         exportArtifactRetentionDays: 7,
@@ -593,6 +594,7 @@ describe("AstraWebApp smoke", () => {
       collections: {
         config: { enabled: true, defaultEnabled: true, latestCursor: "cfg-4", compactionFloorCursor: "cfg-2", records: [{ recordId: "global", payload: { kind: "global" }, lastClientMutationId: "cfg-4", lastDeviceId: "device-123", lastServerUpdatedAt: "2026-04-11T12:04:00.000Z", cursor: "cfg-4" }] },
         vocabulary: { enabled: true, defaultEnabled: true, latestCursor: "vocab-2", compactionFloorCursor: null, records: [{ recordId: "vocab-1", payload: { text: "serendipity" }, lastClientMutationId: "voc-2", lastDeviceId: "device-123", lastServerUpdatedAt: "2026-04-11T12:04:00.000Z", cursor: "voc-2" }] },
+        review_schedule: { enabled: true, defaultEnabled: true, latestCursor: null, compactionFloorCursor: null, records: [] },
         reading_history: { enabled: true, defaultEnabled: false, latestCursor: "history-2", compactionFloorCursor: null, records: [] },
         study_progress: { enabled: true, defaultEnabled: false, latestCursor: "study-2", compactionFloorCursor: null, records: [] },
       },
