@@ -283,14 +283,16 @@ const ASTRA_CERT_PDF_PREVIEW: PdfPreviewState = {
   ],
 }
 
+type AssetTile = { id: string; title: string; meta: string; route: AppRoute; tone: "local" | "history" | "vocab" | "empty" }
+
 const ASTRA_CERT_ASSET_TILES = [
-  { id: "cert-asset-deck", title: "marginalia · saved deck", meta: "284 words", route: "/assets" as AppRoute, tone: "local" },
-  { id: "cert-asset-wolf-hall", title: "Wolf Hall · ch.14 excerpt", meta: "8 highlights", route: "/files/epub" as AppRoute, tone: "history" },
-  { id: "cert-asset-tunnel", title: "六龜山隧道.jpg", meta: "shared 2026", route: "/assets" as AppRoute, tone: "history" },
-  { id: "cert-asset-calvino", title: "Calvino · cover.png", meta: "imported", route: "/files/pdf" as AppRoute, tone: "local" },
-  { id: "cert-asset-drive", title: "Drive My Car · ED", meta: "video still", route: "/video-notes" as AppRoute, tone: "vocab" },
-  { id: "cert-asset-new", title: "+ new asset", meta: "drop a file", route: "/assets" as AppRoute, tone: "empty" },
-]
+  { id: "cert-asset-deck", title: "marginalia · saved deck", meta: "284 words", route: "/assets", tone: "local" },
+  { id: "cert-asset-wolf-hall", title: "Wolf Hall · ch.14 excerpt", meta: "8 highlights", route: "/files/epub", tone: "history" },
+  { id: "cert-asset-tunnel", title: "六龜山隧道.jpg", meta: "shared 2026", route: "/assets", tone: "history" },
+  { id: "cert-asset-calvino", title: "Calvino · cover.png", meta: "imported", route: "/files/pdf", tone: "local" },
+  { id: "cert-asset-drive", title: "Drive My Car · ED", meta: "video still", route: "/video-notes", tone: "vocab" },
+  { id: "cert-asset-new", title: "+ new asset", meta: "drop a file", route: "/assets", tone: "empty" },
+] satisfies AssetTile[]
 
 const ASTRA_CERT_IMPORT_LIBRARY: ImportLibraryEntry[] = [
   {
@@ -4210,29 +4212,29 @@ function AssetLibraryPage(props: {
   const readingHistoryEntries = certMode ? ASTRA_CERT_READING_HISTORY : props.cloudAssets?.readingHistory.entries ?? []
   const studyPages = certMode ? ASTRA_CERT_STUDY_PAGES : props.cloudAssets?.studyProgress.pages ?? []
   const vocabularyEntries = certMode ? ASTRA_CERT_VOCABULARY : props.cloudAssets?.vocabulary.entries ?? []
-  const assetTiles = certMode ? ASTRA_CERT_ASSET_TILES : [
-    ...importLibrary.map((entry) => ({
+  const assetTiles: AssetTile[] = certMode ? ASTRA_CERT_ASSET_TILES : [
+    ...importLibrary.map((entry): AssetTile => ({
       id: `local-${entry.id}`,
       title: entry.title,
       meta: entry.summary,
       route: entry.route,
       tone: "local",
     })),
-    ...cloudLibraryItems.slice(0, 6).map((entry) => ({
+    ...cloudLibraryItems.slice(0, 6).map((entry): AssetTile => ({
       id: `cloud-library-${entry.id}`,
       title: entry.title,
       meta: `${entry.kind.replace(/-/g, " ")} · ${entry.summary}`,
       route: entry.route,
       tone: "history",
     })),
-    ...readingHistoryEntries.slice(0, 4).map((entry) => ({
+    ...readingHistoryEntries.slice(0, 4).map((entry): AssetTile => ({
       id: `history-${entry.id}`,
       title: entry.title,
       meta: `${entry.hostname} · ${formatNumber(entry.wordsTranslated)} words`,
       route: "/articles",
       tone: "history",
     })),
-    ...vocabularyEntries.slice(0, 4).map((entry) => ({
+    ...vocabularyEntries.slice(0, 4).map((entry): AssetTile => ({
       id: `vocab-${entry.id}`,
       title: entry.text,
       meta: entry.translation || entry.explanation || "saved word",
