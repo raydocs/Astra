@@ -1,0 +1,23 @@
+Focused onboarding permission card convergence pass — 2026-05-13
+
+Scope:
+- Touched only src/entrypoints/onboarding/OnboardingApp.tsx, src/entrypoints/onboarding/OnboardingApp.test.tsx, and src/assets/astra-extension.css for source/test changes.
+- Added an explicit /onboarding.html?astraCert=1 certification-only frame for the permission screenshot.
+- Normal onboarding routes keep the existing multi-step onboarding shell and ready-step disclosure.
+
+Truthfulness:
+- Certification copy avoids the reference's unsupported page/site/all-sites picker claims.
+- It states current broad host access, activeTab support for toolbar/tab-triggered interactions, and planned/not-shipped page-only/per-site controls.
+
+Verification:
+- pnpm vitest run src/entrypoints/onboarding/OnboardingApp.test.tsx — passed (7 tests).
+- pnpm exec tsc --noEmit --pretty false && pnpm build — passed; content script bundle guardrail passed for 1 bundle.
+
+Recapture:
+- node /tmp/astra-onboarding-permission-recapture.mjs recaptured production/onboarding-permission-card.png from chrome-extension://<id>/onboarding.html?astraCert=1 at 1280x720.
+- Debug geometry: viewport 1280x720, document 1280x720, certification root 1280x720, permission card x=904 y=44 w=360 h≈494.
+- Python/Pillow regenerated compare-onboarding-permission-card.png from the existing reference and new production screenshot.
+
+Artifacts:
+- store/screenshots/ui-parity-2026-05-13/production/onboarding-permission-card.png
+- store/screenshots/ui-parity-2026-05-13/compare-onboarding-permission-card.png

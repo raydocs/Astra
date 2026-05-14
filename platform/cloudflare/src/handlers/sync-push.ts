@@ -139,6 +139,7 @@ function buildCursorMap(
   return {
     config: rows.config.lastIssuedCursor,
     vocabulary: rows.vocabulary.lastIssuedCursor,
+    review_schedule: rows.review_schedule.lastIssuedCursor,
     reading_history: rows.reading_history.lastIssuedCursor,
     study_progress: rows.study_progress.lastIssuedCursor,
   }
@@ -297,7 +298,7 @@ async function applyAuthoritativeSyncPush(
       userId: state.shadowUser.id,
       collection: validated.collection,
       collectionEnabled: isSyncCollectionEnabled(state.shadowUser.syncPreferences, validated.collection),
-      collectionDefaultEnabled: validated.collection === "config" || validated.collection === "vocabulary",
+      collectionDefaultEnabled: validated.collection === "config" || validated.collection === "vocabulary" || validated.collection === "review_schedule",
       schemaVersion: validated.schemaVersion,
       recordId: validated.recordId,
       operation: validated.operation,

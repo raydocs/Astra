@@ -368,8 +368,20 @@ export function SubtitleReaderApp() {
       )}
 
       {phase === "translating" && (
-        <div className="astra-subtitle-status-card">
-          Translating {progress.current}/{progress.total} {isDocument ? "paragraphs" : "cues"}...
+        <div className="astra-subtitle-status-card" role="status" aria-live="polite">
+          <div>
+            Translating {progress.current}/{progress.total} {isDocument ? "paragraphs" : "cues"}...
+          </div>
+          <div
+            role="progressbar"
+            aria-label="Subtitle translation progress"
+            aria-valuemin={0}
+            aria-valuemax={progress.total || 1}
+            aria-valuenow={progress.current}
+            className="astra-reader-progressbar"
+          >
+            <span style={{ width: `${progress.total > 0 ? Math.min(100, Math.round((progress.current / progress.total) * 100)) : 0}%` }} />
+          </div>
         </div>
       )}
 
@@ -404,7 +416,7 @@ export function SubtitleReaderApp() {
           )}
 
           {isDocument ? (
-            <table className="astra-subtitle-table">
+            <table className="astra-subtitle-table astra-subtitle-table--media">
               <thead>
                 <tr>
                   <th>#</th>
@@ -454,7 +466,7 @@ export function SubtitleReaderApp() {
               </tbody>
             </table>
           ) : (
-            <table className="astra-subtitle-table">
+            <table className="astra-subtitle-table astra-subtitle-table--media">
               <thead>
                 <tr>
                   <th>#</th>

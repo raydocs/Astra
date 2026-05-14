@@ -80,7 +80,7 @@ export default function ReviewStats({ distribution, dueCount }: ReviewStatsProps
   const sepColor = "var(--astra-style-line-2, var(--astra-border-strong))"
 
   return (
-    <div style={containerStyle}>
+    <div className="astra-review-stats" style={containerStyle}>
       <div style={summaryStyle}>
         <span><strong className="astra-tabular" style={{ color: "var(--astra-warning)" }}>{dueCount}</strong> due today</span>
         <span style={{ color: sepColor }}>|</span>

@@ -1,7 +1,8 @@
-import { mkdir, writeFile } from "node:fs/promises"
+import { writeFile } from "node:fs/promises"
 import path from "node:path"
 
 import {
+  prepareLiveArtifactDir,
   materializeFixturePage,
   withLiveBrowserPage,
   LiveBrowserUnavailableError,
@@ -41,8 +42,7 @@ export const dynamicContentAppendScenario: LiveScenarioDefinition<DynamicContent
     })
 
     try {
-      const artifactDir = path.join(process.cwd(), "bench-live-results", context.runId)
-      await mkdir(artifactDir, { recursive: true })
+      const artifactDir = await prepareLiveArtifactDir(context.runId)
 
       const capture = await withLiveBrowserPage(async (page, browserExecutablePath) => {
         const consoleErrors: string[] = []

@@ -10,6 +10,8 @@ export interface SrsFields {
   lastReviewedAt: number | null
 }
 
+export type ReviewGrade = "again" | "hard" | "good" | "easy"
+
 /** Interval per box in milliseconds */
 export const BOX_INTERVALS_MS: Record<number, number> = {
   1: 1 * 24 * 60 * 60 * 1000,   //  1 day
@@ -17,6 +19,14 @@ export const BOX_INTERVALS_MS: Record<number, number> = {
   3: 4 * 24 * 60 * 60 * 1000,   //  4 days
   4: 8 * 24 * 60 * 60 * 1000,   //  8 days
   5: 16 * 24 * 60 * 60 * 1000,  // 16 days
+}
+
+export const AGAIN_INTERVAL_MS = 10 * 60 * 1000
+export const HARD_INTERVAL_MULTIPLIER = 0.5
+export const EASY_INTERVAL_MULTIPLIER = 1.5
+
+function clampBox(box: number): number {
+  return Math.min(Math.max(Math.trunc(box), 1), 5)
 }
 
 export function createDefaultSrsFields(now?: number): SrsFields {
@@ -31,7 +41,7 @@ export function createDefaultSrsFields(now?: number): SrsFields {
 
 export function promoteBox(fields: SrsFields, now?: number): SrsFields {
   const t = now ?? Date.now()
-  const nextBox = Math.min(fields.srsBox + 1, 5)
+  const nextBox = Math.min(clampBox(fields.srsBox) + 1, 5)
   return {
     srsBox: nextBox,
     nextReviewAt: t + BOX_INTERVALS_MS[nextBox],
@@ -52,10 +62,41 @@ export function demoteBox(fields: SrsFields, now?: number): SrsFields {
 
 export function applyReview(
   fields: SrsFields,
-  outcome: { correct: boolean },
+  outcome: { grade: ReviewGrade },
   now?: number,
 ): SrsFields {
-  return outcome.correct ? promoteBox(fields, now) : demoteBox(fields, now)
+  const t = now ?? Date.now()
+  const currentBox = clampBox(fields.srsBox)
+  let targetBox: number
+  let intervalMs: number
+
+  switch (outcome.grade) {
+    case "again":
+      targetBox = 1
+      intervalMs = AGAIN_INTERVAL_MS
+      break
+    case "hard":
+      targetBox = currentBox
+      intervalMs = BOX_INTERVALS_MS[targetBox] * HARD_INTERVAL_MULTIPLIER
+      break
+    case "good":
+      targetBox = Math.min(currentBox + 1, 5)
+      intervalMs = BOX_INTERVALS_MS[targetBox]
+      break
+    case "easy":
+      targetBox = Math.min(currentBox + 2, 5)
+      intervalMs = BOX_INTERVALS_MS[targetBox] * EASY_INTERVAL_MULTIPLIER
+      break
+    default:
+      throw new Error(`Unsupported SRS review grade: ${String((outcome as { grade?: unknown }).grade)}`)
+  }
+
+  return {
+    srsBox: targetBox,
+    nextReviewAt: t + intervalMs,
+    reviewCount: fields.reviewCount + 1,
+    lastReviewedAt: t,
+  }
 }
 
 export function isDue(fields: SrsFields, now?: number): boolean {

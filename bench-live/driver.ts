@@ -5,11 +5,16 @@ import path from "node:path"
 import { pathToFileURL } from "node:url"
 
 import { sleep } from "./sleep"
+import {
+  resolveBenchFixtureRoot,
+  resolveLiveArtifactRoot,
+  resolveLiveExtensionPath,
+} from "./paths"
+
+export { DEFAULT_BENCH_FIXTURE_ROOT, DEFAULT_EXTENSION_PATH, DEFAULT_LIVE_ARTIFACT_ROOT } from "./paths"
 
 import { chromium, type Browser, type BrowserContext, type Page, type Route } from "playwright"
 
-export const DEFAULT_LIVE_ARTIFACT_ROOT = path.resolve(process.cwd(), "bench-live-results")
-export const DEFAULT_EXTENSION_PATH = path.resolve(process.cwd(), ".output/chrome-mv3")
 export const DEFAULT_BROWSER_CANDIDATES = [
   // macOS
   "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
@@ -729,14 +734,14 @@ export async function resolveLiveBrowserExecutablePath(options: {
   return null
 }
 
-export async function prepareLiveArtifactDir(runId: string, rootDir = DEFAULT_LIVE_ARTIFACT_ROOT) {
-  const artifactDir = path.resolve(rootDir, runId)
+export async function prepareLiveArtifactDir(runId: string, rootDir?: string | null) {
+  const artifactDir = path.resolve(resolveLiveArtifactRoot(rootDir), runId)
   await mkdir(artifactDir, { recursive: true })
   return artifactDir
 }
 
-export async function readFixtureHtml(fixtureName: string) {
-  const fixturePath = path.resolve(process.cwd(), "test/fixtures/pages", `${fixtureName}.html`)
+export async function readFixtureHtml(fixtureName: string, options: { fixtureRoot?: string | null } = {}) {
+  const fixturePath = path.resolve(resolveBenchFixtureRoot(options.fixtureRoot), `${fixtureName}.html`)
   return await readFile(fixturePath, "utf8")
 }
 
@@ -766,9 +771,10 @@ export async function materializeFixturePage(params: {
   fixtureName: string
   title: string
   artifactRoot?: string
+  fixtureRoot?: string
 }) {
   const artifactDir = await prepareLiveArtifactDir(params.runId, params.artifactRoot)
-  const fixtureHtml = await readFixtureHtml(params.fixtureName)
+  const fixtureHtml = await readFixtureHtml(params.fixtureName, { fixtureRoot: params.fixtureRoot })
   const htmlPath = path.join(artifactDir, `${params.fixtureName}.html`)
   await writeFile(htmlPath, renderFixtureDocument(fixtureHtml, params.title), "utf8")
 
@@ -920,7 +926,7 @@ export async function withExtensionBrowserPage(options: {
   waitForExtensionInject?: number
   storageState?: Record<string, unknown>
 } = {}): Promise<ExtensionBrowserContext> {
-  const extensionPath = options.extensionPath ?? DEFAULT_EXTENSION_PATH
+  const extensionPath = resolveLiveExtensionPath(options.extensionPath)
   const initialUrl = options.initialUrl ?? "about:blank"
   const waitForInject = options.waitForExtensionInject ?? 5000
 
@@ -948,7 +954,7 @@ export async function withExtensionBrowserPage(options: {
     )
   }
 
-  const userDataDir = path.join(DEFAULT_LIVE_ARTIFACT_ROOT, `_extension-profile-${Date.now()}`)
+  const userDataDir = path.join(resolveLiveArtifactRoot(), `_extension-profile-${Date.now()}`)
 
   const launchContext = async (launchOptions: {
     useChromeChannel: boolean
@@ -1061,8 +1067,8 @@ export async function withExtensionBrowserPage(options: {
   }
 }
 
-export async function resolveExtensionManifestPath(extensionPath?: string): Promise<string> {
-  const resolvedPath = extensionPath ?? DEFAULT_EXTENSION_PATH
+export async function resolveExtensionManifestPath(extensionPath?: string | null): Promise<string> {
+  const resolvedPath = resolveLiveExtensionPath(extensionPath)
   const manifestPath = path.join(resolvedPath, "manifest.json")
   const exists = await pathExists(manifestPath)
   if (!exists) {

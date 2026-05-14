@@ -1,8 +1,9 @@
 import { createServer } from "node:http"
-import { mkdir, writeFile } from "node:fs/promises"
+import { writeFile } from "node:fs/promises"
 import path from "node:path"
 
 import {
+  prepareLiveArtifactDir,
   withExtensionBrowserPage,
   LiveBrowserUnavailableError,
   ExtensionBuildNotFoundError,
@@ -108,8 +109,7 @@ export const imageTranslationBetaBasicScenario: LiveScenarioDefinition<ImageTran
 
     try {
       relayServer = await createImageTranslationRelayServer()
-      const artifactDir = path.join(process.cwd(), "bench-live-results", context.runId)
-      await mkdir(artifactDir, { recursive: true })
+      const artifactDir = await prepareLiveArtifactDir(context.runId)
       const svgPath = path.join(artifactDir, "image-translation-beta-basic.svg")
       await writeFile(svgPath, `<svg xmlns="http://www.w3.org/2000/svg" width="640" height="280"><text x="32" y="72" font-size="24">Bonjour Astra</text><text x="32" y="132" font-size="24">Menu du jour</text><text x="36" y="76" font-size="24">Collision row</text><text x="620" y="72" font-size="24">Noisy edge</text><text x="32" y="192" font-size="24">Blank translation</text><text>Fallback row</text></svg>`, "utf8")
 

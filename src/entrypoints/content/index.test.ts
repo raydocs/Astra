@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest"
 
 import { createMockBrowser, setMockBrowser } from "../../../test/utils/mockBrowser"
+import { PAGE_ACCESS_POLICY_STORAGE_KEY } from "@/utils/extension/page-permissions"
 
 function getMockBrowser(): ReturnType<typeof createMockBrowser> {
   return (globalThis as unknown as { __ASTRA_TEST_BROWSER__: ReturnType<typeof createMockBrowser> })
@@ -480,6 +481,54 @@ describe("content entrypoint mounting", () => {
 
     expect(stopPageTranslationMock).toHaveBeenCalledTimes(1)
     expect(removeTranslatedSubtitlesMock).toHaveBeenCalledTimes(1)
+  })
+
+  it("stops active translation when page access is revoked for the current origin", async () => {
+    isTopFrameMock.mockReturnValue(true)
+    getPageTranslationStateMock.mockReturnValue({
+      phase: "running",
+      sessionId: 2,
+      targetLang: "zh-CN",
+      lastError: null,
+      progress: { totalBlocks: 1, queuedBlocks: 0, inFlightBlocks: 1, translatedBlocks: 0, failedBlocks: 0 },
+      presentation: { mode: "bilingual", theme: "default" },
+      site: { hostname: "example.com", enabled: true, alwaysTranslate: true },
+    })
+    const browser = getMockBrowser()
+    const origin = window.location.origin
+    browser.__storage[PAGE_ACCESS_POLICY_STORAGE_KEY] = {
+      version: 1,
+      allSitesGranted: false,
+      sites: {
+        [origin]: {
+          state: "revoked",
+          scope: "site",
+          updatedAt: "2026-05-13T00:00:00.000Z",
+          source: "runtime-policy",
+        },
+      },
+    }
+    const contentScript = (await import("./index")).default
+
+    await contentScript.main({} as never)
+    await browser.__emitRuntimeMessage({
+      type: "astra/page-access-changed",
+      payload: {
+        action: "revoked",
+        scope: "site",
+        origin,
+        sitePattern: `${origin}/*`,
+        granted: false,
+        browserPermissionChanged: true,
+        timestamp: "2026-05-13T00:00:00.000Z",
+      },
+    }, { id: "sender" }, vi.fn())
+    await Promise.resolve()
+    await Promise.resolve()
+
+    expect(stopPageTranslationMock).toHaveBeenCalled()
+    expect(removeTranslatedSubtitlesMock).toHaveBeenCalled()
+    expect(startPageTranslationMock).not.toHaveBeenCalled()
   })
 
   it("restarts active translation when storage changes alter translation-affecting site settings", async () => {

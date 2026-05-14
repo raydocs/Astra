@@ -1,10 +1,11 @@
 import { createServer } from "node:http"
-import { mkdir, readFile, writeFile } from "node:fs/promises"
+import { readFile, writeFile } from "node:fs/promises"
 import path from "node:path"
 import { fileURLToPath } from "node:url"
 
 import type { HoverExecution } from "../../bench/evaluators/hover"
 import {
+  prepareLiveArtifactDir,
   withLiveBrowserPage,
   LiveBrowserUnavailableError,
 } from "../driver"
@@ -145,8 +146,7 @@ export const hoverTranslationBasicScenario: LiveScenarioDefinition<LiveHoverTran
     const relayServer = await createHoverRelayServer()
 
     try {
-      const artifactDir = path.join(process.cwd(), "bench-live-results", context.runId)
-      await mkdir(artifactDir, { recursive: true })
+      const artifactDir = await prepareLiveArtifactDir(context.runId)
       const html = buildFixtureHtml()
       const htmlPath = path.join(artifactDir, `${FIXTURE_NAME}.html`)
       await writeFile(htmlPath, html, "utf8")

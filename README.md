@@ -92,6 +92,13 @@ pnpm build
 # Astra relay 本地开发
 pnpm relay:start
 
+# Web companion / official site
+pnpm dev:web
+pnpm build:web
+
+# Deploy web build to Cloudflare Pages
+pnpm deploy:web:cloudflare
+
 # Safari 构建
 pnpm build:safari
 

@@ -20,7 +20,7 @@ import {
 
 const SyncCompactionRequestSchema = z.object({
   userId: z.string().trim().min(1),
-  collection: z.enum(["config", "vocabulary", "reading_history", "study_progress"]),
+  collection: z.enum(["config", "vocabulary", "review_schedule", "reading_history", "study_progress"]),
   cutoffCursorOrder: z.number().int().positive(),
   dryRun: z.boolean().optional(),
 })

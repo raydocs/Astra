@@ -1,8 +1,9 @@
 import { createServer } from "node:http"
-import { mkdir, writeFile } from "node:fs/promises"
+import { writeFile } from "node:fs/promises"
 import path from "node:path"
 
 import {
+  prepareLiveArtifactDir,
   withExtensionBrowserPage,
   LiveBrowserUnavailableError,
   ExtensionBuildNotFoundError,
@@ -121,8 +122,7 @@ export const learningLoopRevisitSmokeScenario: LiveScenarioDefinition<LearningLo
 
     runtime.log("Starting learning-loop revisit smoke.", { fixtureUrl, recordId, nextStepFixtureUrl, nextStepRecordId })
 
-    const artifactDir = path.join(process.cwd(), "bench-live-results", context.runId)
-    await mkdir(artifactDir, { recursive: true })
+    const artifactDir = await prepareLiveArtifactDir(context.runId)
 
     let extCtx: ExtensionBrowserContext | null = null
 

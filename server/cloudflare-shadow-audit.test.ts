@@ -373,7 +373,7 @@ describe("cloudflare shadow audit", () => {
     })
 
     expect(inspection.audit.ok).toBe(false)
-    expect(inspection.audit.summary.diffCountByOutcome.missing_in_shadow).toBe(9)
+    expect(inspection.audit.summary.diffCountByOutcome.missing_in_shadow).toBe(10)
     expect(inspection.audit.issuancePrerequisites.authenticatedUsersMissingCredentials).toEqual([
       { userId: "usr_demo", email: "demo@astra.local" },
     ])
@@ -570,7 +570,7 @@ describe("cloudflare shadow audit", () => {
     })
 
     expect(result.actionCount).toBe(6)
-    expect(result.inspectionBefore.audit.summary.diffCount).toBe(9)
+    expect(result.inspectionBefore.audit.summary.diffCount).toBe(10)
     expect(result.inspectionAfter.audit.ok).toBe(true)
     expect(shadow.queries.some((query) => query.sql.includes("INSERT INTO shadow_users"))).toBe(true)
     expect(shadow.queries.some((query) => query.sql.includes("INSERT INTO shadow_user_credentials"))).toBe(true)

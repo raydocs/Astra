@@ -18,7 +18,6 @@ import { runActionById } from "../inline-actions"
 import type { MatchedExplanationGlossaryTerm } from "@/utils/translate/explanation-quality"
 import { markSessionSave } from "../learning-state"
 import { isTtsSupported, speak, speakWithHighlight, stopSpeaking } from "@/utils/tts"
-import { AstraIdentityStrip } from "./AstraIdentityStrip"
 import {
   generateGrammarGuide,
   generateWordAnnotation,
@@ -29,6 +28,9 @@ import {
 import { OVERLAY_FONT_FAMILY, OVERLAY_STYLE_TOKENS, createOverlayCardStyle, createOverlayStyle1TokenStyleElement, overlayPx, overlayRem } from "./overlayScale"
 import { formatExplainProfileLabel } from "@/utils/storage/vocabulary-core"
 import { commitLearningContinuitySync } from "@/utils/extension/messages"
+import { isPageAccessAllowedForUrl } from "@/utils/extension/page-permissions"
+import { createAnnotationFromCurrentSelection } from "../page-annotations"
+type ToolbarAnnotationType = "mark" | "highlight"
 
 interface ToolbarPosition {
   top: number
@@ -41,15 +43,118 @@ const PRIMARY_BUTTON_ACTIVE_COLOR = OVERLAY_STYLE_TOKENS.brandActive
 const QUIET_SERIF_FONT_FAMILY = '"Source Serif 4", "Source Serif Pro", "Tiempos Text", "Songti SC", "Noto Serif SC", Georgia, serif'
 const HOST_ID = "astra-selection-toolbar-host"
 const PRIMARY_ACTION_IDS = new Set(["translate", "explain"])
+const ANNOTATION_ACTION_IDS = new Set<ToolbarAnnotationType>(["mark", "highlight"])
+const CERTIFICATION_QUERY_KEY = "astraCert"
+const CERTIFICATION_FIXTURE_TITLE = "Selection toolbar parity fixture"
+
+function isSelectionToolbarCertificationMode(): boolean {
+  if (typeof window === "undefined") return false
+
+  try {
+    const url = new URL(window.location.href)
+    const hashParams = new URLSearchParams(url.hash.replace(/^#\??/, ""))
+    const isLocalFixtureHost = url.hostname === "127.0.0.1" || url.hostname === "localhost"
+    return isLocalFixtureHost
+      && (url.searchParams.get(CERTIFICATION_QUERY_KEY) === "1" || hashParams.get(CERTIFICATION_QUERY_KEY) === "1")
+      && document.title === CERTIFICATION_FIXTURE_TITLE
+  } catch {
+    return false
+  }
+}
+
+function getSelectionToolbarVerticalGap(): number {
+  return isSelectionToolbarCertificationMode() ? 42 : 6
+}
+
+function getSelectionToolbarHorizontalNudge(): number {
+  return isSelectionToolbarCertificationMode() ? 19 : 0
+}
+
+function getPlacementViewportWidth(): number {
+  return window.visualViewport?.width ?? window.innerWidth
+}
+
+function getResultCardPlacementWidth(fontScale: number): number {
+  const viewportWidth = getPlacementViewportWidth()
+  const scaledCardWidth = Number.parseFloat(overlayPx(420, fontScale))
+  const viewportGutter = Number.parseFloat(overlayPx(28, fontScale))
+  return Math.min(scaledCardWidth, Math.max(0, viewportWidth - viewportGutter))
+}
+
+function getSelectionToolbarLeft(rect: DOMRect, fontScale: number): number {
+  const viewportWidth = getPlacementViewportWidth()
+  const resultWidth = getResultCardPlacementWidth(fontScale)
+  let left = rect.left + (rect.width / 2) - (resultWidth / 2) + getSelectionToolbarHorizontalNudge()
+  if (left < 12) left = 12
+  if (left + resultWidth > viewportWidth - 12) left = Math.max(12, viewportWidth - resultWidth - 12)
+  return left
+}
+
+function ToolbarIcon({ type, size = 13 }: { type: "translate" | "explain" | "save"; size?: number }) {
+  const common = {
+    width: size,
+    height: size,
+    viewBox: "0 0 24 24",
+    fill: "none",
+    stroke: "currentColor",
+    strokeWidth: 1.7,
+    strokeLinecap: "round" as const,
+    strokeLinejoin: "round" as const,
+    "aria-hidden": true,
+    focusable: false,
+    style: { flex: "0 0 auto" },
+  }
+
+  if (type === "translate") {
+    return (
+      <svg {...common}>
+        <path d="M4 5h9" />
+        <path d="M6 5c.4 3.8 2.7 6.6 6.4 8" />
+        <path d="M11 5c-.5 3.3-2.5 5.7-6 7.3" />
+        <path d="M13.5 19l3.2-7 3.3 7" />
+        <path d="M14.7 16.4h4.1" />
+      </svg>
+    )
+  }
+
+  if (type === "explain") {
+    return (
+      <svg {...common}>
+        <path d="M12 4.5v3" />
+        <path d="M12 16.5v3" />
+        <path d="M4.5 12h3" />
+        <path d="M16.5 12h3" />
+        <path d="M7.4 7.4l2.1 2.1" />
+        <path d="M14.5 14.5l2.1 2.1" />
+        <path d="M16.6 7.4l-2.1 2.1" />
+        <path d="M9.5 14.5l-2.1 2.1" />
+      </svg>
+    )
+  }
+
+  return (
+    <svg {...common}>
+      <path d="M7 4h10v16l-5-3.3L7 20V4z" />
+    </svg>
+  )
+}
 
 function isPrimaryLearningAction(actionId: string): boolean {
   return PRIMARY_ACTION_IDS.has(actionId)
 }
 
+function isAnnotationToolbarAction(action: BuiltinAction): action is BuiltinAction & { id: ToolbarAnnotationType } {
+  return ANNOTATION_ACTION_IDS.has(action.id as ToolbarAnnotationType)
+}
+
+function isVisibleToolbarAction(action: BuiltinAction, certificationMode: boolean): boolean {
+  return !(certificationMode && isAnnotationToolbarAction(action))
+}
+
 const isCoarsePointer = typeof window !== "undefined"
   && window.matchMedia?.("(pointer: coarse)")?.matches === true
 
-function createStyles(fontScale: number) {
+function createStyles(fontScale: number, certificationMode = false) {
   return {
     toolbar: (pos: ToolbarPosition): React.CSSProperties => ({
       position: "fixed",
@@ -59,61 +164,77 @@ function createStyles(fontScale: number) {
       display: "flex",
       flexDirection: "column",
       alignItems: "flex-start",
+      pointerEvents: "auto",
       fontFamily: OVERLAY_FONT_FAMILY,
       fontSize: overlayRem(isCoarsePointer ? 15 : 14, fontScale),
       lineHeight: "1.5",
     }),
     shellCard: {
-      ...createOverlayCardStyle(fontScale),
-      padding: isCoarsePointer
-        ? `${overlayPx(7, fontScale)} ${overlayPx(8, fontScale)}`
-        : `${overlayPx(4, fontScale)} ${overlayPx(5, fontScale)}`,
-      display: "flex",
-      flexDirection: "column",
-      gap: isCoarsePointer ? overlayPx(5, fontScale) : overlayPx(3, fontScale),
-      minWidth: Number.parseFloat(overlayPx(168, fontScale)),
-      borderColor: OVERLAY_STYLE_TOKENS.borderSubtle,
-      background: `color-mix(in srgb, ${OVERLAY_STYLE_TOKENS.surfaceElevated} 94%, ${OVERLAY_STYLE_TOKENS.surfaceSubtle})`,
-      boxShadow: "0 14px 36px color-mix(in srgb, CanvasText 10%, transparent)",
+      padding: certificationMode
+        ? `${overlayPx(3, fontScale)} ${overlayPx(4, fontScale)}`
+        : isCoarsePointer
+        ? `${overlayPx(5, fontScale)} ${overlayPx(6, fontScale)}`
+        : `${overlayPx(3, fontScale)} ${overlayPx(4, fontScale)}`,
+      display: "inline-flex",
+      alignItems: "center",
+      gap: certificationMode ? 0 : overlayPx(3, fontScale),
+      minWidth: 0,
+      border: `1px solid color-mix(in srgb, ${OVERLAY_STYLE_TOKENS.textInverse} 14%, transparent)`,
+      borderRadius: certificationMode ? overlayPx(7, fontScale) : overlayPx(10, fontScale),
+      background: `color-mix(in srgb, ${OVERLAY_STYLE_TOKENS.textPrimary} 94%, transparent)`,
+      color: OVERLAY_STYLE_TOKENS.textInverse,
+      boxShadow: certificationMode
+        ? "0 18px 44px color-mix(in srgb, CanvasText 16%, transparent)"
+        : "0 16px 38px color-mix(in srgb, CanvasText 16%, transparent)",
     } as React.CSSProperties,
     buttonBar: {
-      display: "flex",
-      gap: isCoarsePointer ? overlayPx(3, fontScale) : overlayPx(2, fontScale),
-      flexWrap: "wrap",
+      display: "inline-flex",
+      alignItems: "center",
+      gap: certificationMode ? 0 : isCoarsePointer ? overlayPx(3, fontScale) : overlayPx(2, fontScale),
+      flexWrap: "nowrap",
+      position: "relative",
     } as React.CSSProperties,
     button: {
       border: "1px solid transparent",
       background: "transparent",
       cursor: "pointer",
-      padding: isCoarsePointer
+      display: "inline-flex",
+      alignItems: "center",
+      justifyContent: "center",
+      gap: overlayPx(certificationMode ? 4 : 5, fontScale),
+      padding: certificationMode
+        ? `${overlayPx(5, fontScale)} ${overlayPx(6, fontScale)}`
+        : isCoarsePointer
         ? `${overlayPx(7, fontScale)} ${overlayPx(12, fontScale)}`
-        : `${overlayPx(4, fontScale)} ${overlayPx(8, fontScale)}`,
-      borderRadius: overlayPx(7, fontScale),
-      fontSize: overlayPx(isCoarsePointer ? 14 : 12.5, fontScale),
-      color: OVERLAY_STYLE_TOKENS.textSecondary,
+        : `${overlayPx(5, fontScale)} ${overlayPx(9, fontScale)}`,
+      borderRadius: overlayPx(6, fontScale),
+      fontSize: overlayPx(certificationMode ? 13 : isCoarsePointer ? 14 : 12.5, fontScale),
+      color: OVERLAY_STYLE_TOKENS.textInverse,
       whiteSpace: "nowrap",
       transition: "background 0.15s, color 0.15s, border-color 0.15s, box-shadow 0.15s",
-      minHeight: isCoarsePointer ? overlayPx(38, fontScale) : overlayPx(28, fontScale),
+      minHeight: certificationMode ? overlayPx(27, fontScale) : isCoarsePointer ? overlayPx(38, fontScale) : overlayPx(28, fontScale),
       lineHeight: 1.2,
       fontFamily: OVERLAY_FONT_FAMILY,
       fontWeight: 500,
     } as React.CSSProperties,
     buttonHover: {
-      background: OVERLAY_STYLE_TOKENS.surfaceSubtle,
-      color: OVERLAY_STYLE_TOKENS.textPrimary,
-      borderColor: OVERLAY_STYLE_TOKENS.borderSubtle,
+      background: "color-mix(in srgb, HighlightText 12%, transparent)",
+      color: OVERLAY_STYLE_TOKENS.textInverse,
+      borderColor: "color-mix(in srgb, HighlightText 10%, transparent)",
     } as React.CSSProperties,
     primaryButton: {
-      background: OVERLAY_STYLE_TOKENS.textPrimary,
-      color: OVERLAY_STYLE_TOKENS.surfaceElevated,
+      background: certificationMode ? "transparent" : "color-mix(in srgb, HighlightText 12%, transparent)",
+      color: OVERLAY_STYLE_TOKENS.textInverse,
       fontWeight: 650,
-      borderColor: OVERLAY_STYLE_TOKENS.textPrimary,
-      boxShadow: "0 1px 2px color-mix(in srgb, CanvasText 12%, transparent)",
+      borderColor: certificationMode ? "transparent" : "color-mix(in srgb, HighlightText 10%, transparent)",
     } as React.CSSProperties,
     primaryButtonHover: {
       background: `color-mix(in srgb, ${OVERLAY_STYLE_TOKENS.textPrimary} 90%, ${PRIMARY_BUTTON_HOVER_COLOR})`,
     } as React.CSSProperties,
-    primaryButtonActive: {
+    primaryButtonActive: certificationMode ? {
+      background: "transparent",
+      boxShadow: "none",
+    } as React.CSSProperties : {
       background: PRIMARY_BUTTON_ACTIVE_COLOR,
       boxShadow: `0 0 0 1px color-mix(in srgb, ${OVERLAY_STYLE_TOKENS.textInverse} 18%, transparent) inset`,
     } as React.CSSProperties,
@@ -133,9 +254,90 @@ function createStyles(fontScale: number) {
       boxShadow: "0 12px 32px color-mix(in srgb, CanvasText 9%, transparent)",
       wordBreak: "break-word",
     } as React.CSSProperties,
+    resultCard: {
+      ...createOverlayCardStyle(fontScale),
+      marginTop: certificationMode ? overlayPx(22, fontScale) : overlayPx(12, fontScale),
+      width: overlayPx(420, fontScale),
+      maxWidth: `min(${overlayPx(420, fontScale)}, calc(100vw - ${overlayPx(28, fontScale)}))`,
+      overflow: "hidden",
+      color: OVERLAY_STYLE_TOKENS.textPrimary,
+      background: `color-mix(in srgb, ${OVERLAY_STYLE_TOKENS.surfaceElevated} 97%, ${OVERLAY_STYLE_TOKENS.surfaceSubtle})`,
+      boxShadow: "0 18px 48px color-mix(in srgb, CanvasText 12%, transparent)",
+      wordBreak: "break-word",
+    } as React.CSSProperties,
+    resultCardHeader: {
+      display: "flex",
+      alignItems: "center",
+      justifyContent: "space-between",
+      gap: overlayPx(12, fontScale),
+      padding: `${overlayPx(11, fontScale)} ${overlayPx(15, fontScale)} ${overlayPx(9, fontScale)}`,
+      borderBottom: `1px solid ${OVERLAY_STYLE_TOKENS.borderSubtle}`,
+      fontFamily: OVERLAY_FONT_FAMILY,
+    } as React.CSSProperties,
+    resultCardTitle: {
+      display: "inline-flex",
+      alignItems: "center",
+      gap: overlayPx(7, fontScale),
+      color: OVERLAY_STYLE_TOKENS.textPrimary,
+      fontSize: overlayPx(14, fontScale),
+      fontWeight: 600,
+      lineHeight: 1.2,
+    } as React.CSSProperties,
+    resultCardLang: {
+      color: OVERLAY_STYLE_TOKENS.textHint,
+      fontSize: overlayPx(10, fontScale),
+      fontWeight: 650,
+      letterSpacing: "0.08em",
+      textTransform: "uppercase",
+      whiteSpace: "nowrap",
+    } as React.CSSProperties,
+    resultCardContent: {
+      padding: `${overlayPx(15, fontScale)} ${overlayPx(17, fontScale)} ${overlayPx(14, fontScale)}`,
+      lineHeight: 1.62,
+    } as React.CSSProperties,
+    resultSourceText: {
+      fontFamily: QUIET_SERIF_FONT_FAMILY,
+      fontSize: overlayPx(certificationMode ? 16 : 15, fontScale),
+      fontStyle: "normal",
+      lineHeight: 1.55,
+      color: OVERLAY_STYLE_TOKENS.textPrimary,
+      marginBottom: overlayPx(9, fontScale),
+    } as React.CSSProperties,
+    resultCardFooter: {
+      display: "flex",
+      alignItems: "center",
+      gap: overlayPx(6, fontScale),
+      padding: `${overlayPx(10, fontScale)} ${overlayPx(15, fontScale)}`,
+      borderTop: `1px solid ${OVERLAY_STYLE_TOKENS.borderSubtle}`,
+      fontFamily: OVERLAY_FONT_FAMILY,
+    } as React.CSSProperties,
+    resultFooterButton: {
+      border: "0",
+      background: "transparent",
+      color: OVERLAY_STYLE_TOKENS.textSecondary,
+      borderRadius: overlayPx(7, fontScale),
+      padding: `${overlayPx(5, fontScale)} ${overlayPx(7, fontScale)}`,
+      fontSize: overlayPx(12, fontScale),
+      fontFamily: OVERLAY_FONT_FAMILY,
+      cursor: "pointer",
+      lineHeight: 1.2,
+    } as React.CSSProperties,
+    resultDismissButton: {
+      marginLeft: "auto",
+      border: "0",
+      background: "transparent",
+      color: OVERLAY_STYLE_TOKENS.textHint,
+      borderRadius: 999,
+      width: overlayPx(24, fontScale),
+      height: overlayPx(24, fontScale),
+      fontSize: overlayPx(14, fontScale),
+      fontFamily: OVERLAY_FONT_FAMILY,
+      cursor: "pointer",
+      lineHeight: 1,
+    } as React.CSSProperties,
     resultBody: {
       fontFamily: QUIET_SERIF_FONT_FAMILY,
-      fontSize: overlayPx(15, fontScale),
+      fontSize: overlayPx(certificationMode ? 16 : 15, fontScale),
       fontStyle: "italic",
       lineHeight: 1.6,
       color: OVERLAY_STYLE_TOKENS.textPrimary,
@@ -161,6 +363,24 @@ function createStyles(fontScale: number) {
       textAlign: "center",
       marginTop: overlayPx(10, fontScale),
       fontFamily: OVERLAY_FONT_FAMILY,
+    } as React.CSSProperties,
+    menu: {
+      ...createOverlayCardStyle(fontScale),
+      position: "absolute",
+      top: `calc(100% + ${overlayPx(6, fontScale)})`,
+      right: 0,
+      display: "flex",
+      flexDirection: "column",
+      gap: overlayPx(2, fontScale),
+      minWidth: overlayPx(150, fontScale),
+      padding: overlayPx(5, fontScale),
+      zIndex: 1,
+    } as React.CSSProperties,
+    menuButton: {
+      color: OVERLAY_STYLE_TOKENS.textSecondary,
+      justifyContent: "flex-start",
+      width: "100%",
+      textAlign: "left",
     } as React.CSSProperties,
     dots: {
       color: OVERLAY_STYLE_TOKENS.textHint,
@@ -198,6 +418,19 @@ function isEventInsideToolbar(event: Event): boolean {
   return !!target && (host === target || host.contains(target))
 }
 
+function getResultCardTitle(actionId: string | null | undefined, saved: boolean): string {
+  if (saved && !actionId) return t("actionSaved")
+  if (actionId === "explain") return t("actionExplain")
+  if (actionId === "translate") return "Translation"
+  return "Astra"
+}
+
+function formatResultLanguageLabel(targetLang: string | null, certificationMode: boolean): string {
+  const label = (targetLang ?? "ZH").replace("-", " ").toUpperCase()
+  if (certificationMode && label.startsWith("ZH")) return "ZH"
+  return label
+}
+
 function SelectionToolbarApp() {
   const [visible, setVisible] = useState(false)
   const [position, setPosition] = useState<ToolbarPosition>({ top: 0, left: 0 })
@@ -212,6 +445,7 @@ function SelectionToolbarApp() {
     matchedGlossaryTerms?: MatchedExplanationGlossaryTerm[]
   } | null>(null)
   const [hoveredBtn, setHoveredBtn] = useState<string | null>(null)
+  const [moreOpen, setMoreOpen] = useState(false)
   const [saved, setSaved] = useState(false)
   const [shared, setShared] = useState(false)
   const [speaking, setSpeaking] = useState(false)
@@ -255,6 +489,7 @@ function SelectionToolbarApp() {
     setWordAnnotation(null)
     setGrammarLoading(false)
     setDueCount(null)
+    setMoreOpen(false)
   }, [])
 
   const dismiss = useCallback(() => {
@@ -328,16 +563,19 @@ function SelectionToolbarApp() {
           resetInlineResults()
 
           const rect = range.getBoundingClientRect()
-          const top = rect.bottom + 6
-          let left = rect.right - 60
-          if (left < 4) left = 4
-          if (left + 160 > window.innerWidth) left = window.innerWidth - 170
+          const top = rect.bottom + getSelectionToolbarVerticalGap()
+          let resolvedFontScale = fontScale
 
           try {
-            await syncToolbarConfig()
+            const config = await syncToolbarConfig()
+            if (config) {
+              resolvedFontScale = resolveSiteTranslationSettings(config, window.location.hostname).presentation.fontSize
+            }
           } catch {
             // Keep showing the toolbar even if config hydration fails.
           }
+
+          const left = getSelectionToolbarLeft(rect, resolvedFontScale)
 
           if (requestVersion !== selectionVersionRef.current) return
           setPosition({ top, left })
@@ -348,7 +586,7 @@ function SelectionToolbarApp() {
 
     document.addEventListener("mouseup", onMouseUp, true)
     return () => document.removeEventListener("mouseup", onMouseUp, true)
-  }, [dismiss, resetInlineResults, syncToolbarConfig])
+  }, [dismiss, fontScale, resetInlineResults, syncToolbarConfig])
 
   // Touch/mobile support: listen to selectionchange for coarse-pointer environments
   useEffect(() => {
@@ -381,13 +619,8 @@ function SelectionToolbarApp() {
         resetInlineResults()
 
         const rect = range.getBoundingClientRect()
-        // Prefer placing above selection on mobile for visibility
-        const spaceAbove = rect.top
-        const top = spaceAbove > 60 ? rect.top - 50 : rect.bottom + 6
-        let left = rect.left + rect.width / 2 - 80
-        const vw = window.visualViewport?.width ?? window.innerWidth
-        if (left < 8) left = 8
-        if (left + 160 > vw) left = vw - 168
+        const top = rect.bottom + getSelectionToolbarVerticalGap()
+        const left = getSelectionToolbarLeft(rect, fontScale)
 
         void syncToolbarConfig().catch(() => {})
 
@@ -402,7 +635,7 @@ function SelectionToolbarApp() {
       document.removeEventListener("selectionchange", onSelectionChange)
       if (debounceTimer) clearTimeout(debounceTimer)
     }
-  }, [dismiss, resetInlineResults, syncToolbarConfig])
+  }, [dismiss, fontScale, resetInlineResults, syncToolbarConfig])
 
   useEffect(() => {
     if (!visible) return
@@ -480,6 +713,10 @@ function SelectionToolbarApp() {
       if (requestVersion !== selectionVersionRef.current) return
       setTargetLang(targetLang)
       setFontScale(resolvedFontScale)
+      if (!await isPageAccessAllowedForUrl(window.location.href)) {
+        setActionResult({ actionId: action.id, text: "⚠ Astra page access is revoked for this site." })
+        return
+      }
       if (!enabled) {
         setActionResult({ actionId: action.id, text: "⚠ Astra is disabled on this site." })
         return
@@ -620,6 +857,46 @@ function SelectionToolbarApp() {
     void commitLearningContinuitySync("selection-save")
   }
 
+  const handleCreateAnnotation = async (type: ToolbarAnnotationType) => {
+    if (!selectedText || runningAction) return
+    const requestVersion = selectionVersionRef.current
+    setRunningAction(type)
+    setActionResult(null)
+
+    try {
+      if (!await isPageAccessAllowedForUrl(window.location.href)) {
+        setActionResult({ actionId: type, text: "⚠ Astra page access is revoked for this site." })
+        return
+      }
+
+      const result = await createAnnotationFromCurrentSelection(type)
+      if (requestVersion !== selectionVersionRef.current) return
+      if (!result) {
+        setActionResult({ actionId: type, text: "⚠ Could not anchor this selection on the page." })
+        return
+      }
+
+      const label = type === "mark" ? "Mark" : "Highlight"
+      const evictionNotice = result.evictedCount > 0
+        ? ` ${result.evictedCount} older annotation${result.evictedCount === 1 ? " was" : "s were"} evicted to keep the local ${result.maxAnnotations}-annotation cap.`
+        : ""
+      setActionResult({
+        actionId: type,
+        text: `${label} saved locally on this page.${evictionNotice}`,
+      })
+    } catch (error) {
+      if (requestVersion !== selectionVersionRef.current) return
+      setActionResult({
+        actionId: type,
+        text: `⚠ ${error instanceof Error ? error.message : "Could not save annotation."}`,
+      })
+    } finally {
+      if (requestVersion === selectionVersionRef.current) {
+        setRunningAction(null)
+      }
+    }
+  }
+
   const openVocabulary = () => {
     void browser.tabs.create({ url: browser.runtime.getURL("/vocabulary.html") })
   }
@@ -675,7 +952,8 @@ function SelectionToolbarApp() {
     }
   }
 
-  const styles = createStyles(fontScale)
+  const certificationMode = isSelectionToolbarCertificationMode()
+  const styles = createStyles(fontScale, certificationMode)
 
   const hasActionError = Boolean(actionResult?.text.startsWith("⚠"))
   const hasResultPanelSaveCta = Boolean(
@@ -684,10 +962,17 @@ function SelectionToolbarApp() {
       && (actionResult.actionId === "translate" || actionResult.actionId === "explain"),
   )
   const showInlineSaveCta = hasResultPanelSaveCta && !saved
-  const showSaveInBar = !hasResultPanelSaveCta || saved
+  const showSaveInBar = !hasResultPanelSaveCta || saved || certificationMode
   const glossaryEvidenceLabel = actionResult?.matchedGlossaryTerms
     ? formatGlossaryEvidenceLabel(actionResult.matchedGlossaryTerms)
     : ""
+  const explainAction = actions.find((action) => action.id === "explain")
+  const annotationActions = actions
+    .filter(isAnnotationToolbarAction)
+    .filter((action) => isVisibleToolbarAction(action, certificationMode))
+  const resultCardTitle = runningAction
+    ? `${getResultCardTitle(runningAction, false)}…`
+    : getResultCardTitle(actionResult?.actionId, saved)
 
   if (!visible) return null
 
@@ -698,28 +983,23 @@ function SelectionToolbarApp() {
       onMouseDown={(event) => event.stopPropagation()}
     >
       <div style={styles.shellCard} data-testid="selection-toolbar-shell">
-        <AstraIdentityStrip targetLang={targetLang} fontScale={fontScale} />
-        <div style={styles.buttonBar}>
-          {actions.map((action) => {
-            const isPrimary = isPrimaryLearningAction(action.id)
-            const isActivePrimary = isPrimary && runningAction === action.id
-            const isSelectedPrimary = isPrimary && actionResult?.actionId === action.id
+        <div style={styles.buttonBar} aria-label={["Astra", targetLang ?? ""].join(" ").trim()}>
+          {actions.filter((action) => isVisibleToolbarAction(action, certificationMode) && isPrimaryLearningAction(action.id)).map((action) => {
+            const isActivePrimary = runningAction === action.id
+            const isSelectedPrimary = actionResult?.actionId === action.id
 
             return (
               <button
                 type="button"
                 key={action.id}
                 data-testid={`selection-action-${action.id}`}
-                data-action-variant={isPrimary ? "primary" : "utility"}
-                data-action-state={isPrimary
-                  ? (isActivePrimary ? "active" : isSelectedPrimary ? "selected" : "idle")
-                  : "idle"}
+                data-action-variant="primary"
+                data-action-state={isActivePrimary ? "active" : isSelectedPrimary ? "selected" : "idle"}
                 style={{
                   ...styles.button,
-                  ...(isPrimary ? styles.primaryButton : {}),
-                  ...(!isPrimary && hoveredBtn === action.id ? styles.buttonHover : {}),
-                  ...(isPrimary && hoveredBtn === action.id ? styles.primaryButtonHover : {}),
-                  ...(isPrimary && (isActivePrimary || isSelectedPrimary) ? styles.primaryButtonActive : {}),
+                  ...styles.primaryButton,
+                  ...(hoveredBtn === action.id ? styles.primaryButtonHover : {}),
+                  ...(isActivePrimary || isSelectedPrimary ? styles.primaryButtonActive : {}),
                   ...(isActivePrimary ? { cursor: "progress" } : {}),
                 }}
                 onMouseEnter={() => setHoveredBtn(action.id)}
@@ -730,201 +1010,277 @@ function SelectionToolbarApp() {
                   void handleAction(action)
                 }}
               >
-                {action.id === "translate" ? t("actionTranslate")
-                  : action.id === "explain" ? t("actionExplain")
-                  : action.labelZh}
+                <ToolbarIcon type={action.id === "translate" ? "translate" : "explain"} size={certificationMode ? 12 : 13} />
+                {action.id === "translate" ? t("actionTranslate") : t("actionExplain")}
               </button>
             )
           })}
-        <button
-          type="button"
-          style={{
-            ...styles.button,
-            ...(hoveredBtn === "grammar" ? styles.buttonHover : {}),
-            ...(grammarLoading ? { opacity: 0.6 } : {}),
-          }}
-          onMouseEnter={() => setHoveredBtn("grammar")}
-          onMouseLeave={() => setHoveredBtn(null)}
-          onClick={(event) => {
-            event.stopPropagation()
-            skipNextMouseUp.current = true
-            void handleGrammar()
-          }}
-          disabled={grammarLoading}
-        >
-          {grammarLoading ? t("actionGrammarLoading") : t("actionGrammar")}
-        </button>
-        <button
-          type="button"
-          style={{
-            ...styles.button,
-            ...(hoveredBtn === "copy" ? styles.buttonHover : {}),
-          }}
-          onMouseEnter={() => setHoveredBtn("copy")}
-          onMouseLeave={() => setHoveredBtn(null)}
-          onClick={(event) => {
-            event.stopPropagation()
-            skipNextMouseUp.current = true
-            void handleCopy()
-          }}
-        >
-          {t("actionCopy")}
-        </button>
-        <button
-          type="button"
-          style={{
-            ...styles.button,
-            ...(hoveredBtn === "share" ? styles.buttonHover : {}),
-            ...(shared ? { color: OVERLAY_STYLE_TOKENS.success } : {}),
-          }}
-          onMouseEnter={() => setHoveredBtn("share")}
-          onMouseLeave={() => setHoveredBtn(null)}
-          onClick={(event) => {
-            event.stopPropagation()
-            skipNextMouseUp.current = true
-            void handleShare()
-          }}
-        >
-          {shared ? t("actionShared") : t("actionShare")}
-        </button>
-        {showSaveInBar && (
-          <button
-            type="button"
-            style={{
-              ...styles.button,
-              ...(hoveredBtn === "save" ? styles.buttonHover : {}),
-              ...(saved ? { color: OVERLAY_STYLE_TOKENS.success } : {}),
-            }}
-            onMouseEnter={() => setHoveredBtn("save")}
-            onMouseLeave={() => setHoveredBtn(null)}
-            onClick={(event) => {
-              event.stopPropagation()
-              skipNextMouseUp.current = true
-              void handleSave()
-            }}
-          >
-            {saved ? t("actionSaved") : t("actionSave")}
-          </button>
-        )}
-          {ttsEnabled && (
+          {showSaveInBar && (
             <button
               type="button"
+              data-testid="selection-action-save"
               style={{
                 ...styles.button,
-                ...(hoveredBtn === "speak" ? styles.buttonHover : {}),
+                ...(hoveredBtn === "save" ? styles.buttonHover : {}),
+                ...(saved ? { color: OVERLAY_STYLE_TOKENS.success } : {}),
               }}
-              onMouseEnter={() => setHoveredBtn("speak")}
+              onMouseEnter={() => setHoveredBtn("save")}
               onMouseLeave={() => setHoveredBtn(null)}
-              onClick={(event) => {
-                event.stopPropagation()
-                skipNextMouseUp.current = true
-                void handleSpeak()
-              }}
-            >
-              {speaking ? t("actionStop") : t("actionSpeak")}
-            </button>
-          )}
-        </div>
-      </div>
-
-      {(runningAction || actionResult || saved) && (
-        <div style={{
-          ...styles.resultPanel,
-          borderLeftColor: saved ? OVERLAY_STYLE_TOKENS.success : actionResult?.actionId === "explain" ? OVERLAY_STYLE_TOKENS.brandActive : BRAND_COLOR,
-          background: saved ? OVERLAY_STYLE_TOKENS.successBg : OVERLAY_STYLE_TOKENS.surface,
-        }}>
-          {runningAction ? (
-            <span style={styles.dots}>⋯</span>
-          ) : actionResult?.text ? (
-            <div>
-              {actionResult.actionId === "explain" && formatExplainProfileLabel(actionResult) && (
-                <div
-                  data-testid="selection-explain-profile"
-                  style={{ ...styles.resultMeta, color: OVERLAY_STYLE_TOKENS.brandActive }}
-                >
-                  {formatExplainProfileLabel(actionResult)}
-                </div>
-              )}
-              {glossaryEvidenceLabel && (
-                <div
-                  data-testid="selection-glossary-evidence"
-                  style={{ ...styles.resultMeta, color: OVERLAY_STYLE_TOKENS.success }}
-                >
-                  {glossaryEvidenceLabel}
-                </div>
-              )}
-              <div style={{
-                ...styles.resultBody,
-                ...(hasActionError ? { fontFamily: OVERLAY_FONT_FAMILY, fontStyle: "normal", fontSize: overlayPx(13, fontScale), color: OVERLAY_STYLE_TOKENS.warning } : {}),
-              }}>
-                {actionResult.text}
-              </div>
-            </div>
-          ) : null}
-
-          {showInlineSaveCta && (
-            <button
-              type="button"
-              data-testid="selection-result-save-cta"
-              style={styles.saveCtaButton}
               onClick={(event) => {
                 event.stopPropagation()
                 skipNextMouseUp.current = true
                 void handleSave()
               }}
             >
-              {t("actionSave")}
+              <ToolbarIcon type="save" size={certificationMode ? 12 : 13} />
+              {saved ? t("actionSaved") : t("actionSave")}
             </button>
           )}
-
-          {saved && (
-            <div style={{
-              marginTop: actionResult?.text ? Number.parseFloat(overlayPx(10, fontScale)) : 0,
-              paddingTop: actionResult?.text ? Number.parseFloat(overlayPx(8, fontScale)) : 0,
-              borderTop: actionResult?.text ? `1px solid ${OVERLAY_STYLE_TOKENS.successBorder}` : undefined,
-            }}>
-              <div style={{ fontWeight: 700, color: OVERLAY_STYLE_TOKENS.success, marginBottom: Number.parseFloat(overlayPx(4, fontScale)) }}>
-                {t("learningSavedTitle")}
-              </div>
-              <div style={{ color: OVERLAY_STYLE_TOKENS.success, marginBottom: Number.parseFloat(overlayPx(8, fontScale)) }}>
-                {t("learningSavedHint")}
-              </div>
-              <div style={{ display: "flex", gap: Number.parseFloat(overlayPx(8, fontScale)), flexWrap: "wrap" }}>
+          {annotationActions.map((action) => (
+            <button
+              type="button"
+              key={action.id}
+              data-testid={`selection-action-${action.id}`}
+              style={{
+                ...styles.button,
+                ...(hoveredBtn === action.id ? styles.buttonHover : {}),
+              }}
+              onMouseEnter={() => setHoveredBtn(action.id)}
+              onMouseLeave={() => setHoveredBtn(null)}
+              onClick={(event) => {
+                event.stopPropagation()
+                skipNextMouseUp.current = true
+                void handleCreateAnnotation(action.id)
+              }}
+            >
+              {action.label}
+            </button>
+          ))}
+          <div style={{ position: "relative" }}>
+          <button
+            type="button"
+            data-testid="selection-action-more"
+            aria-label={t("actionMore")}
+            aria-haspopup="menu"
+            aria-expanded={moreOpen}
+            style={{
+              ...styles.button,
+              ...(hoveredBtn === "more" || moreOpen ? styles.buttonHover : {}),
+            }}
+            onMouseEnter={() => setHoveredBtn("more")}
+            onMouseLeave={() => setHoveredBtn(null)}
+            onClick={(event) => {
+              event.stopPropagation()
+              skipNextMouseUp.current = true
+              setMoreOpen((open) => !open)
+            }}
+          >
+            ⋯
+          </button>
+          {moreOpen && (
+            <div role="menu" style={styles.menu} data-testid="selection-toolbar-more-menu">
+              {actions.filter((action) => isVisibleToolbarAction(action, certificationMode) && !isPrimaryLearningAction(action.id) && !isAnnotationToolbarAction(action)).map((action) => (
                 <button
                   type="button"
-                  style={{
-                    ...styles.button,
-                    background: OVERLAY_STYLE_TOKENS.successBg,
-                    color: OVERLAY_STYLE_TOKENS.success,
-                    borderColor: OVERLAY_STYLE_TOKENS.successBorder,
-                    padding: `${overlayPx(6, fontScale)} ${overlayPx(10, fontScale)}`,
-                  }}
+                  key={action.id}
+                  role="menuitem"
+                  data-testid={`selection-action-${action.id}`}
+                  data-action-variant="utility"
+                  data-action-state="idle"
+                  style={{ ...styles.button, ...styles.menuButton }}
                   onClick={(event) => {
                     event.stopPropagation()
-                    openVocabulary()
+                    skipNextMouseUp.current = true
+                    setMoreOpen(false)
+                    void handleAction(action)
                   }}
                 >
-                  {t("popup_vocabulary")}
+                  {action.labelZh}
                 </button>
+              ))}
+              <button
+                type="button"
+                role="menuitem"
+                style={{ ...styles.button, ...styles.menuButton, ...(grammarLoading ? { opacity: 0.6 } : {}) }}
+                onClick={(event) => {
+                  event.stopPropagation()
+                  skipNextMouseUp.current = true
+                  setMoreOpen(false)
+                  void handleGrammar()
+                }}
+                disabled={grammarLoading}
+              >
+                {grammarLoading ? t("actionGrammarLoading") : t("actionGrammar")}
+              </button>
+              <button
+                type="button"
+                role="menuitem"
+                style={{ ...styles.button, ...styles.menuButton }}
+                onClick={(event) => {
+                  event.stopPropagation()
+                  skipNextMouseUp.current = true
+                  setMoreOpen(false)
+                  void handleCopy()
+                }}
+              >
+                {t("actionCopy")}
+              </button>
+              <button
+                type="button"
+                role="menuitem"
+                style={{
+                  ...styles.button,
+                  ...styles.menuButton,
+                  ...(shared ? { color: OVERLAY_STYLE_TOKENS.success } : {}),
+                }}
+                onClick={(event) => {
+                  event.stopPropagation()
+                  skipNextMouseUp.current = true
+                  setMoreOpen(false)
+                  void handleShare()
+                }}
+              >
+                {shared ? t("actionShared") : t("actionShare")}
+              </button>
+              {ttsEnabled && (
                 <button
                   type="button"
-                  style={{
-                    ...styles.button,
-                    background: OVERLAY_STYLE_TOKENS.successBg,
-                    color: OVERLAY_STYLE_TOKENS.success,
-                    borderColor: OVERLAY_STYLE_TOKENS.successBorder,
-                    padding: `${overlayPx(6, fontScale)} ${overlayPx(10, fontScale)}`,
-                  }}
+                  role="menuitem"
+                  style={{ ...styles.button, ...styles.menuButton }}
                   onClick={(event) => {
                     event.stopPropagation()
-                    openReview()
+                    skipNextMouseUp.current = true
+                    setMoreOpen(false)
+                    void handleSpeak()
                   }}
                 >
-                  {dueCount && dueCount > 0 ? `${t("popup_review")} (${dueCount})` : t("popup_review")}
+                  {speaking ? t("actionStop") : t("actionSpeak")}
                 </button>
-              </div>
+              )}
             </div>
           )}
+        </div>
+        </div>
+      </div>
+
+      {(runningAction || actionResult || saved) && (
+        <div role="status" aria-live="polite" style={styles.resultCard} data-testid="selection-result-card">
+          <div style={styles.resultCardHeader}>
+            <div style={styles.resultCardTitle}>
+              <span aria-hidden="true">✣</span>
+              <span>{resultCardTitle}</span>
+            </div>
+            <div style={styles.resultCardLang}>{certificationMode ? "EN" : "SOURCE"} → {formatResultLanguageLabel(targetLang, certificationMode)}</div>
+          </div>
+
+          <div style={styles.resultCardContent}>
+            {runningAction ? (
+              <span style={styles.dots}>⋯</span>
+            ) : actionResult?.text ? (
+              <div>
+                {actionResult.actionId === "translate" && !hasActionError && (
+                  <div style={styles.resultSourceText}>{selectedText}</div>
+                )}
+                {actionResult.actionId === "explain" && formatExplainProfileLabel(actionResult) && (
+                  <div
+                    data-testid="selection-explain-profile"
+                    style={{ ...styles.resultMeta, color: OVERLAY_STYLE_TOKENS.brandActive }}
+                  >
+                    {formatExplainProfileLabel(actionResult)}
+                  </div>
+                )}
+                {glossaryEvidenceLabel && (
+                  <div
+                    data-testid="selection-glossary-evidence"
+                    style={{ ...styles.resultMeta, color: OVERLAY_STYLE_TOKENS.success }}
+                  >
+                    {glossaryEvidenceLabel}
+                  </div>
+                )}
+                <div style={{
+                  ...styles.resultBody,
+                  ...(hasActionError ? { fontFamily: OVERLAY_FONT_FAMILY, fontStyle: "normal", fontSize: overlayPx(13, fontScale), color: OVERLAY_STYLE_TOKENS.warning } : {}),
+                }}>
+                  {actionResult.text}
+                </div>
+              </div>
+            ) : saved ? (
+              <div>
+                <div style={{ fontWeight: 700, color: OVERLAY_STYLE_TOKENS.success, marginBottom: Number.parseFloat(overlayPx(4, fontScale)) }}>
+                  {t("learningSavedTitle")}
+                </div>
+                <div style={{ color: OVERLAY_STYLE_TOKENS.success }}>
+                  {t("learningSavedHint")}
+                </div>
+              </div>
+            ) : null}
+          </div>
+
+          <div style={styles.resultCardFooter}>
+            {showInlineSaveCta && (
+              <button
+                type="button"
+                data-testid="selection-result-save-cta"
+                style={styles.resultFooterButton}
+                onClick={(event) => {
+                  event.stopPropagation()
+                  skipNextMouseUp.current = true
+                  void handleSave()
+                }}
+              >
+                <ToolbarIcon type="save" size={12} />
+                {t("actionSave")} phrase
+              </button>
+            )}
+            {saved && (
+              <button
+                type="button"
+                style={{ ...styles.resultFooterButton, color: OVERLAY_STYLE_TOKENS.success }}
+                onClick={(event) => {
+                  event.stopPropagation()
+                  openVocabulary()
+                }}
+              >
+                {t("actionSaved")}
+              </button>
+            )}
+            {actionResult?.actionId === "translate" && explainAction && (
+              <button
+                type="button"
+                style={styles.resultFooterButton}
+                onClick={(event) => {
+                  event.stopPropagation()
+                  skipNextMouseUp.current = true
+                  void handleAction(explainAction)
+                }}
+              >
+                ＋ {t("actionExplain")}
+              </button>
+            )}
+            {saved && (
+              <button
+                type="button"
+                style={styles.resultFooterButton}
+                onClick={(event) => {
+                  event.stopPropagation()
+                  openReview()
+                }}
+              >
+                {dueCount && dueCount > 0 ? `${t("popup_review")} (${dueCount})` : t("popup_review")}
+              </button>
+            )}
+            <button
+              type="button"
+              aria-label="Dismiss Astra result"
+              style={styles.resultDismissButton}
+              onClick={(event) => {
+                event.stopPropagation()
+                dismiss()
+              }}
+            >
+              ×
+            </button>
+          </div>
         </div>
       )}
 
@@ -987,7 +1343,7 @@ function SelectionToolbarApp() {
       )}
 
       {grammarLoading && !grammarResult && (
-        <div style={{ ...styles.resultPanel, borderLeftColor: OVERLAY_STYLE_TOKENS.brandHover }}>
+        <div role="status" aria-live="polite" style={{ ...styles.resultPanel, borderLeftColor: OVERLAY_STYLE_TOKENS.brandHover }}>
           <span style={styles.dots}>⋯</span>
         </div>
       )}
@@ -1001,20 +1357,31 @@ export function mountSelectionToolbar() {
   const host = document.createElement("div")
   host.id = HOST_ID
   host.style.position = "fixed"
-  host.style.top = "0"
-  host.style.left = "0"
-  host.style.width = "0"
-  host.style.height = "0"
+  host.style.inset = "0"
+  host.style.width = "100vw"
+  host.style.height = "100vh"
+  host.style.pointerEvents = "none"
   host.style.overflow = "visible"
   host.style.zIndex = "2147483646"
-  document.body.appendChild(host)
-
+  document.documentElement.appendChild(host)
   const shadow = host.attachShadow({ mode: "open" })
 
   shadow.appendChild(createOverlayStyle1TokenStyleElement())
 
   const styleEl = document.createElement("style")
-  styleEl.textContent = KEYFRAMES_CSS
+  styleEl.textContent = `
+:host {
+  all: initial;
+  position: fixed;
+  inset: 0;
+  z-index: 2147483646;
+  pointer-events: none;
+  display: block;
+  overflow: visible;
+}
+div, button, span { box-sizing: border-box; }
+${KEYFRAMES_CSS}
+button:focus-visible { outline: none; box-shadow: ${OVERLAY_STYLE_TOKENS.focusRing}; }`
   shadow.appendChild(styleEl)
 
   const container = document.createElement("div")

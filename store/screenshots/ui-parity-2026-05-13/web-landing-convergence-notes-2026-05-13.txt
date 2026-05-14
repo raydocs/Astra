@@ -1,0 +1,18 @@
+Web landing convergence notes — 2026-05-13
+
+Scope: Web landing row only.
+
+Production capture now uses the focused certification diagnostic URL:
+http://127.0.0.1:4177/#/?astraCert=1
+
+Rationale: the reference `web-landing-redesign.png` is a diagnostic/annotation frame, not the normal public landing UX. Normal `/#/` remains the product-realistic public landing with nav, hero, CTAs, and workspace section; tests cover that the diagnostic frame does not leak into normal mode.
+
+Artifacts regenerated:
+- production/web-landing.png
+- compare-web-landing.png
+
+Final capture facts:
+- production screenshot: 4800×3348
+- route: /#/?astraCert=1
+- cert diagnostic root present: true
+- normal hero CTA text (`Use instantly`) absent in cert capture: true

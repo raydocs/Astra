@@ -1,3 +1,5 @@
+import { join } from "node:path"
+
 import type { ProviderId } from "../src/types/config"
 import type { AstraPlan, AstraSubscriptionStatus } from "../src/types/auth"
 
@@ -56,6 +58,14 @@ function parseOptionalText(raw: string | undefined): string | undefined {
   return trimmed ? trimmed : undefined
 }
 
+function parseCorsAllowedOrigins(raw: string | undefined): string[] {
+  const values = (raw ?? "*")
+    .split(",")
+    .map((item) => item.trim())
+    .filter(Boolean)
+  return values.length > 0 ? values : ["*"]
+}
+
 function parsePositiveInteger(raw: string | undefined, fallback: number): number {
   if (!raw?.trim()) return fallback
   const parsed = Number.parseInt(raw, 10)
@@ -63,6 +73,20 @@ function parsePositiveInteger(raw: string | undefined, fallback: number): number
     throw new Error(`Invalid positive integer: ${raw}`)
   }
   return parsed
+}
+
+function resolveRelayDataFilePath(
+  env: NodeJS.ProcessEnv,
+  explicitPath: string | undefined,
+  fileName: string,
+): string {
+  if (explicitPath !== undefined) return explicitPath
+
+  const dataDir = parseOptionalText(env.ASTRA_RELAY_DATA_DIR)
+    ?? parseOptionalText(env.ASTRA_DATA_DIR)
+    ?? "server/data"
+
+  return join(dataDir, fileName)
 }
 
 export function loadRelayEnv(env: NodeJS.ProcessEnv = process.env): RelayEnv {
@@ -79,8 +103,8 @@ export function loadRelayEnv(env: NodeJS.ProcessEnv = process.env): RelayEnv {
     sessionPublicBaseURL,
     sessionSecret: env.ASTRA_SESSION_SECRET ?? "astra-dev-secret",
     platformMirrorSecret: parseOptionalText(env.ASTRA_PLATFORM_MIRROR_SECRET),
-    userDbPath: env.ASTRA_USER_DB_PATH ?? "server/data/users.json",
-    videoNoteStorePath: env.ASTRA_VIDEO_NOTE_STORE_PATH ?? "server/data/video-notes.json",
+    userDbPath: resolveRelayDataFilePath(env, env.ASTRA_USER_DB_PATH, "users.json"),
+    videoNoteStorePath: resolveRelayDataFilePath(env, env.ASTRA_VIDEO_NOTE_STORE_PATH, "video-notes.json"),
     loginEmail: env.ASTRA_RELAY_EMAIL ?? "demo@astra.local",
     loginPassword: env.ASTRA_RELAY_PASSWORD ?? "astra-demo-pass",
     plan: parsePlan(env.ASTRA_RELAY_PLAN),
@@ -88,6 +112,7 @@ export function loadRelayEnv(env: NodeJS.ProcessEnv = process.env): RelayEnv {
     providerEntitlements: parseProviderEntitlements(env.ASTRA_PROVIDER_ENTITLEMENTS),
     billingCheckoutBaseURL: env.ASTRA_BILLING_CHECKOUT_URL ?? `${origin}/billing/mock/checkout`,
     billingPortalBaseURL: env.ASTRA_BILLING_PORTAL_URL ?? `${origin}/billing/mock/portal`,
+    corsAllowedOrigins: parseCorsAllowedOrigins(env.ASTRA_CORS_ALLOWED_ORIGINS),
     openaiApiKey: env.OPENAI_API_KEY?.trim() ?? "",
     googleApiKey: env.GOOGLE_GENERATIVE_AI_API_KEY?.trim() ?? "",
     openrouterApiKey: env.OPENROUTER_API_KEY?.trim() ?? "",

@@ -6,7 +6,8 @@ import { readConfig, saveConfig } from "@/utils/storage/config"
 import { resolveSiteTranslationSettings } from "@/types/config"
 import { isSensitiveInput } from "@/utils/privacy"
 import { runInlineAction } from "../inline-actions"
-import { OVERLAY_STYLE_TOKENS, createOverlayStyle1TokenStyleElement } from "./overlayScale"
+import { OVERLAY_FONT_FAMILY, OVERLAY_STYLE_TOKENS, createOverlayCardStyle, createOverlayStyle1TokenStyleElement, overlayPx } from "./overlayScale"
+import { isPageAccessAllowedForUrl } from "@/utils/extension/page-permissions"
 
 const HOST_ID = "astra-input-translate-host"
 const BRAND_COLOR = OVERLAY_STYLE_TOKENS.brand
@@ -286,6 +287,12 @@ function InputTranslateApp() {
     setOverlay(prev => ({ ...prev, translating: true, error: null }))
 
     try {
+      if (!await isPageAccessAllowedForUrl(window.location.href)) {
+        setOverlay(prev => ({ ...prev, error: "Astra page access revoked for this site" }))
+        setTimeout(() => setOverlay(prev => ({ ...prev, error: null })), 2000)
+        return
+      }
+
       const config = await readConfig()
       if (config.inputTranslation === "disabled") {
         setOverlay(prev => ({ ...prev, error: "Input translation disabled" }))
@@ -335,17 +342,35 @@ function InputTranslateApp() {
 
   if (!overlay.visible) return null
 
+  const fontScale = 0.92
+
   return (
     <div
+      role="status"
+      aria-live="polite"
+      data-testid="input-translate-shell"
       style={{
+        ...createOverlayCardStyle(fontScale),
         position: "fixed",
         top: overlay.top,
         left: overlay.left,
         zIndex: 2147483644,
-        display: "flex",
-        gap: 2,
+        display: "inline-flex",
+        alignItems: "center",
+        gap: overlayPx(6, fontScale),
+        padding: `${overlayPx(6, fontScale)} ${overlayPx(8, fontScale)}`,
+        fontFamily: OVERLAY_FONT_FAMILY,
+        background: OVERLAY_STYLE_TOKENS.surfaceElevated,
       }}
     >
+      <span style={{
+        fontSize: overlayPx(11, fontScale),
+        color: overlay.error ? OVERLAY_STYLE_TOKENS.warning : OVERLAY_STYLE_TOKENS.textSecondary,
+        fontWeight: 650,
+        whiteSpace: "nowrap",
+      }}>
+        {overlay.error ? overlay.error : "Astra compose"}
+      </span>
       <button
         type="button"
         data-testid="input-translate-mode"
@@ -354,9 +379,9 @@ function InputTranslateApp() {
           background: "transparent",
           color: mode === "bilingual" ? BRAND_COLOR : OVERLAY_STYLE_TOKENS.textHint,
           border: `1px solid ${mode === "bilingual" ? BRAND_COLOR : OVERLAY_STYLE_TOKENS.borderStrong}`,
-          borderRadius: 4,
-          padding: "2px 6px",
-          fontSize: 10,
+          borderRadius: 999,
+          padding: `${overlayPx(3, fontScale)} ${overlayPx(7, fontScale)}`,
+          fontSize: overlayPx(10.5, fontScale),
           fontWeight: 500,
           lineHeight: "normal",
         }}
@@ -372,9 +397,9 @@ function InputTranslateApp() {
           background: overlay.error ? OVERLAY_STYLE_TOKENS.warning : BRAND_COLOR,
           color: OVERLAY_STYLE_TOKENS.textInverse,
           border: "none",
-          borderRadius: 4,
-          padding: "2px 8px",
-          fontSize: 11,
+          borderRadius: 999,
+          padding: `${overlayPx(4, fontScale)} ${overlayPx(10, fontScale)}`,
+          fontSize: overlayPx(11.5, fontScale),
           fontWeight: 600,
           opacity: overlay.translating ? 0.6 : 1,
           pointerEvents: overlay.translating ? "none" : "auto",
@@ -404,7 +429,7 @@ export function mountInputTranslate() {
   const shadow = host.attachShadow({ mode: "open" })
   shadow.appendChild(createOverlayStyle1TokenStyleElement())
   const style = document.createElement("style")
-  style.textContent = ".astra-cursor-pointer { cursor: pointer; }"
+  style.textContent = `.astra-cursor-pointer { cursor: pointer; } button:focus-visible { outline: none; box-shadow: ${OVERLAY_STYLE_TOKENS.focusRing}; }`
   shadow.appendChild(style)
   const container = document.createElement("div")
   shadow.appendChild(container)
