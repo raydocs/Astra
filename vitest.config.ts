@@ -19,9 +19,9 @@ export default defineConfig({
       reportsDirectory: "./coverage",
       include: [
         "src/**/*.{ts,tsx}",
-        "web/src/**/*.{ts,tsx}",
-        "server/**/*.{ts,tsx}",
-        "platform/cloudflare/src/**/*.{ts,tsx}",
+        "src/web/src/**/*.{ts,tsx}",
+        "src/server/**/*.{ts,tsx}",
+        "src/platform/cloudflare/src/**/*.{ts,tsx}",
       ],
       exclude: [
         "**/*.d.ts",

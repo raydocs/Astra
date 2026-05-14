@@ -49,7 +49,7 @@ It does **not**:
 
 ## 2. Deployment model
 
-`platform/cloudflare/wrangler.jsonc` defines three environments:
+`src/platform/cloudflare/wrangler.jsonc` defines three environments:
 
 - `local`
 - `staging`
@@ -95,18 +95,18 @@ Recommended canary order:
 
 Apply D1 migrations in filename order before deploying Worker code that reads the new schema:
 
-1. `platform/cloudflare/sql/0000_article_import_shadow.sql`
-2. `platform/cloudflare/sql/0001_article_import_artifacts.sql`
-3. `platform/cloudflare/sql/0002_article_import_rollout_safety.sql`
-4. `platform/cloudflare/sql/0003_article_import_operations.sql`
-5. `platform/cloudflare/sql/0100_auth_session_shadow.sql`
-6. `platform/cloudflare/sql/0200_device_shadow.sql`
-7. `platform/cloudflare/sql/0300_sync_shadow.sql`
-8. `platform/cloudflare/sql/0400_platform_ops.sql`
-9. `platform/cloudflare/sql/0500_account_usage_shadow.sql`
-10. `platform/cloudflare/sql/0600_account_data_lifecycle.sql`
-11. `platform/cloudflare/sql/0700_sync_lifecycle.sql`
-12. `platform/cloudflare/sql/0800_auth_issuance_authority.sql`
+1. `src/platform/cloudflare/sql/0000_article_import_shadow.sql`
+2. `src/platform/cloudflare/sql/0001_article_import_artifacts.sql`
+3. `src/platform/cloudflare/sql/0002_article_import_rollout_safety.sql`
+4. `src/platform/cloudflare/sql/0003_article_import_operations.sql`
+5. `src/platform/cloudflare/sql/0100_auth_session_shadow.sql`
+6. `src/platform/cloudflare/sql/0200_device_shadow.sql`
+7. `src/platform/cloudflare/sql/0300_sync_shadow.sql`
+8. `src/platform/cloudflare/sql/0400_platform_ops.sql`
+9. `src/platform/cloudflare/sql/0500_account_usage_shadow.sql`
+10. `src/platform/cloudflare/sql/0600_account_data_lifecycle.sql`
+11. `src/platform/cloudflare/sql/0700_sync_lifecycle.sql`
+12. `src/platform/cloudflare/sql/0800_auth_issuance_authority.sql`
 
 Use the matching environment's D1 database when applying migrations.
 

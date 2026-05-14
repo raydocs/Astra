@@ -42,10 +42,11 @@ prompt-exports/
 ## Local runtime state
 
 ```text
+data/server/
 server/data/
 ```
 
-`server/data/` is local relay runtime state and should not be default AI context.
+`data/server/` is the default local relay runtime state; `server/data/` is a legacy local path kept ignored and should not be default AI context.
 
 ## Local Cloudflare/tool state
 

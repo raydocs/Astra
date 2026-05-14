@@ -25,6 +25,7 @@ ios/build/
 *.xcuserdatad/
 
 # Local relay user store (dev)
+data/server/
 server/data/
 
 # Test / local tooling artifacts

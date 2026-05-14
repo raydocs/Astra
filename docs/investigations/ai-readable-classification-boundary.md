@@ -14,10 +14,10 @@ Astra can be explained through four conceptual buckets. These buckets describe r
 
 | Conceptual bucket | Meaning | Current examples |
 |---|---|---|
-| `src/` | Product/runtime source and source-bearing assets. | `src/`, `web/src/`, `web/public/`, `public/`, `server/`, task-specific `platform/*/src/`. |
+| `src/` | Product/runtime source and source-bearing assets. | `src/`, `src/web/src/`, `src/web/public/`, `public/`, `src/server/`, task-specific `src/platform/*/src/`. |
 | `script/` | Automation, CI, build, deployment, benchmark harness, and verification tooling. | `.github/`, `scripts/`, `ios/scripts/`, `bench/`, `bench-live/`, `bench-opt/`, `agent-config/`. |
 | `docs/` | Documentation, plans, specs, ADRs, investigations, reviews, and analysis. | `docs/`, legacy top-level `plans/`. |
-| `data/` | Generated outputs, local runtime state, caches, result artifacts, and committed reference artifacts. | `.output/`, `.wxt/`, `dist/`, `server/data/`, bench result folders, `store/screenshots/`, `ios/AstraShell Extension/Resources/`. |
+| `data/` | Generated outputs, local runtime state, caches, result artifacts, and committed reference artifacts. | `.output/`, `.wxt/`, `dist/`, `data/server/`, legacy `server/data/`, bench result folders, `store/screenshots/`, `ios/AstraShell Extension/Resources/`. |
 
 Read-priority categories below decide whether to inspect a path for a task. The four buckets explain what kind of repository knowledge a path represents.
 
@@ -57,10 +57,10 @@ If a derived summary disagrees with this document, use this document as the sour
 | `eslint.config.mjs` | `source-priority/default-read` | Lint configuration. |
 | `.gitignore` | `source-priority/default-read` | Existing generated/runtime boundary signal. |
 | `src/` | `source-priority/default-read` | WXT browser extension source. |
-| `server/` | `source-priority/default-read` | Astra relay server source. |
-| `web/` | `source-priority/default-read` | React/Vite web companion source. |
+| `src/server/` | `source-priority/default-read` | Astra relay server source. |
+| `src/web/` | `source-priority/default-read` | React/Vite web companion source. |
 | `public/` | `source-priority/default-read` | Public extension assets/locales. |
-| `platform/` | `task-specific-source` | Source-bearing platform subtree; read nested runtime source paths only when platform work is relevant. |
+| `src/platform/` | `task-specific-source` | Source-bearing platform subtree; read nested runtime source paths only when platform work is relevant. |
 | `.github/` | `task-specific-source` | CI/workflow source; read for automation and validation tasks. |
 | `.specify/` | `task-specific-source` | Specification memory/templates/scripts. |
 | `agent-config/` | `task-specific-source` | Agent graph templates and agent configuration. |
@@ -100,10 +100,10 @@ If a derived summary disagrees with this document, use this document as the sour
 
 | Path | Category | Notes |
 |---|---|---|
-| `platform/cloudflare/src/` | `task-specific-source` | Cloudflare runtime source; read for platform, deploy, Worker, cloud/proxy parity, or platform validation work. |
-| `platform/relay-lite/src/` | `task-specific-source` | Relay-lite runtime source; read for relay-lite, Cloudflare, deploy, or platform validation work. |
-| `platform/cloudflare/tests/` | `task-specific-source` | Platform validation source. |
-| `platform/cloudflare/sql/` | `task-specific-source` | Platform schema/migration source. |
+| `src/platform/cloudflare/src/` | `task-specific-source` | Cloudflare runtime source; read for platform, deploy, Worker, cloud/proxy parity, or platform validation work. |
+| `src/platform/relay-lite/src/` | `task-specific-source` | Relay-lite runtime source; read for relay-lite, Cloudflare, deploy, or platform validation work. |
+| `src/platform/cloudflare/tests/` | `task-specific-source` | Platform validation source. |
+| `src/platform/cloudflare/sql/` | `task-specific-source` | Platform schema/migration source. |
 | `ios/AstraShell/` | `task-specific-source` | iOS/Safari shell app source and assets. |
 | `ios/AstraShell.xcodeproj/` | `task-specific-source` | Xcode project metadata. |
 | `ios/scripts/` | `task-specific-source` | Safari build sync/verification scripts. |
@@ -139,8 +139,8 @@ Give these for extension UI, web UI, design-token, popup/options/onboarding/read
 | `src/utils/ui/` | Default shared UI utilities | Shared UI helpers. |
 | `src/assets/astra-style1-tokens.css` | Default design tokens | Shared design tokens; web app imports this. |
 | `src/assets/astra-extension.css` | Default extension styling | Extension CSS. |
-| `web/src/` | Default for web companion UI | React/Vite web app: `app.tsx`, `main.tsx`, `styles.css`, and web libraries. |
-| `web/public/` | Task-specific UI assets | Web app icons, manifest, service worker. |
+| `src/web/src/` | Default for web companion UI | React/Vite web app: `app.tsx`, `main.tsx`, `styles.css`, and web libraries. |
+| `src/web/public/` | Task-specific UI assets | Web app icons, manifest, service worker. |
 | `astra (ui)/components/` | Design-reference only | JSX design frames for popup/settings/onboarding/deep-read/etc.; read for visual redesign tasks, not runtime behavior. |
 | `astra (ui)/styles/tokens.css` | Design-reference only | Design-canvas token reference. |
 | `docs/design-comparison/README.md` | Design-reference only | Explains design comparison assets; avoid bulk-reading images unless asked. |
@@ -154,12 +154,12 @@ Give these based on the product area named by the task:
 | Task area | Give AI these paths first | Add only if needed |
 |---|---|---|
 | Browser extension core | `src/`, `wxt.config.ts`, `public/`, `package.json`, `tsconfig.json` | Relevant tests in `test/` or `src/**/*.test.*`; live scenarios in `bench-live/` for browser regressions. |
-| Extension background/auth/storage/translation | `src/entrypoints/background/`, `src/utils/`, `src/types/`, `server/` if relay behavior is involved | `test/`, `bench/`, `bench-live/` depending on failing surface. |
+| Extension background/auth/storage/translation | `src/entrypoints/background/`, `src/utils/`, `src/types/`, `src/server/` if relay behavior is involved | `test/`, `bench/`, `bench-live/` depending on failing surface. |
 | In-page translation/content scripts | `src/entrypoints/content/`, `src/utils/dom/`, `src/utils/translate/`, `src/utils/storage/`, `src/types/` | `bench-live/scenarios/page-translation-*` for live browser proof. |
-| Relay server/API | `server/`, `server/.env.example`, `package.json` | `platform/cloudflare/src/` when cloud/proxy parity matters. |
-| Cloudflare platform | `platform/cloudflare/src/`, `platform/cloudflare/wrangler.jsonc`, `platform/cloudflare/.dev.vars.example` | `platform/cloudflare/tests/`, `platform/cloudflare/sql/`, `.github/workflows/`. |
-| Relay-lite | `platform/relay-lite/src/`, `platform/relay-lite/wrangler.jsonc` | Cloudflare docs/workflows if deploy behavior is involved. |
-| Web companion | `web/src/`, `web/public/`, `web/vite.config.ts`, `src/assets/astra-style1-tokens.css` | `server/` or relay config only for API/auth issues. |
+| Relay server/API | `src/server/`, `src/server/.env.example`, `package.json` | `src/platform/cloudflare/src/` when cloud/proxy parity matters. |
+| Cloudflare platform | `src/platform/cloudflare/src/`, `src/platform/cloudflare/wrangler.jsonc`, `src/platform/cloudflare/.dev.vars.example` | `src/platform/cloudflare/tests/`, `src/platform/cloudflare/sql/`, `.github/workflows/`. |
+| Relay-lite | `src/platform/relay-lite/src/`, `src/platform/relay-lite/wrangler.jsonc` | Cloudflare docs/workflows if deploy behavior is involved. |
+| Web companion | `src/web/src/`, `src/web/public/`, `src/web/vite.config.ts`, `src/assets/astra-style1-tokens.css` | `src/server/` or relay config only for API/auth issues. |
 | iOS/Safari shell | `ios/AstraShell/`, `ios/AstraShell Extension/SafariWebExtensionHandler.swift`, `ios/scripts/`, `ios/README.md` | `ios/AstraShell Extension/Resources/` only to verify committed generated Safari bundle drift. |
 | Bench or optimizer | `bench/`, `bench-live/`, `bench-opt/`, `agent-config/`, `docs/bench-opt*.md` | `bench-results*` only as generated evidence for a specific run. |
 | Tests/fixtures | `test/`, relevant `*.test.ts(x)` beside touched source | `coverage/` only for coverage-report tasks. |
@@ -179,14 +179,14 @@ wxt.config.ts
 vitest.config.ts
 eslint.config.mjs
 src/
-server/
-web/src/
-web/public/
+src/server/
+src/web/src/
+src/web/public/
 public/
 src/assets/astra-style1-tokens.css
 ```
 
-Then add only the task-specific paths from the table above. Platform source is source-bearing but task-specific, so add `platform/cloudflare/src/` or `platform/relay-lite/src/` only when platform work is relevant.
+Then add only the task-specific paths from the table above. Platform source is source-bearing but task-specific, so add `src/platform/cloudflare/src/` or `src/platform/relay-lite/src/` only when platform work is relevant.
 
 ### Never default-read / default-exclude bundle
 
@@ -206,6 +206,7 @@ bench-live-results-test/
 bench-opt-results/
 .bench-opt/
 .wrangler/
+data/server/
 server/data/
 ios/build/
 DerivedData/

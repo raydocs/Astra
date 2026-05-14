@@ -29,10 +29,10 @@ src/assets/astra-extension.css
 ### Web companion UI
 
 ```text
-web/src/
-web/public/
-web/index.html
-web/vite.config.ts
+src/web/src/
+src/web/public/
+src/web/index.html
+src/web/vite.config.ts
 src/assets/astra-style1-tokens.css
 ```
 

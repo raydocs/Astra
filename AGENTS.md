@@ -7,8 +7,8 @@
 Astra is an AI-powered language learning browser extension with three main development surfaces:
 
 1. **Browser Extension** (`src/`) — WXT-based Manifest V3 extension (Chrome/Firefox/Safari)
-2. **Astra Relay Server** (`server/`) — Node.js backend for auth, translation relay, sync
-3. **Web App** (`web/`) — React+Vite standalone web companion
+2. **Astra Relay Server** (`src/server/`) — Node.js backend for auth, translation relay, sync
+3. **Web App** (`src/web/`) — React+Vite standalone web companion
 
 Before broad repo exploration, read the AI context index in `docs/ai-context/`:
 
@@ -37,7 +37,7 @@ For the canonical source-priority/default-read vs generated/runtime classificati
 - **Node 22 + pnpm 10** are required (matches CI in `.github/workflows/ci.yml`).
 - **Extension-loaded live scenarios** (`bench-live/site-automation-autostart`, onboarding, vocabulary smoke, etc.) launch Chromium with `--load-extension`. They resolve the browser via `bench-live/driver.ts`, preferring **Playwright’s Chromium** (`chromium.executablePath()`) when installed. If that binary is missing, the driver falls back to system **Google Chrome**, which often returns **`net::ERR_BLOCKED_BY_CLIENT`** on `chrome-extension://…` URLs used to seed `chrome.storage` — not an extension logic bug. Fix: run `npx playwright install chromium` once per machine/CI image. In **`CI=true`**, the driver also avoids Playwright’s `channel: "chrome"` for the same reason.
 - `pnpm install` may warn about ignored build scripts (esbuild, core-js, etc.). These do not block development — esbuild ships a pre-built WASM fallback.
-- The relay server does **not** auto-load `server/.env`. It reads **`process.env` only** (see `server/config.ts`). Copy `server/.env.example` → `server/.env` for documentation, but to actually use keys you must either **export** them in the shell before `pnpm relay:start` or inject them via your host/CI secret store.
+- The relay server does **not** auto-load `src/server/.env`. It reads **`process.env` only** (see `src/server/config.ts`). Copy `src/server/.env.example` → `src/server/.env` for documentation, but to actually use keys you must either **export** them in the shell before `pnpm relay:start` or inject them via your host/CI secret store.
 - **Managed translation keys**: When `OPENAI_API_KEY` and/or `OPENROUTER_API_KEY` are provided (e.g. Cursor Cloud user secrets), **restart the relay** after adding them so the Node process inherits the variables. A long-running relay started without keys will keep returning `OPENAI_API_KEY is not configured on the Astra relay` until restarted.
 - **Hello world (translate) check** (terminal, relay on `127.0.0.1:8787`):
 

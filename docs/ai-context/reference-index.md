@@ -41,6 +41,7 @@ prompt-exports/
 Default-exclude from broad exploration:
 
 ```text
+data/server/
 server/data/
 .wrangler/
 .playwright-mcp/
@@ -52,4 +53,4 @@ node_modules/
 .DS_Store
 ```
 
-`server/data/` is local relay runtime state. `.wrangler/` is local Cloudflare/Wrangler tool cache/state.
+`data/server/` is local relay runtime state; `server/data/` is a legacy ignored local path. `.wrangler/` is local Cloudflare/Wrangler tool cache/state.
