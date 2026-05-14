@@ -18,6 +18,160 @@
 /* ─── Google Fonts ─── */
 @import url('https://fonts.googleapis.com/css2?family=Inter+Tight:wght@400;500;600;700&family=Source+Serif+4:ital,wght@0,300;0,400;0,500;0,600;0,700;1,300;1,400;1,500;1,600&family=JetBrains+Mono:wght@400;500&display=swap');
 
+:root {
+  /* Shared design-canvas bridge aliases. Keep these additive: production surfaces
+     may use --astra-style-* while handoff notes still reference --font/--fs/--s. */
+  --astra-style-font-serif: "Source Serif 4", "Source Serif Pro", "Tiempos Text", "Songti SC", "Noto Serif SC", Georgia, serif;
+  --astra-style-font-sans: "Inter Tight", "Söhne", "Helvetica Neue", "PingFang SC", "Hiragino Sans GB", system-ui, sans-serif;
+  --astra-style-font-mono: "JetBrains Mono", "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+  --font-serif: var(--astra-style-font-serif);
+  --font-sans: var(--astra-style-font-sans);
+  --font-mono: var(--astra-style-font-mono);
+
+  --astra-style-fs-12: 12px;
+  --astra-style-fs-13: 13px;
+  --astra-style-fs-14: 14px;
+  --astra-style-fs-15: 15px;
+  --astra-style-fs-16: 16px;
+  --astra-style-fs-18: 18px;
+  --astra-style-fs-20: 20px;
+  --astra-style-fs-24: 24px;
+  --astra-style-fs-28: 28px;
+  --astra-style-fs-32: 32px;
+  --astra-style-fs-40: 40px;
+  --astra-style-fs-56: 56px;
+  --astra-style-fs-72: 72px;
+  --fs-12: var(--astra-style-fs-12);
+  --fs-13: var(--astra-style-fs-13);
+  --fs-14: var(--astra-style-fs-14);
+  --fs-15: var(--astra-style-fs-15);
+  --fs-16: var(--astra-style-fs-16);
+  --fs-18: var(--astra-style-fs-18);
+  --fs-20: var(--astra-style-fs-20);
+  --fs-24: var(--astra-style-fs-24);
+  --fs-28: var(--astra-style-fs-28);
+  --fs-32: var(--astra-style-fs-32);
+  --fs-40: var(--astra-style-fs-40);
+  --fs-56: var(--astra-style-fs-56);
+  --fs-72: var(--astra-style-fs-72);
+
+  --astra-style-lh-tight: 1.15;
+  --astra-style-lh-snug: 1.35;
+  --astra-style-lh-body: 1.55;
+  --astra-style-lh-relaxed: 1.7;
+  --lh-tight: var(--astra-style-lh-tight);
+  --lh-snug: var(--astra-style-lh-snug);
+  --lh-body: var(--astra-style-lh-body);
+  --lh-relaxed: var(--astra-style-lh-relaxed);
+
+  --astra-style-tracking-tight: -0.02em;
+  --astra-style-tracking-snug: -0.01em;
+  --astra-style-tracking-wide: 0.02em;
+  --astra-style-tracking-caps: 0.14em;
+  --tracking-tight: var(--astra-style-tracking-tight);
+  --tracking-snug: var(--astra-style-tracking-snug);
+  --tracking-wide: var(--astra-style-tracking-wide);
+  --tracking-caps: var(--astra-style-tracking-caps);
+
+  --astra-style-space-1: 4px;
+  --astra-style-space-2: 8px;
+  --astra-style-space-3: 12px;
+  --astra-style-space-4: 16px;
+  --astra-style-space-5: 20px;
+  --astra-style-space-6: 24px;
+  --astra-style-space-8: 32px;
+  --astra-style-space-10: 40px;
+  --astra-style-space-12: 48px;
+  --astra-style-space-16: 64px;
+  --astra-style-space-20: 80px;
+  --s-1: var(--astra-style-space-1);
+  --s-2: var(--astra-style-space-2);
+  --s-3: var(--astra-style-space-3);
+  --s-4: var(--astra-style-space-4);
+  --s-5: var(--astra-style-space-5);
+  --s-6: var(--astra-style-space-6);
+  --s-8: var(--astra-style-space-8);
+  --s-10: var(--astra-style-space-10);
+  --s-12: var(--astra-style-space-12);
+  --s-16: var(--astra-style-space-16);
+  --s-20: var(--astra-style-space-20);
+
+  --r-sm: var(--astra-style-radius-sm);
+  --r-md: var(--astra-style-radius-md);
+  --r-lg: var(--astra-style-radius-lg);
+  --r-xl: var(--astra-style-radius-xl);
+  --r-2xl: var(--astra-style-radius-2xl);
+  --r-pill: var(--astra-style-radius-pill);
+  --ring: var(--astra-style-focus-ring);
+
+  /* Shared UI primitive alias bridge. Keep this additive so surfaces that import
+     only style1 tokens can still use `src/assets/astra-ui-primitives.css`. */
+  --astra-font: var(--astra-style-font-sans);
+  --astra-font-serif: var(--astra-style-font-serif);
+  --astra-font-mono: var(--astra-style-font-mono);
+
+  --astra-text-xs: var(--astra-style-fs-12);
+  --astra-text-sm: var(--astra-style-fs-14);
+  --astra-text-base: var(--astra-style-fs-16);
+
+  --astra-space-1: var(--astra-style-space-1);
+  --astra-space-2: var(--astra-style-space-2);
+  --astra-space-3: var(--astra-style-space-3);
+  --astra-space-4: var(--astra-style-space-4);
+  --astra-space-5: var(--astra-style-space-5);
+  --astra-space-6: var(--astra-style-space-6);
+  --astra-space-8: var(--astra-style-space-8);
+  --astra-space-10: var(--astra-style-space-10);
+  --astra-space-12: var(--astra-style-space-12);
+  --astra-space-16: var(--astra-style-space-16);
+  --astra-space-20: var(--astra-style-space-20);
+
+  --astra-radius-sm: var(--astra-style-radius-sm);
+  --astra-radius-md: var(--astra-style-radius-md);
+  --astra-radius-lg: var(--astra-style-radius-lg);
+  --astra-radius-xl: var(--astra-style-radius-xl);
+  --astra-radius-2xl: var(--astra-style-radius-2xl);
+  --astra-radius-pill: var(--astra-style-radius-pill);
+
+  --astra-bg-primary: var(--astra-style-bg-page);
+  --astra-bg-card: var(--astra-style-bg-surface);
+  --astra-bg-elevated: var(--astra-style-bg-elevated);
+  --astra-bg-sunken: var(--astra-style-bg-sunken);
+  --astra-bg-hover: var(--astra-style-bg-hover);
+  --astra-bg-input: var(--astra-style-bg-input);
+
+  --astra-text-primary: var(--astra-style-text-primary);
+  --astra-text-secondary: var(--astra-style-text-secondary);
+  --astra-text-muted: var(--astra-style-text-muted);
+  --astra-text-hint: var(--astra-style-text-hint);
+  --astra-text-on-brand: var(--astra-style-text-inverse);
+
+  --astra-border: var(--astra-style-border-subtle);
+  --astra-border-strong: var(--astra-style-border-strong);
+  --astra-border-focus: var(--astra-style-accent-primary);
+  --astra-focus-ring: var(--astra-style-focus-ring);
+
+  --astra-brand: var(--astra-style-accent-primary);
+  --astra-brand-muted: var(--astra-style-accent-muted);
+  --astra-brand-border: var(--astra-style-accent-border);
+
+  --astra-success: var(--astra-style-success);
+  --astra-success-bg: var(--astra-style-success-bg);
+  --astra-success-border: var(--astra-style-success-border);
+  --astra-warning: var(--astra-style-warning);
+  --astra-warning-bg: var(--astra-style-warning-bg);
+  --astra-warning-border: var(--astra-style-warning-border);
+  --astra-danger: var(--astra-style-danger);
+  --astra-danger-bg: var(--astra-style-danger-bg);
+  --astra-danger-border: var(--astra-style-danger-border);
+
+  --astra-shadow-sm: var(--astra-style-shadow-sm);
+  --astra-shadow-md: var(--astra-style-shadow-md);
+  --astra-shadow-lg: var(--astra-style-shadow-lg);
+  --astra-transition-fast: 120ms ease;
+  --astra-transition-normal: 180ms ease;
+}
+
 :root,
 [data-astra-theme="light"],
 [data-astra="quiet"] {

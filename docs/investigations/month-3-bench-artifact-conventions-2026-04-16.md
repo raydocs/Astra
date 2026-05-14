@@ -9,8 +9,8 @@
 
 ## Local artifact root and run directory
 
-- **Root:** `bench-live-results/` (see `DEFAULT_LIVE_ARTIFACT_ROOT` in `bench-live/driver.ts`; directory is gitignored).
-- **Per run:** `bench-live-results/<run-id>/`
+- **Root:** `bench-live-results/` by default (see `DEFAULT_LIVE_ARTIFACT_ROOT` in `bench-live/paths.ts`; directory is gitignored). Local runs may override this root with `ASTRA_BENCH_LIVE_ARTIFACT_ROOT`; CI keeps the default on-disk path.
+- **Per run:** `bench-live-results/<run-id>/` by default
   - **Persistence:** `bench-live/results.ts` writes `result.json` and `result.md` under that directory and mirrors “latest” copies at `bench-live-results/latest.result.json` / `latest.result.md`.
 - **`<run-id>`:** Allocated by the live bench harness for each invocation (timestamp-based string). **Closeout / RC notes should paste the actual `run-id` from a green run** next to the scenario ids that passed.
 

@@ -12,6 +12,11 @@ const driverMocks = vi.hoisted(() => {
 
   return {
     LiveBrowserUnavailableError,
+    prepareLiveArtifactDir: vi.fn(async (runId: string) => {
+      const artifactDir = `/tmp/astra-live/${runId}`
+      await mkdir(artifactDir, { recursive: true })
+      return artifactDir
+    }),
     materializeFixturePage: vi.fn(async ({ runId, fixtureName, title }: { runId: string; fixtureName: string; title: string }) => {
       const htmlPath = `/tmp/astra-live/${runId}/${fixtureName}.html`
       const html = `<!doctype html><html><head><title>${title}</title></head><body><main><article><p id="selection-context">Astra needs browser-backed proof that <span id="target">selection explain keeps context in place</span> so users can inspect a sentence without losing their reading flow.</p></article></main></body></html>`

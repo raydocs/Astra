@@ -12,7 +12,7 @@ export const InputTranslationModeSchema = z.enum(["replace", "bilingual"])
 export const LanguageLevelSchema = z.enum(["beginner", "intermediate", "advanced"])
 export const ExplainModeSchema = z.enum(["beginner", "exam", "deep"])
 export const TTSEngineSchema = z.enum(["browser", "edge"])
-export const AstraSyncCollectionSchema = z.enum(["config", "vocabulary", "reading_history", "study_progress"])
+export const AstraSyncCollectionSchema = z.enum(["config", "vocabulary", "review_schedule", "reading_history", "study_progress"])
 
 export const ExplanationGlossaryTermSchema = z.object({
   sourceTerm: z.string().trim().min(1).max(120),

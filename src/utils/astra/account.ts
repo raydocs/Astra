@@ -439,7 +439,7 @@ export async function pullAstraSyncDeltas(params: {
   baseURL: string
   sessionToken: string
   deviceId: string
-  cursors: Partial<Record<"config" | "vocabulary" | "reading_history" | "study_progress", string | null>>
+  cursors: Partial<Record<"config" | "vocabulary" | "review_schedule" | "reading_history" | "study_progress", string | null>>
 }): Promise<AstraSyncPullResponse> {
   return sendAstraPayload(
     buildSyncPullUrl(params.baseURL),
@@ -509,12 +509,14 @@ function buildSyntheticPullFromRepair(repair: AstraSyncRepairResponse): AstraSyn
     deltas: {
       config: buildRecords("config"),
       vocabulary: buildRecords("vocabulary"),
+      review_schedule: buildRecords("review_schedule"),
       reading_history: buildRecords("reading_history"),
       study_progress: buildRecords("study_progress"),
     },
     nextCursors: {
       config: collections.config.latestCursor,
       vocabulary: collections.vocabulary.latestCursor,
+      review_schedule: collections.review_schedule.latestCursor,
       reading_history: collections.reading_history.latestCursor,
       study_progress: collections.study_progress.latestCursor,
     },
@@ -544,6 +546,7 @@ export async function fetchAstraContinuitySnapshot(params: {
         cursors: {
           config: null,
           vocabulary: null,
+          review_schedule: null,
           ...(bootstrap.collections.reading_history.enabled ? { reading_history: null } : {}),
           ...(bootstrap.collections.study_progress.enabled ? { study_progress: null } : {}),
         },
@@ -559,6 +562,7 @@ export async function fetchAstraContinuitySnapshot(params: {
           collections: [
             "config",
             "vocabulary",
+            "review_schedule",
             ...(bootstrap.collections.reading_history.enabled ? ["reading_history" as const] : []),
             ...(bootstrap.collections.study_progress.enabled ? ["study_progress" as const] : []),
           ],

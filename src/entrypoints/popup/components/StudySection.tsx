@@ -520,7 +520,7 @@ export default function StudySection({
   const isAccountContinuitySignedIn = accountContinuityAuthState === "signed_in"
 
   return (
-    <section style={cardStyle}>
+    <section className="astra-popup-study-section" style={cardStyle}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8 }}>
         <div>
           <div style={{ fontSize: 14, fontWeight: 700, color: "var(--astra-text-primary)" }}>

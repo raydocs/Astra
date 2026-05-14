@@ -11,8 +11,8 @@ export const AstraAppKindSchema = z.enum(["extension", "web", "pwa"])
 export const AstraDeviceStatusSchema = z.enum(["active", "revoked"])
 export const AstraSyncOperationSchema = z.enum(["upsert", "delete"])
 export const AstraSessionSummaryStatusSchema = z.enum(["active", "revoked", "expired"])
-export const AstraContinuityExportCollectionSchema = z.enum(["config", "vocabulary", "reading_history", "study_progress"])
-export const AstraContinuityDeleteCollectionSchema = z.enum(["vocabulary", "reading_history", "study_progress"])
+export const AstraContinuityExportCollectionSchema = z.enum(["config", "vocabulary", "review_schedule", "reading_history", "study_progress"])
+export const AstraContinuityDeleteCollectionSchema = z.enum(["vocabulary", "review_schedule", "reading_history", "study_progress"])
 export const AstraContinuityExportStatusSchema = z.enum(["queued", "running", "completed", "failed", "expired"])
 export const AstraContinuityDeleteStatusSchema = z.enum(["queued", "scheduled", "running", "completed", "failed", "canceled"])
 
@@ -167,6 +167,7 @@ export const AstraSyncRepairRequestSchema = z.object({
   collections: z.array(AstraSyncCollectionSchema).min(1).default([
     "config",
     "vocabulary",
+    "review_schedule",
     "reading_history",
     "study_progress",
   ]),
@@ -269,6 +270,7 @@ export const AstraAccountExportRequestSchema = z.object({
   collections: z.array(AstraContinuityExportCollectionSchema).min(1).default([
     "config",
     "vocabulary",
+    "review_schedule",
     "reading_history",
     "study_progress",
   ]),
@@ -320,6 +322,7 @@ export const AstraCloudDataDeleteJobSchema = z.object({
   gracePeriodSeconds: z.number().int().nonnegative(),
   deletedRecords: z.object({
     vocabulary: z.number().int().nonnegative().optional(),
+    review_schedule: z.number().int().nonnegative().optional(),
     reading_history: z.number().int().nonnegative().optional(),
     study_progress: z.number().int().nonnegative().optional(),
   }).default({}),

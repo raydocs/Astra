@@ -34,6 +34,7 @@ import {
   clearTextTransferDraft,
   clearWebSession,
   createWebCloudDataDelete,
+  createWebAnonymousSession,
   createWebContinuityExport,
   createWebSession,
   createWebVideoNoteJob,
@@ -47,6 +48,7 @@ import {
   fetchWebImportQueueObservability,
   fetchWebVideoNoteArtifact,
   fetchWebVideoNoteJob,
+  importWebLibraryMetadataToAccount,
   mergeWebConfig,
   normalizeApiBaseUrl,
   openBillingCheckout,
@@ -83,7 +85,11 @@ import {
   clearSubtitleWorkspace,
   clearTextWorkspaceDraft,
   clearVideoNoteWorkspace,
+  configureLibraryAccountContext,
   inspectWorkspaceStorageHealth,
+  listLibraryItems,
+  markLibraryItemsImportedToAccount,
+  openLibraryItem,
   readArticleWorkspace,
   readEpubWorkspace,
   readImportLibrary,
@@ -104,6 +110,9 @@ import {
   saveVideoNoteWorkspace,
   resetWorkspaceStorageLifecycle,
   repairWorkspaceStorageCorruption,
+  removeLibraryItem,
+  renameLibraryItem,
+  writeLibraryDocumentSnapshotFromSync,
   type WorkspaceStorageHealthSnapshot,
   type ArticleWorkspaceSnapshot,
   type EpubChapterItem,
@@ -116,17 +125,19 @@ import {
   type VideoNoteWorkspaceSnapshot,
 } from "./lib/workspace-store"
 
-type AppRoute = "/" | "/text" | "/articles" | "/files/pdf" | "/files/epub" | "/files/subtitles" | "/video-notes" | "/assets" | "/account"
+type AppRoute = "/" | "/sign-in" | "/text" | "/articles" | "/files/pdf" | "/files/epub" | "/files/subtitles" | "/video-notes" | "/assets" | "/account"
 type AuthState = "idle" | "refreshing" | "signing-in" | "signing-out"
 
 const CONTINUITY_EXPORT_COLLECTION_OPTIONS: AstraContinuityExportCollection[] = [
   "config",
   "vocabulary",
+  "review_schedule",
   "reading_history",
   "study_progress",
 ]
 const CONTINUITY_DELETE_COLLECTION_OPTIONS: AstraContinuityDeleteCollection[] = [
   "vocabulary",
+  "review_schedule",
   "reading_history",
   "study_progress",
 ]
@@ -154,6 +165,219 @@ interface PdfPreviewState {
   importedAt: string
   restored: boolean
 }
+
+const ASTRA_CERT_PDF_ROWS: WorkspaceSurfaceRow[] = [
+  {
+    title: "Calvino · Six memos for the next millennium.pdf",
+    meta: "12 MB · 124 pages",
+    lang: "IT → EN",
+    progress: 38,
+  },
+  {
+    title: "The Anatomy of Type — a primer.pdf",
+    meta: "8 MB · 56 pages",
+    lang: "EN → 中文",
+    progress: 100,
+    statusLabel: "done",
+  },
+  {
+    title: "宇野常寛 · ゼロ年代の想像力.pdf",
+    meta: "21 MB · 318 pages",
+    lang: "JP → EN",
+    progress: 0,
+    statusLabel: "new",
+  },
+]
+
+const ASTRA_CERT_WORKSPACE_SURFACE_CARDS: Array<{
+  route: string
+  title: string
+  kind: string
+  tone?: "accent" | "muted" | "ok" | "warn"
+  rows: WorkspaceSurfaceRow[]
+  emptyHint: string
+}> = [
+  {
+    route: "/files/pdf",
+    title: "PDFs",
+    kind: "documents",
+    tone: "accent",
+    rows: ASTRA_CERT_PDF_ROWS,
+    emptyHint: "First drop replaces this with an empty state. Page-range translation lives in the reader, not here.",
+  },
+  {
+    route: "/files/epub",
+    title: "EPUBs",
+    kind: "books",
+    tone: "accent",
+    rows: [
+      { title: "Hilary Mantel · Wolf Hall.epub", meta: "1.4 MB · ch. 14 of 32", lang: "EN → 中文", progress: 42 },
+      { title: "Italo Calvino · Le città invisibili.epub", meta: "0.8 MB · ch. 6 of 11", lang: "IT → EN", progress: 54 },
+      { title: "村上春樹 · ノルウェイの森.epub", meta: "1.1 MB · ch. 2 of 12", lang: "JP → EN", progress: 16 },
+    ],
+    emptyHint: "EPUB chapters open in the Reader; the row links to the last chapter you read.",
+  },
+  {
+    route: "/files/subtitles",
+    title: "Subtitles",
+    kind: "srt · vtt",
+    tone: "accent",
+    rows: [
+      { title: "Chungking Express · 1994 · BluRay.srt", meta: "1,247 cues · 1h 42m", lang: "中文 → EN", progress: 100 },
+      { title: "Drive My Car · 2021.vtt", meta: "1,963 cues · 2h 59m", lang: "JP → EN", progress: 22 },
+      { title: "Petite Maman · 2021 · FR.srt", meta: "842 cues · 1h 12m", lang: "FR → EN", progress: 0 },
+    ],
+    emptyHint: "Subtitles open as bilingual reading sessions, paced by timecode rather than paragraph.",
+  },
+  {
+    route: "/video-notes",
+    title: "Video notes",
+    kind: "timestamps",
+    tone: "accent",
+    rows: [
+      { title: "Lex Fridman × Murakami (excerpts).txt", meta: "32 notes · 1h 18m", lang: "JP → EN", progress: 64 },
+      { title: "Tsutaya · interview with K. Tanikawa.txt", meta: "11 notes · 24m", lang: "JP → EN", progress: 100 },
+      { title: "Architecture school · Junya Ishigami.txt", meta: "8 notes · 38m", lang: "JP → EN", progress: 0 },
+    ],
+    emptyHint: "Notes you took from a video — paired with timestamps you can jump back to.",
+  },
+]
+
+const ASTRA_CERT_WORKSPACE_ASSETS = [
+  ["marginalia · saved deck", "284 words"],
+  ["Wolf Hall · ch.14 excerpt", "8 highlights"],
+  ["六龜山隧道.jpg", "shared 2026"],
+  ["Calvino · cover.png", "imported"],
+  ["Drive My Car · ED", "video still"],
+  ["+ new asset", "drop a file"],
+] as const
+
+const ASTRA_CERT_PDF_PREVIEW: PdfPreviewState = {
+  name: "Calvino · Six memos for the next millennium.pdf",
+  sizeLabel: "12 MB",
+  pageCount: 124,
+  selectedPageNumber: 47,
+  importedAt: "2026-03-21T20:42:00.000Z",
+  restored: false,
+  pages: [
+    {
+      pageNumber: 47,
+      excerpt: "Lightness, quickness, exactitude — each memo becomes a way to keep thought agile without losing precision.",
+      blocks: [
+        "Lightness for me goes with precision and determination, not with vagueness and the haphazard.",
+        "Astra keeps the current page as a reading surface: extracted paragraphs stay inspectable, resumable, and ready to send into a bilingual text workspace.",
+        "This certification seed is local-only demo content. It exists so screenshots show the populated density of a real PDF library row without changing user storage.",
+      ],
+      blockCount: 3,
+      wordCount: 63,
+    },
+    {
+      pageNumber: 48,
+      excerpt: "The memo continues with a short passage about momentum, exactness, and reader attention.",
+      blocks: [
+        "Quickness is not haste; it is the ability to move among ideas while preserving their shape.",
+      ],
+      blockCount: 1,
+      wordCount: 17,
+    },
+  ],
+}
+
+type AssetTile = { id: string; title: string; meta: string; route: AppRoute; tone: "local" | "history" | "vocab" | "empty" }
+
+const ASTRA_CERT_ASSET_TILES: AssetTile[] = [
+  { id: "cert-asset-deck", title: "marginalia · saved deck", meta: "284 words", route: "/assets", tone: "local" },
+  { id: "cert-asset-wolf-hall", title: "Wolf Hall · ch.14 excerpt", meta: "8 highlights", route: "/files/epub", tone: "history" },
+  { id: "cert-asset-tunnel", title: "六龜山隧道.jpg", meta: "shared 2026", route: "/assets", tone: "history" },
+  { id: "cert-asset-calvino", title: "Calvino · cover.png", meta: "imported", route: "/files/pdf", tone: "local" },
+  { id: "cert-asset-drive", title: "Drive My Car · ED", meta: "video still", route: "/video-notes", tone: "vocab" },
+  { id: "cert-asset-new", title: "+ new asset", meta: "drop a file", route: "/assets", tone: "empty" },
+]
+
+const ASTRA_CERT_IMPORT_LIBRARY: ImportLibraryEntry[] = [
+  {
+    id: "cert-library-pdf",
+    source: "pdf",
+    route: "/files/pdf",
+    title: "Calvino · Six memos for the next millennium.pdf",
+    summary: "124 pages · 486 text blocks",
+    detail: "Last opened page 47 · IT → EN",
+    importedAt: "2026-03-21T20:42:00.000Z",
+    ownerMode: "local",
+    syncState: "local_only",
+    snapshotStatus: "available",
+    requiresReimportForBinaryView: true,
+  },
+  {
+    id: "cert-library-epub",
+    source: "epub",
+    route: "/files/epub",
+    title: "Wolf Hall · ch.14 excerpt",
+    summary: "Chapter 14 · 8 highlights",
+    detail: "Saved deck preview with bilingual marginalia excerpts.",
+    importedAt: "2026-03-20T17:12:00.000Z",
+    ownerMode: "local",
+    syncState: "local_only",
+    snapshotStatus: "available",
+    requiresReimportForBinaryView: true,
+  },
+]
+
+const ASTRA_CERT_READING_HISTORY = [
+  {
+    id: "cert-history-1",
+    title: "Why I Still Carry a Notebook",
+    hostname: "theatlantic.com",
+    wordsTranslated: 1840,
+    visitedAt: Date.parse("2026-03-21T18:30:00.000Z"),
+  },
+  {
+    id: "cert-history-2",
+    title: "The Quiet Year of Solitude",
+    hostname: "newyorker.com",
+    wordsTranslated: 1260,
+    visitedAt: Date.parse("2026-03-20T09:15:00.000Z"),
+  },
+]
+
+const ASTRA_CERT_STUDY_PAGES = [
+  {
+    url: "https://newyorker.com/quiet-year",
+    title: "The Quiet Year of Solitude",
+    hostname: "newyorker.com",
+    completedSteps: ["read", "guided_read", "explain", "vocab_save"],
+  },
+  {
+    url: "astra-local://pdf/calvino-six-memos",
+    title: "Calvino · Six memos",
+    hostname: "local pdf",
+    completedSteps: ["read", "vocab_save", "vocab_review"],
+  },
+]
+
+const ASTRA_CERT_VOCABULARY = [
+  {
+    id: "cert-vocab-1",
+    text: "marginalia",
+    translation: "页边批注；旁注",
+    explanation: "notes kept in the margin of a text",
+    hostname: "newyorker.com",
+  },
+  {
+    id: "cert-vocab-2",
+    text: "unalterable",
+    translation: "无法改变的；不可动摇的",
+    explanation: "not able to be changed",
+    hostname: "newyorker.com",
+  },
+  {
+    id: "cert-vocab-3",
+    text: "hush",
+    translation: "近乎屏息的安静",
+    explanation: "a quiet stillness",
+    hostname: "theatlantic.com",
+  },
+]
 
 interface ArticleWorkspaceState extends ArticleWorkspaceSnapshot {
   restored: boolean
@@ -193,6 +417,8 @@ const NAV_ITEMS: NavigationItem[] = [
   { route: "/account", label: "Account", detail: "session / usage / billing" },
 ]
 
+const PUBLIC_ONLY_ROUTES = ["/sign-in"] as const satisfies readonly AppRoute[]
+
 const PORTABLE_SURFACES = [
   "text translation, explain, and custom prompts",
   "URL article import with readable extraction and local resume",
@@ -209,7 +435,7 @@ const EXTENSION_ONLY_SURFACES = [
 ]
 
 function isRoute(value: string): value is AppRoute {
-  return NAV_ITEMS.some((item) => item.route === value)
+  return NAV_ITEMS.some((item) => item.route === value) || PUBLIC_ONLY_ROUTES.some((route) => route === value)
 }
 
 async function loadPdfExtractor() {
@@ -227,6 +453,22 @@ function parseHashLocation(): { route: AppRoute; searchParams: URLSearchParams }
   return {
     route,
     searchParams: new URLSearchParams(rawQuery),
+  }
+}
+
+function readAstraCertificationParams(): { enabled: boolean; certState: string | null } {
+  const searchParams = new URLSearchParams()
+  const hashParams = new URLSearchParams()
+  try {
+    new URLSearchParams(window.location.search).forEach((value, key) => searchParams.set(key, value))
+    parseHashLocation().searchParams.forEach((value, key) => hashParams.set(key, value))
+  } catch {
+    return { enabled: false, certState: null }
+  }
+
+  return {
+    enabled: searchParams.get("astraCert") === "1" || hashParams.get("astraCert") === "1",
+    certState: hashParams.get("certState")?.trim() || searchParams.get("certState")?.trim() || null,
   }
 }
 
@@ -621,6 +863,207 @@ function useInstallPrompt() {
   }
 }
 
+interface WorkspaceSurfaceRow {
+  title: string
+  meta: string
+  lang: string
+  progress?: number
+  statusLabel?: string
+  onOpen?: () => void
+  onRename?: () => void
+  onRemove?: () => void
+}
+
+function clampProgress(value: number): number {
+  if (!Number.isFinite(value)) return 0
+  return Math.max(0, Math.min(100, Math.round(value)))
+}
+
+function WorkspaceProgressBar(props: { value: number; label: string }) {
+  const value = clampProgress(props.value)
+  return (
+    <div className="workspace-progress" role="progressbar" aria-label={props.label} aria-valuemin={0} aria-valuemax={100} aria-valuenow={value}>
+      <span style={{ width: `${value}%` }} />
+    </div>
+  )
+}
+
+function WorkspaceSurfaceRows(props: {
+  route: string
+  title: string
+  kind: string
+  emptyHint: string
+  rows: WorkspaceSurfaceRow[]
+}) {
+  return (
+    <section className="workspace-route-card">
+      <header className="workspace-route-card__header">
+        <div>
+          <div className="workspace-mono">{props.route}</div>
+          <h2>{props.title}</h2>
+        </div>
+        <span className="status-pill">{props.kind}</span>
+      </header>
+      {props.rows.length === 0 ? (
+        <div className="workspace-empty-row">{props.emptyHint}</div>
+      ) : (
+        <div className="workspace-row-list">
+          {props.rows.map((row, index) => {
+            const content = (
+              <>
+                <div>
+                  <div className="workspace-row-title">{row.title}</div>
+                  <div className="workspace-mono">{row.meta}</div>
+                </div>
+                <div className="workspace-mono">{row.lang}</div>
+                <div className="workspace-row-progress">
+                  {typeof row.progress !== "number" ? (
+                    <span className="status-pill muted">{row.statusLabel ?? "ready"}</span>
+                  ) : row.progress >= 100 ? (
+                    <span className="status-pill success">{row.statusLabel ?? "done"}</span>
+                  ) : row.progress <= 0 ? (
+                    <span className="status-pill muted">{row.statusLabel ?? "new"}</span>
+                  ) : (
+                    <>
+                      <div className="workspace-mono">{clampProgress(row.progress)}%</div>
+                      <WorkspaceProgressBar value={row.progress} label={`${row.title} progress`} />
+                    </>
+                  )}
+                </div>
+              </>
+            )
+
+            return row.onOpen ? (
+              <div key={`${row.title}-${index}`} className="workspace-row workspace-row--button">
+                <button type="button" className="workspace-row__main" onClick={row.onOpen}>
+                  {content}
+                </button>
+                {(row.onRename || row.onRemove) && (
+                  <div className="row gap wrap">
+                    {row.onRename && <button type="button" className="button ghost compact-button" onClick={row.onRename}>Rename</button>}
+                    {row.onRemove && <button type="button" className="button ghost compact-button" onClick={row.onRemove}>Remove</button>}
+                  </div>
+                )}
+              </div>
+            ) : (
+              <div key={`${row.title}-${index}`} className="workspace-row">
+                {content}
+                {(row.onRename || row.onRemove) && (
+                  <div className="row gap wrap">
+                    {row.onRename && <button type="button" className="button ghost compact-button" onClick={row.onRename}>Rename</button>}
+                    {row.onRemove && <button type="button" className="button ghost compact-button" onClick={row.onRemove}>Remove</button>}
+                  </div>
+                )}
+              </div>
+            )
+          })}
+        </div>
+      )}
+    </section>
+  )
+}
+
+function WorkspaceCertificationTag(props: {
+  tone?: "accent" | "muted" | "ok" | "warn"
+  children: React.ReactNode
+}) {
+  return <span className={`workspace-cert-tag workspace-cert-tag--${props.tone ?? "muted"}`}>{props.children}</span>
+}
+
+function WorkspaceCertificationRouteCard(props: {
+  route: string
+  title: string
+  kind: string
+  tone?: "accent" | "muted" | "ok" | "warn"
+  rows: WorkspaceSurfaceRow[]
+  emptyHint: string
+}) {
+  return (
+    <section className="workspace-cert-route-card">
+      <header className="workspace-cert-route-card__header">
+        <div className="workspace-cert-route-card__meta">
+          <span className="workspace-cert-mono workspace-cert-route">{props.route}</span>
+          <WorkspaceCertificationTag tone={props.tone}>{props.kind}</WorkspaceCertificationTag>
+        </div>
+        <h2>{props.title}</h2>
+      </header>
+
+      <div className="workspace-cert-row-list">
+        {props.rows.map((row) => (
+          <div key={`${props.route}-${row.title}`} className="workspace-cert-row">
+            <div>
+              <div className="workspace-cert-row-title">{row.title}</div>
+              <span className="workspace-cert-mono workspace-cert-row-meta">{row.meta}</span>
+            </div>
+            <span className="workspace-cert-mono workspace-cert-row-lang">{row.lang}</span>
+            <div>
+              {row.progress === 100 ? (
+                <WorkspaceCertificationTag tone="ok">done</WorkspaceCertificationTag>
+              ) : row.progress === 0 ? (
+                <WorkspaceCertificationTag>new</WorkspaceCertificationTag>
+              ) : (
+                <span className="workspace-cert-mono workspace-cert-row-progress">{clampProgress(row.progress ?? 0)}%</span>
+              )}
+            </div>
+          </div>
+        ))}
+      </div>
+
+      <div className="workspace-cert-empty-hint">{props.emptyHint}</div>
+    </section>
+  )
+}
+
+function WorkspaceSurfacesCertificationPage() {
+  return (
+    <main className="workspace-surfaces-cert-page" aria-label="Astra workspace surfaces certification plate">
+      <section className="workspace-surfaces-cert-hero">
+        <div className="workspace-cert-eyebrow">Q · Workspace surfaces · files · video · assets</div>
+        <h1>The Library row template, four ways.</h1>
+        <p>
+          The remaining workspace routes inherit Library&apos;s row design. Only the type column and empty-state copy change. This
+          plate locks the four variations so engineering doesn&apos;t re-design a list page per route.
+        </p>
+      </section>
+
+      <section className="workspace-cert-route-grid" aria-label="Files and video workspace row templates">
+        {ASTRA_CERT_WORKSPACE_SURFACE_CARDS.map((card) => (
+          <WorkspaceCertificationRouteCard key={card.route} {...card} />
+        ))}
+      </section>
+
+      <section className="workspace-cert-assets-card" aria-label="Assets workspace thumbnail grid">
+        <header className="workspace-cert-assets-card__header">
+          <div>
+            <span className="workspace-cert-mono workspace-cert-route">/assets</span>
+            <h2>Assets — the images, exports, and shared decks</h2>
+          </div>
+          <WorkspaceCertificationTag tone="warn">grid layout · not the row template</WorkspaceCertificationTag>
+        </header>
+
+        <div className="workspace-cert-asset-grid">
+          {ASTRA_CERT_WORKSPACE_ASSETS.map(([title, meta], index) => (
+            <div
+              key={title}
+              className={`workspace-cert-asset-tile${index === ASTRA_CERT_WORKSPACE_ASSETS.length - 1 ? " workspace-cert-asset-tile--empty" : ""}`}
+              style={{ "--workspace-cert-asset-hue": `${60 + index * 28}` } as React.CSSProperties}
+            >
+              <div className="workspace-cert-asset-title">{title}</div>
+              <span className="workspace-cert-mono workspace-cert-asset-meta">{meta}</span>
+            </div>
+          ))}
+        </div>
+      </section>
+
+      <section className="workspace-cert-note-row" aria-label="Workspace surface certification notes">
+        <WorkspaceCertificationTag tone="accent">/files/* and /video-notes share Library&apos;s row template — only the type column changes</WorkspaceCertificationTag>
+        <WorkspaceCertificationTag tone="accent">/assets is a thumbnail grid — different shape, same paper surface</WorkspaceCertificationTag>
+        <WorkspaceCertificationTag tone="warn">Bulk select / delete + drag-to-import live in workspace v2</WorkspaceCertificationTag>
+      </section>
+    </main>
+  )
+}
+
 export function AstraWebApp() {
   const [route, setRoute] = useState<AppRoute>(() => readRouteFromHash())
   const [videoNoteDeepLinkedJobId, setVideoNoteDeepLinkedJobId] = useState<string>(() => readVideoNoteJobIdFromHash())
@@ -663,9 +1106,18 @@ export function AstraWebApp() {
   }, [])
 
   useEffect(() => {
-    const routeLabel = NAV_ITEMS.find((item) => item.route === route)?.label ?? "Overview"
+    configureLibraryAccountContext(session?.email ?? null)
+  }, [session?.email])
+
+  useEffect(() => {
+    if (!session && route === "/") {
+      document.title = "Astra · A bilingual reading room"
+      return
+    }
+
+    const routeLabel = route === "/sign-in" ? "Sign in" : NAV_ITEMS.find((item) => item.route === route)?.label ?? "Overview"
     document.title = `${routeLabel} · Astra Web`
-  }, [route])
+  }, [route, session])
 
   const saveRoute = useCallback((nextRoute: AppRoute) => {
     navigate(nextRoute)
@@ -716,6 +1168,12 @@ export function AstraWebApp() {
         session: activeSession,
         device,
       })
+      const cloudItemsById = new Map(next.library.items.map((item) => [item.id, item]))
+      await Promise.all(next.library.snapshots.map((snapshot) => {
+        const item = cloudItemsById.get(snapshot.libraryItemId)
+        if (!item || !snapshot.complete) return Promise.resolve(null)
+        return writeLibraryDocumentSnapshotFromSync({ item, manifest: snapshot.manifest, chunks: snapshot.chunks })
+      }))
       if (cloudRequestIdRef.current !== requestId) return
       setCloudAssets(next)
       setCloudState("ready")
@@ -841,14 +1299,15 @@ export function AstraWebApp() {
     setApiBaseUrl(normalized)
   }, [])
 
-  const signIn = useCallback(async (credentials: { email: string; password: string }) => {
+  const signIn = useCallback(async (credentials: { email: string; password: string }, baseURLOverride?: string) => {
     const activeDevice = device
+    const baseURL = baseURLOverride ?? apiBaseUrl
     setAuthState("signing-in")
     setMessage("")
 
     try {
       const created = await createWebSession({
-        baseURL: apiBaseUrl,
+        baseURL,
         device: activeDevice,
         email: credentials.email,
         password: credentials.password,
@@ -864,6 +1323,34 @@ export function AstraWebApp() {
       setMessage("Signed in to Astra Web Companion.")
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Sign-in failed.")
+      throw error
+    } finally {
+      setAuthState("idle")
+      setBootState("ready")
+    }
+  }, [apiBaseUrl, device, refreshAuthenticatedWorkspace, refreshCloudAssets, refreshImportOps, saveRoute])
+
+  const startFreeSession = useCallback(async (baseURLOverride?: string) => {
+    const activeDevice = device
+    const baseURL = baseURLOverride ?? apiBaseUrl
+    setAuthState("signing-in")
+    setMessage("")
+
+    try {
+      const created = await createWebAnonymousSession({
+        baseURL,
+        device: activeDevice,
+      })
+
+      const saved = saveWebSession(created)
+      setSession(saved)
+      await refreshAuthenticatedWorkspace(saved, activeDevice)
+      void refreshCloudAssets(saved)
+      void refreshImportOps(saved)
+      saveRoute("/text")
+      setMessage("Free Astra session is ready. Translation uses the managed Astra relay.")
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Free start failed.")
       throw error
     } finally {
       setAuthState("idle")
@@ -945,10 +1432,17 @@ export function AstraWebApp() {
     try {
       const report = await repairWorkspaceStorageCorruption()
       await refreshStorageHealth()
-      if (report.removedIndexedDbKeys.length === 0 && report.clearedLegacyKeys.length === 0) {
+      const repairedCount = report.removedIndexedDbKeys.length
+        + report.removedLibraryItemIds.length
+        + report.removedLibrarySnapshotIds.length
+        + report.removedLibraryDocumentSnapshotIds.length
+        + report.removedMigrationJournalIds.length
+        + report.removedLegacyMappingKeys.length
+        + report.clearedLegacyKeys.length
+      if (repairedCount === 0) {
         setMessage("No corrupted workspace records needed repair.")
       } else {
-        setMessage(`Repair cleared ${formatNumber(report.removedIndexedDbKeys.length + report.clearedLegacyKeys.length)} corrupted records.`)
+        setMessage(`Repair cleared ${formatNumber(repairedCount)} corrupted workspace/library records.`)
       }
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Workspace repair failed.")
@@ -956,6 +1450,36 @@ export function AstraWebApp() {
       setRecoveryState("idle")
     }
   }, [refreshStorageHealth])
+
+  const handleImportLocalLibraryMetadata = useCallback(async () => {
+    if (!session) {
+      setMessage("Sign in before importing local library metadata.")
+      return
+    }
+
+    try {
+      const localItems = (await listLibraryItems()).filter((item) => item.ownerMode === "local" || item.syncState === "pending_import")
+      if (localItems.length === 0) {
+        setMessage("No local-only library items need account import.")
+        return
+      }
+
+      const result = await importWebLibraryMetadataToAccount({
+        session,
+        device,
+        items: localItems,
+      })
+      if (result.rejected > 0) {
+        setMessage(`Imported ${formatNumber(result.metadataAccepted)} library metadata records and ${formatNumber(result.snapshotAccepted)} snapshot records; ${formatNumber(result.rejected)} were rejected.`)
+      } else {
+        await markLibraryItemsImportedToAccount(localItems.map((item) => item.id), session.email)
+        await refreshCloudAssets(session)
+        setMessage(`Imported ${formatNumber(result.metadataAccepted)} local library metadata records and ${formatNumber(result.snapshotAccepted)} document snapshot records into ${session.email}. Original file bytes were not uploaded; binary viewer access still requires re-import on each browser.${result.oversizedSnapshots > 0 ? ` ${formatNumber(result.oversizedSnapshots)} oversized snapshot${result.oversizedSnapshots === 1 ? "" : "s"} stored failure metadata only.` : ""}`)
+      }
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Local library metadata import failed.")
+    }
+  }, [device, refreshCloudAssets, session])
 
   const handleResetStorage = useCallback(async () => {
     const confirmed = typeof window !== "undefined" && typeof window.confirm === "function"
@@ -1050,14 +1574,59 @@ export function AstraWebApp() {
     : authState === "signing-in"
       ? "signing in"
       : "signed out"
+  const certificationParams = readAstraCertificationParams()
+  const certMode = certificationParams.enabled
+  const isWorkspaceParityRoute = certificationParams.enabled && (route === "/files/pdf" || route === "/assets")
+
+  if (certMode && (route === "/files/pdf" || route === "/assets")) {
+    return <WorkspaceSurfacesCertificationPage />
+  }
+
+  if (certMode && route === "/") {
+    return <PublicLandingCertificationPage />
+  }
+
+  if (!session && route === "/") {
+    return (
+      <PublicLandingPage
+        authState={authState}
+        bootState={bootState}
+        message={message}
+        canInstall={installPrompt.canInstall}
+        onDismissMessage={() => setMessage("")}
+        onInstall={() => installPrompt.promptInstall()}
+        onNavigate={saveRoute}
+        onStartFree={startFreeSession}
+      />
+    )
+  }
+
+  if (route === "/sign-in") {
+    return (
+      <PublicSignInPage
+        apiBaseUrl={apiBaseUrl}
+        authState={authState}
+        bootState={bootState}
+        message={message}
+        session={session}
+        canInstall={installPrompt.canInstall}
+        onDismissMessage={() => setMessage("")}
+        onInstall={() => installPrompt.promptInstall()}
+        onNavigate={saveRoute}
+        onSaveApiBaseUrl={handleSaveApiBaseUrl}
+        onSignIn={signIn}
+        onStartFree={startFreeSession}
+      />
+    )
+  }
 
   return (
-    <div className="app-shell">
-      <aside className="sidebar">
+    <div className={`app-shell${isWorkspaceParityRoute ? " web-workspace-cert-shell" : ""}`}>
+      <aside className="sidebar workspace-sidebar">
         <div className="brand">
           <div className="brand-mark">A</div>
           <div>
-            <div className="brand-title">Astra Web</div>
+            <div className="brand-title">Astra</div>
             <div className="brand-subtitle">portable workspaces only</div>
           </div>
         </div>
@@ -1071,7 +1640,7 @@ export function AstraWebApp() {
               onClick={() => saveRoute(item.route)}
             >
               <span>{item.label}</span>
-              <small>{item.detail}</small>
+              <small>{item.route} · {item.detail}</small>
             </button>
           ))}
         </nav>
@@ -1089,9 +1658,9 @@ export function AstraWebApp() {
       </aside>
 
       <main className="main-panel">
-        <header className="topbar">
+        <header className="topbar workspace-topbar">
           <div>
-            <div className="eyebrow">Astra web MVP</div>
+            <div className="eyebrow">Quiet Reader workspace</div>
             <h1>{NAV_ITEMS.find((item) => item.route === route)?.label ?? "Workspace"}</h1>
           </div>
 
@@ -1236,6 +1805,7 @@ export function AstraWebApp() {
                 onRefresh={refreshAll}
                 onRefreshCloudAssets={() => refreshCloudAssets(session)}
                 onRefreshImportOps={() => refreshImportOps(session)}
+                onImportLocalLibraryMetadata={handleImportLocalLibraryMetadata}
                 onReplayImportFailures={handleReplayImportFailures}
                 onToggleCloudCollection={handleToggleCloudCollection}
                 onRefreshStorageHealth={refreshStorageHealth}
@@ -1259,6 +1829,435 @@ export function AstraWebApp() {
             )}
           </div>
         )}
+      </main>
+    </div>
+  )
+}
+
+function PublicLandingCertificationPage() {
+  return (
+    <div className="public-site public-site--landing-cert">
+      <main className="landing-cert-canvas" aria-label="Astra landing certification diagnostic">
+        <section className="landing-cert-header">
+          <h1>What&apos;s broken on the current page</h1>
+          <p>Side-by-side annotation. The current state is on the left; the corresponding fix is on the right.</p>
+        </section>
+
+        <section className="landing-cert-diagnosis" aria-label="Landing diagnosis">
+          <div className="landing-cert-section-label">
+            <span className="landing-cert-handle" aria-hidden="true">⠿</span>
+            <span>Diagnosis</span>
+          </div>
+
+          <article className="landing-cert-diagnosis-card">
+            <div className="landing-cert-column landing-cert-column--now">
+              <div className="landing-cert-eyebrow">Now — astra.so</div>
+              <h2>Three quiet problems</h2>
+              <ol>
+                <li>
+                  <strong>The headline is shouting.</strong> Six lines of 96px Source Serif occupy the whole left column.
+                  Astra&apos;s brand promise is &quot;never repaints what was already legible.&quot; The hero overpaints itself.
+                </li>
+                <li>
+                  <strong>The sign-in floats.</strong> A 380px panel cuts vertically through the headline; the eye doesn&apos;t
+                  know whether to read the type or fill the form. Pick one.
+                </li>
+                <li>
+                  <strong>No product shot.</strong> A page about reading-with-translation contains zero translation. The
+                  hero should be the product, not a description of it.
+                </li>
+              </ol>
+            </div>
+
+            <div className="landing-cert-column landing-cert-column--next">
+              <div className="landing-cert-eyebrow">Next</div>
+              <h2>Three corresponding moves</h2>
+              <ol>
+                <li>
+                  <strong>Restrain the headline.</strong> ~64px display serif, two lines maximum. Body copy is also serif —
+                  the page reads like the magazine you want to study.
+                </li>
+                <li>
+                  <strong>Move sign-in to its own page.</strong> The hero CTA is &quot;Start reading now.&quot; &quot;Sign in&quot; is a
+                  small text link in nav → <code>/sign-in</code>, a small paper card.
+                </li>
+                <li>
+                  <strong>Let the hero be the product.</strong> The right column is a real bilingual sample rendered exactly
+                  the way Astra renders it everywhere else — 2px accent rail, margin translation, saved-word chip.
+                </li>
+              </ol>
+            </div>
+          </article>
+        </section>
+
+        <section className="landing-cert-proposal" aria-label="Landing proposal">
+          <h2>A · Marginalia hero — show the product in the hero</h2>
+          <p>
+            The strongest design move: stop describing Astra and let the hero be a working sample of marginalia
+            translation. Headline restrains to ~64px display serif, body copy stays editorial, and sign-in moves to
+            its own quiet page.
+          </p>
+        </section>
+      </main>
+    </div>
+  )
+}
+
+function PublicLandingPage(props: {
+  authState: AuthState
+  bootState: "loading" | "ready"
+  message: string
+  canInstall: boolean
+  onDismissMessage: () => void
+  onInstall: () => Promise<void>
+  onNavigate: (route: AppRoute) => void
+  onStartFree: () => Promise<void>
+}) {
+  const [error, setError] = useState("")
+
+  const startFree = useCallback(async () => {
+    setError("")
+    try {
+      await props.onStartFree()
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : "Free start failed.")
+    }
+  }, [props])
+
+  const isBusy = props.bootState === "loading" || props.authState !== "idle"
+
+  return (
+    <div className="public-site">
+      <header className="public-nav">
+        <button type="button" className="public-brand" onClick={() => props.onNavigate("/")}>
+          <span className="brand-mark">A</span>
+          <span>
+            <strong>Astra</strong>
+            <small>AI language companion</small>
+          </span>
+        </button>
+        <nav className="public-nav-actions" aria-label="Astra website navigation">
+          <button type="button" className="button ghost" onClick={() => props.onNavigate("/articles")}>
+            Reader
+          </button>
+          <button type="button" className="button ghost" onClick={() => props.onNavigate("/files/subtitles")}>
+            Subtitles
+          </button>
+          <button type="button" className="button secondary" onClick={() => props.onNavigate("/sign-in")}>
+            Sign in
+          </button>
+        </nav>
+      </header>
+
+      {props.message && (
+        <div className="public-message">
+          <span>{props.message}</span>
+          <button type="button" className="banner-dismiss" onClick={props.onDismissMessage}>
+            Dismiss
+          </button>
+        </div>
+      )}
+
+      <main>
+        <section className="public-hero">
+          <div className="public-hero-copy">
+            <div className="eyebrow">Free preview · managed Astra relay</div>
+            <h1>A bilingual reading room for the pages <em>you already saved.</em></h1>
+            <p>
+              Articles, PDFs, EPUBs, and subtitle files — translated in the margin. Use the browser extension for
+              live page translation; Astra Web is for imported content, files, and portable reading workspaces.
+            </p>
+            <div className="hero-actions">
+              <button type="button" className="button primary large-button" onClick={() => void startFree()} disabled={isBusy}>
+                {props.authState === "signing-in" ? "Starting..." : "Use instantly"}
+              </button>
+              <button type="button" className="button secondary large-button" onClick={() => props.onNavigate("/sign-in")} disabled={isBusy}>
+                Sign in to sync
+              </button>
+              {props.canInstall && (
+                <button type="button" className="button ghost large-button" onClick={() => void props.onInstall()} disabled={isBusy}>
+                  Install PWA
+                </button>
+              )}
+            </div>
+            {(error || props.bootState === "loading") && (
+              <div className={error ? "error-note" : "helper-copy"} role={error ? "alert" : "status"} aria-live={error ? "assertive" : "polite"}>
+                {error || "Checking for an existing Astra session..."}
+              </div>
+            )}
+            <div className="public-proof-strip" aria-label="Astra Web preview highlights">
+              <span>Imported articles</span>
+              <span>PDF + EPUB reading rooms</span>
+              <span>Subtitle files in context</span>
+            </div>
+          </div>
+
+          <div className="public-marginalia-card" aria-label="Static Astra marginalia preview">
+            <div className="sample-status-pill"><span /> Static preview</div>
+            <div className="sample-meta">
+              <span>Imported article</span>
+              <span>7 min read</span>
+              <span>EN → 中文</span>
+            </div>
+            <h2>The Quiet Years of the Long-Distance Reader</h2>
+            <div className="bilingual-paragraph">
+              <p className="source-copy">
+                At the turn of the century, the <span className="selected-phrase">marginalia</span> a reader left in a book
+                traveled with it across estates and centuries — a quiet correspondence between strangers.
+              </p>
+              <p className="translation-margin">
+                世纪之交，读者留在书中的眉批会随书本流转于宅邸与时代之间——一场陌生人之间的安静通信。
+              </p>
+            </div>
+            <div className="bilingual-paragraph">
+              <p className="source-copy">
+                Astra keeps the writer’s words in place and lets the translation live beside them, like a pencil note in
+                the margin.
+              </p>
+              <p className="translation-margin">
+                Astra 保留作者原文的位置，让译文安静地落在旁边，像页边的一则铅笔注记。
+              </p>
+            </div>
+            <div className="saved-word-row" aria-label="Decorative saved word sample">
+              <span className="saved-word-chip">marginalia · 眉批</span>
+              <span className="sample-footnote">2px rail · margin translation · saved in context</span>
+            </div>
+          </div>
+        </section>
+
+        <section className="public-section">
+          <div className="section-kicker">
+            <div className="eyebrow">Astra Web companion</div>
+            <h2>Bring reading material into one portable workspace.</h2>
+          </div>
+          <div className="public-feature-grid">
+            {[
+              ["Read", "Import articles, PDFs, and EPUBs into a quiet bilingual reading room for focused study."],
+              ["Keep", "Save vocabulary and useful context from imported material so review starts from real sentences."],
+              ["Watch", "Bring subtitle and document files into Astra for bilingual export and file-based video study."],
+            ].map(([title, copy]) => (
+              <article key={title} className="public-feature">
+                <h3>{title}</h3>
+                <p>{copy}</p>
+              </article>
+            ))}
+          </div>
+        </section>
+      </main>
+    </div>
+  )
+}
+
+function PublicSignInPage(props: {
+  apiBaseUrl: string
+  authState: AuthState
+  bootState: "loading" | "ready"
+  message: string
+  session: AstraSession | null
+  canInstall: boolean
+  onDismissMessage: () => void
+  onInstall: () => Promise<void>
+  onNavigate: (route: AppRoute) => void
+  onSaveApiBaseUrl: (value: string) => void
+  onSignIn: (credentials: { email: string; password: string }, baseURL?: string) => Promise<void>
+  onStartFree: (baseURL?: string) => Promise<void>
+}) {
+  const certificationParams = readAstraCertificationParams()
+  const certMode = certificationParams.enabled
+  const displayedSession = certMode ? null : props.session
+  const [email, setEmail] = useState(() => certMode ? "rui@thequietreader.com" : readLastAccountEmail())
+  const [password, setPassword] = useState("")
+  const [apiBaseUrl, setApiBaseUrl] = useState(props.apiBaseUrl)
+  const [showPassword, setShowPassword] = useState(false)
+  const [error, setError] = useState("")
+  const [fieldErrors, setFieldErrors] = useState<{ email?: string; password?: string }>({})
+
+  useEffect(() => {
+    setApiBaseUrl(props.apiBaseUrl)
+  }, [props.apiBaseUrl])
+
+  const submit = useCallback(async (event: React.FormEvent) => {
+    event.preventDefault()
+    if (certMode) return
+    setError("")
+
+    const normalizedEmail = email.trim()
+    const nextFieldErrors: { email?: string; password?: string } = {}
+    if (!normalizedEmail) nextFieldErrors.email = "Email is required."
+    if (!password.trim()) nextFieldErrors.password = "Password is required."
+    setFieldErrors(nextFieldErrors)
+    if (nextFieldErrors.email || nextFieldErrors.password) return
+
+    try {
+      const normalizedBaseURL = normalizeApiBaseUrl(apiBaseUrl)
+      props.onSaveApiBaseUrl(normalizedBaseURL)
+      await props.onSignIn({ email: normalizedEmail, password }, normalizedBaseURL)
+      setPassword("")
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : "Sign-in failed.")
+    }
+  }, [apiBaseUrl, email, password, props, certMode])
+
+  const startFree = useCallback(async () => {
+    if (certMode) return
+    setError("")
+    setFieldErrors({})
+    try {
+      const normalizedBaseURL = normalizeApiBaseUrl(apiBaseUrl)
+      props.onSaveApiBaseUrl(normalizedBaseURL)
+      await props.onStartFree(normalizedBaseURL)
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : "Free start failed.")
+    }
+  }, [apiBaseUrl, props, certMode])
+
+  const isBusy = props.bootState === "loading" || props.authState !== "idle"
+
+  return (
+    <div className={`public-site${certMode ? " public-site--signin-cert" : ""}`}>
+      <header className="public-nav">
+        <button type="button" className="public-brand" onClick={() => props.onNavigate("/")}>
+          <span className="brand-mark">A</span>
+          <span>
+            <strong>Astra</strong>
+            <small>AI language companion</small>
+          </span>
+        </button>
+        <nav className="public-nav-actions" aria-label="Astra website navigation">
+          <button type="button" className="button ghost" onClick={() => props.onNavigate("/")}>
+            Home
+          </button>
+          <button type="button" className="button secondary" onClick={() => props.onNavigate("/sign-in")}>
+            Sign in
+          </button>
+        </nav>
+      </header>
+
+      {props.message && (
+        <div className="public-message">
+          <span>{props.message}</span>
+          <button type="button" className="banner-dismiss" onClick={props.onDismissMessage}>
+            Dismiss
+          </button>
+        </div>
+      )}
+
+      <main className="public-signin-main">
+        <section className="public-signin-card" aria-label="Astra sign in">
+          <div className="signin-card-brand">
+            <span aria-hidden="true">✣</span>
+            <span aria-hidden="true">✧</span>
+            <strong>Astra</strong>
+          </div>
+
+          <div className="signin-card-copy">
+            <h1>Welcome back.</h1>
+            <p>Sign in to keep your library and reading history on every device you read on.</p>
+          </div>
+
+          {displayedSession ? (
+            <div className="auth-form public-auth-form">
+              <div className="login-panel-heading compact-heading">
+                <div>
+                  <div className="eyebrow">Account</div>
+                  <h2>Already signed in</h2>
+                </div>
+                <span className="status-pill success">Connected</span>
+              </div>
+              <p className="helper-copy">You’re already signed in as {displayedSession.email}. Open your workspace to continue reading.</p>
+              <button type="button" className="button primary full-width" onClick={() => props.onNavigate("/text")}>
+                Open workspace
+              </button>
+            </div>
+          ) : (
+            <form className="auth-form public-auth-form public-signin-form" onSubmit={(event) => { void submit(event) }}>
+              <label className="field">
+                <span>Email</span>
+                <input
+                  value={email}
+                  onChange={(event) => {
+                    setEmail(event.target.value)
+                    setFieldErrors((current) => ({ ...current, email: undefined }))
+                  }}
+                  type="email"
+                  placeholder="rui@thequietreader.com"
+                  autoComplete="email"
+                  aria-invalid={Boolean(fieldErrors.email)}
+                  aria-describedby={fieldErrors.email ? "public-sign-in-email-error" : undefined}
+                />
+                {fieldErrors.email && <span id="public-sign-in-email-error" className="field-error">{fieldErrors.email}</span>}
+              </label>
+
+              {!certMode && (
+                <label className="field public-signin-password-field">
+                  <span>Password</span>
+                  <div className="field-inline">
+                    <input
+                      value={password}
+                      onChange={(event) => {
+                        setPassword(event.target.value)
+                        setFieldErrors((current) => ({ ...current, password: undefined }))
+                      }}
+                      type={showPassword ? "text" : "password"}
+                      placeholder="Password"
+                      autoComplete="current-password"
+                      aria-invalid={Boolean(fieldErrors.password)}
+                      aria-describedby={fieldErrors.password ? "public-sign-in-password-error" : undefined}
+                    />
+                    <button type="button" className="button ghost" aria-label={showPassword ? "Hide password" : "Show password"} aria-pressed={showPassword} onClick={() => setShowPassword((current) => !current)} disabled={isBusy}>
+                      {showPassword ? "Hide" : "Show"}
+                    </button>
+                  </div>
+                  {fieldErrors.password && <span id="public-sign-in-password-error" className="field-error">{fieldErrors.password}</span>}
+                </label>
+              )}
+
+              <button type={certMode ? "button" : "submit"} className="button primary full-width signin-email-button" disabled={isBusy}>
+                <span>{props.authState === "signing-in" ? "Signing in..." : "Continue with email"}</span>
+                <span aria-hidden="true">→</span>
+              </button>
+
+              <div className="login-divider"><span>or</span></div>
+
+              <button type="button" className="button ghost full-width signin-provider-button" disabled>
+                Continue with Google
+              </button>
+              <button type="button" className="button ghost full-width signin-provider-button" disabled>
+                Continue with Apple
+              </button>
+
+              {!certMode && (
+                <details className="advanced-login-settings public-signin-relay">
+                  <summary>Relay endpoint</summary>
+                  <label className="field">
+                    <span>Astra API base URL</span>
+                    <input
+                      value={apiBaseUrl}
+                      onChange={(event) => setApiBaseUrl(event.target.value)}
+                      placeholder="https://api.example.com/v1"
+                    />
+                  </label>
+                </details>
+              )}
+
+              {(error || props.bootState === "loading") && (
+                <div className={error ? "error-note" : "helper-copy"} role={error ? "alert" : "status"} aria-live={error ? "assertive" : "polite"}>
+                  {error || "Checking for an existing Astra session..."}
+                </div>
+              )}
+            </form>
+          )}
+
+          {!displayedSession && (
+            <div className="signin-local-note">
+              <span>No account?</span>{" "}
+              <button type="button" onClick={() => void startFree()} disabled={isBusy}>
+                Astra works without one.
+              </button>{" "}
+              <span>Your library will live on this device only.</span>
+            </div>
+          )}
+        </section>
       </main>
     </div>
   )
@@ -1414,7 +2413,7 @@ function OverviewPage(props: {
 
           {!props.session ? (
             <div className="stack list">
-              <div className="helper-copy">Sign in to inspect config, vocabulary, reading history, study progress, and sync health surfaces.</div>
+              <div className="helper-copy">Sign in to inspect config, vocabulary, review schedules, reading history, study progress, and sync health surfaces.</div>
             </div>
           ) : props.cloudState === "loading" && !props.cloudAssets ? (
             <div className="helper-copy">Loading cloud snapshot…</div>
@@ -1475,8 +2474,8 @@ function OverviewPage(props: {
             <div className="helper-copy">No saved workspaces yet.</div>
           ) : (
             <div className="stack list">
-              {importLibrary.map((entry) => (
-                <button key={entry.source} type="button" className="reader-nav-item" onClick={() => props.onNavigate(entry.route)}>
+                {importLibrary.map((entry) => (
+                  <button key={entry.id} type="button" className="reader-nav-item" onClick={() => props.onNavigate(entry.route)}>
                   <strong>{entry.title}</strong>
                   <small>{entry.summary}</small>
                   <small>{entry.detail} · {formatRelativeDate(entry.importedAt)}</small>
@@ -1540,10 +2539,11 @@ function TextWorkspacePage(props: {
   onConfigChange: (patch: Parameters<typeof mergeWebConfig>[1]) => void
   onNavigate: (route: AppRoute) => void
 }) {
+  const { config, onConfigChange, onNavigate, session } = props
   const savedDraft = useMemo(() => readTextWorkspaceDraft(), [])
   const [sourceText, setSourceText] = useState(savedDraft?.sourceText ?? "")
   const [sourceLang, setSourceLang] = useState(savedDraft?.sourceLang ?? "")
-  const [targetLang, setTargetLang] = useState(savedDraft?.targetLang ?? props.config.targetLang)
+  const [targetLang, setTargetLang] = useState(savedDraft?.targetLang ?? config.targetLang)
   const [task, setTask] = useState<"translate" | "explain" | "custom">(savedDraft?.task ?? "translate")
   const [customPrompt, setCustomPrompt] = useState(savedDraft?.customPrompt ?? "")
   const [resultText, setResultText] = useState(savedDraft?.resultText ?? "")
@@ -1576,7 +2576,7 @@ function TextWorkspacePage(props: {
       || resultText.trim()
       || customPrompt.trim()
       || task !== "translate"
-      || targetLang !== props.config.targetLang,
+      || targetLang !== config.targetLang,
     )
 
     if (!hasContent && !importMeta) {
@@ -1594,11 +2594,11 @@ function TextWorkspacePage(props: {
       importedDraftTitle: importMeta?.title ?? null,
       importedDraftSource: importMeta?.source ?? null,
     })
-  }, [customPrompt, importMeta, props.config.targetLang, resultText, sourceLang, sourceText, targetLang, task])
+  }, [config.targetLang, customPrompt, importMeta, resultText, sourceLang, sourceText, targetLang, task])
 
   const runTranslation = useCallback(async () => {
-    if (!props.session) {
-      props.onNavigate("/account")
+    if (!session) {
+      onNavigate("/account")
       return
     }
 
@@ -1611,16 +2611,16 @@ function TextWorkspacePage(props: {
     setRunState("running")
     setRunError("")
 
-    props.onConfigChange({
-      ...props.config,
+    onConfigChange({
+      ...config,
       targetLang,
     })
 
     try {
       const result = await translateWithWebRelay({
-        session: props.session,
+        session,
         config: {
-          ...props.config,
+          ...config,
           targetLang,
         },
         request: {
@@ -1646,7 +2646,7 @@ function TextWorkspacePage(props: {
     } finally {
       setRunState("idle")
     }
-  }, [customPrompt, props, sourceLang, sourceText, targetLang, task])
+  }, [config, customPrompt, onConfigChange, onNavigate, session, sourceLang, sourceText, targetLang, task])
 
   const exportResult = useCallback(() => {
     if (!resultText.trim()) return
@@ -1656,7 +2656,7 @@ function TextWorkspacePage(props: {
   const clearWorkspace = useCallback(() => {
     setSourceText("")
     setSourceLang("")
-    setTargetLang(props.config.targetLang)
+    setTargetLang(config.targetLang)
     setTask("translate")
     setCustomPrompt("")
     setResultText("")
@@ -1665,7 +2665,7 @@ function TextWorkspacePage(props: {
     setImportMeta(null)
     setRestoredDraftAt(null)
     clearTextWorkspaceDraft()
-  }, [props.config.targetLang])
+  }, [config.targetLang])
 
   return (
     <>
@@ -1686,11 +2686,11 @@ function TextWorkspacePage(props: {
         </div>
       )}
 
-      <section className="card">
+      <section className="card workspace-reader-card">
         <div className="section-heading">
           <div>
             <div className="card-title">Text translation workspace</div>
-            <div className="card-copy">Portable text tasks that do not require extension APIs.</div>
+            <div className="card-copy">A portable reader desk for pasted text, imported article/file excerpts, translations, and explanations.</div>
           </div>
           <div className="row gap wrap">
             <span className="status-pill">{props.config.provider.id} / {props.config.provider.model}</span>
@@ -1700,97 +2700,114 @@ function TextWorkspacePage(props: {
           </div>
         </div>
 
-        <div className="grid form-grid">
-          <label className="field">
-            <span>Target language</span>
-            <input
-              value={targetLang}
-              onChange={(event) => setTargetLang(event.target.value)}
-              placeholder="zh-CN"
-            />
-          </label>
-
-          <label className="field">
-            <span>Source language</span>
-            <input
-              value={sourceLang}
-              onChange={(event) => setSourceLang(event.target.value)}
-              placeholder="optional"
-            />
-          </label>
-
-          <label className="field">
-            <span>Task</span>
-            <select value={task} onChange={(event) => setTask(event.target.value as typeof task)}>
-              <option value="translate">Translate</option>
-              <option value="explain">Explain</option>
-              <option value="custom">Custom</option>
-            </select>
-          </label>
-
-          <label className="field">
-            <span>Model</span>
-            <input
-              value={props.config.provider.model}
-              onChange={(event) => props.onConfigChange({
-                ...props.config,
-                provider: {
-                  ...props.config.provider,
-                  model: event.target.value,
-                },
-              })}
-            />
-          </label>
+        <div className="workspace-utility-bar">
+          <span className="workspace-mono">{importMeta ? `${importMeta.source} · ${importMeta.title}` : "manual text"}</span>
+          <span className="workspace-mono">{sourceLang.trim() || "auto"} → {targetLang}</span>
+          <span className={`status-pill${runState === "running" ? "" : " muted"}`}>{runState === "running" ? "streaming" : task}</span>
         </div>
 
-        {task === "custom" && (
-          <label className="field">
-            <span>Custom system prompt</span>
-            <textarea
-              rows={4}
-              value={customPrompt}
-              onChange={(event) => setCustomPrompt(event.target.value)}
-              placeholder="Tell Astra how to transform the text."
-            />
-          </label>
-        )}
+        <div className="workspace-reader-layout">
+          <article className="workspace-reader-column">
+            <div className="grid form-grid">
+              <label className="field">
+                <span>Target language</span>
+                <input
+                  value={targetLang}
+                  onChange={(event) => setTargetLang(event.target.value)}
+                  placeholder="zh-CN"
+                />
+              </label>
 
-        <div className="grid cards-2">
-          <label className="field">
-            <span>Source text</span>
-            <textarea
-              rows={14}
-              value={sourceText}
-              onChange={(event) => setSourceText(event.target.value)}
-              placeholder="Paste text, article snippets, chapter excerpts, or anything imported from the file workspaces."
-            />
-            <small>{formatNumber(sourceText.length)} characters</small>
-          </label>
+              <label className="field">
+                <span>Source language</span>
+                <input
+                  value={sourceLang}
+                  onChange={(event) => setSourceLang(event.target.value)}
+                  placeholder="optional"
+                />
+              </label>
 
-          <label className="field">
-            <span>Result</span>
-            <textarea
-              rows={14}
-              value={resultText}
-              onChange={(event) => setResultText(event.target.value)}
-              placeholder="Translation or explanation output will appear here."
-            />
-            <small>{formatNumber(resultText.length)} characters</small>
-          </label>
-        </div>
+              <label className="field">
+                <span>Task</span>
+                <select value={task} onChange={(event) => setTask(event.target.value as typeof task)}>
+                  <option value="translate">Translate</option>
+                  <option value="explain">Explain</option>
+                  <option value="custom">Custom</option>
+                </select>
+              </label>
 
-        {runError && <div className="error-note">{runError}</div>}
+              <label className="field">
+                <span>Model</span>
+                <input
+                  value={props.config.provider.model}
+                  onChange={(event) => props.onConfigChange({
+                    ...props.config,
+                    provider: {
+                      ...props.config.provider,
+                      model: event.target.value,
+                    },
+                  })}
+                />
+              </label>
+            </div>
 
-        <div className="row gap wrap">
-          <button type="button" className="button primary" onClick={() => void runTranslation()} disabled={runState === "running" || !props.session}>
-            {runState === "running" ? "Running…" : "Run task"}
-          </button>
-          <button type="button" className="button secondary" onClick={() => void navigator.clipboard.writeText(resultText)} disabled={!resultText.trim()}>
-            Copy result
-          </button>
-          <button type="button" className="button ghost" onClick={exportResult} disabled={!resultText.trim()}>
-            Export
-          </button>
+            {task === "custom" && (
+              <label className="field">
+                <span>Custom system prompt</span>
+                <textarea
+                  rows={4}
+                  value={customPrompt}
+                  onChange={(event) => setCustomPrompt(event.target.value)}
+                  placeholder="Tell Astra how to transform the text."
+                />
+              </label>
+            )}
+
+            <label className="field workspace-editor-field">
+              <span>Source text</span>
+              <textarea
+                rows={16}
+                value={sourceText}
+                onChange={(event) => setSourceText(event.target.value)}
+                placeholder="Paste text, article snippets, chapter excerpts, or anything imported from the file workspaces."
+              />
+              <small>{formatNumber(sourceText.length)} characters</small>
+            </label>
+
+            {runError && <div className="error-note">{runError}</div>}
+
+            <div className="row gap wrap">
+              <button type="button" className="button primary" onClick={() => void runTranslation()} disabled={runState === "running" || !props.session}>
+                {runState === "running" ? "Running…" : "Run task"}
+              </button>
+              <button type="button" className="button secondary" onClick={() => void navigator.clipboard.writeText(resultText)} disabled={!resultText.trim()}>
+                Copy result
+              </button>
+              <button type="button" className="button ghost" onClick={exportResult} disabled={!resultText.trim()}>
+                Export
+              </button>
+            </div>
+          </article>
+
+          <aside className="workspace-margin-rail">
+            <div className="eyebrow">Margin · this session</div>
+            <label className="field workspace-editor-field">
+              <span>Result</span>
+              <textarea
+                rows={14}
+                value={resultText}
+                onChange={(event) => setResultText(event.target.value)}
+                placeholder="Translation or explanation output will appear here."
+              />
+              <small>{formatNumber(resultText.length)} characters</small>
+            </label>
+            <div className="workspace-note">
+              Use the web companion for imported files and portable reading workspaces. Live page translation remains extension-only.
+            </div>
+            <div className="workspace-note">
+              Progress is local to this browser: drafts, imported excerpts, and results are saved until you clear the workspace.
+            </div>
+          </aside>
         </div>
       </section>
     </>
@@ -1802,6 +2819,7 @@ function VideoNoteWorkspacePage(props: {
   deepLinkedJobId: string
   onNavigate: (route: AppRoute) => void
 }) {
+  const { deepLinkedJobId, onNavigate, session } = props
   const [sourceUrl, setSourceUrl] = useState("")
   const [jobId, setJobId] = useState("")
   const [workspace, setWorkspace] = useState<VideoNoteWorkspaceSnapshot | null>(null)
@@ -1838,10 +2856,10 @@ function VideoNoteWorkspacePage(props: {
   }, [workspace])
 
   useEffect(() => {
-    const trimmedDeepLinkedJobId = props.deepLinkedJobId.trim()
+    const trimmedDeepLinkedJobId = deepLinkedJobId.trim()
     if (!trimmedDeepLinkedJobId) return
     setJobId(trimmedDeepLinkedJobId)
-  }, [props.deepLinkedJobId])
+  }, [deepLinkedJobId])
 
   const applyJobStatus = useCallback((nextJob: {
     jobId: string
@@ -1893,10 +2911,10 @@ function VideoNoteWorkspacePage(props: {
   }, [])
 
   const requireSession = useCallback((): AstraSession | null => {
-    if (props.session) return props.session
-    props.onNavigate("/account")
+    if (session) return session
+    onNavigate("/account")
     return null
-  }, [props.onNavigate, props.session])
+  }, [onNavigate, session])
 
   const handleCreate = useCallback(async () => {
     const session = requireSession()
@@ -2005,8 +3023,7 @@ function VideoNoteWorkspacePage(props: {
   }, [applyArtifact, jobId, requireSession])
 
   useEffect(() => {
-    const trimmedDeepLinkedJobId = props.deepLinkedJobId.trim()
-    const session = props.session
+    const trimmedDeepLinkedJobId = deepLinkedJobId.trim()
     if (!trimmedDeepLinkedJobId || !session) return
     if (deepLinkAutoloadedJobIdRef.current === trimmedDeepLinkedJobId) return
 
@@ -2061,7 +3078,7 @@ function VideoNoteWorkspacePage(props: {
     return () => {
       cancelled = true
     }
-  }, [applyArtifact, applyJobStatus, props.deepLinkedJobId, props.session])
+  }, [applyArtifact, applyJobStatus, deepLinkedJobId, session])
 
   const clearSaved = useCallback(() => {
     setWorkspace(null)
@@ -2073,6 +3090,14 @@ function VideoNoteWorkspacePage(props: {
     void clearVideoNoteWorkspace()
   }, [])
 
+  const videoNoteRows: WorkspaceSurfaceRow[] = workspace ? [{
+    title: workspace.title ?? workspace.sourceUrl,
+    meta: `${workspace.platform} · ${formatNumber(workspace.transcriptSegments.length)} segments · ${workspace.jobId}`,
+    lang: "transcript → notes",
+    ...(workspace.status === "completed" ? { progress: 100 } : {}),
+    statusLabel: workspace.status,
+  }] : []
+
   return (
     <section className="card">
       <div className="section-heading">
@@ -2083,12 +3108,12 @@ function VideoNoteWorkspacePage(props: {
         <span className="status-pill">{workspace ? `cached · ${workspace.status}` : restoreState === "loading" ? "checking cache…" : "no cached note"}</span>
       </div>
 
-      {!props.session && (
+      {!session && (
         <InlineGate
           title="Sign in to use relay video-note jobs"
           copy="Video-note jobs and artifacts are authenticated relay resources."
           actionLabel="Open account workspace"
-          onAction={() => props.onNavigate("/account")}
+          onAction={() => onNavigate("/account")}
         />
       )}
 
@@ -2126,6 +3151,14 @@ function VideoNoteWorkspacePage(props: {
       {notice && <div className="card subtle inline-card">{notice}</div>}
       {error && <div className="error-note">{error}</div>}
 
+      <WorkspaceSurfaceRows
+        route="/video-notes"
+        title="Video notes"
+        kind="timestamps"
+        rows={videoNoteRows}
+        emptyHint="Create or fetch a relay-backed video-note job to add a timestamp row. Local-only manual timestamp editing is deferred."
+      />
+
       {workspace && (
         <>
           <div className="row gap wrap" style={{ marginTop: "0.75rem" }}>
@@ -2146,7 +3179,7 @@ function VideoNoteWorkspacePage(props: {
             <MetricCard label="Key moments" value={formatNumber(workspace.keyMoments.length)} hint={workspace.artifactId ? "Artifact cached" : "Waiting for artifact"} />
           </div>
 
-          <div className="reader-shell" style={{ marginTop: "0.75rem" }}>
+          <div className="reader-shell workspace-document-reader workspace-video-reader" style={{ marginTop: "0.75rem" }}>
             <aside className="reader-sidebar">
               <div className="reader-sidebar-title">Transcript preview</div>
               <div className="stack list">
@@ -2196,6 +3229,7 @@ function ArticleWorkspacePage(props: {
   onSendToText: (draft: Omit<TextTransferDraft, "createdAt">) => void
   onRecentImportsChange: () => void
 }) {
+  const { apiBaseUrl, articleImportBaseUrl, onRecentImportsChange, onSendToText } = props
   const [state, setState] = useState<"idle" | "loading" | "ready" | "error">("idle")
   const [restoreState, setRestoreState] = useState<"loading" | "ready">("loading")
   const [error, setError] = useState("")
@@ -2241,8 +3275,8 @@ function ArticleWorkspacePage(props: {
       importedAt: workspace.importedAt,
     })
     saveRecentImport(summarizeArticleImport(workspace))
-    props.onRecentImportsChange()
-  }, [props.onRecentImportsChange, workspace])
+    onRecentImportsChange()
+  }, [onRecentImportsChange, workspace])
 
   const runImport = useCallback(async () => {
     setState("loading")
@@ -2250,8 +3284,8 @@ function ArticleWorkspacePage(props: {
 
     try {
       const imported = await importReadableArticleFromUrl(importUrl, {
-        apiBaseUrl: props.apiBaseUrl,
-        platformBaseUrl: props.articleImportBaseUrl,
+        apiBaseUrl,
+        platformBaseUrl: articleImportBaseUrl,
       })
       setImportUrl(imported.url)
       setWorkspace({
@@ -2264,7 +3298,7 @@ function ArticleWorkspacePage(props: {
       setError(reason instanceof Error ? reason.message : "Article import failed.")
       setState("error")
     }
-  }, [importUrl, props.apiBaseUrl, props.articleImportBaseUrl])
+  }, [apiBaseUrl, articleImportBaseUrl, importUrl])
 
   const clearSaved = useCallback(() => {
     setWorkspace(null)
@@ -2272,15 +3306,23 @@ function ArticleWorkspacePage(props: {
     setError("")
     void clearArticleWorkspace()
     removeRecentImport("article")
-    props.onRecentImportsChange()
-  }, [props.onRecentImportsChange])
+    onRecentImportsChange()
+  }, [onRecentImportsChange])
+
+  const articleRows: WorkspaceSurfaceRow[] = workspace ? [{
+    title: workspace.title,
+    meta: `${workspace.hostname} · ${formatNumber(workspace.blocks.length)} blocks · ${formatNumber(wordCount)} words`,
+    lang: "auto → reader",
+    statusLabel: "imported",
+  }] : []
 
   return (
-    <section className="card">
+    <section className="card workspace-list-page">
       <div className="section-heading">
         <div>
+          <div className="eyebrow">Library</div>
           <div className="card-title">URL article workspace</div>
-          <div className="card-copy">Best-effort readable imports prefer the Astra relay fetch/readability path, then fall back to direct browser fetch when needed. Imported content stays read-only here and can be handed into the text workspace.</div>
+          <div className="card-copy">Readable imports appear as Library rows, then open into a read-only reader with an import-details margin.</div>
         </div>
         <span className="status-pill">{workspace ? "saved locally" : restoreState === "loading" ? "checking saved article…" : "no article loaded"}</span>
       </div>
@@ -2311,6 +3353,21 @@ function ArticleWorkspacePage(props: {
         </div>
       )}
 
+      <div className="workspace-filter-row" aria-label="Article filters">
+        <span className="status-pill success">All {workspace ? 1 : 0}</span>
+        <span className="status-pill muted">Unread 0</span>
+        <span className="status-pill muted">In progress {workspace ? 1 : 0}</span>
+        <span className="status-pill muted">With saved words 0</span>
+      </div>
+
+      <WorkspaceSurfaceRows
+        route="/articles"
+        title={`${workspace ? 1 : 0} article${workspace ? "" : "s"} · local library`}
+        kind="articles"
+        rows={articleRows}
+        emptyHint="Import a URL above to create the first truthful article row. Multi-article library, bulk select, and delete are deferred."
+      />
+
       {workspace && (
         <>
           <div className="section-heading" style={{ marginTop: "1rem" }}>
@@ -2324,7 +3381,7 @@ function ArticleWorkspacePage(props: {
                 type="button"
                 className="button secondary"
                 disabled={!articleText.trim()}
-                onClick={() => props.onSendToText({
+                onClick={() => onSendToText({
                   title: workspace.title,
                   source: "article",
                   text: articleText,
@@ -2371,13 +3428,14 @@ function ArticleWorkspacePage(props: {
             </div>
           )}
 
-          <div className="reader-shell">
+          <div className="reader-shell workspace-document-reader">
             <aside className="reader-sidebar">
-              <div className="reader-sidebar-title">Import details</div>
+              <div className="reader-sidebar-title">Margin · import details</div>
               <div className="stack list">
                 <div className="preview-block"><strong>URL</strong>{"\n"}{workspace.url}</div>
                 <div className="preview-block"><strong>Extraction</strong>{"\n"}{workspace.scope === "article" ? "Article-focused readability" : "Full page fallback"}</div>
                 <div className="preview-block"><strong>Imported</strong>{"\n"}{formatRelativeDate(workspace.importedAt)}</div>
+                <div className="preview-block"><strong>Progress</strong>{"\n"}Read-only web workspace · send to Text to translate or explain.</div>
               </div>
             </aside>
 
@@ -2408,14 +3466,18 @@ function PdfWorkspacePage(props: {
   onSendToText: (draft: Omit<TextTransferDraft, "createdAt">) => void
   onRecentImportsChange: () => void
 }) {
+  const { onRecentImportsChange, onSendToText } = props
+  const certMode = readAstraCertificationParams().enabled
   const [state, setState] = useState<"idle" | "loading" | "ready" | "error">("idle")
   const [error, setError] = useState("")
   const [preview, setPreview] = useState<PdfPreviewState | null>(null)
+  const effectivePreview = certMode ? ASTRA_CERT_PDF_PREVIEW : preview
 
-  const currentPage = preview?.pages.find((page) => page.pageNumber === preview.selectedPageNumber) ?? preview?.pages[0] ?? null
+  const currentPage = effectivePreview?.pages.find((page) => page.pageNumber === effectivePreview.selectedPageNumber) ?? effectivePreview?.pages[0] ?? null
   const currentPageText = currentPage?.blocks.join("\n\n") ?? ""
 
   useEffect(() => {
+    if (certMode) return
     let cancelled = false
 
     void readPdfWorkspace().then((saved) => {
@@ -2427,14 +3489,14 @@ function PdfWorkspacePage(props: {
     return () => {
       cancelled = true
     }
-  }, [])
+  }, [certMode])
 
   useEffect(() => {
-    if (!preview) return
+    if (!preview || certMode) return
     void savePdfWorkspace(toPdfWorkspaceSnapshot(preview))
     saveRecentImport(summarizePdfImport(preview))
-    props.onRecentImportsChange()
-  }, [preview, props.onRecentImportsChange])
+    onRecentImportsChange()
+  }, [certMode, onRecentImportsChange, preview])
 
   const handleFile = useCallback(async (file: File) => {
     setState("loading")
@@ -2461,70 +3523,98 @@ function PdfWorkspacePage(props: {
     setError("")
     void clearPdfWorkspace()
     removeRecentImport("pdf")
-    props.onRecentImportsChange()
-  }, [props.onRecentImportsChange])
+    onRecentImportsChange()
+  }, [onRecentImportsChange])
+
+  const pdfRows: WorkspaceSurfaceRow[] = certMode ? ASTRA_CERT_PDF_ROWS : preview ? [{
+    title: preview.name,
+    meta: `${preview.sizeLabel} · ${formatNumber(preview.pageCount)} pages`,
+    lang: "file → text",
+    progress: preview.pageCount > 0 ? Math.max(1, Math.round((preview.selectedPageNumber / preview.pageCount) * 100)) : 0,
+    statusLabel: preview.selectedPageNumber === preview.pageCount ? "done" : "resume",
+  }] : []
 
   return (
     <FileShellCard
       title="PDF reader workspace"
-      description="Import a PDF into Astra-owned storage, move page by page, and keep the extracted reading surface available after refresh."
+      description="Import a PDF, keep metadata and extracted text durable by library item, and re-import the original file when binary bytes are needed."
       accept=".pdf"
       actionLabel="Choose PDF"
-      state={state}
+      state={certMode ? "ready" : state}
       error={error}
       onFile={handleFile}
     >
-      {preview?.restored && (
+      {certMode && (
+        <div className="workspace-note workspace-cert-note">
+          Certification demo seed: populated rows below are local screenshot fixtures only and are never written to user storage.
+        </div>
+      )}
+      {preview?.restored && !certMode && (
         <div className="card subtle inline-card">
-          Restored your saved PDF workflow from {formatRelativeDate(preview.importedAt)}.
+          Restored your saved PDF extracted-text workflow from {formatRelativeDate(preview.importedAt)}. Original PDF bytes are not synced; re-import if a binary viewer needs them.
         </div>
       )}
 
-      {preview && currentPage && (
+      <WorkspaceSurfaceRows
+        route="/files/pdf"
+        title="PDFs"
+        kind="documents"
+        rows={pdfRows}
+        emptyHint="Drop a PDF above to create the first row. Page-range translation stays in the reader, not in this list."
+      />
+
+      {effectivePreview && currentPage && (
         <>
           <div className="section-heading">
             <div>
-              <div className="card-title">{preview.name}</div>
+              <div className="card-title">{effectivePreview.name}</div>
               <div className="card-copy">Select a page, review extracted text blocks, and send the current page into the text workspace.</div>
             </div>
             <div className="row gap wrap">
-              <button
-                type="button"
-                className="button secondary"
-                disabled={!currentPageText.trim()}
-                onClick={() => props.onSendToText({
-                  title: `${preview.name} · page ${currentPage.pageNumber}`,
-                  source: "pdf",
-                  text: currentPageText,
-                })}
-              >
-                Send page to text workspace
-              </button>
-              <button type="button" className="button ghost" onClick={() => void navigator.clipboard.writeText(currentPageText)} disabled={!currentPageText.trim()}>
-                Copy page text
-              </button>
-              <button type="button" className="button ghost" onClick={clearSaved}>
-                Clear saved preview
-              </button>
+              {!certMode && (
+                <>
+                  <button
+                    type="button"
+                    className="button secondary"
+                    disabled={!currentPageText.trim()}
+                    onClick={() => onSendToText({
+                      title: `${effectivePreview.name} · page ${currentPage.pageNumber}`,
+                      source: "pdf",
+                      text: currentPageText,
+                    })}
+                  >
+                    Send page to text workspace
+                  </button>
+                  <button type="button" className="button ghost" onClick={() => void navigator.clipboard.writeText(currentPageText)} disabled={!currentPageText.trim()}>
+                    Copy page text
+                  </button>
+                  <button type="button" className="button ghost" onClick={clearSaved}>
+                    Clear saved preview
+                  </button>
+                </>
+              )}
             </div>
           </div>
 
           <div className="grid cards-3 compact">
-            <MetricCard label="Pages" value={formatNumber(preview.pageCount)} hint={preview.sizeLabel} />
+            <MetricCard label="Pages" value={formatNumber(effectivePreview.pageCount)} hint={effectivePreview.sizeLabel} />
             <MetricCard label="Current page" value={`${currentPage.pageNumber}`} hint={`${formatNumber(currentPage.blockCount)} text blocks`} />
-            <MetricCard label="Words on page" value={formatNumber(currentPage.wordCount)} hint={`Saved ${formatRelativeDate(preview.importedAt)}`} />
+            <MetricCard label="Words on page" value={formatNumber(currentPage.wordCount)} hint={`Saved ${formatRelativeDate(effectivePreview.importedAt)}`} />
           </div>
 
-          <div className="reader-shell">
+          <div className="reader-shell workspace-document-reader">
             <aside className="reader-sidebar">
               <div className="reader-sidebar-title">Pages</div>
               <div className="reader-nav">
-                {preview.pages.map((page) => (
+                {effectivePreview.pages.map((page) => (
                   <button
                     key={page.pageNumber}
                     type="button"
-                    className={`reader-nav-item${preview.selectedPageNumber === page.pageNumber ? " is-active" : ""}`}
-                    onClick={() => setPreview((current) => current ? { ...current, selectedPageNumber: page.pageNumber } : current)}
+                    className={`reader-nav-item${effectivePreview.selectedPageNumber === page.pageNumber ? " is-active" : ""}`}
+                    onClick={() => {
+                      if (certMode) return
+                      setPreview((current) => current ? { ...current, selectedPageNumber: page.pageNumber } : current)
+                    }}
                   >
                     <strong>Page {page.pageNumber}</strong>
                     <small>{page.excerpt || "No extracted text"}</small>
@@ -2560,6 +3650,7 @@ function EpubWorkspacePage(props: {
   onSendToText: (draft: Omit<TextTransferDraft, "createdAt">) => void
   onRecentImportsChange: () => void
 }) {
+  const { onRecentImportsChange, onSendToText } = props
   const bookRef = useRef<Book | null>(null)
   const [state, setState] = useState<"idle" | "loading" | "ready" | "error">("idle")
   const [error, setError] = useState("")
@@ -2588,8 +3679,8 @@ function EpubWorkspacePage(props: {
     if (!preview) return
     void saveEpubWorkspace(toEpubWorkspaceSnapshot(preview))
     saveRecentImport(summarizeEpubImport(preview))
-    props.onRecentImportsChange()
-  }, [preview, props.onRecentImportsChange])
+    onRecentImportsChange()
+  }, [onRecentImportsChange, preview])
 
   const currentChapter = preview?.loadedChapters.find((chapter) => chapter.href === preview.selectedChapterHref)
     ?? preview?.loadedChapters[0]
@@ -2696,13 +3787,21 @@ function EpubWorkspacePage(props: {
     setError("")
     void clearEpubWorkspace()
     removeRecentImport("epub")
-    props.onRecentImportsChange()
-  }, [props.onRecentImportsChange])
+    onRecentImportsChange()
+  }, [onRecentImportsChange])
+
+  const epubRows: WorkspaceSurfaceRow[] = preview ? [{
+    title: preview.title,
+    meta: `${preview.author} · ${formatNumber(preview.loadedChapters.length)} of ${formatNumber(preview.chapters.length)} chapters opened`,
+    lang: "file → text",
+    progress: preview.chapters.length > 0 ? Math.max(1, Math.round((preview.loadedChapters.length / preview.chapters.length) * 100)) : 0,
+    statusLabel: "resume",
+  }] : []
 
   return (
     <FileShellCard
       title="EPUB reader workspace"
-      description="Open chapter navigation inside Astra-owned readers, cache what you open locally, and continue without pretending to control a third-party reader tab."
+      description="Open chapter navigation, persist metadata and extracted chapter text, and re-import the EPUB when unopened chapters require original bytes."
       accept=".epub"
       actionLabel="Choose EPUB"
       state={state}
@@ -2711,9 +3810,17 @@ function EpubWorkspacePage(props: {
     >
       {preview?.restored && (
         <div className="card subtle inline-card">
-          Restored your saved EPUB workflow from {formatRelativeDate(preview.importedAt)}.
+          Restored your saved EPUB extracted-text workflow from {formatRelativeDate(preview.importedAt)}. Original EPUB bytes are not synced; re-import to load unopened chapters.
         </div>
       )}
+
+      <WorkspaceSurfaceRows
+        route="/files/epub"
+        title="EPUBs"
+        kind="books"
+        rows={epubRows}
+        emptyHint="Drop an EPUB above to create the first row. Chapter translation opens inside the reader and only caches chapters you open."
+      />
 
       {preview && currentChapter && (
         <>
@@ -2727,7 +3834,7 @@ function EpubWorkspacePage(props: {
                 type="button"
                 className="button secondary"
                 disabled={!currentChapterText.trim()}
-                onClick={() => props.onSendToText({
+                onClick={() => onSendToText({
                   title: `${preview.title} · ${currentChapter.label}`,
                   source: "epub",
                   text: currentChapterText,
@@ -2750,7 +3857,7 @@ function EpubWorkspacePage(props: {
             <MetricCard label="Words in chapter" value={formatNumber(currentChapter.wordCount)} hint={`Saved ${formatRelativeDate(preview.importedAt)}`} />
           </div>
 
-          <div className="reader-shell">
+          <div className="reader-shell workspace-document-reader">
             <aside className="reader-sidebar">
               <div className="reader-sidebar-title">Chapters</div>
               <div className="reader-nav">
@@ -2801,6 +3908,7 @@ function SubtitleWorkspacePage(props: {
   onNavigate: (route: AppRoute) => void
   onRecentImportsChange: () => void
 }) {
+  const { config, onNavigate, onRecentImportsChange, session } = props
   const [workspace, setWorkspace] = useState<SubtitleWorkspaceState | null>(null)
   const [state, setState] = useState<"idle" | "parsed" | "translating" | "done" | "error">("idle")
   const [error, setError] = useState("")
@@ -2823,8 +3931,8 @@ function SubtitleWorkspacePage(props: {
     if (!workspace) return
     void saveSubtitleWorkspace(toSubtitleWorkspaceSnapshot(workspace))
     saveRecentImport(summarizeSubtitleImport(workspace))
-    props.onRecentImportsChange()
-  }, [props.onRecentImportsChange, workspace])
+    onRecentImportsChange()
+  }, [onRecentImportsChange, workspace])
 
   const isDocument = workspace?.format === "markdown" || workspace?.format === "txt" || workspace?.format === "html"
   const items = isDocument ? (workspace?.documents ?? []) : (workspace?.cues ?? [])
@@ -2880,8 +3988,8 @@ function SubtitleWorkspacePage(props: {
   }, [])
 
   const translateAll = useCallback(async () => {
-    if (!props.session || !workspace) {
-      props.onNavigate("/account")
+    if (!session || !workspace) {
+      onNavigate("/account")
       return
     }
 
@@ -2894,11 +4002,11 @@ function SubtitleWorkspacePage(props: {
 
     try {
       const result = await translateWithWebRelay({
-        session: props.session,
-        config: props.config,
+        session,
+        config,
         request: {
           texts,
-          targetLang: props.config.targetLang,
+          targetLang: config.targetLang,
           task: "translate",
         },
       })
@@ -2921,7 +4029,7 @@ function SubtitleWorkspacePage(props: {
       setError(reason instanceof Error ? reason.message : "Translation failed.")
       setState("error")
     }
-  }, [isDocument, props, workspace])
+  }, [config, isDocument, onNavigate, session, workspace])
 
   const exportFile = useCallback(() => {
     if (!workspace) return
@@ -2948,23 +4056,31 @@ function SubtitleWorkspacePage(props: {
     setError("")
     void clearSubtitleWorkspace()
     removeRecentImport("subtitle")
-    props.onRecentImportsChange()
-  }, [props.onRecentImportsChange])
+    onRecentImportsChange()
+  }, [onRecentImportsChange])
+
+  const subtitleRows: WorkspaceSurfaceRow[] = workspace ? [{
+    title: workspace.fileName,
+    meta: `${formatLabel(workspace.format)} · ${formatNumber(items.length)} ${isDocument ? "paragraphs" : "cues"}`,
+    lang: `file → ${config.targetLang}`,
+    progress: items.length > 0 ? Math.round((workspace.translations.size / items.length) * 100) : 0,
+    statusLabel: workspace.translations.size === items.length && items.length > 0 ? "done" : "new",
+  }] : []
 
   return (
     <>
-      {!props.session && (
+      {!session && (
         <InlineGate
           title="Translation uses your Astra session"
           copy="Parsing works locally without sign-in. Translating and export-ready bilingual output requires an Astra session."
           actionLabel="Open account workspace"
-          onAction={() => props.onNavigate("/account")}
+          onAction={() => onNavigate("/account")}
         />
       )}
 
       <FileShellCard
         title="Subtitle and document workspace"
-        description="Parse subtitles or docs locally, keep the parsed workspace available after refresh, translate via the Astra relay, and export bilingual output."
+        description="Parse subtitles or docs locally, persist metadata and extracted text by library item, translate via the Astra relay, and export bilingual output."
         accept=".srt,.vtt,.ass,.ssa,.md,.txt,.html"
         actionLabel="Choose file"
         state={state === "parsed" || state === "done" ? "ready" : state}
@@ -2973,9 +4089,17 @@ function SubtitleWorkspacePage(props: {
       >
         {workspace?.restored && (
           <div className="card subtle inline-card">
-            Restored your saved subtitle/document workflow from {formatRelativeDate(workspace.importedAt)}.
+            Restored your saved subtitle/document extracted-text workflow from {formatRelativeDate(workspace.importedAt)}. Original file bytes are not synced; re-import if needed.
           </div>
         )}
+
+        <WorkspaceSurfaceRows
+          route="/files/subtitles"
+          title="Subtitles and documents"
+          kind="srt · vtt · docs"
+          rows={subtitleRows}
+          emptyHint="Drop a subtitle or document above. Subtitles open as bilingual reading sessions paced by timecode; documents use paragraph rows."
+        />
 
         {workspace && (
           <>
@@ -3007,7 +4131,14 @@ function SubtitleWorkspacePage(props: {
               <MetricCard label="Translated items" value={formatNumber(workspace.translations.size)} hint={workspace.lastExportedAt ? `Last export ${formatRelativeDate(workspace.lastExportedAt)}` : "Ready for export"} />
             </div>
 
-            <div className="table-wrap">
+            {state === "translating" && (
+              <div className="workspace-inline-progress">
+                <WorkspaceProgressBar value={items.length > 0 ? (workspace.translations.size / items.length) * 100 : 0} label="Subtitle translation progress" />
+                <span className="workspace-mono">Translating via Astra relay…</span>
+              </div>
+            )}
+
+            <div className="table-wrap workspace-subtitle-table">
               <table className="data-table">
                 <thead>
                   <tr>
@@ -3044,18 +4175,27 @@ function AssetLibraryPage(props: {
   recentImports: RecentWebImport[]
   onNavigate: (route: AppRoute) => void
 }) {
+  const certMode = readAstraCertificationParams().enabled
   const [importLibrary, setImportLibrary] = useState<ImportLibraryEntry[]>([])
-  const [selectedAssetId, setSelectedAssetId] = useState<string | null>(null)
-  const [libraryState, setLibraryState] = useState<"loading" | "ready">("loading")
+  const [selectedAssetId, setSelectedAssetId] = useState<string | null>(certMode ? ASTRA_CERT_IMPORT_LIBRARY[0]?.id ?? null : null)
+  const [libraryState, setLibraryState] = useState<"loading" | "ready">(certMode ? "ready" : "loading")
+  const [assetNotice, setAssetNotice] = useState("")
 
   useEffect(() => {
+    if (certMode) {
+      setImportLibrary(ASTRA_CERT_IMPORT_LIBRARY)
+      setSelectedAssetId((current) => current ?? ASTRA_CERT_IMPORT_LIBRARY[0]?.id ?? null)
+      setLibraryState("ready")
+      return
+    }
+
     let cancelled = false
     setLibraryState("loading")
     void readImportLibrary()
       .then((entries) => {
         if (cancelled) return
         setImportLibrary(entries)
-        setSelectedAssetId((current) => current ?? entries[0]?.source ?? null)
+        setSelectedAssetId((current) => current ?? entries[0]?.id ?? null)
       })
       .finally(() => {
         if (!cancelled) {
@@ -3065,16 +4205,85 @@ function AssetLibraryPage(props: {
     return () => {
       cancelled = true
     }
-  }, [props.recentImports])
+  }, [certMode, props.recentImports])
 
-  const selectedImport = importLibrary.find((entry) => entry.source === selectedAssetId) ?? null
-  const readingHistoryEntries = props.cloudAssets?.readingHistory.entries ?? []
-  const studyPages = props.cloudAssets?.studyProgress.pages ?? []
-  const vocabularyEntries = props.cloudAssets?.vocabulary.entries ?? []
+  const selectedImport = importLibrary.find((entry) => entry.id === selectedAssetId) ?? null
+  const cloudLibraryItems = certMode ? [] : props.cloudAssets?.library.items ?? []
+  const readingHistoryEntries = certMode ? ASTRA_CERT_READING_HISTORY : props.cloudAssets?.readingHistory.entries ?? []
+  const studyPages = certMode ? ASTRA_CERT_STUDY_PAGES : props.cloudAssets?.studyProgress.pages ?? []
+  const vocabularyEntries = certMode ? ASTRA_CERT_VOCABULARY : props.cloudAssets?.vocabulary.entries ?? []
+  const assetTiles: AssetTile[] = certMode ? ASTRA_CERT_ASSET_TILES : [
+    ...importLibrary.map((entry): AssetTile => ({
+      id: `local-${entry.id}`,
+      title: entry.title,
+      meta: entry.summary,
+      route: entry.route,
+      tone: "local",
+    })),
+    ...cloudLibraryItems.slice(0, 6).map((entry): AssetTile => ({
+      id: `cloud-library-${entry.id}`,
+      title: entry.title,
+      meta: `${entry.kind.replace(/-/g, " ")} · ${entry.summary}`,
+      route: entry.route,
+      tone: "history",
+    })),
+    ...readingHistoryEntries.slice(0, 4).map((entry): AssetTile => ({
+      id: `history-${entry.id}`,
+      title: entry.title,
+      meta: `${entry.hostname} · ${formatNumber(entry.wordsTranslated)} words`,
+      route: "/articles",
+      tone: "history",
+    })),
+    ...vocabularyEntries.slice(0, 4).map((entry): AssetTile => ({
+      id: `vocab-${entry.id}`,
+      title: entry.text,
+      meta: entry.translation || entry.explanation || "saved word",
+      route: "/assets",
+      tone: "vocab",
+    })),
+  ]
+
+  const refreshLocalLibrary = useCallback(async () => {
+    if (certMode) return
+    setLibraryState("loading")
+    const entries = await readImportLibrary()
+    setImportLibrary(entries)
+    setSelectedAssetId((current) => entries.some((entry) => entry.id === current) ? current : entries[0]?.id ?? null)
+    setLibraryState("ready")
+  }, [certMode])
+
+  const openSelectedImport = useCallback(async (entry: ImportLibraryEntry) => {
+    if (!certMode) {
+      await openLibraryItem(entry.id)
+    }
+    props.onNavigate(entry.route)
+  }, [certMode, props])
+
+  const renameSelectedImport = useCallback(async (entry: ImportLibraryEntry) => {
+    if (certMode) return
+    const nextTitle = typeof window !== "undefined" && typeof window.prompt === "function"
+      ? window.prompt("Rename this library item", entry.title)
+      : null
+    if (!nextTitle?.trim()) return
+    await renameLibraryItem(entry.id, nextTitle)
+    await refreshLocalLibrary()
+    setAssetNotice("Renamed local library item.")
+  }, [certMode, refreshLocalLibrary])
+
+  const removeSelectedImport = useCallback(async (entry: ImportLibraryEntry) => {
+    if (certMode) return
+    const confirmed = typeof window !== "undefined" && typeof window.confirm === "function"
+      ? window.confirm(`Remove ${entry.title} from this device's local library?`)
+      : true
+    if (!confirmed) return
+    await removeLibraryItem(entry.id)
+    await refreshLocalLibrary()
+    setAssetNotice("Removed local library item from this device.")
+  }, [certMode, refreshLocalLibrary])
 
   return (
-    <>
-      <section className="card">
+    <div className="asset-library-page">
+      <section className="card asset-library-hero-card">
         <div className="section-heading">
           <div>
             <div className="card-title">Cloud and local asset detail pages</div>
@@ -3085,14 +4294,41 @@ function AssetLibraryPage(props: {
           </button>
         </div>
 
-        <div className="grid cards-3 compact">
+        <div className="grid cards-3 compact asset-summary-metrics">
           <MetricCard label="Local imports" value={formatNumber(importLibrary.length)} hint="saved workspace entries on this device" />
           <MetricCard label="Cloud reading pages" value={formatNumber(readingHistoryEntries.length)} hint="reading history asset records" />
           <MetricCard label="Cloud study pages" value={formatNumber(studyPages.length)} hint="durable study progress assets" />
         </div>
+
+        <div className="asset-grid" aria-label="Asset thumbnail grid">
+          {assetTiles.length === 0 ? (
+            <div className="asset-tile asset-tile--empty">
+              <strong>+ new asset</strong>
+              <span>Import an article, PDF, EPUB, subtitle, or sync cloud continuity to fill this grid.</span>
+            </div>
+          ) : (
+            assetTiles.map((tile, index) => (
+              <button
+                key={tile.id}
+                type="button"
+                className={`asset-tile asset-tile--${tile.tone}`}
+                onClick={() => props.onNavigate(tile.route)}
+                style={{ "--asset-hue": `${58 + index * 28}` } as React.CSSProperties}
+              >
+                <strong>{tile.title}</strong>
+                <span>{tile.meta}</span>
+              </button>
+            ))
+          )}
+        </div>
+        {certMode && (
+          <div className="workspace-note workspace-cert-note">
+            Certification demo seed: asset cards and detail rows are deterministic local fixtures only.
+          </div>
+        )}
       </section>
 
-      <section className="grid cards-2">
+      <section className="grid cards-2 asset-detail-sections">
         <section className="card">
           <div className="section-heading">
             <div>
@@ -3108,11 +4344,11 @@ function AssetLibraryPage(props: {
           ) : (
             <div className="stack list">
               {importLibrary.map((entry) => (
-                <button
-                  key={entry.source}
+                  <button
+                  key={entry.id}
                   type="button"
-                  className={`reader-nav-item${selectedAssetId === entry.source ? " is-active" : ""}`}
-                  onClick={() => setSelectedAssetId(entry.source)}
+                  className={`reader-nav-item${selectedAssetId === entry.id ? " is-active" : ""}`}
+                  onClick={() => setSelectedAssetId(entry.id)}
                 >
                   <strong>{entry.title}</strong>
                   <small>{entry.summary}</small>
@@ -3133,15 +4369,33 @@ function AssetLibraryPage(props: {
               <div className="preview-block"><strong>Summary</strong>{"\n"}{selectedImport.summary}</div>
               <div className="preview-block"><strong>Detail</strong>{"\n"}{selectedImport.detail}</div>
               <div className="preview-block"><strong>Imported</strong>{"\n"}{formatRelativeDate(selectedImport.importedAt)}</div>
-              <button type="button" className="button secondary" onClick={() => props.onNavigate(selectedImport.route)}>
-                Open source workspace
-              </button>
+              <div className="preview-block"><strong>Scope</strong>{"\n"}{selectedImport.ownerMode === "account" ? `Account metadata/text · ${selectedImport.syncState}` : `Local-only · ${selectedImport.syncState}`}</div>
+              <div className="preview-block"><strong>Extracted-text snapshot</strong>{"\n"}{selectedImport.snapshotStatus ?? "not materialized"}</div>
+              {selectedImport.requiresReimportForBinaryView && (
+                <div className="preview-block"><strong>Original file bytes</strong>{"\n"}Not synced. Re-import the source file on this browser for binary viewer access.</div>
+              )}
+              <div className="row gap wrap">
+                <button type="button" className="button secondary" onClick={() => void openSelectedImport(selectedImport)}>
+                  Open source workspace
+                </button>
+                {!certMode && (
+                  <>
+                    <button type="button" className="button ghost" onClick={() => void renameSelectedImport(selectedImport)}>
+                      Rename
+                    </button>
+                    <button type="button" className="button ghost" onClick={() => void removeSelectedImport(selectedImport)}>
+                      Remove
+                    </button>
+                  </>
+                )}
+              </div>
+              {assetNotice && <div className="helper-copy">{assetNotice}</div>}
             </div>
           )}
         </section>
       </section>
 
-      <section className="grid cards-2">
+      <section className="grid cards-2 asset-detail-sections">
         <section className="card subtle">
           <div className="card-title">Reading history asset details</div>
           {props.cloudState === "loading" && !props.cloudAssets ? (
@@ -3185,7 +4439,7 @@ function AssetLibraryPage(props: {
         </section>
       </section>
 
-      <section className="grid cards-2">
+      <section className="grid cards-2 asset-detail-sections">
         <section className="card subtle">
           <div className="card-title">Vocabulary asset details</div>
           {vocabularyEntries.length === 0 ? (
@@ -3232,7 +4486,7 @@ function AssetLibraryPage(props: {
           )}
         </section>
       </section>
-    </>
+    </div>
   )
 }
 
@@ -3263,6 +4517,7 @@ function AccountPage(props: {
   onRefresh: () => Promise<void>
   onRefreshCloudAssets: () => Promise<void>
   onRefreshImportOps: () => Promise<void>
+  onImportLocalLibraryMetadata: () => Promise<void>
   onReplayImportFailures: (dryRun: boolean) => Promise<void>
   onToggleCloudCollection: (collection: "reading_history" | "study_progress", enabled: boolean) => Promise<void>
   onRefreshStorageHealth: () => Promise<void>
@@ -3707,7 +4962,9 @@ function AccountPage(props: {
               <>
                 <div className="metrics-grid">
                   <MetricCard label="IndexedDB" value={props.storageHealth.indexedDbReachable ? "reachable" : "unavailable"} hint={props.storageHealth.dbName} />
-                  <MetricCard label="Records" value={formatNumber(props.storageHealth.indexedDbRecordCount)} hint="workspace snapshots in IndexedDB" />
+                  <MetricCard label="Records" value={formatNumber(props.storageHealth.indexedDbRecordCount)} hint="compat workspace snapshots" />
+                  <MetricCard label="Library items" value={formatNumber(props.storageHealth.libraryItemCount)} hint={`${formatNumber(props.storageHealth.librarySnapshotCount)} snapshots`} />
+                  <MetricCard label="Migration journal" value={formatNumber(props.storageHealth.migrationJournalCount)} hint={`${formatNumber(props.storageHealth.legacyMappingCount)} legacy id mappings`} />
                   <MetricCard label="Legacy keys" value={formatNumber(props.storageHealth.legacyStorageKeysPresent.length)} hint="localStorage fallback entries" />
                   <MetricCard label="Corrupted keys" value={formatNumber(props.storageHealth.corruptedKeys.length)} hint="repair recommended when > 0" />
                 </div>
@@ -3728,6 +4985,7 @@ function AccountPage(props: {
                         <th>Workspace</th>
                         <th>IndexedDB</th>
                         <th>Legacy</th>
+                        <th>Library</th>
                         <th>Updated</th>
                         <th>Issues</th>
                       </tr>
@@ -3738,6 +4996,7 @@ function AccountPage(props: {
                           <td>{record.label}</td>
                           <td>{record.indexedDbState}</td>
                           <td>{record.legacyState}</td>
+                          <td>{record.libraryState}</td>
                           <td>{record.indexedDbUpdatedAt ? formatRelativeDate(new Date(record.indexedDbUpdatedAt).toISOString()) : "—"}</td>
                           <td>{record.issues[0] ?? "none"}</td>
                         </tr>
@@ -3757,7 +5016,7 @@ function AccountPage(props: {
             <div className="section-heading">
               <div>
                 <div className="card-title">Synced cloud assets</div>
-                <div className="card-copy">Latest fetched continuity snapshot for cloud-safe config, vocabulary, optional reading history, and per-page study progress.</div>
+                <div className="card-copy">Latest fetched continuity snapshot for cloud-safe config, vocabulary, review schedules, optional reading history, and per-page study progress.</div>
               </div>
               <div className="row gap wrap">
                 <span className={`status-pill${props.cloudState === "ready" ? " success" : ""}`}>
@@ -3777,10 +5036,16 @@ function AccountPage(props: {
                   <MetricCard label="Enabled collections" value={formatNumber(enabledCollections)} hint={`${formatNumber(props.cloudAssets.syncHealth.activeDeviceCount)} active devices`} />
                   <MetricCard label="Current device sync" value={formatRelativeDate(props.cloudAssets.syncHealth.currentDeviceLastSyncAt)} hint="latest device sync in continuity snapshot" />
                   <MetricCard label="Mutation budget" value={formatNumber(props.cloudAssets.syncHealth.maxMutationsPerRequest)} hint="max mutations per request" />
+                  <MetricCard label="Cloud library" value={formatNumber(props.cloudAssets.library.count)} hint={`${formatNumber(props.cloudAssets.library.snapshotCount)} metadata/text snapshots`} />
                 </div>
 
+                <div className="row gap wrap" style={{ marginTop: "1rem" }}>
+                  <button type="button" className="button secondary" onClick={() => void props.onImportLocalLibraryMetadata()} disabled={props.cloudState === "loading"}>
+                    Import local library snapshots to account
+                  </button>
+                </div>
                 <div className="helper-copy" style={{ marginTop: "1rem" }}>
-                  This is the latest fetched snapshot, not a continuously authoritative cross-device view.
+                  This is the latest fetched snapshot, not a continuously authoritative cross-device view. Library import uploads metadata and extracted-text snapshots only. Original file bytes are never uploaded in this milestone; binary viewer access requires re-import on each browser.
                 </div>
                 <div className="helper-copy">
                   Reading history is optional behavioral sync. Study progress reflects synced page milestones only; device-local daily totals stay local.
@@ -4003,7 +5268,7 @@ function AccountPage(props: {
                 <div className="section-heading">
                   <div>
                     <div className="card-title">Continuity export</div>
-                    <div className="card-copy">Exports the current cloud continuity snapshot for config, vocabulary, reading history, and study progress.</div>
+                    <div className="card-copy">Exports the current cloud continuity snapshot for config, vocabulary, review schedules, reading history, and study progress.</div>
                   </div>
                   <div className="row gap wrap">
                     <button type="button" className="button secondary" onClick={() => void refreshContinuityExport()} disabled={!continuityExportJob || exportBusy || downloadBusy}>
@@ -4250,6 +5515,7 @@ function FileShellCard(props: {
   children?: React.ReactNode
 }) {
   const inputRef = useRef<HTMLInputElement | null>(null)
+  const inputId = useMemo(() => `workspace-file-${props.accept.replace(/[^a-z0-9]+/gi, "-").replace(/^-|-$/g, "") || "upload"}`, [props.accept])
 
   const handleInput = useCallback((event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0]
@@ -4259,7 +5525,7 @@ function FileShellCard(props: {
     event.target.value = ""
   }, [props])
 
-  const handleDrop = useCallback((event: React.DragEvent<HTMLDivElement>) => {
+  const handleDrop = useCallback((event: React.DragEvent<HTMLLabelElement>) => {
     event.preventDefault()
     const file = event.dataTransfer.files?.[0]
     if (file) {
@@ -4268,7 +5534,7 @@ function FileShellCard(props: {
   }, [props])
 
   return (
-    <section className="card">
+    <section className="card file-shell-card">
       <div className="section-heading">
         <div>
           <div className="card-title">{props.title}</div>
@@ -4276,14 +5542,23 @@ function FileShellCard(props: {
         </div>
       </div>
 
-      <div
+      <label
+        htmlFor={inputId}
         className={`dropzone${props.state === "loading" || props.state === "translating" ? " is-loading" : ""}`}
         onDragOver={(event) => event.preventDefault()}
         onDrop={handleDrop}
-        onClick={() => inputRef.current?.click()}
+        tabIndex={0}
+        aria-label={`${props.actionLabel}: drop a file here or browse`}
+        onKeyDown={(event) => {
+          if (event.key === "Enter" || event.key === " ") {
+            event.preventDefault()
+            inputRef.current?.click()
+          }
+        }}
       >
         <input
           ref={inputRef}
+          id={inputId}
           className="visually-hidden"
           type="file"
           accept={props.accept}
@@ -4292,13 +5567,23 @@ function FileShellCard(props: {
         <div className="dropzone-title">{props.actionLabel}</div>
         <div className="dropzone-copy">Drop a file here or click to browse.</div>
         <small>{props.accept}</small>
-      </div>
+      </label>
 
-      {props.state === "loading" && <div className="helper-copy">Loading preview…</div>}
-      {props.state === "translating" && <div className="helper-copy">Translating via Astra relay…</div>}
+      {props.state === "loading" && (
+        <div className="workspace-inline-progress workspace-inline-progress--indeterminate" aria-live="polite" role="status">
+          <span className="helper-copy">Loading preview…</span>
+        </div>
+      )}
+      {props.state === "translating" && (
+        <div className="workspace-inline-progress workspace-inline-progress--indeterminate" aria-live="polite" role="status">
+          <span className="helper-copy">Translating via Astra relay…</span>
+        </div>
+      )}
       {props.state === "error" && props.error && <div className="error-note">{props.error}</div>}
 
-      {props.children}
+      <div className="file-shell-card__body">
+        {props.children}
+      </div>
     </section>
   )
 }

@@ -193,6 +193,7 @@ function createBootstrapPayload() {
     collections: {
       config: { enabled: true, defaultEnabled: true, cursor: "2" },
       vocabulary: { enabled: true, defaultEnabled: true, cursor: "4" },
+      review_schedule: { enabled: true, defaultEnabled: true, cursor: null },
       reading_history: { enabled: true, defaultEnabled: false, cursor: "7" },
       study_progress: { enabled: false, defaultEnabled: false, cursor: null },
     },
@@ -228,6 +229,16 @@ function createShadowSyncCollections() {
       last_issued_cursor_order: 4,
       last_server_updated_at: "2026-04-10T10:05:00.000Z",
       shadow_updated_at: "2026-04-10T10:05:00.000Z",
+    },
+    {
+      user_id: "usr_demo",
+      collection: "review_schedule",
+      enabled: 1,
+      default_enabled: 1,
+      last_issued_cursor: null,
+      last_issued_cursor_order: null,
+      last_server_updated_at: null,
+      shadow_updated_at: "2026-04-10T10:06:00.000Z",
     },
     {
       user_id: "usr_demo",

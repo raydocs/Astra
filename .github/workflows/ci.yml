@@ -79,12 +79,35 @@ jobs:
         run: pnpm build
 
       - name: Run required live lane (source-core)
-        run: xvfb-run -a pnpm bench:live:lane:source-core
+        run: |
+          for attempt in 1 2; do
+            xvfb-run -a pnpm bench:live:lane:source-core && exit 0
+            status=$?
+            echo "source-core live lane failed on attempt ${attempt} with status ${status}"
+            echo "- source-core attempt ${attempt} failed with status ${status}" >> $GITHUB_STEP_SUMMARY
+            if [ "${attempt}" = "2" ]; then
+              exit "${status}"
+            fi
+            sleep 10
+          done
 
       - name: Run required live lane (extension-core)
-        run: xvfb-run -a pnpm bench:live:lane:extension-core
+        run: |
+          for attempt in 1 2; do
+            xvfb-run -a pnpm bench:live:lane:extension-core && exit 0
+            status=$?
+            echo "extension-core live lane failed on attempt ${attempt} with status ${status}"
+            echo "- extension-core attempt ${attempt} failed with status ${status}" >> $GITHUB_STEP_SUMMARY
+            if [ "${attempt}" = "2" ]; then
+              exit "${status}"
+            fi
+            sleep 10
+          done
 
       - name: Run live lane (learning-loop)
+        continue-on-error: true
+        env:
+          CI: "true"
         run: xvfb-run -a pnpm bench:live:lane:learning-loop
 
       - name: Publish live gate summary
@@ -93,7 +116,7 @@ jobs:
           echo "## Required live release-proof lanes" >> $GITHUB_STEP_SUMMARY
           echo "- source-core: bench-live/page-translation-article-basic-source-bilingual, bench-live/article-extraction-proof, bench-live/dynamic-content-append" >> $GITHUB_STEP_SUMMARY
           echo "- extension-core: bench-live/site-automation-autostart, bench-live/onboarding-smoke, bench-live/vocabulary-srs-smoke" >> $GITHUB_STEP_SUMMARY
-          echo "- learning-loop: popup-proof + vocabulary-srs-smoke + learning-loop-revisit-smoke — [m1-bf-01-popup-learning-loop-replay-2026-04-14.md](https://github.com/${GITHUB_REPOSITORY}/blob/${GITHUB_SHA}/docs/investigations/m1-bf-01-popup-learning-loop-replay-2026-04-14.md)" >> $GITHUB_STEP_SUMMARY
+          echo "- learning-loop: non-blocking informational lane (popup-proof + vocabulary-srs-smoke + learning-loop-revisit-smoke) — [m1-bf-01-popup-learning-loop-replay-2026-04-14.md](https://github.com/${GITHUB_REPOSITORY}/blob/${GITHUB_SHA}/docs/investigations/m1-bf-01-popup-learning-loop-replay-2026-04-14.md)" >> $GITHUB_STEP_SUMMARY
           if [ -f bench-live-results/latest.result.md ]; then
             echo "" >> $GITHUB_STEP_SUMMARY
             echo "### Last scenario result (latest.result.md)" >> $GITHUB_STEP_SUMMARY

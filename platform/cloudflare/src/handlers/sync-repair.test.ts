@@ -148,6 +148,12 @@ describe("handleSyncRepair", () => {
         lastIssuedCursor: null,
         compactionFloorCursor: null,
       },
+      review_schedule: {
+        enabled: true,
+        defaultEnabled: true,
+        lastIssuedCursor: null,
+        compactionFloorCursor: null,
+      },
       reading_history: {
         enabled: true,
         defaultEnabled: false,

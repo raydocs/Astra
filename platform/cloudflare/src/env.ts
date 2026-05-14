@@ -72,6 +72,7 @@ export interface AstraPlatformEnv {
   SYNC_TOMBSTONE_RETENTION_DAYS?: string
   SYNC_COMPACTION_BATCH_SIZE?: string
   SYNC_COMPACTION_DRY_RUN?: string
+  ASTRA_CORS_ALLOWED_ORIGINS?: string
   ASTRA_ENV?: string
 }
 
@@ -110,6 +111,7 @@ export interface PlatformConfig {
   syncTombstoneRetentionDays: number
   syncCompactionBatchSize: number
   syncCompactionDryRun: boolean
+  corsAllowedOrigins?: string[]
 }
 
 function parseArticleImportMode(value: string | undefined): ArticleImportMode {
@@ -198,6 +200,14 @@ function parseCsvList(value: string | undefined): string[] {
     .split(",")
     .map((entry) => entry.trim().toLowerCase())
     .filter(Boolean)
+}
+
+function parseOriginList(value: string | undefined): string[] {
+  const origins = (value ?? "*")
+    .split(",")
+    .map((entry) => entry.trim())
+    .filter(Boolean)
+  return origins.length > 0 ? origins : ["*"]
 }
 
 function parsePositiveInteger(
@@ -343,5 +353,6 @@ export function parsePlatformConfig(env: AstraPlatformEnv): PlatformConfig {
       500,
     ) ?? 500,
     syncCompactionDryRun: parseBoolean(env.SYNC_COMPACTION_DRY_RUN, true),
+    corsAllowedOrigins: parseOriginList(env.ASTRA_CORS_ALLOWED_ORIGINS),
   }
 }

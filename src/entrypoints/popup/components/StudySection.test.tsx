@@ -245,7 +245,7 @@ describe("StudySection weekly ROI", () => {
     expect(nudge.textContent).toContain("attached to this Astra account")
     expect(nudge.textContent).toContain("Connected proof")
     expect(nudge.textContent).toContain("no sign-in action is needed")
-    expect(nudge.textContent).toContain("SRS schedule timing stays local-only")
+    expect(nudge.textContent).toContain("daily study stats stay local-only")
     expect(container.querySelector('[data-testid="study-account-continuity-sign-in-cta"]')).toBeNull()
   })
 

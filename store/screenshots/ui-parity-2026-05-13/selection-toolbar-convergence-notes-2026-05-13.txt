@@ -1,0 +1,2 @@
+selection-toolbar.png recaptured with astraCert=1 fixture debug={"shell":{"x":170,"y":310,"width":259,"height":36},"card":{"x":170,"y":368,"width":420,"height":224},"text":"✣TranslationEN → ZHtraded the slow pleasure of a paragraph for the quick relief of a notification把一整段文字带来的缓慢愉悦，换成了一条通知带来的短暂解脱。Save phrase＋ Explain×","hasSave":true,"hasMark":false}
+compare-selection-toolbar.png regenerated from reference/selection-toolbar.png and production/selection-toolbar.png

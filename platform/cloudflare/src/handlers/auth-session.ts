@@ -1,6 +1,7 @@
 import { AstraSessionSchema, type AstraSession } from "../../../../src/types/auth"
 import {
   ASTRA_CREDENTIAL_HASH_ALGORITHM,
+  hashAstraCredentialSecret,
   verifyAstraCredentialSecret,
 } from "../../../../src/utils/astra/credential-hash"
 import {
@@ -39,7 +40,7 @@ import {
   upsertShadowSession,
 } from "../repositories/sessions"
 import { getShadowUserUsageByUserId } from "../repositories/user-usage"
-import { getShadowUserByEmail, getShadowUserCredential } from "../repositories/users"
+import { getShadowUserByEmail, getShadowUserById, getShadowUserCredential } from "../repositories/users"
 
 const DeviceDescriptorSchema = z.object({
   label: z.string().trim().min(1).max(80).optional(),
@@ -252,7 +253,7 @@ async function buildAuthenticatedSessionArtifacts(params: {
     identityMode: "authenticated",
   })
   const token = await issueAstraSessionToken(claims, params.env.ASTRA_SESSION_SECRET?.trim() || "")
-  const tokenHash = await issueSessionIdDigest(token)
+  const tokenHash = await hashAstraCredentialSecret(token)
 
   return {
     token,
@@ -269,7 +270,7 @@ async function buildAuthenticatedSessionArtifacts(params: {
       status: "active" as const,
       revokedAt: null,
       tokenHash,
-      tokenHashAlg: "sha256",
+      tokenHashAlg: ASTRA_CREDENTIAL_HASH_ALGORITHM,
       shadowUpdatedAt: params.issuedAt,
     },
     response: AstraSessionSchema.parse({
@@ -811,7 +812,7 @@ export async function handleAuthSession(
       }
 
       const shadowUser = existingRequest.userId
-        ? await getShadowUserByEmail(env.ASTRA_PLATFORM_DB, normalizedEmail)
+        ? await getShadowUserById(env.ASTRA_PLATFORM_DB, existingRequest.userId)
         : null
       const [shadowSession, shadowUsage] = await Promise.all([
         getShadowSessionById(env.ASTRA_PLATFORM_DB, existingRequest.sessionId),
@@ -1104,7 +1105,7 @@ export async function handleAuthSession(
     if (!validPassword) {
       const response = taggedPlatformError(ctx, {
         status: 401,
-        code: "CONFIG_MISSING",
+        code: "INVALID_CREDENTIALS",
         message: "Invalid Astra credentials.",
         route: "native-auth-gate",
         mode,

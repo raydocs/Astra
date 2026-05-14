@@ -6,8 +6,12 @@ import {
   buildConfigSiteSyncRecordId,
   normalizeSiteKey,
 } from "../../types/config"
+import {
+  SyncedVocabularyEntrySchema,
+  VocabularyReviewScheduleRecordSchema,
+} from "../storage/vocabulary-core"
 
-export type SharedSyncCollection = "config" | "vocabulary" | "reading_history" | "study_progress"
+export type SharedSyncCollection = "config" | "vocabulary" | "review_schedule" | "reading_history" | "study_progress"
 export type SharedSyncOperation = "upsert" | "delete"
 
 export interface SharedSyncPreferences {
@@ -35,21 +39,6 @@ export interface SharedSyncMutationRejection {
 
 const STUDY_STEPS_ORDER = ["read", "guided_read", "explain", "vocab_save", "vocab_review"] as const
 const StudyStepSchema = z.enum(STUDY_STEPS_ORDER)
-const SyncedVocabularyEntrySchema = z.object({
-  id: z.string().trim().min(1),
-  text: z.string().trim().min(1),
-  translation: z.string().trim().min(1).optional(),
-  explanation: z.string().trim().min(1).optional(),
-  context: z.string().trim().min(1).optional(),
-  url: z.string().trim().min(1).optional(),
-  hostname: z.string().trim().min(1).optional(),
-  savedAt: z.number().int().nonnegative(),
-  note: z.string().max(1000).optional(),
-  tags: z.array(z.string()).optional(),
-  glossaryEnabled: z.boolean().optional(),
-  glossaryScope: z.enum(["hostname", "global"]).optional(),
-  glossaryTargetText: z.string().trim().min(1).optional(),
-})
 const SyncedReadingHistoryEntrySchema = z.object({
   id: z.string().trim().min(1),
   url: z.string().trim().min(1),
@@ -68,6 +57,67 @@ const SyncedStudyProgressEntrySchema = z.object({
   vocabReviewed: z.number().int().nonnegative().default(0),
   startedAt: z.number().int().nonnegative(),
   lastActivityAt: z.number().int().nonnegative(),
+}).strict()
+const WebLibraryMetadataRecordSchema = z.object({
+  id: z.string().trim().min(1),
+  kind: z.enum(["article", "pdf", "epub", "subtitle", "video-note", "asset"]),
+  title: z.string().trim().min(1).max(500),
+  summary: z.string().trim().min(1).max(1000),
+  detail: z.string().trim().min(1).max(1000),
+  route: z.enum(["/articles", "/files/pdf", "/files/epub", "/files/subtitles", "/video-notes", "/assets"]),
+  ownerMode: z.literal("account"),
+  accountId: z.string().trim().min(1),
+  sourceLegacyKey: z.string().trim().min(1).nullable().default(null),
+  legacySignature: z.string().trim().min(1).nullable().default(null),
+  createdAt: z.string().trim().min(1),
+  updatedAt: z.string().trim().min(1),
+  importedAt: z.string().trim().min(1),
+  lastOpenedAt: z.string().trim().min(1).nullable().default(null),
+  removedAt: z.string().trim().min(1).nullable().default(null),
+  syncState: z.enum(["synced", "pending_import", "import_failed"]),
+  metadata: z.record(z.string(), z.unknown()).default({}),
+}).strict()
+
+const WEB_LIBRARY_CONFIG_RECORD_PREFIX = "__web_library_metadata_v1__:"
+const WEB_LIBRARY_DOCUMENT_SNAPSHOT_RECORD_PREFIX = "__web_library_document_snapshot_v1__:"
+const WEB_DOCUMENT_SNAPSHOT_CHUNK_SIZE_CHARS = 32_000
+const WEB_DOCUMENT_SNAPSHOT_MAX_CHUNKS = 13
+
+const WebLibraryDocumentSnapshotManifestSchema = z.object({
+  kind: z.literal("web_library_document_snapshot_manifest_v1"),
+  libraryItemId: z.string().trim().min(1),
+  itemKind: z.enum(["article", "pdf", "epub", "subtitle", "video-note", "asset"]),
+  version: z.literal(1),
+  metadata: z.record(z.string(), z.unknown()).default({}),
+  extractedTextStatus: z.enum(["available", "empty", "oversized"]),
+  extractedTextCharCount: z.number().int().nonnegative(),
+  chunkCount: z.number().int().nonnegative().max(WEB_DOCUMENT_SNAPSHOT_MAX_CHUNKS),
+  budget: z.object({
+    maxExtractedTextChars: z.literal(400_000),
+    chunkThresholdChars: z.literal(48_000),
+    chunkSizeChars: z.literal(WEB_DOCUMENT_SNAPSHOT_CHUNK_SIZE_CHARS),
+    retentionPolicy: z.literal("latest_snapshot_per_library_item"),
+  }),
+  failureCode: z.enum(["EXTRACTED_TEXT_EMPTY", "EXTRACTED_TEXT_TOO_LARGE"]).nullable().default(null),
+  failureMessage: z.string().trim().min(1).max(1000).nullable().default(null),
+  byteAvailability: z.object({
+    originalFileBytesSynced: z.literal(false),
+    requiresReimportForBinaryView: z.literal(true),
+    message: z.string().trim().min(1).max(1000),
+  }),
+  updatedAt: z.number().int().nonnegative(),
+}).strict()
+
+const WebLibraryDocumentSnapshotChunkSchema = z.object({
+  kind: z.literal("web_library_document_snapshot_chunk_v1"),
+  libraryItemId: z.string().trim().min(1),
+  itemKind: z.enum(["article", "pdf", "epub", "subtitle", "video-note", "asset"]),
+  version: z.literal(1),
+  chunkIndex: z.number().int().nonnegative().max(WEB_DOCUMENT_SNAPSHOT_MAX_CHUNKS - 1),
+  chunkCount: z.number().int().positive().max(WEB_DOCUMENT_SNAPSHOT_MAX_CHUNKS),
+  text: z.string().max(WEB_DOCUMENT_SNAPSHOT_CHUNK_SIZE_CHARS),
+  charCount: z.number().int().nonnegative().max(WEB_DOCUMENT_SNAPSHOT_CHUNK_SIZE_CHARS),
+  updatedAt: z.number().int().nonnegative(),
 }).strict()
 
 export function sanitizeSyncUrl(url?: string | null): string | undefined {
@@ -93,7 +143,7 @@ export function isSyncCollectionEnabled(
   syncPreferences: SharedSyncPreferences,
   collection: SharedSyncCollection,
 ): boolean {
-  if (collection === "config" || collection === "vocabulary") {
+  if (collection === "config" || collection === "vocabulary" || collection === "review_schedule") {
     return true
   }
 
@@ -130,6 +180,92 @@ export function validateSyncMutationPayload(
   }
 
   if (mutation.collection === "config") {
+    if (mutation.recordId.startsWith(WEB_LIBRARY_DOCUMENT_SNAPSHOT_RECORD_PREFIX)) {
+      if (mutation.operation === "delete") {
+        return { ...mutation, payload: null }
+      }
+
+      const manifestMatch = /^__web_library_document_snapshot_v1__:(.+):manifest$/.exec(mutation.recordId)
+      const chunkMatch = /^__web_library_document_snapshot_v1__:(.+):chunk:(\d+)$/.exec(mutation.recordId)
+      const libraryItemId = manifestMatch?.[1] ?? chunkMatch?.[1] ?? null
+      if (!libraryItemId) {
+        return createSyncRejection(
+          mutation,
+          "INVALID_SYNC_PAYLOAD",
+          "Web library document snapshot recordId must target a manifest or chunk.",
+        )
+      }
+
+      try {
+        if (manifestMatch) {
+          const payload = WebLibraryDocumentSnapshotManifestSchema.parse(mutation.payload)
+          if (payload.libraryItemId !== libraryItemId) {
+            return createSyncRejection(
+              mutation,
+              "INVALID_SYNC_PAYLOAD",
+              "Web library document snapshot manifest recordId must match the payload libraryItemId.",
+            )
+          }
+          if (payload.extractedTextStatus === "available" && payload.chunkCount <= 0) {
+            return createSyncRejection(
+              mutation,
+              "INVALID_SYNC_PAYLOAD",
+              "Available web library document snapshots must include at least one chunk.",
+            )
+          }
+          if (payload.extractedTextStatus !== "available" && payload.chunkCount !== 0) {
+            return createSyncRejection(
+              mutation,
+              "INVALID_SYNC_PAYLOAD",
+              "Unavailable or oversized web library snapshots must not include chunk records.",
+            )
+          }
+          return { ...mutation, payload }
+        }
+
+        const payload = WebLibraryDocumentSnapshotChunkSchema.parse(mutation.payload)
+        const chunkIndex = Number(chunkMatch?.[2])
+        if (payload.libraryItemId !== libraryItemId || payload.chunkIndex !== chunkIndex || payload.charCount !== payload.text.length) {
+          return createSyncRejection(
+            mutation,
+            "INVALID_SYNC_PAYLOAD",
+            "Web library document snapshot chunk recordId must match payload libraryItemId/chunkIndex/charCount.",
+          )
+        }
+        return { ...mutation, payload }
+      } catch (error) {
+        return createSyncRejection(
+          mutation,
+          "INVALID_SYNC_PAYLOAD",
+          error instanceof Error ? error.message : "Invalid web library document snapshot sync payload.",
+        )
+      }
+    }
+
+    if (mutation.recordId.startsWith(WEB_LIBRARY_CONFIG_RECORD_PREFIX)) {
+      if (mutation.operation === "delete") {
+        return { ...mutation, payload: null }
+      }
+
+      try {
+        const payload = WebLibraryMetadataRecordSchema.parse(mutation.payload)
+        if (`${WEB_LIBRARY_CONFIG_RECORD_PREFIX}${payload.id}` !== mutation.recordId) {
+          return createSyncRejection(
+            mutation,
+            "INVALID_SYNC_PAYLOAD",
+            "Web library metadata recordId must match the payload id.",
+          )
+        }
+        return { ...mutation, payload }
+      } catch (error) {
+        return createSyncRejection(
+          mutation,
+          "INVALID_SYNC_PAYLOAD",
+          error instanceof Error ? error.message : "Invalid web library metadata sync payload.",
+        )
+      }
+    }
+
     if (mutation.operation === "delete" && mutation.recordId === "global") {
       return createSyncRejection(
         mutation,
@@ -196,6 +332,34 @@ export function validateSyncMutationPayload(
         mutation,
         "INVALID_SYNC_PAYLOAD",
         error instanceof Error ? error.message : "Invalid config sync payload.",
+      )
+    }
+  }
+
+  if (mutation.collection === "review_schedule") {
+    if (mutation.operation === "delete") {
+      return { ...mutation, payload: null }
+    }
+
+    try {
+      const payload = VocabularyReviewScheduleRecordSchema.parse(mutation.payload)
+      if (payload.vocabularyEntryId !== mutation.recordId) {
+        return createSyncRejection(
+          mutation,
+          "INVALID_SYNC_PAYLOAD",
+          "Review schedule recordId must match payload.vocabularyEntryId.",
+        )
+      }
+
+      return {
+        ...mutation,
+        payload,
+      }
+    } catch (error) {
+      return createSyncRejection(
+        mutation,
+        "INVALID_SYNC_PAYLOAD",
+        error instanceof Error ? error.message : "Invalid review schedule sync payload.",
       )
     }
   }

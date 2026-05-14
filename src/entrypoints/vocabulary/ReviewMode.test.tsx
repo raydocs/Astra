@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 const {
   getVocabularyEntriesMock,
   updateVocabularyEntryMock,
+  recordVocabularyReviewScheduleMock,
   recordStudyEventMock,
   buildVocabularyReviewStudyEventMock,
   getStudyProgressMock,
@@ -17,6 +18,7 @@ const {
 } = vi.hoisted(() => ({
   getVocabularyEntriesMock: vi.fn(),
   updateVocabularyEntryMock: vi.fn(),
+  recordVocabularyReviewScheduleMock: vi.fn(),
   recordStudyEventMock: vi.fn(),
   buildVocabularyReviewStudyEventMock: vi.fn(),
   getStudyProgressMock: vi.fn(),
@@ -31,6 +33,7 @@ const {
 vi.mock("@/utils/storage/vocabulary", () => ({
   getVocabularyEntries: getVocabularyEntriesMock,
   updateVocabularyEntry: updateVocabularyEntryMock,
+  recordVocabularyReviewSchedule: recordVocabularyReviewScheduleMock,
   sanitizeVocabularyUrl: (url?: string | null) => {
     const trimmed = url?.trim()
     if (!trimmed) return undefined
@@ -137,9 +140,19 @@ vi.mock("@/utils/i18n", () => ({
     if (key === "review_pageLoopCompleteTitle") return "Page review complete"
     if (key === "review_pageLoopCompleteHint") return "You reviewed the saved cards from this page. Return to Deep Read to keep going."
     if (key === "review_sessionCompleteTitle") return "Session Complete"
+    if (key === "review_summaryTitle") return "Quiet review complete."
+    if (key === "review_summaryRecall") return "Recall"
     if (key === "review_summaryCardsReviewed") return "Cards reviewed"
-    if (key === "review_summaryCorrect") return "Correct (promoted)"
-    if (key === "review_summaryIncorrect") return "Incorrect (demoted)"
+    if (key === "review_summaryGoodEasy") return "Good + Easy"
+    if (key === "review_summaryAgainHard") return "Again + Hard"
+    if (key === "review_summaryLongerIntervals") return "Longer intervals"
+    if (key === "review_summarySoonerReview") return "Coming back sooner"
+    if (key === "review_summaryAgain") return "Again"
+    if (key === "review_summaryHard") return "Hard"
+    if (key === "review_summaryGood") return "Good"
+    if (key === "review_summaryEasy") return "Easy"
+    if (key === "review_summaryFourGradeLede") return `You reviewed ${values[0] ?? "$1"} ${values[1] ?? "$2"}. Again ${values[2] ?? "$3"}, Hard ${values[3] ?? "$4"}, Good ${values[4] ?? "$5"}, Easy ${values[5] ?? "$6"} — each grade now schedules a distinct review interval.`
+    if (key === "review_summaryFourGradeNote") return "Again returns soon; Hard keeps the current box with a shorter interval; Good advances one box; Easy advances two boxes with a longer interval."
     if (key === "review_actionReviewAgain") return "Review again"
     if (key === "review_cardProgress") return `Card ${values[0] ?? "$1"} of ${values[1] ?? "$2"}`
     if (key === "review_boxLabel") return `Box ${values[0] ?? "$1"}`
@@ -148,6 +161,19 @@ vi.mock("@/utils/i18n", () => ({
     if (key === "review_answerKnowIt") return "Know it"
     if (key === "review_keyboardHintFront") return "Space = flip"
     if (key === "review_keyboardHintBack") return "← = don't know · → = know it"
+    if (key === "review_gradeGroupAria") return "Grade this review card"
+    if (key === "review_gradeAgain") return "Again"
+    if (key === "review_gradeAgainHint") return "Reset to Box 1 · due in 10 minutes"
+    if (key === "review_gradeHard") return "Hard"
+    if (key === "review_gradeHardHint") return "Keep current box · shorter interval"
+    if (key === "review_gradeGood") return "Good"
+    if (key === "review_gradeGoodHint") return "Advance one box · normal interval"
+    if (key === "review_gradeEasy") return "Easy"
+    if (key === "review_gradeEasyHint") return "Advance two boxes · longer interval"
+    if (key === "review_gradeScheduleDisclosure") return "Four-grade scheduling is active: Again, Hard, Good, and Easy each set a different next review."
+    if (key === "review_keyboardHintBackFour") return "1–4 = Again / Hard / Good / Easy · ← Again · → Good"
+    if (key === "review_contextLabel") return "Context"
+    if (key === "review_loading") return "Loading..."
     return key
   },
 }))
@@ -160,6 +186,8 @@ describe("ReviewMode", () => {
   let root: ReactDOM.Root
 
   beforeEach(async () => {
+    vi.useFakeTimers({ toFake: ["Date"] })
+    vi.setSystemTime(new Date("2026-04-13T12:00:00.000Z"))
     vi.clearAllMocks()
     window.history.pushState({}, "", "/vocabulary.html?tab=review")
 
@@ -316,6 +344,85 @@ describe("ReviewMode", () => {
       await Promise.resolve()
     })
     container.remove()
+    vi.useRealTimers()
+  })
+
+  it("renders the astraCert review card fixture without loading or mutating normal storage", async () => {
+    await act(async () => {
+      root.unmount()
+      await Promise.resolve()
+    })
+    root = ReactDOM.createRoot(container)
+    vi.clearAllMocks()
+    window.history.pushState({}, "", "/vocabulary.html?tab=review&astraCert=1")
+
+    await act(async () => {
+      root.render(<ReviewMode />)
+      await Promise.resolve()
+      await Promise.resolve()
+      await Promise.resolve()
+    })
+
+    expect(getVocabularyEntriesMock).not.toHaveBeenCalled()
+    expect(listOwnedReadingItemsMock).not.toHaveBeenCalled()
+    expect(getStudyProgressMock).not.toHaveBeenCalled()
+    expect(container.textContent).toContain("Review · Mar 21")
+    expect(container.textContent).toContain("3 / 5")
+    expect(container.textContent).toContain("From The New Yorker · 7 days ago")
+    expect(container.textContent).toContain("unalterable")
+    expect(container.textContent).toContain("无法改变的；不可动摇的")
+    expect(container.textContent).toContain("ʌnˈɔːltərəbl")
+    expect(container.textContent).toContain("adj.")
+    expect(container.textContent).toContain("To read deeply requires a kind of inward weather")
+    expect(container.textContent).toContain("next in 10 min")
+    expect(container.textContent).toContain("next in 1 day")
+    expect(container.textContent).toContain("next in 4 days")
+    expect(container.textContent).toContain("next in 12 days")
+    expect(container.textContent).toContain("Press space to reveal · 1–4 to grade")
+    expect(container.textContent).not.toContain("Four-grade scheduling is active: Again, Hard, Good, and Easy each set a different next review.")
+    expect(container.textContent).not.toContain("Reset to Box 1 · due in 10 minutes")
+    expect(container.textContent).not.toContain("This build uses two SRS outcomes")
+    expect(container.textContent).not.toContain("Open in deep read")
+    expect(container.textContent).not.toContain("Open source page")
+
+    const knowItButton = container.querySelector('[data-review-grade="good"]') as HTMLButtonElement
+    expect(knowItButton).toBeTruthy()
+    await act(async () => {
+      knowItButton.click()
+      await Promise.resolve()
+    })
+
+    expect(updateVocabularyEntryMock).not.toHaveBeenCalled()
+    expect(recordStudyEventMock).not.toHaveBeenCalled()
+    expect(commitLearningContinuitySyncMock).not.toHaveBeenCalled()
+  })
+
+  it("renders the astraCert review summary fixture without loading normal storage", async () => {
+    await act(async () => {
+      root.unmount()
+      await Promise.resolve()
+    })
+    root = ReactDOM.createRoot(container)
+    vi.clearAllMocks()
+    window.history.pushState({}, "", "/vocabulary.html?tab=review&astraCert=1&certState=summary")
+
+    await act(async () => {
+      root.render(<ReviewMode />)
+      await Promise.resolve()
+      await Promise.resolve()
+      await Promise.resolve()
+    })
+
+    expect(getVocabularyEntriesMock).not.toHaveBeenCalled()
+    expect(listOwnedReadingItemsMock).not.toHaveBeenCalled()
+    expect(getStudyProgressMock).not.toHaveBeenCalled()
+    expect(container.textContent).toContain("Session complete · 8:42pm")
+    expect(container.textContent).toContain("Twelve quiet minutes.")
+    expect(container.textContent).toContain("You reviewed 18 words. Again 1, Hard 1, Good 10, Easy 6")
+    expect(container.textContent).toContain("89%")
+    expect(container.textContent).toContain("Tmrw")
+    expect(container.textContent).toContain("effervescent")
+    expect(container.textContent).toContain("taciturn")
   })
 
   it("shows popup deep-read source context on the back of the card and records vocab review progress", async () => {
@@ -375,7 +482,7 @@ describe("ReviewMode", () => {
     expect(markOwnedReadingOpenedMock).toHaveBeenCalledWith("or_article_example")
     expect(browser.tabs.create).toHaveBeenCalledWith({ url: "https://example.com/article" })
 
-    const knowItButton = Array.from(container.querySelectorAll("button")).find((button) => button.textContent === "Know it") as HTMLButtonElement
+    const knowItButton = container.querySelector('[data-review-grade="good"]') as HTMLButtonElement
     expect(knowItButton).toBeTruthy()
 
     await act(async () => {
@@ -532,7 +639,7 @@ describe("ReviewMode", () => {
       await Promise.resolve()
     })
 
-    const knowItButton = Array.from(container.querySelectorAll("button")).find((button) => button.textContent === "Know it") as HTMLButtonElement
+    const knowItButton = container.querySelector('[data-review-grade="good"]') as HTMLButtonElement
     await act(async () => {
       knowItButton.click()
       await Promise.resolve()
@@ -548,7 +655,7 @@ describe("ReviewMode", () => {
       await Promise.resolve()
     })
 
-    const secondKnowItButton = Array.from(container.querySelectorAll("button")).find((button) => button.textContent === "Know it") as HTMLButtonElement
+    const secondKnowItButton = container.querySelector('[data-review-grade="good"]') as HTMLButtonElement
     await act(async () => {
       secondKnowItButton.click()
       await Promise.resolve()
@@ -590,7 +697,7 @@ describe("ReviewMode", () => {
       await Promise.resolve()
     })
 
-    const knowItButton = Array.from(container.querySelectorAll("button")).find((button) => button.textContent === "Know it") as HTMLButtonElement
+    const knowItButton = container.querySelector('[data-review-grade="good"]') as HTMLButtonElement
     expect(knowItButton).toBeTruthy()
 
     await act(async () => {
@@ -627,6 +734,71 @@ describe("ReviewMode", () => {
     expect(browser.tabs.create).toHaveBeenCalledWith({
       url: "chrome-extension://test-id/subtitle-reader.html?reopenHint=Open%20the%20subtitle%20reader%20and%20choose%20the%20same%20file%3A%20sample.srt%20%C2%B7%20continue%20from%20row%202",
     })
+  })
+
+  it("supports Space reveal and 1–4 keyboard grading with distinct semantic grade actions", async () => {
+    await act(async () => {
+      window.dispatchEvent(new KeyboardEvent("keydown", { code: "Space" }))
+      await Promise.resolve()
+    })
+
+    const gradeOne = container.querySelector('[data-review-grade="again"]') as HTMLButtonElement | null
+    const gradeTwo = container.querySelector('[data-review-grade="hard"]') as HTMLButtonElement | null
+    const gradeThree = container.querySelector('[data-review-grade="good"]') as HTMLButtonElement | null
+    const gradeFour = container.querySelector('[data-review-grade="easy"]') as HTMLButtonElement | null
+
+    expect(gradeOne?.dataset.reviewKey).toBe("1")
+    expect(gradeTwo?.dataset.reviewKey).toBe("2")
+    expect(gradeThree?.dataset.reviewKey).toBe("3")
+    expect(gradeFour?.dataset.reviewKey).toBe("4")
+    expect(gradeOne?.dataset.reviewOutcome).toBeUndefined()
+    expect(gradeOne?.textContent).toContain("Reset to Box 1 · due in 10 minutes")
+    expect(gradeTwo?.textContent).toContain("Keep current box · shorter interval")
+    expect(gradeThree?.textContent).toContain("Advance one box · normal interval")
+    expect(gradeFour?.textContent).toContain("Advance two boxes · longer interval")
+    expect(container.textContent).toContain("Four-grade scheduling is active: Again, Hard, Good, and Easy each set a different next review.")
+    expect(container.textContent).toContain("1–4 = Again / Hard / Good / Easy · ← Again · → Good")
+    expect(container.textContent).not.toContain("This build uses two SRS outcomes")
+
+    await act(async () => {
+      window.dispatchEvent(new KeyboardEvent("keydown", { code: "Digit4" }))
+      await Promise.resolve()
+      await Promise.resolve()
+    })
+
+    const reviewedAt = Date.parse("2026-04-13T12:00:00.000Z")
+    const dayMs = 24 * 60 * 60 * 1000
+    expect(updateVocabularyEntryMock).toHaveBeenCalledWith("entry-1", expect.objectContaining({
+      srsBox: 3,
+      nextReviewAt: reviewedAt + 6 * dayMs,
+      reviewCount: 1,
+      lastReviewedAt: reviewedAt,
+    }))
+  })
+
+  it("schedules grade 2 as Hard by keeping the current box with a shorter interval", async () => {
+    await act(async () => {
+      window.dispatchEvent(new KeyboardEvent("keydown", { code: "Space" }))
+      await Promise.resolve()
+    })
+
+    await act(async () => {
+      window.dispatchEvent(new KeyboardEvent("keydown", { code: "Digit2" }))
+      await Promise.resolve()
+      await Promise.resolve()
+    })
+
+    const reviewedAt = Date.parse("2026-04-13T12:00:00.000Z")
+    expect(updateVocabularyEntryMock).toHaveBeenCalledWith("entry-1", expect.objectContaining({
+      srsBox: 1,
+      nextReviewAt: reviewedAt + 12 * 60 * 60 * 1000,
+      reviewCount: 1,
+      lastReviewedAt: reviewedAt,
+    }))
+    expect(recordLearningLoopEventMock).toHaveBeenCalledWith("review_answered", expect.objectContaining({
+      correct: true,
+      reviewGrade: "hard",
+    }))
   })
 
   it("explains the daily stats reset boundary on the review surface", async () => {

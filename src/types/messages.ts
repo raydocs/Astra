@@ -204,6 +204,7 @@ const RuntimeSaveConfigResponseSchema = z.union([
 const LearningContinuitySyncCountSchema = z.object({
   config: z.number().int().nonnegative(),
   vocabulary: z.number().int().nonnegative(),
+  review_schedule: z.number().int().nonnegative(),
   reading_history: z.number().int().nonnegative(),
   study_progress: z.number().int().nonnegative(),
 })
@@ -231,6 +232,7 @@ const LearningContinuitySyncStatusSchema = z.object({
   cursors: z.object({
     config: z.string().trim().min(1).nullable(),
     vocabulary: z.string().trim().min(1).nullable(),
+    review_schedule: z.string().trim().min(1).nullable(),
     reading_history: z.string().trim().min(1).nullable(),
     study_progress: z.string().trim().min(1).nullable(),
   }),

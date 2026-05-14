@@ -1,13 +1,15 @@
 import type { ReactNode } from "react"
+import { useAstraTheme } from "@/utils/ui/useAstraTheme"
 
 export type PopupStatusTone = "ready" | "warning" | "muted"
 
-export function PopupShell({ children }: { children: ReactNode }) {
+export function PopupShell({ children, className }: { children: ReactNode; className?: string }) {
+  const { astraTheme, astraDirection } = useAstraTheme()
   return (
     <div
-      className="astra-quiet-shell astra-popup-shell"
-      data-astra="quiet"
-      data-astra-theme="light"
+      className={["astra-quiet-shell astra-popup-shell", className].filter(Boolean).join(" ")}
+      data-astra={astraDirection}
+      data-astra-theme={astraTheme}
     >
       {children}
     </div>
@@ -37,7 +39,26 @@ export function PopupHeader({
   return (
     <header className="astra-quiet-header">
       <div className="astra-quiet-header__copy">
-        <div className="astra-quiet-wordmark">{title}</div>
+        <div className="astra-quiet-wordmark">
+          <svg
+            className="astra-quiet-wordmark__mark"
+            width="14"
+            height="14"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="1.4"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            aria-hidden="true"
+          >
+            <path d="M12 4l1.4 4.6L18 10l-4.6 1.4L12 16l-1.4-4.6L6 10l4.6-1.4L12 4z" />
+            <circle cx="19" cy="5" r="0.6" fill="currentColor" />
+            <circle cx="5" cy="18" r="0.6" fill="currentColor" />
+            <circle cx="20" cy="17" r="0.4" fill="currentColor" />
+          </svg>
+          <span>{title}</span>
+        </div>
         {subtitle && <div className="astra-quiet-header__subtitle">{subtitle}</div>}
         {statusLabel && (
           <div className="astra-quiet-header__status">

@@ -114,8 +114,21 @@ async function runSelectionScenario(options: {
       await flushMicrotasks(4)
     })
 
+    const resultButtons = Array.from(host?.shadowRoot?.querySelectorAll("button") ?? []) as HTMLButtonElement[]
+
     if (options.clickCopy) {
-      const copyButton = findToolbarButton(buttons, [t("actionCopy"), "复制"])
+      let copyButton = findToolbarButton(resultButtons, [t("actionCopy"), "复制"])
+      if (!copyButton) {
+        const moreButton = resultButtons.find((button) => button.dataset.testid === "selection-action-more" || button.getAttribute("aria-label") === t("actionMore"))
+        if (moreButton) {
+          await act(async () => {
+            moreButton.click()
+            await flushMicrotasks(2)
+          })
+          const menuButtons = Array.from(host?.shadowRoot?.querySelectorAll("button") ?? []) as HTMLButtonElement[]
+          copyButton = findToolbarButton(menuButtons, [t("actionCopy"), "复制"])
+        }
+      }
       if (copyButton) {
         await act(async () => {
           copyButton.click()
@@ -131,7 +144,7 @@ async function runSelectionScenario(options: {
       requestSelectionContext: translateCalls[0]?.payload.context?.selectionContext ?? null,
       resultText: host?.shadowRoot?.textContent?.replace(/\s+/g, " ").trim() ?? "",
       clipboardWrites: getClipboardWrites(),
-      buttonLabels: buttons.map((button) => button.textContent?.trim() ?? ""),
+      buttonLabels: resultButtons.map((button) => button.textContent?.trim() ?? ""),
     } satisfies SelectionExplainExecution
   } finally {
     cleanupDomEnvironment()
