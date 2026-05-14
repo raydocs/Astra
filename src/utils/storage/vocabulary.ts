@@ -3,14 +3,24 @@ import {
   createDefaultSrsFields,
   getDueCards as getDueCardsFromSrs,
 } from "@/utils/srs/leitner"
+import type { ReviewGrade } from "@/utils/srs/leitner"
 import {
   SyncedVocabularyEntrySchema,
   VocabularyEntrySchema,
+  VocabularyReviewScheduleRecordSchema,
+  applyVocabularyReviewScheduleRecordsToEntries,
+  applyVocabularyReviewScheduleSyncMutation,
+  applyVocabularyReviewScheduleSyncMutations,
   applyVocabularySyncMutation,
   applyVocabularySyncMutations,
+  buildDefaultVocabularyReviewScheduleRecord,
+  buildReviewedVocabularyReviewScheduleRecord,
   buildSyncSafeVocabularyEntry,
+  buildSyncSafeVocabularyReviewScheduleRecord,
+  buildVocabularyReviewScheduleSyncRecordMap,
   ensureSrsFields,
   isVocabularyEntryFromStudyUrl,
+  mergeVocabularyReviewScheduleRecord,
   mergeVocabularySourceContext,
   normalizeVocabularySourceContext,
   normalizeVocabularyStudyUrl,
@@ -18,11 +28,14 @@ import {
   sanitizeVocabularyUrl,
   type SyncedVocabularyEntry,
   type VocabularyEntry,
+  type VocabularyReviewScheduleRecord,
+  type VocabularyReviewScheduleSyncMutationLike,
   type VocabularySyncMutationLike,
 } from "./vocabulary-core"
 import type { OwnedReadingThemePackPackagePayload } from "./owned-reading"
 
 export const VOCABULARY_STORAGE_KEY = "astra.vocabulary.v1"
+export const VOCABULARY_REVIEW_SCHEDULE_STORAGE_KEY = "astra.vocabulary.review_schedule.v1"
 const MAX_ENTRIES = 2000
 const WEEKLY_VOCABULARY_ROI_DEFAULT_DAYS = 7
 const DAY_MS = 24 * 60 * 60 * 1000
@@ -131,6 +144,44 @@ async function readEntries(): Promise<VocabularyEntry[]> {
 async function writeEntries(entries: VocabularyEntry[]): Promise<void> {
   await browser.storage.local.set({
     [VOCABULARY_STORAGE_KEY]: entries.slice(0, MAX_ENTRIES),
+  })
+}
+
+async function readReviewScheduleRecords(): Promise<VocabularyReviewScheduleRecord[]> {
+  const result = await browser.storage.local.get(VOCABULARY_REVIEW_SCHEDULE_STORAGE_KEY)
+  const raw = result[VOCABULARY_REVIEW_SCHEDULE_STORAGE_KEY]
+  if (!Array.isArray(raw)) return []
+  return raw.flatMap((item) => {
+    const parsed = VocabularyReviewScheduleRecordSchema.safeParse(item)
+    return parsed.success ? [parsed.data] : []
+  })
+}
+
+async function writeReviewScheduleRecords(records: VocabularyReviewScheduleRecord[]): Promise<void> {
+  const byEntryId = new Map<string, VocabularyReviewScheduleRecord>()
+  for (const record of records) {
+    const normalized = buildSyncSafeVocabularyReviewScheduleRecord(record)
+    byEntryId.set(
+      normalized.vocabularyEntryId,
+      mergeVocabularyReviewScheduleRecord(byEntryId.get(normalized.vocabularyEntryId), normalized),
+    )
+  }
+
+  await browser.storage.local.set({
+    [VOCABULARY_REVIEW_SCHEDULE_STORAGE_KEY]: [...byEntryId.values()].slice(0, MAX_ENTRIES),
+  })
+}
+
+async function readProjectedReviewScheduleRecords(entries?: VocabularyEntry[]): Promise<VocabularyReviewScheduleRecord[]> {
+  const [stored, vocabularyEntries] = await Promise.all([
+    readReviewScheduleRecords(),
+    entries ? Promise.resolve(entries) : getVocabularyEntries(),
+  ])
+  const storedByEntryId = new Map(stored.map((record) => [record.vocabularyEntryId, record]))
+
+  return vocabularyEntries.map((entry) => {
+    const fallback = buildDefaultVocabularyReviewScheduleRecord(entry)
+    return mergeVocabularyReviewScheduleRecord(fallback, storedByEntryId.get(entry.id) ?? fallback)
   })
 }
 
@@ -271,7 +322,8 @@ export async function saveVocabularyEntry(entry: Omit<VocabularyEntry, "id" | "s
 
 export async function getVocabularyEntries(): Promise<VocabularyEntry[]> {
   const entries = await readEntries()
-  return entries.map(ensureSrsFields)
+  const schedules = await readReviewScheduleRecords()
+  return applyVocabularyReviewScheduleRecordsToEntries(entries.map(ensureSrsFields), schedules)
 }
 
 export async function readSyncSafeVocabularyEntries(): Promise<SyncedVocabularyEntry[]> {
@@ -288,6 +340,50 @@ export function buildVocabularySyncRecordMap(
       return [synced.id, synced]
     }),
   )
+}
+
+export async function readSyncSafeVocabularyReviewSchedules(): Promise<VocabularyReviewScheduleRecord[]> {
+  return readProjectedReviewScheduleRecords()
+}
+
+export async function replaceVocabularyReviewSchedules(
+  records: VocabularyReviewScheduleRecord[],
+): Promise<void> {
+  const normalizedRecords = records.map(buildSyncSafeVocabularyReviewScheduleRecord)
+  await writeReviewScheduleRecords(normalizedRecords)
+
+  const entries = await readEntries()
+  if (entries.length > 0) {
+    await writeEntries(applyVocabularyReviewScheduleRecordsToEntries(entries.map(ensureSrsFields), normalizedRecords))
+  }
+}
+
+export async function applyVocabularyReviewScheduleSyncMutationsToStorage(
+  mutations: VocabularyReviewScheduleSyncMutationLike[],
+): Promise<VocabularyReviewScheduleRecord[]> {
+  const currentRecords = await readProjectedReviewScheduleRecords()
+  const nextRecords = applyVocabularyReviewScheduleSyncMutations(currentRecords, mutations)
+  await replaceVocabularyReviewSchedules(nextRecords)
+  return nextRecords
+}
+
+export async function recordVocabularyReviewSchedule(params: {
+  vocabularyEntryId: string
+  srsBox: number
+  nextReviewAt: number
+  reviewCount: number
+  lastReviewedAt: number | null
+  grade: ReviewGrade
+  updatedAt?: number
+}): Promise<VocabularyReviewScheduleRecord> {
+  const record = buildReviewedVocabularyReviewScheduleRecord(params)
+  const records = await readProjectedReviewScheduleRecords()
+  await writeReviewScheduleRecords(applyVocabularyReviewScheduleSyncMutation(records, {
+    recordId: record.vocabularyEntryId,
+    operation: "upsert",
+    payload: record,
+  }))
+  return record
 }
 
 export async function removeVocabularyEntry(id: string): Promise<void> {
@@ -452,9 +548,15 @@ export async function buildTerminologyGlossary(
 
 export {
   SyncedVocabularyEntrySchema,
+  VocabularyReviewScheduleRecordSchema,
+  applyVocabularyReviewScheduleRecordsToEntries,
+  applyVocabularyReviewScheduleSyncMutation,
+  applyVocabularyReviewScheduleSyncMutations,
   applyVocabularySyncMutation,
   applyVocabularySyncMutations,
   buildSyncSafeVocabularyEntry,
+  buildSyncSafeVocabularyReviewScheduleRecord,
+  buildVocabularyReviewScheduleSyncRecordMap,
   ensureSrsFields,
   getVocabularyStudyUrlCandidates,
   isVocabularyEntryFromStudyUrl,
@@ -464,5 +566,7 @@ export {
 export type {
   SyncedVocabularyEntry,
   VocabularyEntry,
+  VocabularyReviewScheduleRecord,
+  VocabularyReviewScheduleSyncMutationLike,
   VocabularySyncMutationLike,
 }

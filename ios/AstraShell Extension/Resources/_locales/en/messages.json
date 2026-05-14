@@ -98,6 +98,9 @@
   "actionSaved": {
     "message": "\u2713 Saved"
   },
+  "actionMore": {
+    "message": "More"
+  },
   "actionSpeak": {
     "message": "Speak"
   },
@@ -946,14 +949,52 @@
   "review_sessionCompleteTitle": {
     "message": "Session Complete"
   },
+  "review_summaryTitle": {
+    "message": "Quiet review complete."
+  },
+  "review_summaryRecall": {
+    "message": "Recall"
+  },
   "review_summaryCardsReviewed": {
     "message": "Cards reviewed"
   },
-  "review_summaryCorrect": {
-    "message": "Correct (promoted)"
+  "review_summaryGoodEasy": {
+    "message": "Good + Easy"
   },
-  "review_summaryIncorrect": {
-    "message": "Incorrect (demoted)"
+  "review_summaryAgainHard": {
+    "message": "Again + Hard"
+  },
+  "review_summaryLongerIntervals": {
+    "message": "Longer intervals"
+  },
+  "review_summarySoonerReview": {
+    "message": "Coming back sooner"
+  },
+  "review_summaryAgain": {
+    "message": "Again"
+  },
+  "review_summaryHard": {
+    "message": "Hard"
+  },
+  "review_summaryGood": {
+    "message": "Good"
+  },
+  "review_summaryEasy": {
+    "message": "Easy"
+  },
+  "review_summaryFourGradeLede": {
+    "message": "You reviewed $1 $2. Again $3, Hard $4, Good $5, Easy $6 — each grade now schedules a distinct review interval.",
+    "placeholders": {
+      "1": { "content": "$1" },
+      "2": { "content": "$2" },
+      "3": { "content": "$3" },
+      "4": { "content": "$4" },
+      "5": { "content": "$5" },
+      "6": { "content": "$6" }
+    }
+  },
+  "review_summaryFourGradeNote": {
+    "message": "Again returns soon; Hard keeps the current box with a shorter interval; Good advances one box; Easy advances two boxes with a longer interval."
   },
   "review_actionReviewAgain": {
     "message": "Review again"
@@ -985,6 +1026,45 @@
   },
   "review_keyboardHintBack": {
     "message": "← = don't know · → = know it"
+  },
+  "review_gradeGroupAria": {
+    "message": "Grade this review card"
+  },
+  "review_gradeAgain": {
+    "message": "Again"
+  },
+  "review_gradeAgainHint": {
+    "message": "Reset to Box 1 · due in 10 minutes"
+  },
+  "review_gradeHard": {
+    "message": "Hard"
+  },
+  "review_gradeHardHint": {
+    "message": "Keep current box · shorter interval"
+  },
+  "review_gradeGood": {
+    "message": "Good"
+  },
+  "review_gradeGoodHint": {
+    "message": "Advance one box · normal interval"
+  },
+  "review_gradeEasy": {
+    "message": "Easy"
+  },
+  "review_gradeEasyHint": {
+    "message": "Advance two boxes · longer interval"
+  },
+  "review_gradeScheduleDisclosure": {
+    "message": "Four-grade scheduling is active: Again, Hard, Good, and Easy each set a different next review."
+  },
+  "review_keyboardHintBackFour": {
+    "message": "1–4 = Again / Hard / Good / Easy · ← Again · → Good"
+  },
+  "review_contextLabel": {
+    "message": "Context"
+  },
+  "review_loading": {
+    "message": "Loading..."
   },
   "popup_studyTodayStatsTitle": {
     "message": "Today's learning counts"

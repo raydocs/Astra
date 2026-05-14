@@ -117,6 +117,7 @@ function normalizeAccountSummary(summary: AstraAccountSummary) {
       collections: {
         config: summary.sync.collections.config,
         vocabulary: summary.sync.collections.vocabulary,
+        review_schedule: summary.sync.collections.review_schedule,
         reading_history: summary.sync.collections.reading_history,
         study_progress: summary.sync.collections.study_progress,
       },
@@ -287,6 +288,7 @@ async function readShadowAccountSummary(
       collections: {
         config: buildCollectionSummary(validated, collectionRows, mutationRows, recordStateRows, "config"),
         vocabulary: buildCollectionSummary(validated, collectionRows, mutationRows, recordStateRows, "vocabulary"),
+        review_schedule: buildCollectionSummary(validated, collectionRows, mutationRows, recordStateRows, "review_schedule"),
         reading_history: buildCollectionSummary(validated, collectionRows, mutationRows, recordStateRows, "reading_history"),
         study_progress: buildCollectionSummary(validated, collectionRows, mutationRows, recordStateRows, "study_progress"),
       },

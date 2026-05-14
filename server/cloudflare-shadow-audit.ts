@@ -367,12 +367,12 @@ function projectExpectedShadowStateForUser(params: {
       {
         userId: params.user.id,
         collection,
-        enabled: collection === "config" || collection === "vocabulary"
+        enabled: collection === "config" || collection === "vocabulary" || collection === "review_schedule"
           ? true
           : collection === "reading_history"
             ? params.user.syncPreferences.reading_history
             : params.user.syncPreferences.study_progress,
-        defaultEnabled: collection === "config" || collection === "vocabulary",
+        defaultEnabled: collection === "config" || collection === "vocabulary" || collection === "review_schedule",
         lastIssuedCursor: null,
         lastServerUpdatedAt: null,
       },
@@ -1020,7 +1020,7 @@ function isCollectionEnabled(
   syncPreferences: ShadowUserSnapshot["syncPreferences"],
   collection: ShadowSyncCollection,
 ): boolean {
-  if (collection === "config" || collection === "vocabulary") return true
+  if (collection === "config" || collection === "vocabulary" || collection === "review_schedule") return true
   if (collection === "reading_history") return syncPreferences.reading_history
   return syncPreferences.study_progress
 }

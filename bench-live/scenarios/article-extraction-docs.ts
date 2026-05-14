@@ -1,4 +1,4 @@
-import { mkdir, writeFile } from "node:fs/promises"
+import { writeFile } from "node:fs/promises"
 import path from "node:path"
 
 import { JSDOM } from "jsdom"
@@ -7,6 +7,7 @@ import { evaluateArticleExtraction, type ArticleExtractionExecution } from "../.
 import { buildArticleExtractionExecutionFromDocument } from "../../bench/scenarios/helpers/article-extraction"
 import { articleExtractionCaseDefinitions } from "../../bench/scenarios/helpers/article-extraction-fixtures"
 import {
+  prepareLiveArtifactDir,
   materializeFixturePage,
   withLiveBrowserPage,
   LiveBrowserUnavailableError,
@@ -71,8 +72,7 @@ export const articleExtractionDocsScenario: LiveScenarioDefinition<ArticleExtrac
     }))
 
     try {
-      const artifactDir = path.join(process.cwd(), "bench-live-results", context.runId)
-      await mkdir(artifactDir, { recursive: true })
+      const artifactDir = await prepareLiveArtifactDir(context.runId)
 
       const capture = await withLiveBrowserPage(async (page, browserExecutablePath) => {
         const cases: LiveArticleExtractionCase[] = []

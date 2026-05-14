@@ -1,6 +1,6 @@
 CREATE TABLE IF NOT EXISTS shadow_sync_collections (
   user_id TEXT NOT NULL,
-  collection TEXT NOT NULL CHECK (collection IN ('config', 'vocabulary', 'reading_history', 'study_progress')),
+  collection TEXT NOT NULL CHECK (collection IN ('config', 'vocabulary', 'review_schedule', 'reading_history', 'study_progress')),
   enabled INTEGER NOT NULL CHECK (enabled IN (0, 1)),
   default_enabled INTEGER NOT NULL CHECK (default_enabled IN (0, 1)),
   last_issued_cursor TEXT,
@@ -17,7 +17,7 @@ CREATE INDEX IF NOT EXISTS idx_shadow_sync_collections_user_enabled
 CREATE TABLE IF NOT EXISTS shadow_sync_mutations (
   server_mutation_id TEXT PRIMARY KEY,
   user_id TEXT NOT NULL,
-  collection TEXT NOT NULL CHECK (collection IN ('config', 'vocabulary', 'reading_history', 'study_progress')),
+  collection TEXT NOT NULL CHECK (collection IN ('config', 'vocabulary', 'review_schedule', 'reading_history', 'study_progress')),
   schema_version INTEGER NOT NULL,
   record_id TEXT NOT NULL,
   operation TEXT NOT NULL CHECK (operation IN ('upsert', 'delete')),

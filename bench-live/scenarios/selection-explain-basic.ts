@@ -1,10 +1,11 @@
 import { createServer } from "node:http"
-import { mkdir, readFile, writeFile } from "node:fs/promises"
+import { readFile, writeFile } from "node:fs/promises"
 import path from "node:path"
 import { fileURLToPath } from "node:url"
 
 import type { SelectionExplainExecution } from "../../bench/evaluators/selection-explain"
 import {
+  prepareLiveArtifactDir,
   materializeFixturePage,
   withLiveBrowserPage,
   LiveBrowserUnavailableError,
@@ -149,8 +150,7 @@ export const selectionExplainBasicScenario: LiveScenarioDefinition<LiveSelection
     const selectionServer = await createSelectionExplainServer()
 
     try {
-      const artifactDir = path.join(process.cwd(), "bench-live-results", context.runId)
-      await mkdir(artifactDir, { recursive: true })
+      const artifactDir = await prepareLiveArtifactDir(context.runId)
       const html = await readFile(fixturePage.htmlPath, "utf8")
 
       const capture = await withLiveBrowserPage(async (page, browserExecutablePath) => {

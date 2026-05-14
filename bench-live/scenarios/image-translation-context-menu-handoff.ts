@@ -1,8 +1,9 @@
 import { createServer } from "node:http"
-import { mkdir, writeFile } from "node:fs/promises"
+import { writeFile } from "node:fs/promises"
 import path from "node:path"
 
 import {
+  prepareLiveArtifactDir,
   withExtensionBrowserPage,
   LiveBrowserUnavailableError,
   ExtensionBuildNotFoundError,
@@ -152,8 +153,7 @@ export const imageTranslationContextMenuHandoffScenario: LiveScenarioDefinition<
 
     try {
       proofServer = await createImageContextMenuProofServer()
-      const artifactDir = path.join(process.cwd(), "bench-live-results", context.runId)
-      await mkdir(artifactDir, { recursive: true })
+      const artifactDir = await prepareLiveArtifactDir(context.runId)
       const token = "img_live_context_menu_handoff"
       const now = Date.now()
       const sourceHtmlPath = path.join(artifactDir, "image-translation-context-menu-source.html")

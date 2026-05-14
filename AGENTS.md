@@ -10,6 +10,14 @@ Astra is an AI-powered language learning browser extension with three main devel
 2. **Astra Relay Server** (`server/`) — Node.js backend for auth, translation relay, sync
 3. **Web App** (`web/`) — React+Vite standalone web companion
 
+Before broad repo exploration, read the AI context index in `docs/ai-context/`:
+
+- `docs/ai-context/source-ui.md` — UI/runtime design-token paths that are safe to hand to AI.
+- `docs/ai-context/source-code.md` — source-code bundles by task area.
+- `docs/ai-context/generated-runtime-cache.md` — runtime packages, caches, build outputs, result folders, and reference artifacts to avoid by default.
+
+For the canonical source-priority/default-read vs generated/runtime classification boundary, see `docs/investigations/ai-readable-classification-boundary.md`.
+
 ### Quick Reference (commands in `package.json`)
 
 | Task | Command |

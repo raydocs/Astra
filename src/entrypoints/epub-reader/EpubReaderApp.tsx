@@ -20,6 +20,7 @@ import {
   readDocumentFileBytes,
   type DocumentFileHandoffFailureReason,
 } from "@/utils/reading/document-file-handoff"
+import { useAstraTheme } from "@/utils/ui/useAstraTheme"
 
 type Phase = "idle" | "loading" | "reading" | "error"
 
@@ -51,6 +52,7 @@ async function getTargetLang(): Promise<string> {
 }
 
 export function EpubReaderApp() {
+  const { astraTheme, astraDirection } = useAstraTheme()
   const [phase, setPhase] = useState<Phase>("idle")
   const [error, setError] = useState<string | null>(null)
   const [reopenBanner, setReopenBanner] = useState<string | null>(null)
@@ -218,10 +220,13 @@ export function EpubReaderApp() {
   }, [])
 
   return (
-    <div className="astra-container astra-container--wide" style={containerStyle} data-astra-theme="light">
-      <header style={headerStyle}>
-        <h1 style={{ margin: 0, fontSize: 18, color: "var(--astra-brand)" }}>Astra ePub Reader</h1>
-        {bookTitle && <span style={{ fontSize: 13, color: "var(--astra-text-muted)" }}>{bookTitle}</span>}
+    <div className="astra-container astra-container--wide" style={containerStyle} data-astra-theme={astraTheme} data-astra={astraDirection}>
+      <header className="astra-reader-page-header">
+        <div className="astra-reader-page-header__brand">
+          <span className="astra-reader-page-header__mark" aria-hidden="true">A</span>
+          <h1 className="astra-reader-page-header__title">Astra ePub Reader</h1>
+        </div>
+        {bookTitle && <span className="astra-reader-page-header__file">{bookTitle}</span>}
       </header>
 
       {reopenBanner && (
@@ -275,7 +280,7 @@ export function EpubReaderApp() {
       )}
 
       {phase === "loading" && (
-      <div style={{ padding: 24, textAlign: "center", color: "var(--astra-brand)" }}>Loading ePub...</div>
+      <div role="status" aria-live="polite" style={{ padding: 24, textAlign: "center", color: "var(--astra-brand)" }}>Loading ePub...</div>
       )}
 
       {phase === "reading" && (
@@ -306,7 +311,19 @@ export function EpubReaderApp() {
               <>
                 <h2 style={{ fontSize: 20, color: "#1e293b", marginBottom: 16 }}>{chapter.title}</h2>
                 {chapter.translating && (
-                  <div style={{ fontSize: 12, color: "var(--astra-brand)", marginBottom: 12 }}>Translating...</div>
+                  <div style={{ fontSize: 12, color: "var(--astra-brand)", marginBottom: 12 }} role="status" aria-live="polite">
+                    Translating...
+                    <div
+                      role="progressbar"
+                      aria-label="EPUB chapter translation progress"
+                      aria-valuemin={0}
+                      aria-valuemax={chapter.paragraphs.length || 1}
+                      aria-valuenow={chapter.translations.size}
+                      className="astra-reader-progressbar"
+                    >
+                      <span style={{ width: `${chapter.paragraphs.length > 0 ? Math.min(100, Math.round((chapter.translations.size / chapter.paragraphs.length) * 100)) : 0}%` }} />
+                    </div>
+                  </div>
                 )}
                 {chapter.paragraphs.map((para, i) => (
                   <div key={i} style={blockStyle}>
@@ -331,15 +348,6 @@ const containerStyle: React.CSSProperties = {
   fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif',
   margin: "0 auto",
   padding: 16,
-}
-
-const headerStyle: React.CSSProperties = {
-  display: "flex",
-  alignItems: "center",
-  gap: 12,
-  padding: "12px 0",
-  borderBottom: "1px solid var(--astra-border)",
-  marginBottom: 16,
 }
 
 const tocStyle: React.CSSProperties = {

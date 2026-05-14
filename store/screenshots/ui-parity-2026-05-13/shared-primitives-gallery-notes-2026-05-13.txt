@@ -1,0 +1,9 @@
+Shared primitives gallery convergence capture — 2026-05-13
+url=chrome-extension://bbgbfdohdgdnoiacakjnfhlhhgnfclcn/primitive-gallery.html?astraCertification=ui-primitives
+screenshot=/Users/ruirui/Downloads/GitHub/Astra/store/screenshots/ui-parity-2026-05-13/production/shared-primitives-gallery.png
+browserExecutablePath=/Users/ruirui/Library/Caches/ms-playwright/chromium-1217/chrome-mac-arm64/Google Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing
+viewport=2400x1674
+deviceScaleFactor=2
+trigger=?astraCertification=ui-primitives
+surface=unlinked WXT extension entrypoint primitive-gallery.html
+status=recaptured after reference-canvas convergence pass; visual parity reviewed as defensible Pass

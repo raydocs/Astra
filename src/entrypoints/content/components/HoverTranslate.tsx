@@ -10,6 +10,7 @@ import { hasInjectedTranslation } from "@/utils/dom/inject"
 import { findClosestTextBlock, findContentRoot } from "@/utils/dom/traversal"
 import { readConfig } from "@/utils/storage/config"
 import { getDueVocabularyCount, hasVocabularyEntryByText, saveVocabularyEntry } from "@/utils/storage/vocabulary"
+import { isPageAccessAllowedForUrl } from "@/utils/extension/page-permissions"
 
 import {
   getInteractionSuppressionState,
@@ -264,6 +265,11 @@ function HoverTranslateApp() {
 
       hoverTimer.current = window.setTimeout(() => {
         void (async () => {
+          if (!await isPageAccessAllowedForUrl(window.location.href)) {
+            hideOverlay()
+            return
+          }
+
           const config = await readConfig()
           const resolved = resolveSiteTranslationSettings(config, window.location.hostname)
 
@@ -667,13 +673,30 @@ function HoverTranslateApp() {
   }
 
   return (
-    <div style={panelStyle}>
+    <div style={panelStyle} role="status" aria-live="polite" data-testid="hover-translate-card">
       <AstraIdentityStrip targetLang={overlay.targetLang} fontScale={fontScale} />
+      {currentSourceText.current && (
+        <div style={{
+          marginTop: Number.parseFloat(overlayPx(6, fontScale)),
+          fontFamily: '"Source Serif 4", "Source Serif Pro", "Tiempos Text", "Songti SC", "Noto Serif SC", Georgia, serif',
+          fontSize: Number.parseFloat(overlayPx(17, fontScale)),
+          color: OVERLAY_STYLE_TOKENS.textPrimary,
+          letterSpacing: "-0.01em",
+        }}>
+          {currentSourceText.current}
+        </div>
+      )}
       {overlay.status === "pending" && <span style={{ color: OVERLAY_STYLE_TOKENS.textHint, marginTop: Number.parseFloat(overlayPx(4, fontScale)), display: "inline-block" }}>⋯</span>}
       {overlay.status === "error" && <span style={{ color: OVERLAY_STYLE_TOKENS.warning }}>⚠ {overlay.error}</span>}
       {overlay.status === "success" && (
         <>
-          <div>{overlay.translation}</div>
+          <div style={{
+            marginTop: Number.parseFloat(overlayPx(6, fontScale)),
+            fontFamily: '"Source Serif 4", "Source Serif Pro", "Tiempos Text", "Songti SC", "Noto Serif SC", Georgia, serif',
+            fontSize: Number.parseFloat(overlayPx(15, fontScale)),
+            fontStyle: "italic",
+            color: OVERLAY_STYLE_TOKENS.textPrimary,
+          }}>{overlay.translation}</div>
           <div style={{ display: "flex", gap: Number.parseFloat(overlayPx(6, fontScale)), marginTop: Number.parseFloat(overlayPx(8, fontScale)), flexWrap: "wrap" }}>
             <button type="button" style={actionButtonStyle} onClick={() => void handleCopy()}>
               {t("actionCopy")}
@@ -784,6 +807,10 @@ export function mountHoverTranslate() {
 
   const shadow = host.attachShadow({ mode: "open" })
   shadow.appendChild(createOverlayStyle1TokenStyleElement())
+  const styleEl = document.createElement("style")
+  styleEl.textContent = `button:focus-visible { outline: none; box-shadow: ${OVERLAY_STYLE_TOKENS.focusRing}; }`
+  shadow.appendChild(styleEl)
+
   const container = document.createElement("div")
   shadow.appendChild(container)
   createRoot(container).render(<ErrorBoundary><HoverTranslateApp /></ErrorBoundary>)

@@ -68,7 +68,7 @@ function isMissingRowError(error: unknown): boolean {
 }
 
 export function isSyncCollectionEnabled(user: ServerUserRecord, collection: SyncCollection): boolean {
-  if (collection === "config" || collection === "vocabulary") return true
+  if (collection === "config" || collection === "vocabulary" || collection === "review_schedule") return true
   if (collection === "reading_history") return user.syncPreferences.reading_history
   return user.syncPreferences.study_progress
 }
@@ -228,6 +228,11 @@ function normalizeBootstrapForParity(bootstrap: SyncBootstrapResponse) {
         defaultEnabled: bootstrap.collections.vocabulary.defaultEnabled,
         cursor: bootstrap.collections.vocabulary.cursor,
       },
+      review_schedule: {
+        enabled: bootstrap.collections.review_schedule.enabled,
+        defaultEnabled: bootstrap.collections.review_schedule.defaultEnabled,
+        cursor: bootstrap.collections.review_schedule.cursor,
+      },
       reading_history: {
         enabled: bootstrap.collections.reading_history.enabled,
         defaultEnabled: bootstrap.collections.reading_history.defaultEnabled,
@@ -265,6 +270,7 @@ function normalizePullForParity(pull: SyncPullResponse) {
     deltas: {
       config: pull.deltas.config.map(normalizeSyncMutationForParity),
       vocabulary: pull.deltas.vocabulary.map(normalizeSyncMutationForParity),
+      review_schedule: pull.deltas.review_schedule.map(normalizeSyncMutationForParity),
       reading_history: pull.deltas.reading_history.map(normalizeSyncMutationForParity),
       study_progress: pull.deltas.study_progress.map(normalizeSyncMutationForParity),
     },
@@ -286,6 +292,11 @@ function mapShadowBootstrapToNodeShape(shadow: Awaited<ReturnType<typeof getShad
         enabled: shadow.collections.vocabulary.enabled,
         defaultEnabled: shadow.collections.vocabulary.defaultEnabled,
         cursor: shadow.collections.vocabulary.lastIssuedCursor,
+      },
+      review_schedule: {
+        enabled: shadow.collections.review_schedule.enabled,
+        defaultEnabled: shadow.collections.review_schedule.defaultEnabled,
+        cursor: shadow.collections.review_schedule.lastIssuedCursor,
       },
       reading_history: {
         enabled: shadow.collections.reading_history.enabled,
@@ -323,6 +334,21 @@ function mapShadowPullToNodeShape(shadow: Awaited<ReturnType<typeof pullShadowSy
         payload: mutation.payload ?? null,
       })),
       vocabulary: shadow.deltas.vocabulary.map((mutation) => ({
+        ownerId: "",
+        email: "",
+        serverMutationId: mutation.serverMutationId,
+        serverUpdatedAt: mutation.serverUpdatedAt,
+        cursor: mutation.cursor,
+        collection: mutation.collection,
+        schemaVersion: mutation.schemaVersion,
+        recordId: mutation.recordId,
+        operation: mutation.operation,
+        clientMutationId: mutation.clientMutationId,
+        deviceId: mutation.deviceId,
+        clientUpdatedAt: mutation.clientUpdatedAt,
+        payload: mutation.payload ?? null,
+      })),
+      review_schedule: shadow.deltas.review_schedule.map((mutation) => ({
         ownerId: "",
         email: "",
         serverMutationId: mutation.serverMutationId,
@@ -753,7 +779,7 @@ export class RelayCloudflareShadowBridge {
           userId: params.user.id,
           collection: mutation.collection as ShadowSyncCollection,
           collectionEnabled: isSyncCollectionEnabled(params.user, mutation.collection),
-          collectionDefaultEnabled: mutation.collection === "config" || mutation.collection === "vocabulary",
+          collectionDefaultEnabled: mutation.collection === "config" || mutation.collection === "vocabulary" || mutation.collection === "review_schedule",
           schemaVersion: mutation.schemaVersion,
           recordId: mutation.recordId,
           operation: mutation.operation,
@@ -912,6 +938,7 @@ export class RelayCloudflareShadowBridge {
         500,
         params.result.deltas.config.length,
         params.result.deltas.vocabulary.length,
+        params.result.deltas.review_schedule.length,
         params.result.deltas.reading_history.length,
         params.result.deltas.study_progress.length,
       )

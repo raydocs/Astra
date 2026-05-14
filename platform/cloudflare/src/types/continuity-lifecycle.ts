@@ -10,12 +10,14 @@ export const CONTINUITY_TOMBSTONE_RETENTION_DEFAULT_DAYS = 30
 export const CONTINUITY_EXPORT_COLLECTIONS = [
   "config",
   "vocabulary",
+  "review_schedule",
   "reading_history",
   "study_progress",
 ] as const satisfies readonly AstraSyncCollection[]
 
 export const CONTINUITY_DELETE_COLLECTIONS = [
   "vocabulary",
+  "review_schedule",
   "reading_history",
   "study_progress",
 ] as const

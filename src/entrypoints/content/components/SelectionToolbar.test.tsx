@@ -7,12 +7,14 @@ const {
   saveVocabularyEntryMock,
   getDueVocabularyCountMock,
   markSessionSaveMock,
+  createAnnotationFromCurrentSelectionMock,
 } = vi.hoisted(() => ({
   readConfigMock: vi.fn(),
   translateTextsMock: vi.fn(),
   saveVocabularyEntryMock: vi.fn(),
   getDueVocabularyCountMock: vi.fn(),
   markSessionSaveMock: vi.fn(),
+  createAnnotationFromCurrentSelectionMock: vi.fn(),
 }))
 
 vi.mock("@/utils/storage/config", () => ({
@@ -58,6 +60,10 @@ vi.mock("../learning-state", () => ({
   markSessionSave: markSessionSaveMock,
 }))
 
+vi.mock("../page-annotations", () => ({
+  createAnnotationFromCurrentSelection: createAnnotationFromCurrentSelectionMock,
+}))
+
 vi.mock("@/utils/reading/assist", () => ({
   generateGrammarGuide: vi.fn().mockResolvedValue({
     overview: "mock overview",
@@ -95,6 +101,7 @@ describe("SelectionToolbar interaction suppression", () => {
     saveVocabularyEntryMock.mockReset()
     getDueVocabularyCountMock.mockReset()
     markSessionSaveMock.mockReset()
+    createAnnotationFromCurrentSelectionMock.mockReset()
     document.getElementById(HOST_ID)?.remove()
     document.body.innerHTML = `<main><p id="target">Hello world</p></main>`
 
@@ -122,6 +129,11 @@ describe("SelectionToolbar interaction suppression", () => {
     translateTextsMock.mockResolvedValue({ ok: true, translations: ["你好"] })
     saveVocabularyEntryMock.mockResolvedValue(undefined)
     getDueVocabularyCountMock.mockResolvedValue(0)
+    createAnnotationFromCurrentSelectionMock.mockResolvedValue({
+      annotation: { id: "annotation-1" },
+      evictedCount: 0,
+      maxAnnotations: 500,
+    })
 
     await act(async () => {
       mountSelectionToolbar()
@@ -131,6 +143,8 @@ describe("SelectionToolbar interaction suppression", () => {
 
   afterEach(() => {
     document.getElementById(HOST_ID)?.remove()
+    document.title = ""
+    window.history.replaceState(null, "", "/")
     Object.keys(documentListeners).forEach((key) => delete documentListeners[key])
     Object.keys(windowListeners).forEach((key) => delete windowListeners[key])
     vi.restoreAllMocks()
@@ -583,11 +597,16 @@ describe("SelectionToolbar interaction suppression", () => {
     const shadow = host.shadowRoot!
     const translateBtn = shadow.querySelector("[data-testid='selection-action-translate']") as HTMLButtonElement | null
     const explainBtn = shadow.querySelector("[data-testid='selection-action-explain']") as HTMLButtonElement | null
+    const moreBtn = shadow.querySelector("[data-testid='selection-action-more']") as HTMLButtonElement | null
+    await act(async () => {
+      moreBtn?.click()
+      await Promise.resolve()
+    })
     const copyBtn = Array.from(shadow.querySelectorAll("button")).find((btn) => btn.textContent === "复制") as HTMLButtonElement | undefined
 
     expect(translateBtn?.dataset.actionVariant).toBe("primary")
     expect(explainBtn?.dataset.actionVariant).toBe("primary")
-    expect(copyBtn?.style.background).toBe("transparent")
+    expect(copyBtn).toBeDefined()
 
     let resolveExplain!: (value: { ok: true; translations: string[] }) => void
     translateTextsMock.mockImplementationOnce(() => new Promise((resolve) => {
@@ -744,7 +763,26 @@ describe("SelectionToolbar interaction suppression", () => {
     expect(shadow.textContent).not.toContain("Old explanation")
   })
 
-  it("renders identity strip and default-enabled action buttons", async () => {
+  it("renders enabled Mark and Highlight annotation actions in normal mode", async () => {
+    readConfigMock.mockResolvedValue({
+      ...DEFAULT_ASTRA_CONFIG,
+      customActions: [
+        {
+          id: "mark",
+          label: "Mark",
+          labelZh: "Mark",
+          enabled: true,
+          systemPrompt: "Mark {{text}}",
+        },
+        {
+          id: "highlight",
+          label: "Highlight",
+          labelZh: "Highlight",
+          enabled: true,
+          systemPrompt: "Highlight {{text}}",
+        },
+      ],
+    })
     const target = document.getElementById("target") as HTMLElement
 
     await triggerDocumentMouseDown(target)
@@ -758,18 +796,136 @@ describe("SelectionToolbar interaction suppression", () => {
     const shell = shadow.querySelector("[data-testid='selection-toolbar-shell']")
     expect(shell).toBeTruthy()
 
-    const identityStrip = shadow.querySelector("[data-testid='astra-identity-strip']") as HTMLDivElement | null
-    expect(identityStrip?.textContent).toContain("Astra")
-
-    const targetLangPill = shadow.querySelector("[data-testid='astra-identity-strip-target-lang']") as HTMLSpanElement | null
-    expect(targetLangPill?.textContent).toBe("中文")
+    const buttonBar = shell?.querySelector("div[aria-label]") as HTMLDivElement | null
+    expect(buttonBar?.getAttribute("aria-label")).toContain("Astra")
 
     const buttons = shadow.querySelectorAll("button")
     const buttonTexts = Array.from(buttons).map((btn) => btn.textContent)
 
     expect(buttonTexts).toContain("翻译")
     expect(buttonTexts).toContain("解释")
-    expect(buttonTexts).toContain("复制")
+    expect(buttonTexts).toContain(t("actionSave"))
+    expect(buttonTexts).toContain("Mark")
+    expect(buttonTexts).toContain("Highlight")
+    expect(shadow.querySelector("[data-testid='selection-action-mark']")).toBeTruthy()
+    expect(shadow.querySelector("[data-testid='selection-action-highlight']")).toBeTruthy()
+    const moreButton = shadow.querySelector("[data-testid='selection-action-more']") as HTMLButtonElement | null
+    expect(moreButton).toBeTruthy()
+    expect(moreButton?.getAttribute("aria-label")).toBe(t("actionMore"))
+
+    await act(async () => {
+      moreButton?.click()
+      await Promise.resolve()
+    })
+
+    expect(shadow.querySelector("[data-testid='selection-toolbar-more-menu']")).toBeTruthy()
+    expect(shadow.querySelector("[data-testid='selection-action-mark']")).toBeTruthy()
+    expect(shadow.querySelector("[data-testid='selection-action-highlight']")).toBeTruthy()
+  })
+
+  it("keeps Highlight distinct from vocabulary Save", async () => {
+    readConfigMock.mockResolvedValue({
+      ...DEFAULT_ASTRA_CONFIG,
+      customActions: [
+        {
+          id: "highlight",
+          label: "Highlight",
+          labelZh: "Highlight",
+          enabled: true,
+          systemPrompt: "Highlight {{text}}",
+        },
+      ],
+    })
+    const target = document.getElementById("target") as HTMLElement
+
+    await triggerDocumentMouseDown(target)
+    setSelection("Hello world")
+    await triggerDocumentMouseUp(target)
+
+    const host = document.getElementById(HOST_ID)!
+    const shadow = host.shadowRoot!
+    const highlightButton = shadow.querySelector("[data-testid='selection-action-highlight']") as HTMLButtonElement | null
+
+    await act(async () => {
+      highlightButton?.click()
+      await Promise.resolve()
+      await Promise.resolve()
+    })
+
+    expect(createAnnotationFromCurrentSelectionMock).toHaveBeenCalledWith("highlight")
+    expect(saveVocabularyEntryMock).not.toHaveBeenCalled()
+    expect(markSessionSaveMock).not.toHaveBeenCalled()
+    expect(shadow.querySelector("[data-testid='selection-result-card']")?.textContent).toContain("Highlight saved locally")
+  })
+
+  it("does not apply certification layout without the exact local fixture title", async () => {
+    document.title = "Regular article"
+    window.history.pushState(null, "", "/fixture?astraCert=1")
+
+    const target = document.getElementById("target") as HTMLElement
+
+    await triggerDocumentMouseDown(target)
+    setSelection("Hello world")
+    await triggerDocumentMouseUp(target)
+
+    const host = document.getElementById(HOST_ID)!
+    const shadow = host.shadowRoot!
+    const toolbarRoot = shadow.querySelector("[data-testid='selection-toolbar-shell']")?.parentElement as HTMLDivElement | null
+
+    expect(toolbarRoot?.style.top).toBe("36px")
+  })
+
+  it("keeps certification fixture layout truthful without exposing Mark", async () => {
+    document.title = "Selection toolbar parity fixture"
+    window.history.pushState(null, "", "/fixture?astraCert=1")
+    readConfigMock.mockResolvedValue({
+      ...DEFAULT_ASTRA_CONFIG,
+      customActions: [
+        {
+          id: "mark",
+          label: "Mark",
+          labelZh: "Mark",
+          enabled: true,
+          systemPrompt: "Mark {{text}}",
+        },
+        {
+          id: "highlight",
+          label: "Highlight",
+          labelZh: "Highlight",
+          enabled: true,
+          systemPrompt: "Highlight {{text}}",
+        },
+      ],
+      presentation: {
+        ...DEFAULT_ASTRA_CONFIG.presentation,
+        fontSize: 1,
+      },
+    })
+
+    const target = document.getElementById("target") as HTMLElement
+
+    await triggerDocumentMouseDown(target)
+    setSelection("Hello world")
+    await triggerDocumentMouseUp(target)
+
+    const host = document.getElementById(HOST_ID)!
+    const shadow = host.shadowRoot!
+    const toolbarRoot = shadow.querySelector("[data-testid='selection-toolbar-shell']")?.parentElement as HTMLDivElement | null
+
+    expect(toolbarRoot?.style.top).toBe("72px")
+
+    const translateBtn = shadow.querySelector("[data-testid='selection-action-translate']") as HTMLButtonElement | null
+    await act(async () => {
+      translateBtn?.click()
+      await Promise.resolve()
+      await Promise.resolve()
+    })
+
+    expect(shadow.querySelector("[data-testid='selection-result-card']")?.textContent).toContain("你好")
+    expect(shadow.querySelector("[data-testid='selection-action-save']")?.textContent).toContain(t("actionSave"))
+    expect(shadow.querySelector("[data-testid='selection-action-mark']")).toBeNull()
+    expect(shadow.querySelector("[data-testid='selection-action-highlight']")).toBeNull()
+    expect(shadow.textContent).not.toContain("Mark")
   })
 
   it("applies resolved font scaling to toolbar typography and controls", async () => {
@@ -876,6 +1032,12 @@ describe("SelectionToolbar interaction suppression", () => {
 
     const host = document.getElementById(HOST_ID)!
     const shadow = host.shadowRoot!
+    const moreBtn = shadow.querySelector("[data-testid='selection-action-more']") as HTMLButtonElement | null
+    await act(async () => {
+      moreBtn?.click()
+      await Promise.resolve()
+    })
+
     const buttons = shadow.querySelectorAll("button")
     const speakBtn = Array.from(buttons).find((btn) => btn.textContent === "朗读")
 

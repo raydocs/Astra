@@ -1,7 +1,8 @@
-import { mkdir, writeFile } from "node:fs/promises"
+import { writeFile } from "node:fs/promises"
 import path from "node:path"
 
 import {
+  prepareLiveArtifactDir,
   withExtensionBrowserPage,
   LiveBrowserUnavailableError,
   ExtensionBuildNotFoundError,
@@ -35,8 +36,7 @@ export const subtitleLearningChainSmokeScenario: LiveScenarioDefinition<Subtitle
     runtime.start(context.id, context.title)
     runtime.log("Starting subtitle-reader learning-chain smoke.")
 
-    const artifactDir = path.join(process.cwd(), "bench-live-results", context.runId)
-    await mkdir(artifactDir, { recursive: true })
+    const artifactDir = await prepareLiveArtifactDir(context.runId)
 
     const subtitleEntry = {
       id: "bench-subtitle-vocab-1",

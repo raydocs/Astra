@@ -1,7 +1,8 @@
-import { mkdir, writeFile } from "node:fs/promises"
+import { writeFile } from "node:fs/promises"
 import path from "node:path"
 
 import {
+  prepareLiveArtifactDir,
   withExtensionBrowserPage,
   LiveBrowserUnavailableError,
   ExtensionBuildNotFoundError,
@@ -42,8 +43,7 @@ export const documentIntakeLocalFileHandoffScenario: LiveScenarioDefinition<Docu
     let extCtx: ExtensionBrowserContext | null = null
 
     try {
-      const artifactDir = path.join(process.cwd(), "bench-live-results", context.runId)
-      await mkdir(artifactDir, { recursive: true })
+      const artifactDir = await prepareLiveArtifactDir(context.runId)
       const vttPath = path.join(artifactDir, "local-handoff-proof.vtt")
       await writeFile(vttPath, "WEBVTT\n\n00:00:00.000 --> 00:00:01.000\nHello Astra handoff\n", "utf8")
 

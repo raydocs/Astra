@@ -1,8 +1,9 @@
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http"
-import { mkdir, writeFile } from "node:fs/promises"
+import { writeFile } from "node:fs/promises"
 import path from "node:path"
 
 import {
+  prepareLiveArtifactDir,
   withExtensionBrowserPage,
   LiveBrowserUnavailableError,
   ExtensionBuildNotFoundError,
@@ -13,6 +14,7 @@ import type { LiveEvaluationResult, LiveScenarioDefinition, LiveScenarioExecutio
 const AUTH_STORAGE_KEY = "astra.auth.v1"
 const DEVICE_STORAGE_KEY = "astra.device.v1"
 const VOCABULARY_STORAGE_KEY = "astra.vocabulary.v1"
+const REVIEW_SCHEDULE_STORAGE_KEY = "astra.vocabulary.review_schedule.v1"
 const STUDY_PROGRESS_STORAGE_KEY = "astra.study_progress.v1"
 const PHASE_ONE_SYNC_STATE_KEY = "astra.sync.phase1.v1"
 
@@ -22,7 +24,7 @@ const SESSION_TOKEN = "bench-continuity-token"
 const STUDY_URL = "https://example.com/continuity-proof"
 const NOW_ISO = "2026-04-09T01:00:00.000Z"
 
-type CollectionName = "config" | "vocabulary" | "reading_history" | "study_progress"
+type CollectionName = "config" | "vocabulary" | "review_schedule" | "reading_history" | "study_progress"
 
 type SyncMutation = {
   collection: CollectionName
@@ -52,7 +54,7 @@ interface LearningContinuitySyncProofExecution extends LiveScenarioExecution {
     recoveredVocabulary: boolean
     recoveredStudyProgress: boolean
     recoveredExplainProfile: boolean
-    srsScheduleStayedLocalOnly: boolean
+    reviewScheduleSynced: boolean
     popupStatusVisible: boolean
     popupCommitCardVisible: boolean
     consoleErrors: string[]
@@ -98,6 +100,7 @@ async function createContinuityRelayServer() {
   const collections: Record<CollectionName, ReturnType<typeof createCollectionState>> = {
     config: createCollectionState(),
     vocabulary: createCollectionState(),
+    review_schedule: createCollectionState(),
     reading_history: createCollectionState(),
     study_progress: createCollectionState(),
   }
@@ -187,6 +190,7 @@ async function createContinuityRelayServer() {
           collections: {
             config: collectionSummary("config"),
             vocabulary: collectionSummary("vocabulary"),
+            review_schedule: collectionSummary("review_schedule"),
             reading_history: collectionSummary("reading_history"),
             study_progress: collectionSummary("study_progress"),
           },
@@ -202,6 +206,7 @@ async function createContinuityRelayServer() {
         collections: {
           config: { enabled: true, defaultEnabled: true, cursor: collections.config.cursor },
           vocabulary: { enabled: true, defaultEnabled: true, cursor: collections.vocabulary.cursor },
+          review_schedule: { enabled: true, defaultEnabled: true, cursor: collections.review_schedule.cursor },
           reading_history: { enabled: true, defaultEnabled: true, cursor: collections.reading_history.cursor },
           study_progress: { enabled: true, defaultEnabled: true, cursor: collections.study_progress.cursor },
         },
@@ -248,6 +253,7 @@ async function createContinuityRelayServer() {
         nextCursors: {
           config: collections.config.cursor,
           vocabulary: collections.vocabulary.cursor,
+          review_schedule: collections.review_schedule.cursor,
           reading_history: collections.reading_history.cursor,
           study_progress: collections.study_progress.cursor,
         },
@@ -271,6 +277,7 @@ async function createContinuityRelayServer() {
         nextCursors: {
           config: collections.config.cursor,
           vocabulary: collections.vocabulary.cursor,
+          review_schedule: collections.review_schedule.cursor,
           reading_history: collections.reading_history.cursor,
           study_progress: collections.study_progress.cursor,
         },
@@ -335,8 +342,7 @@ export const learningContinuitySyncProofScenario: LiveScenarioDefinition<Learnin
   async run(runtime, context) {
     runtime.start(context.id, context.title)
     const relay = await createContinuityRelayServer()
-    const artifactDir = path.join(process.cwd(), "bench-live-results", context.runId)
-    await mkdir(artifactDir, { recursive: true })
+    const artifactDir = await prepareLiveArtifactDir(context.runId)
 
     const seededVocabulary = [{
       id: "continuity-vocab-1",
@@ -428,23 +434,30 @@ export const learningContinuitySyncProofScenario: LiveScenarioDefinition<Learnin
 
       const pushedMutations = relay.pushBatches.flat()
       const vocabularyMutation = pushedMutations.find((mutation) => mutation.collection === "vocabulary" && mutation.recordId === "continuity-vocab-1")
+      const reviewScheduleMutation = pushedMutations.find((mutation) => mutation.collection === "review_schedule" && mutation.recordId === "continuity-vocab-1")
       const studyProgressMutation = pushedMutations.find((mutation) => mutation.collection === "study_progress" && mutation.recordId === STUDY_URL)
       const vocabularyPayload = vocabularyMutation?.payload as Record<string, unknown> | undefined
+      const reviewSchedulePayload = reviewScheduleMutation?.payload as Record<string, unknown> | undefined
       const sourceContext = vocabularyPayload?.sourceContext as Record<string, unknown> | undefined
       const pushedVocabulary = !!vocabularyMutation
         && sourceContext?.languageLevel === "beginner"
         && sourceContext?.explainMode === "exam"
       const pushedStudyProgress = !!studyProgressMutation
-      const srsScheduleStayedLocalOnly = !!vocabularyPayload
+      const reviewScheduleSynced = !!reviewScheduleMutation
+        && reviewSchedulePayload?.srsBox === 5
+        && typeof reviewSchedulePayload.nextReviewAt === "number"
+        && reviewSchedulePayload.reviewCount === 7
+        && typeof reviewSchedulePayload.lastReviewedAt === "number"
+        && !!vocabularyPayload
         && !("srsBox" in vocabularyPayload)
         && !("nextReviewAt" in vocabularyPayload)
         && !("reviewCount" in vocabularyPayload)
         && !("lastReviewedAt" in vocabularyPayload)
 
-      await extCtx.page.evaluate(async ({ authKey, session, vocabKey, progressKey, syncKey }) => {
+      await extCtx.page.evaluate(async ({ authKey, session, vocabKey, reviewScheduleKey, progressKey, syncKey }) => {
         const extensionApi = (globalThis as typeof globalThis & { chrome: any }).chrome
         await extensionApi.storage.local.remove(authKey)
-        await extensionApi.storage.local.remove([vocabKey, progressKey, syncKey])
+        await extensionApi.storage.local.remove([vocabKey, reviewScheduleKey, progressKey, syncKey])
         await extensionApi.storage.local.set({ [authKey]: session })
       }, {
         authKey: AUTH_STORAGE_KEY,
@@ -461,6 +474,7 @@ export const learningContinuitySyncProofScenario: LiveScenarioDefinition<Learnin
           providerEntitlements: ["openai", "gemini"],
         },
         vocabKey: VOCABULARY_STORAGE_KEY,
+        reviewScheduleKey: REVIEW_SCHEDULE_STORAGE_KEY,
         progressKey: STUDY_PROGRESS_STORAGE_KEY,
         syncKey: PHASE_ONE_SYNC_STATE_KEY,
       })
@@ -502,7 +516,7 @@ export const learningContinuitySyncProofScenario: LiveScenarioDefinition<Learnin
         const text = element.textContent ?? ""
         return text.includes("Learning continuity commit")
           && text.includes("Sync now")
-          && text.includes("SRS schedule remains local-only")
+          && text.includes("Review schedule sync enabled")
       }).catch(() => false)
 
       const screenshotPath = path.join(artifactDir, "learning-continuity-sync-proof.popup.png")
@@ -541,7 +555,7 @@ export const learningContinuitySyncProofScenario: LiveScenarioDefinition<Learnin
           recoveredVocabulary,
           recoveredStudyProgress: recoveredStudyProgressVisible,
           recoveredExplainProfile,
-          srsScheduleStayedLocalOnly,
+          reviewScheduleSynced,
           popupStatusVisible,
           popupCommitCardVisible,
           consoleErrors,
@@ -575,7 +589,7 @@ export const learningContinuitySyncProofScenario: LiveScenarioDefinition<Learnin
       recoveredVocabulary: false,
       recoveredStudyProgress: false,
       recoveredExplainProfile: false,
-      srsScheduleStayedLocalOnly: false,
+      reviewScheduleSynced: false,
       popupStatusVisible: false,
       popupCommitCardVisible: false,
       consoleErrors: [],
@@ -590,7 +604,7 @@ export const learningContinuitySyncProofScenario: LiveScenarioDefinition<Learnin
     if (!proof.recoveredVocabulary) issues.push("Vocabulary entry was not recovered after local clear.")
     if (!proof.recoveredStudyProgress) issues.push("Study progress was not recovered after local clear.")
     if (!proof.recoveredExplainProfile) issues.push("Recovered vocabulary sourceContext did not include explain profile.")
-    if (!proof.srsScheduleStayedLocalOnly) issues.push("Sync payload included local-only SRS schedule fields.")
+    if (!proof.reviewScheduleSynced) issues.push("Review schedule was not synced separately from vocabulary text records.")
     if (!proof.popupStatusVisible) issues.push("Popup did not preserve diagnostics learning continuity commit status.")
     if (!proof.popupCommitCardVisible) issues.push("Popup did not expose the first-class learning continuity commit card.")
     if (proof.consoleErrors.length > 0) issues.push(`${proof.consoleErrors.length} console error(s) captured.`)

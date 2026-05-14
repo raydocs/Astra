@@ -1,8 +1,9 @@
 import { createServer } from "node:http"
-import { mkdir, writeFile } from "node:fs/promises"
+import { writeFile } from "node:fs/promises"
 import path from "node:path"
 
 import {
+  prepareLiveArtifactDir,
   materializeFixturePage,
   openExtensionActionPopup,
   readExtensionStorageState,
@@ -213,8 +214,7 @@ export const popupDeepReadProofScenario: LiveScenarioDefinition<PopupDeepReadPro
     try {
       relayServer = await createPopupDeepReadRelayServer()
 
-      const artifactDir = path.join(process.cwd(), "bench-live-results", context.runId)
-      await mkdir(artifactDir, { recursive: true })
+      const artifactDir = await prepareLiveArtifactDir(context.runId)
 
       const liveConfig = {
         version: 1,

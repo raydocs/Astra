@@ -153,7 +153,7 @@ export const LEARNING_LOOP_ACCOUNT_CONTINUITY_COPY = {
   bullets: [
     "Continue from the same source pages and saved card context.",
     "Keep saved cards, reading history, and study progress connected across sessions.",
-    "Review stays grounded in what you chose to learn, while SRS schedule timing remains local-only.",
+    "Review stays grounded in what you chose to learn, with review schedules synced safely across sessions."
   ],
   proofMoments: {
     popup: "Proof from this popup session is worth keeping.",
@@ -170,7 +170,7 @@ export const LEARNING_LOOP_ACCOUNT_CONTINUITY_COPY = {
   popupFocusParam: "focus=sign-in",
   popupDeepLinkPath: "/popup.html?focus=sign-in",
   nextAction: "Next action: open the popup sign-in panel when you are ready to attach today’s learning trail to an account.",
-  boundary: "No billing change here—sign-in only connects continuity and account status for this build; SRS schedule timing stays local-only.",
+  boundary: "No billing change here—sign-in only connects continuity, review schedules, and account status for this build; daily study stats stay local-only."
 } as const
 
 export type LearningLoopAccountContinuityProofSurface =

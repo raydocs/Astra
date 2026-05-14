@@ -184,6 +184,88 @@ describe("page translation controller", () => {
     expect(getPageTranslationState().phase).toBe("idle")
   })
 
+  it("ignores late async failures after stop", async () => {
+    let rejectTranslation!: (error: Error) => void
+    translateTextsMock.mockReturnValue(new Promise((_resolve, reject) => {
+      rejectTranslation = reject
+    }))
+
+    await startPageTranslation({ targetLang: "zh-CN" })
+    await flushPromises()
+    stopPageTranslation()
+
+    rejectTranslation(new Error("late relay failure"))
+    await flushPromises()
+
+    expect(document.querySelector("[data-astra-translation]")).toBeNull()
+    expect(document.querySelector("[data-astra-translation-error='1']")).toBeNull()
+    expect(getPageTranslationState().phase).toBe("idle")
+    expect(getPageTranslationState().lastError).toBeNull()
+  })
+
+  it("renders loading placeholders for queued visible blocks while translation is pending", async () => {
+    let resolveTranslation!: (value: { ok: true; translations: string[] }) => void
+    translateTextsMock.mockReturnValue(new Promise((resolve) => {
+      resolveTranslation = resolve
+    }))
+
+    await startPageTranslation({ targetLang: "zh-CN" })
+
+    const visible = document.getElementById("visible")!
+    expect(visible.querySelector("[data-astra-translation=\"loading\"]")?.textContent).toContain("⋯")
+    expect(document.getElementById("offscreen")?.querySelector("[data-astra-translation]")).toBeNull()
+
+    resolveTranslation({ ok: true, translations: ["可见文本"] })
+    await flushPromises()
+
+    expect(visible.querySelector("[data-astra-translation=\"loading\"]")).toBeNull()
+    expect(visible.querySelector("[data-astra-translation=\"1\"]")?.textContent).toContain("可见文本")
+  })
+
+  it("keeps exhausted paragraph failures visible and retryable", async () => {
+    document.body.innerHTML = `
+      <main>
+        <p id="only-visible">Visible text</p>
+      </main>
+    `
+    setRect(document.getElementById("only-visible")!, 50)
+
+    translateTextsMock.mockResolvedValue({
+      ok: false,
+      error: { code: "PROVIDER_REQUEST_FAILED", message: "Relay unavailable" },
+    })
+
+    await startPageTranslation({ targetLang: "zh-CN" })
+    for (let i = 0; i < 8; i++) {
+      await flushPromises()
+    }
+
+    expect(getPageTranslationState().phase).toBe("idle")
+    expect(getPageTranslationState().lastError?.message).toBe("Relay unavailable")
+    expect(getPageTranslationState().progress.failedBlocks).toBe(1)
+
+    const retryButton = document.querySelector<HTMLButtonElement>("[data-astra-error-retry='1']")
+    expect(retryButton?.textContent).toContain("Retry paragraph")
+    const inlineError = document.querySelector("[data-astra-translation-error='1']")
+    expect(inlineError?.textContent).toContain("Couldn't translate this paragraph.")
+    expect(inlineError?.getAttribute("aria-label")).toContain("Relay unavailable")
+
+    translateTextsMock.mockResolvedValueOnce({
+      ok: true,
+      translations: ["重试成功"],
+    })
+
+    retryButton?.click()
+    expect(getPageTranslationState().phase).toBe("running")
+    expect(document.querySelector("[data-astra-translation=\"loading\"]")?.textContent).toContain("⋯")
+    for (let i = 0; i < 4; i++) {
+      await flushPromises()
+    }
+
+    expect(document.querySelector("[data-astra-translation-error='1']")).toBeNull()
+    expect(document.querySelector(".astra-translation-inner")?.textContent).toBe("重试成功")
+  })
+
   it("passes page context and only translates visible blocks immediately", async () => {
     translateTextsMock.mockResolvedValue({
       ok: true,

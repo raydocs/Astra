@@ -1,3 +1,5 @@
+import { mkdir } from "node:fs/promises"
+
 import { describe, expect, it, vi } from "vitest"
 
 const FIXTURE_HTML: Record<string, string> = {
@@ -55,6 +57,11 @@ vi.mock("../driver", () => ({
       this.name = "LiveBrowserUnavailableError"
     }
   },
+  prepareLiveArtifactDir: vi.fn(async (runId: string) => {
+    const artifactDir = `/tmp/astra-live/${runId}`
+    await mkdir(artifactDir, { recursive: true })
+    return artifactDir
+  }),
   materializeFixturePage: vi.fn(async ({ fixtureName }: { fixtureName: string }) => ({
     artifactDir: "/tmp/astra-live/article-extraction-proof",
     htmlPath: `/tmp/astra-live/article-extraction-proof/${fixtureName}.html`,

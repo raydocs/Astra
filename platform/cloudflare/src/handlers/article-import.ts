@@ -365,9 +365,11 @@ export async function handleArticleImport(
       return taggedResponse
     }
 
-    const response = await proxyToNodeRelay(request, env, ctx)
+    const proxyRequest = request.clone()
+    const outcomeRequest = request.clone()
+    const response = await proxyToNodeRelay(proxyRequest, env, ctx)
     ctx.execution.waitUntil(recordArticleImportOutcome({
-      request,
+      request: outcomeRequest,
       proxyStatus: response.status,
       mode: effectiveMode,
       route: "proxy",

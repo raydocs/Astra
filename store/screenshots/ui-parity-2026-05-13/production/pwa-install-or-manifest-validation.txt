@@ -1,0 +1,4 @@
+Validation date: 2026-05-13
+web/vite.config.ts uses base: "./".
+web/public/manifest.webmanifest currently uses relative start_url/scope: "./".
+Result: root/subpath portability decision is documented; no screenshot required.

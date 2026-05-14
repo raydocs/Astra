@@ -1,7 +1,8 @@
-import { mkdir, writeFile } from "node:fs/promises"
+import { writeFile } from "node:fs/promises"
 import path from "node:path"
 
 import {
+  prepareLiveArtifactDir,
   withExtensionBrowserPage,
   LiveBrowserUnavailableError,
   ExtensionBuildNotFoundError,
@@ -40,8 +41,7 @@ export const documentIntakeBasicScenario: LiveScenarioDefinition<DocumentIntakeB
     let extCtx: ExtensionBrowserContext | null = null
 
     try {
-      const artifactDir = path.join(process.cwd(), "bench-live-results", context.runId)
-      await mkdir(artifactDir, { recursive: true })
+      const artifactDir = await prepareLiveArtifactDir(context.runId)
       const pdfPath = path.join(artifactDir, "intake-proof.pdf")
       const vttPath = path.join(artifactDir, "intake-proof.vtt")
       await writeFile(pdfPath, "%PDF-1.4\n% Astra intake proof placeholder\n", "utf8")

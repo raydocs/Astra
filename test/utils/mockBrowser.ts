@@ -51,6 +51,9 @@ export function createMockBrowser(initialStorage: StorageData = {}) {
   const tabActivatedBus = createListenerBus<[unknown]>()
   const storageChangedBus = createListenerBus<[StorageChangeRecord, string]>()
   const contextMenuClickedBus = createListenerBus<[unknown, unknown]>()
+  const permissionsAddedBus = createListenerBus<[unknown]>()
+  const permissionsRemovedBus = createListenerBus<[unknown]>()
+  const tabUpdatedBus = createListenerBus<[number, unknown, unknown]>()
 
   type MockTab = { id?: number; url?: string; lastAccessed?: number; active?: boolean }
   const tabsQuery = vi.fn((_query?: unknown) => Promise.resolve([] as MockTab[]))
@@ -72,6 +75,9 @@ export function createMockBrowser(initialStorage: StorageData = {}) {
     __emitTabActivated: tabActivatedBus.emit,
     __emitStorageChange: storageChangedBus.emit,
     __emitContextMenuClicked: contextMenuClickedBus.emit,
+    __emitPermissionsAdded: permissionsAddedBus.emit,
+    __emitPermissionsRemoved: permissionsRemovedBus.emit,
+    __emitTabUpdated: tabUpdatedBus.emit,
     __resetListeners: () => {
       runtimeMessageBus.clear()
       installedBus.clear()
@@ -79,6 +85,9 @@ export function createMockBrowser(initialStorage: StorageData = {}) {
       tabActivatedBus.clear()
       storageChangedBus.clear()
       contextMenuClickedBus.clear()
+      permissionsAddedBus.clear()
+      permissionsRemovedBus.clear()
+      tabUpdatedBus.clear()
     },
     storage: {
       onChanged: {
@@ -127,6 +136,10 @@ export function createMockBrowser(initialStorage: StorageData = {}) {
         addListener: tabActivatedBus.addListener,
         removeListener: tabActivatedBus.removeListener,
       },
+      onUpdated: {
+        addListener: tabUpdatedBus.addListener,
+        removeListener: tabUpdatedBus.removeListener,
+      },
     },
     contextMenus: {
       create: vi.fn(),
@@ -153,6 +166,20 @@ export function createMockBrowser(initialStorage: StorageData = {}) {
       onCommand: {
         addListener: commandBus.addListener,
         removeListener: commandBus.removeListener,
+      },
+    },
+    permissions: {
+      contains: vi.fn(() => Promise.resolve(false)),
+      request: vi.fn(() => Promise.resolve(true)),
+      remove: vi.fn(() => Promise.resolve(true)),
+      getAll: vi.fn(() => Promise.resolve({ permissions: [], origins: [] })),
+      onAdded: {
+        addListener: permissionsAddedBus.addListener,
+        removeListener: permissionsAddedBus.removeListener,
+      },
+      onRemoved: {
+        addListener: permissionsRemovedBus.addListener,
+        removeListener: permissionsRemovedBus.removeListener,
       },
     },
   }

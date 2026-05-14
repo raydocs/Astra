@@ -9,6 +9,9 @@ export const ASTRA_TRANSLATION_SELECTOR = `[${ASTRA_TRANSLATION_ATTR}]`
 export const ASTRA_SOURCE_ATTR = "data-astra-source"
 export const ASTRA_SOURCE_SELECTOR = `[${ASTRA_SOURCE_ATTR}]`
 export const ASTRA_SOURCE_HIDDEN_ATTR = "data-astra-source-hidden"
+export const ASTRA_INLINE_ERROR_ATTR = "data-astra-translation-error"
+export const ASTRA_INLINE_ERROR_SELECTOR = `[${ASTRA_INLINE_ERROR_ATTR}]`
+export const ASTRA_INLINE_ERROR_RETRY_ATTR = "data-astra-error-retry"
 export const ASTRA_CUSTOM_CSS_STYLE_ID = "astra-site-custom-css"
 
 export interface InjectOptions {
@@ -33,6 +36,13 @@ export function hasInjectedTranslation(element: HTMLElement): boolean {
 function getDirectLoadingWrapper(element: HTMLElement): HTMLElement | null {
   return getDirectTranslationWrappers(element).find(
     (child) => child.getAttribute(ASTRA_TRANSLATION_ATTR) === "loading",
+  ) ?? null
+}
+
+function getDirectInlineErrorWrapper(element: HTMLElement): HTMLElement | null {
+  return Array.from(element.children).find(
+    (child): child is HTMLElement =>
+      child instanceof HTMLElement && child.hasAttribute(ASTRA_INLINE_ERROR_ATTR),
   ) ?? null
 }
 
@@ -137,6 +147,7 @@ export function injectTranslation(
 }
 
 export function showLoading(element: HTMLElement, options: InjectOptions = {}) {
+  getDirectInlineErrorWrapper(element)?.remove()
   if (getDirectTranslationWrappers(element).length > 0) return
 
   if (options.mode === "translation-only") {
@@ -144,9 +155,22 @@ export function showLoading(element: HTMLElement, options: InjectOptions = {}) {
     setSourceHidden(element, false)
   }
 
-  const wrapper = createWrapper("loading", "⋯", options)
+  const loadingContent = document.createDocumentFragment()
+  const lines = document.createElement("span")
+  lines.className = "notranslate astra-loading-lines"
+  ;["long", "medium", "short"].forEach((size) => {
+    const line = document.createElement("span")
+    line.className = `notranslate astra-loading-line astra-loading-line-${size}`
+    lines.appendChild(line)
+  })
+
+  const dots = document.createElement("span")
+  dots.className = "notranslate astra-loading-dots"
+  dots.textContent = "⋯"
+  loadingContent.append(lines, dots)
+
+  const wrapper = createWrapper("loading", loadingContent, options)
   wrapper.classList.add("astra-loading")
-  wrapper.querySelector(".astra-translation-inner")?.classList.add("astra-loading-dots")
 
   element.appendChild(wrapper)
 }
@@ -188,8 +212,47 @@ export function clearLoading(element: HTMLElement) {
   setSourceHidden(element, false)
 }
 
+export function clearInlineError(element: HTMLElement) {
+  getDirectInlineErrorWrapper(element)?.remove()
+}
+
+export function showInlineError(
+  element: HTMLElement,
+  message: string,
+  options: InjectOptions = {},
+) {
+  getDirectLoadingWrapper(element)?.remove()
+  getDirectInlineErrorWrapper(element)?.remove()
+  setSourceHidden(element, false)
+
+  const wrapper = document.createElement("span")
+  wrapper.className = `notranslate astra-translation-error astra-theme-${options.theme ?? "default"} astra-mode-${options.mode ?? "bilingual"}`
+  wrapper.setAttribute("translate", "no")
+  wrapper.setAttribute(ASTRA_INLINE_ERROR_ATTR, "1")
+  wrapper.setAttribute("role", "status")
+  wrapper.setAttribute("aria-live", "polite")
+
+  const text = document.createElement("span")
+  text.className = "notranslate astra-translation-error-text"
+  text.textContent = "Couldn't translate this paragraph."
+  if (message.trim()) {
+    text.title = message
+    wrapper.setAttribute("aria-label", `Couldn't translate this paragraph. ${message}`)
+  }
+
+  const retry = document.createElement("button")
+  retry.type = "button"
+  retry.className = "notranslate astra-translation-error-retry"
+  retry.setAttribute(ASTRA_INLINE_ERROR_RETRY_ATTR, "1")
+  retry.textContent = "Retry paragraph"
+
+  wrapper.append(text, retry)
+  element.appendChild(wrapper)
+}
+
 export function removeTranslationFor(element: HTMLElement) {
   getDirectTranslationWrappers(element).forEach((node) => node.remove())
+  getDirectInlineErrorWrapper(element)?.remove()
   unwrapSourceWrapper(element)
 }
 
@@ -200,6 +263,7 @@ export function removeAndReload(element: HTMLElement, options: InjectOptions = {
 
 export function removeAllTranslations() {
   document.querySelectorAll(ASTRA_TRANSLATION_SELECTOR).forEach((el) => el.remove())
+  document.querySelectorAll(ASTRA_INLINE_ERROR_SELECTOR).forEach((el) => el.remove())
   document.querySelectorAll(ASTRA_SOURCE_SELECTOR).forEach((el) => {
     if (!(el instanceof HTMLElement)) return
     const parent = el.parentElement
