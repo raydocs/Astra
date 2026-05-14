@@ -19,27 +19,27 @@
 ### Run the full suite
 
 ```bash
-npx tsx bench-opt/proof-suite-entry.ts --runs 3 --sprints 5
+npx tsx script/bench-opt/proof-suite-entry.ts --runs 3 --sprints 5
 ```
 
-This executes all 12 prompts, 3 runs each, 5 sprints per run. Results are written to `bench-opt-results/proof-suite/`. A quick mode with 2 runs per prompt is also supported:
+This executes all 12 prompts, 3 runs each, 5 sprints per run. Results are written to `data/bench-opt-results/proof-suite/`. A quick mode with 2 runs per prompt is also supported:
 
 ```bash
-npx tsx bench-opt/proof-suite-entry.ts --runs 2 --sprints 5
+npx tsx script/bench-opt/proof-suite-entry.ts --runs 2 --sprints 5
 ```
 
 ### Run a single proof benchmark
 
 ```bash
-npx tsx bench-opt/long-run-entry.ts --prompt "Build a minimal todo app browser extension with categories, due dates, and a compact popup panel" --sprints 5
+npx tsx script/bench-opt/long-run-entry.ts --prompt "Build a minimal todo app browser extension with categories, due dates, and a compact popup panel" --sprints 5
 ```
 
-Results are written to `bench-opt-results/long-run/`.
+Results are written to `data/bench-opt-results/long-run/`.
 
 ### Export the benchmark pack spec
 
 ```bash
-npx tsx bench-opt/external-benchmark-pack-entry.ts --export bench-opt-results/benchmark-pack/
+npx tsx script/bench-opt/external-benchmark-pack-entry.ts --export data/bench-opt-results/benchmark-pack/
 ```
 
 This produces `benchmark-pack.json` (the frozen pack config) and `benchmark-pack-spec.md` (the rendered specification).
@@ -47,7 +47,7 @@ This produces `benchmark-pack.json` (the frozen pack config) and `benchmark-pack
 ### Validate results against the pack
 
 ```bash
-npx tsx bench-opt/external-benchmark-pack-entry.ts --validate bench-opt-results/proof-suite/latest.proof-suite.json
+npx tsx script/bench-opt/external-benchmark-pack-entry.ts --validate data/bench-opt-results/proof-suite/latest.proof-suite.json
 ```
 
 ## How to Interpret Results
@@ -102,7 +102,7 @@ weightedTotal = sum(dimension_score * dimension_weight) / sum(dimension_weight)
 - **`interaction-stress`**: 12+ interactive elements (buttons, nested forms), iframe interaction, DOM mutation under pressure, overlay element counting. Tests interaction priority under heavier conditions than the basic scenario.
 - **`translation-race`**: Async content arriving via setTimeout-based DOM insertion. Translation triggered before all content loads. Verifies graceful handling of partial content, no race condition errors, and late-arriving content eventually translated.
 - These are NOT in normal test runs — they only run during proof/hidden evaluation.
-- Holdout scenarios are imported from `bench-live/scenarios/holdout/index.ts` and are intentionally NOT registered in the main scenario index.
+- Holdout scenarios are imported from `script/bench-live/scenarios/holdout/index.ts` and are intentionally NOT registered in the main scenario index.
 
 ## Difficulty Tiers
 
@@ -131,36 +131,36 @@ Suite verdict mapping:
 
 | Path | Description |
 |------|-------------|
-| `bench-opt-results/proof-suite/latest.proof-suite.json` | Full suite results (latest run) |
-| `bench-opt-results/proof-suite/latest.proof-suite.md` | Markdown report (latest run) |
-| `bench-opt-results/proof-suite/proof-suite-<timestamp>.json` | Timestamped archive |
-| `bench-opt-results/proof-suite/proof-suite-<timestamp>.md` | Timestamped markdown archive |
-| `bench-opt-results/long-run/` | Per-run detail from individual long-run benchmarks |
-| `bench-opt-results/benchmark-pack/benchmark-pack.json` | Frozen benchmark pack config |
-| `bench-opt-results/benchmark-pack/benchmark-pack-spec.md` | Rendered pack specification |
-| `bench-live-results/` | Live scenario artifacts (screenshots, DOM snapshots) |
+| `data/bench-opt-results/proof-suite/latest.proof-suite.json` | Full suite results (latest run) |
+| `data/bench-opt-results/proof-suite/latest.proof-suite.md` | Markdown report (latest run) |
+| `data/bench-opt-results/proof-suite/proof-suite-<timestamp>.json` | Timestamped archive |
+| `data/bench-opt-results/proof-suite/proof-suite-<timestamp>.md` | Timestamped markdown archive |
+| `data/bench-opt-results/long-run/` | Per-run detail from individual long-run benchmarks |
+| `data/bench-opt-results/benchmark-pack/benchmark-pack.json` | Frozen benchmark pack config |
+| `data/bench-opt-results/benchmark-pack/benchmark-pack-spec.md` | Rendered pack specification |
+| `data/bench-live-results/` | Live scenario artifacts (screenshots, DOM snapshots) |
 
 ## Key Source Files
 
 | File | Purpose |
 |------|---------|
-| `bench-opt/proof-suite.ts` | Suite config (12 prompts), runner, statistics |
-| `bench-opt/proof-suite-entry.ts` | CLI entry point for suite execution |
-| `bench-opt/long-run.ts` | Single long-run benchmark logic |
-| `bench-opt/long-run-entry.ts` | CLI entry point for single runs |
-| `bench-opt/composite-scorer.ts` | 5-dimension weighted scoring |
-| `bench-opt/hardened-verdict.ts` | Visible + hidden gate verdict system |
-| `bench-opt/blind-evaluator.ts` | Artifact-only blind scoring |
-| `bench-opt/perturbation.ts` | Seeded PRNG perturbation for hardening |
-| `bench-opt/external-benchmark-pack.ts` | Pack creation, validation, spec rendering |
-| `bench-opt/external-benchmark-pack-entry.ts` | CLI entry point for pack export/validate |
-| `bench-live/scenarios/holdout/index.ts` | Holdout scenario registry |
-| `bench-live/scenarios/holdout/interaction-stress.ts` | Interaction stress holdout |
-| `bench-live/scenarios/holdout/translation-race.ts` | Translation race holdout |
+| `script/bench-opt/proof-suite.ts` | Suite config (12 prompts), runner, statistics |
+| `script/bench-opt/proof-suite-entry.ts` | CLI entry point for suite execution |
+| `script/bench-opt/long-run.ts` | Single long-run benchmark logic |
+| `script/bench-opt/long-run-entry.ts` | CLI entry point for single runs |
+| `script/bench-opt/composite-scorer.ts` | 5-dimension weighted scoring |
+| `script/bench-opt/hardened-verdict.ts` | Visible + hidden gate verdict system |
+| `script/bench-opt/blind-evaluator.ts` | Artifact-only blind scoring |
+| `script/bench-opt/perturbation.ts` | Seeded PRNG perturbation for hardening |
+| `script/bench-opt/external-benchmark-pack.ts` | Pack creation, validation, spec rendering |
+| `script/bench-opt/external-benchmark-pack-entry.ts` | CLI entry point for pack export/validate |
+| `script/bench-live/scenarios/holdout/index.ts` | Holdout scenario registry |
+| `script/bench-live/scenarios/holdout/interaction-stress.ts` | Interaction stress holdout |
+| `script/bench-live/scenarios/holdout/translation-race.ts` | Translation race holdout |
 
 ## Latest Results Summary (v1.0.0 baseline)
 
-From `bench-opt-results/proof-suite/latest.proof-suite.json`:
+From `data/bench-opt-results/proof-suite/latest.proof-suite.json`:
 
 - **Suite verdict**: `stable-pass`
 - **Total runs**: 24 (12 prompts x 2 runs)

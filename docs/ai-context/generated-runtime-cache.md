@@ -28,10 +28,10 @@ coverage/
 ## Bench, optimizer, and run results
 
 ```text
-bench-results/
-bench-live-results/
-bench-live-results-test/
-bench-opt-results/
+data/bench-results/
+data/bench-live-results/
+data/bench-live-results-test/
+data/bench-opt-results/
 .bench-opt/
 logs/
 prompt-exports/

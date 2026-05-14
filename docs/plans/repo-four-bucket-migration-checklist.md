@@ -22,8 +22,8 @@ The four buckets are conceptual, not a physical layout change in this pass:
 | `platform/` | `src` + `script` | Future-only candidate with Wrangler validation. |
 | `.github/` | `script` | No-move convention root. |
 | `.specify/` | `script` / specs tooling | No-move convention root. |
-| `scripts/` | `script` | Future-only candidate with wrappers first. |
-| `bench/`, `bench-live/`, `bench-opt/` | `script` | Future-only candidate with artifact compatibility. |
+| `script/maintenance/` | `script` | Future-only candidate with wrappers first. |
+| `script/bench/`, `script/bench-live/`, `script/bench-opt/` | `script` | Future-only candidate with artifact compatibility. |
 | `ios/` | `src` + `script` + reference `data` | No-move convention root. |
 | `docs/` | `docs` | Keep. |
 | top-level `plans/` | `docs` | Legacy/transitional; index only. |

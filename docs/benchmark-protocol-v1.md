@@ -20,7 +20,7 @@ _This protocol MUST NOT be modified without incrementing the version number._
 | 11 | `collab-editor` | Build a browser extension for real-time collaborative annotation where multiple users can highlight, comment, and resolve threads on the same page with conflict resolution | coordination | hard |
 | 12 | `dashboard-builder` | Build a browser extension that lets users create custom dashboard layouts with draggable widget panels, persistent layouts, and real-time data feeds from multiple page sources | ui-heavy | hard |
 
-Source: `bench-opt/proof-suite.ts` — `createDefaultProofSuiteConfig()`
+Source: `script/bench-opt/proof-suite.ts` — `createDefaultProofSuiteConfig()`
 
 ## 2. Tier Definition
 
@@ -57,7 +57,7 @@ weightedTotal = sum(dimension_score * dimension_weight) / sum(dimension_weight)
 - **Total pass threshold**: 65
 - **Required dimensions**: `functionality`, `codeQuality` (must individually meet their thresholds)
 
-Source: `bench-opt/composite-scorer.ts` — `createDefaultScoringConfig()`
+Source: `script/bench-opt/composite-scorer.ts` — `createDefaultScoringConfig()`
 
 ## 5. Verdict Taxonomy
 
@@ -69,7 +69,7 @@ Source: `bench-opt/composite-scorer.ts` — `createDefaultScoringConfig()`
 | `partial` | Visible gate marginal, hidden gate mixed. The run did not cleanly pass either lane. |
 | `fail` | Visible gate failed: composite score below 65 or required dimensions did not meet their individual thresholds. Hidden gate result is irrelevant when visible fails. |
 
-Source: `bench-opt/hardened-verdict.ts` — `HardenedCombinedVerdict` type and `computeHardenedVerdict()`
+Source: `script/bench-opt/hardened-verdict.ts` — `HardenedCombinedVerdict` type and `computeHardenedVerdict()`
 
 ## 6. Gate Structure
 
@@ -82,13 +82,13 @@ The visible gate evaluates the composite score from the 5-dimension rubric:
 3. Check that required dimensions (`functionality`, `codeQuality`) individually pass their thresholds (70 and 65 respectively)
 4. If both checks pass, visible gate = **pass**
 
-Source: `bench-opt/hardened-verdict.ts` — `evaluateVisibleGate()`
+Source: `script/bench-opt/hardened-verdict.ts` — `evaluateVisibleGate()`
 
 ### Hidden gate
 
 The hidden gate has two independent checks:
 
-**Blind evaluator** (`bench-opt/blind-evaluator.ts`):
+**Blind evaluator** (`script/bench-opt/blind-evaluator.ts`):
 - Re-scores the run using ONLY observable evidence: build result, test results, live scenario outcomes, screenshots, DOM snapshots, code diff summary, bench score
 - No planner or generator self-descriptions are used
 - Per-dimension divergence from self-evaluation is computed
@@ -98,7 +98,7 @@ The hidden gate has two independent checks:
   - `warn`: 1-2 suspicious dimensions
   - `fail`: >= 3 suspicious dimensions OR composite delta > 15
 
-**Holdout scenarios** (`bench-live/scenarios/holdout/index.ts`):
+**Holdout scenarios** (`script/bench-live/scenarios/holdout/index.ts`):
 - `interaction-stress`: 12+ interactive elements, nested forms, iframe interaction, DOM mutation pressure, overlay counting
 - `translation-race`: Async content via setTimeout DOM insertion, early translation trigger, race condition detection, late content verification
 - Verdict derivation:
@@ -120,12 +120,12 @@ The hidden gate has two independent checks:
 
 **Trustworthiness score**: `100 - (divergence * 2) - (holdout_failures * 15)`, clamped to [0, 100]. Deterministic warning applies an additional -20 penalty.
 
-Source: `bench-opt/hardened-verdict.ts` — `computeHardenedVerdict()`
+Source: `script/bench-opt/hardened-verdict.ts` — `computeHardenedVerdict()`
 
 ## 7. Holdout Policy
 
-- Holdout scenarios are NOT visible during development or tuning. They are not registered in `bench-live/scenarios/index.ts`.
-- They run only during proof evaluation via explicit import from `bench-live/scenarios/holdout/index.ts`.
+- Holdout scenarios are NOT visible during development or tuning. They are not registered in `script/bench-live/scenarios/index.ts`.
+- They run only during proof evaluation via explicit import from `script/bench-live/scenarios/holdout/index.ts`.
 - Current holdout set:
   - `interaction-stress` — stress test for interaction priority under heavy DOM conditions
   - `translation-race` — race condition test for async content translation
@@ -149,7 +149,7 @@ Source: `bench-opt/hardened-verdict.ts` — `computeHardenedVerdict()`
 | Prompt classification | enabled | `hardening.usePromptClassification` |
 | Hardened verdict | enabled | `hardening.useHardenedVerdict` |
 
-Source: `bench-opt/proof-suite.ts` — `runProofSuite()`, perturbation config block
+Source: `script/bench-opt/proof-suite.ts` — `runProofSuite()`, perturbation config block
 
 ## 9. Pass Conditions for the Suite
 
@@ -168,7 +168,7 @@ Suite-level verdict:
 - `unstable`: success rate 50-79%
 - `fail`: success rate < 50%
 
-Source: `bench-opt/external-benchmark-pack.ts` — `BenchmarkPackConfig.passConditions`, `bench-opt/proof-suite.ts` — `ProofSuiteResult.verdict`
+Source: `script/bench-opt/external-benchmark-pack.ts` — `BenchmarkPackConfig.passConditions`, `script/bench-opt/proof-suite.ts` — `ProofSuiteResult.verdict`
 
 ## 10. Score Interpretation Guide
 
@@ -257,16 +257,16 @@ The `ProofSuiteResult` JSON (`latest.proof-suite.json`) contains the following t
 }
 ```
 
-Source: `bench-opt/proof-suite.ts` — `ProofSuiteResult` interface
+Source: `script/bench-opt/proof-suite.ts` — `ProofSuiteResult` interface
 
 ## 12. Artifact Layout
 
 | Directory | Contents |
 |-----------|----------|
-| `bench-opt-results/proof-suite/` | Suite-level results: `latest.proof-suite.json`, `latest.proof-suite.md`, timestamped archives (`proof-suite-<timestamp>.json`, `proof-suite-<timestamp>.md`) |
-| `bench-opt-results/long-run/` | Per-run detailed results from individual long-run benchmarks |
-| `bench-opt-results/benchmark-pack/` | Frozen pack specification: `benchmark-pack.json`, `benchmark-pack-spec.md` |
-| `bench-live-results/` | Live scenario artifacts: screenshots, DOM snapshots, scenario execution logs |
+| `data/bench-opt-results/proof-suite/` | Suite-level results: `latest.proof-suite.json`, `latest.proof-suite.md`, timestamped archives (`proof-suite-<timestamp>.json`, `proof-suite-<timestamp>.md`) |
+| `data/bench-opt-results/long-run/` | Per-run detailed results from individual long-run benchmarks |
+| `data/bench-opt-results/benchmark-pack/` | Frozen pack specification: `benchmark-pack.json`, `benchmark-pack-spec.md` |
+| `data/bench-live-results/` | Live scenario artifacts: screenshots, DOM snapshots, scenario execution logs |
 
 ## 13. Reproducibility Requirements
 
@@ -284,13 +284,13 @@ git clone <repository-url> && cd Astra
 pnpm install --frozen-lockfile
 npx playwright install chromium
 cp .env.example .env  # configure API keys if needed
-npx tsx bench-opt/proof-suite-entry.ts --runs 3 --sprints 5
+npx tsx script/bench-opt/proof-suite-entry.ts --runs 3 --sprints 5
 ```
 
 Validate results:
 
 ```bash
-npx tsx bench-opt/external-benchmark-pack-entry.ts --validate bench-opt-results/proof-suite/latest.proof-suite.json
+npx tsx script/bench-opt/external-benchmark-pack-entry.ts --validate data/bench-opt-results/proof-suite/latest.proof-suite.json
 ```
 
 ## 14. Version History

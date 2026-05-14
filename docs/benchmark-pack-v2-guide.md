@@ -100,10 +100,10 @@ pnpm bench:opt
 ### 3. Validate the draft benchmark pack with both proof and status artifacts
 
 ```bash
-npx tsx bench-opt/external-benchmark-pack-entry.ts \
+npx tsx script/bench-opt/external-benchmark-pack-entry.ts \
   --pack v2 \
-  --validate bench-opt-results/proof-suite/latest.proof-suite.json \
-  --status bench-opt-results/latest.status.json
+  --validate data/bench-opt-results/proof-suite/latest.proof-suite.json \
+  --status data/bench-opt-results/latest.status.json
 ```
 
 Without the status artifact, required capability governance checks such as `privacy-mode` are expected to fail.

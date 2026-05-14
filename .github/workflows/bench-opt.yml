@@ -72,7 +72,7 @@ jobs:
         run: pnpm type-check
 
       - name: Run bench-opt tests
-        run: pnpm test -- --reporter=verbose bench-opt/
+        run: pnpm test -- --reporter=verbose script/bench-opt/
 
       - name: Run bench-opt optimizer
         run: pnpm bench:opt
@@ -103,7 +103,7 @@ jobs:
         uses: actions/upload-artifact@v7
         with:
           name: bench-live-results-${{ github.run_id }}
-          path: bench-live-results/
+          path: data/bench-live-results/
           retention-days: 30
           if-no-files-found: ignore
 
@@ -113,7 +113,7 @@ jobs:
         with:
           name: bench-opt-results-${{ github.run_id }}
           path: |
-            bench-opt-results/
+            data/bench-opt-results/
           retention-days: 30
           if-no-files-found: ignore
 
@@ -123,9 +123,9 @@ jobs:
         with:
           name: bench-opt-promotions-${{ github.run_id }}
           path: |
-            bench-opt-results/promotions/
-            bench-opt-results/publish/
-            bench-opt-results/rollbacks/
+            data/bench-opt-results/promotions/
+            data/bench-opt-results/publish/
+            data/bench-opt-results/rollbacks/
           retention-days: 90
           if-no-files-found: ignore
 
@@ -135,7 +135,7 @@ jobs:
         with:
           name: bench-opt-store-${{ github.run_id }}
           path: |
-            bench-opt-results/store/
+            data/bench-opt-results/store/
           retention-days: 90
           if-no-files-found: ignore
 
@@ -149,21 +149,21 @@ jobs:
           echo "- **Split:** ${{ github.event.inputs.split || 'validation' }}" >> $GITHUB_STEP_SUMMARY
           echo "- **Dry Run:** ${{ github.event.inputs.dry-run || 'true' }}" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
-          if [ -f bench-opt-results/latest.json ]; then
+          if [ -f data/bench-opt-results/latest.json ]; then
             echo "### Latest Report" >> $GITHUB_STEP_SUMMARY
             echo '```json' >> $GITHUB_STEP_SUMMARY
-            head -50 bench-opt-results/latest.json >> $GITHUB_STEP_SUMMARY
+            head -50 data/bench-opt-results/latest.json >> $GITHUB_STEP_SUMMARY
             echo '```' >> $GITHUB_STEP_SUMMARY
           fi
-          if [ -f bench-live-results/latest.result.json ]; then
+          if [ -f data/bench-live-results/latest.result.json ]; then
             echo "" >> $GITHUB_STEP_SUMMARY
             echo "### Live Smoke Results" >> $GITHUB_STEP_SUMMARY
             echo '```json' >> $GITHUB_STEP_SUMMARY
-            head -30 bench-live-results/latest.result.json >> $GITHUB_STEP_SUMMARY
+            head -30 data/bench-live-results/latest.result.json >> $GITHUB_STEP_SUMMARY
             echo '```' >> $GITHUB_STEP_SUMMARY
           fi
-          if [ -d bench-opt-results/promotions ]; then
+          if [ -d data/bench-opt-results/promotions ]; then
             echo "" >> $GITHUB_STEP_SUMMARY
             echo "### Promotion Artifacts" >> $GITHUB_STEP_SUMMARY
-            ls -la bench-opt-results/promotions/ 2>/dev/null >> $GITHUB_STEP_SUMMARY || echo "No promotion artifacts." >> $GITHUB_STEP_SUMMARY
+            ls -la data/bench-opt-results/promotions/ 2>/dev/null >> $GITHUB_STEP_SUMMARY || echo "No promotion artifacts." >> $GITHUB_STEP_SUMMARY
           fi

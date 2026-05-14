@@ -9,7 +9,7 @@ Astra uses many convention-bound physical roots. In docs, the repository can be 
 | Conceptual bucket | Meaning | Current physical examples |
 |---|---|---|
 | `src/` | Product/runtime source and source-bearing assets | `src/`, `src/web/src/`, `src/web/public/`, `public/`, `src/server/`, task-specific `src/platform/*/src/` |
-| `script/` | Automation, CI, harnesses, deployment, verification tooling | `.github/`, `scripts/`, `ios/scripts/`, `bench/`, `bench-live/`, `bench-opt/`, `agent-config/` |
+| `script/` | Automation, CI, harnesses, deployment, verification tooling | `.github/`, `script/maintenance/`, `ios/scripts/`, `script/bench/`, `script/bench-live/`, `script/bench-opt/`, `agent-config/` |
 | `docs/` | Plans, specs, reviews, investigations, ADRs, analysis | `docs/`, legacy top-level `plans/` |
 | `data/` | Generated output, local runtime state, caches, result artifacts, committed reference artifacts | `.output/`, `.wxt/`, `dist/`, `data/server/`, legacy `server/data/`, `bench-*results/`, `store/screenshots/`, `ios/AstraShell Extension/Resources/` |
 

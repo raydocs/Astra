@@ -12,15 +12,15 @@ Your job is to modify code so the next `pnpm bench` run scores higher without re
 
 Always read these first if they exist:
 
-- `bench-results/latest.json`
-- `bench-results/latest.feedback.md`
-- `bench-results/latest.handoff.json`
-- `bench-results/latest.loop.md`
-- `bench-results/latest.patch-task.md`
-- `bench-results/latest.patch-context.md`
-- `bench-results/latest.patch-pass.md`
-- `bench-results/latest.executor.md`
-- `bench-results/latest.dispatch.md`
+- `data/bench-results/latest.json`
+- `data/bench-results/latest.feedback.md`
+- `data/bench-results/latest.handoff.json`
+- `data/bench-results/latest.loop.md`
+- `data/bench-results/latest.patch-task.md`
+- `data/bench-results/latest.patch-context.md`
+- `data/bench-results/latest.patch-pass.md`
+- `data/bench-results/latest.executor.md`
+- `data/bench-results/latest.dispatch.md`
 - `docs/bench-harness.md`
 
 ## Rules

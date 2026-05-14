@@ -8,7 +8,7 @@ This document explains the bench-opt system from an operator's perspective: what
 
 ## System Overview
 
-Astra's bench-opt system is a candidate optimizer that sits on top of the deterministic judge harness (`bench/`). It:
+Astra's bench-opt system is a candidate optimizer that sits on top of the deterministic judge harness (`script/bench/`). It:
 
 1. Reads the latest bench results as a baseline.
 2. Scores prompt/context candidate combinations against that baseline.
@@ -26,13 +26,13 @@ The system is **read-only by default**. It does not modify source code, create b
 
 | Artifact | Path | Purpose |
 |----------|------|---------|
-| Score report | `bench-opt-results/latest.json` | Machine-readable candidate scores |
-| Score summary | `bench-opt-results/latest.md` | Human-readable score summary |
-| Resolved config | `bench-opt-results/latest.resolved.json` | Concrete prompt/context config for downstream bench loop |
-| Resolved config summary | `bench-opt-results/latest.resolved.md` | Human-readable resolved config |
-| Status | `bench-opt-results/latest.status.json` | Unified operator-facing status |
-| Status summary | `bench-opt-results/latest.status.md` | Human-readable status panel |
-| Store index | `bench-opt-results/store/index.json` | Experiment/champion/session index |
+| Score report | `data/bench-opt-results/latest.json` | Machine-readable candidate scores |
+| Score summary | `data/bench-opt-results/latest.md` | Human-readable score summary |
+| Resolved config | `data/bench-opt-results/latest.resolved.json` | Concrete prompt/context config for downstream bench loop |
+| Resolved config summary | `data/bench-opt-results/latest.resolved.md` | Human-readable resolved config |
+| Status | `data/bench-opt-results/latest.status.json` | Unified operator-facing status |
+| Status summary | `data/bench-opt-results/latest.status.md` | Human-readable status panel |
+| Store index | `data/bench-opt-results/store/index.json` | Experiment/champion/session index |
 
 ### Optional artifacts (produced with flags)
 
@@ -54,21 +54,21 @@ The system is **read-only by default**. It does not modify source code, create b
 
 | Directory | Contents |
 |-----------|----------|
-| `bench-opt-results/store/experiments/` | Individual experiment JSON records |
-| `bench-opt-results/store/champions/` | Champion candidate records |
-| `bench-opt-results/store/sessions/` | Session state snapshots |
-| `bench-opt-results/store/checkpoints/` | Checkpoint snapshots |
-| `bench-opt-results/store/compactions/` | Compaction records |
-| `bench-opt-results/store/handoffs/` | Handoff records |
-| `bench-opt-results/orchestration-iterations/` | Per-iteration snapshots |
+| `data/bench-opt-results/store/experiments/` | Individual experiment JSON records |
+| `data/bench-opt-results/store/champions/` | Champion candidate records |
+| `data/bench-opt-results/store/sessions/` | Session state snapshots |
+| `data/bench-opt-results/store/checkpoints/` | Checkpoint snapshots |
+| `data/bench-opt-results/store/compactions/` | Compaction records |
+| `data/bench-opt-results/store/handoffs/` | Handoff records |
+| `data/bench-opt-results/orchestration-iterations/` | Per-iteration snapshots |
 
 ### Live evaluation artifacts
 
 | Path | Contents |
 |------|----------|
-| `bench-live-results/latest.result.json` | Most recent live run result |
-| `bench-live-results/latest.result.md` | Human-readable live summary |
-| `bench-live-results/<run-id>/` | Per-run directory with screenshots, HTML snapshots, fixture HTML |
+| `data/bench-live-results/latest.result.json` | Most recent live run result |
+| `data/bench-live-results/latest.result.md` | Human-readable live summary |
+| `data/bench-live-results/<run-id>/` | Per-run directory with screenshots, HTML snapshots, fixture HTML |
 
 ---
 
@@ -113,14 +113,14 @@ Use it to answer:
 
 For day-to-day operation, focus on these three:
 
-1. **`bench-opt-results/latest.status.json`** -- the single source of truth for system state.
-2. **`bench-opt-results/latest.resolved.json`** -- the config that downstream bench loop will consume.
-3. **`bench-opt-results/latest.promotion.json`** -- whether the current candidate can be promoted.
+1. **`data/bench-opt-results/latest.status.json`** -- the single source of truth for system state.
+2. **`data/bench-opt-results/latest.resolved.json`** -- the config that downstream bench loop will consume.
+3. **`data/bench-opt-results/latest.promotion.json`** -- whether the current candidate can be promoted.
 
 For debugging:
-- **`bench-opt-results/latest.md`** -- see raw candidate scores.
-- **`bench-opt-results/latest.status.md`** -- see human-readable status panel.
-- **`bench-live-results/latest.result.json`** -- check if live scenarios pass.
+- **`data/bench-opt-results/latest.md`** -- see raw candidate scores.
+- **`data/bench-opt-results/latest.status.md`** -- see human-readable status panel.
+- **`data/bench-live-results/latest.result.json`** -- check if live scenarios pass.
 
 ---
 
@@ -214,7 +214,7 @@ pnpm bench:opt:status
 pnpm bench:opt:status
 ```
 
-Reads `bench-opt-results/latest.status.json` and prints the status panel.
+Reads `data/bench-opt-results/latest.status.json` and prints the status panel.
 
 ### Run the live evaluator standalone
 
@@ -225,7 +225,7 @@ pnpm bench:live
 Or target a specific scenario:
 
 ```bash
-pnpm bench:live -- --scenario bench-live/page-translation-article-basic-source-bilingual
+pnpm bench:live -- --scenario script/bench-live/page-translation-article-basic-source-bilingual
 ```
 
 List available scenarios:
@@ -299,7 +299,7 @@ The optimizer scores candidates using a baseline-aware heuristic. The score brea
 | `penalties` | Deductions for known issues |
 | `total` | Sum of all components |
 
-The score is **not a bench scenario score**. It is an optimizer-internal heuristic for ranking candidates. Do not confuse it with the evaluator `total` scores in `bench-results/latest.json`.
+The score is **not a bench scenario score**. It is an optimizer-internal heuristic for ranking candidates. Do not confuse it with the evaluator `total` scores in `data/bench-results/latest.json`.
 
 ---
 
@@ -317,7 +317,7 @@ The guardrail verdict is one of three values:
 | `warn` | One or more guardrail checks raised a warning but none are promotion-blocking. Common cause: missing train/validation split observation in the current run. | Promotion is not blocked, but the operator should investigate. The warning reason is in `safety.guardrailNotes`. |
 | `block` | A guardrail check detected a promotion-blocking condition (e.g., suspected overfitting, holdout contamination). | Promotion is blocked. `overallState` will reflect "blocked" and the promotion gate will refuse to qualify. |
 
-The verdict is computed by `bench-opt/guardrails.ts` and flows through `bench-opt/status.ts` into the status artifact. The promotion gate in `bench-opt/promote.ts` consumes the verdict.
+The verdict is computed by `script/bench-opt/guardrails.ts` and flows through `script/bench-opt/status.ts` into the status artifact. The promotion gate in `script/bench-opt/promote.ts` consumes the verdict.
 
 ### `redFlagCount`
 
@@ -328,7 +328,7 @@ The red-flag count is a numeric value representing the number of distinct red fl
 | `0` | No red flags. | Normal operation. |
 | `>= 1` | One or more red flags detected. | Review `safety.redFlags` array for details. Each entry has a `kind`, `message`, and `severity`. |
 
-Red flags are computed by `bench-opt/red-flags.ts`. A non-zero red-flag count does not automatically block promotion (that is the guardrail verdict's job), but it strongly signals that the operator should review before proceeding.
+Red flags are computed by `script/bench-opt/red-flags.ts`. A non-zero red-flag count does not automatically block promotion (that is the guardrail verdict's job), but it strongly signals that the operator should review before proceeding.
 
 ### Safety section structure
 
@@ -377,7 +377,7 @@ The status artifact now includes a `telemetry` section that provides operational
 - **`candidatesKept`**: If this is 0, no candidates passed the scoring threshold. Review `latest.md` for the raw score breakdown.
 - **`scoreTrends`**: This field is reserved for future per-surface trend tracking. It is currently always empty.
 
-Telemetry is collected by `bench-opt/telemetry.ts` and flushed into the status artifact by `bench-opt/status.ts`.
+Telemetry is collected by `script/bench-opt/telemetry.ts` and flushed into the status artifact by `script/bench-opt/status.ts`.
 
 ---
 
@@ -391,7 +391,7 @@ Scenarios are divided into three splits:
 | `validation` | 7 | Candidate selection and champion comparison | Before promotion |
 | `holdout` | 6 | Final promotion gate | Only before release |
 
-The split assignments live in `bench/splits.json`. The optimizer respects these splits:
+The split assignments live in `script/bench/splits.json`. The optimizer respects these splits:
 - `--evaluated-split` controls which split view the optimizer scores against.
 - `--promotion-splits` controls which splits the promotion gate requires.
 
@@ -414,9 +414,9 @@ As of Wave 5, the following live scenarios are available beyond the original pag
 
 ```bash
 # Run a specific new scenario
-pnpm bench:live -- --scenario bench-live/scenarios/interaction-priority-basic
-pnpm bench:live -- --scenario bench-live/scenarios/input-translation-basic
-pnpm bench:live -- --scenario bench-live/scenarios/frame-coordination-basic
+pnpm bench:live -- --scenario script/bench-live/scenarios/interaction-priority-basic
+pnpm bench:live -- --scenario script/bench-live/scenarios/input-translation-basic
+pnpm bench:live -- --scenario script/bench-live/scenarios/frame-coordination-basic
 
 # List all available scenarios
 pnpm bench:live -- --list
@@ -438,7 +438,7 @@ Check `latest.promotion.json` -> `gate.reason`. The most common cause is that ve
 ### Live evaluator fails
 
 1. Check if Chrome/Playwright is available in your environment.
-2. Run `pnpm bench:live -- --scenario bench-live/fixture-playwright-smoke` to test browser availability.
+2. Run `pnpm bench:live -- --scenario script/bench-live/fixture-playwright-smoke` to test browser availability.
 3. If no browser is available, the live gate will show `skipped`, not `failed`. Promotion will remain blocked.
 
 ### Autoloop does not progress
@@ -454,7 +454,7 @@ The store index is updated every time `--write` is used. If it seems stale, run 
 
 ### Runner is slow
 
-`bench-opt/runner.ts` is large (103 KB). If the runner is slow, check:
+`script/bench-opt/runner.ts` is large (103 KB). If the runner is slow, check:
 - Whether `--live` is enabled (Playwright adds latency).
 - Whether `--verify --materialize` is enabled (worktree operations add latency).
 - The number of candidate combinations being scored.
@@ -464,13 +464,13 @@ The store index is updated every time `--write` is used. If it seems stale, run 
 ## Architecture Quick Reference
 
 ```
-bench/                  Judge harness (deterministic, split-aware)
+script/bench/                  Judge harness (deterministic, split-aware)
   scenarios/            Scenario definitions (36 scenarios, 10 surfaces)
   evaluators/           Deterministic scoring logic
   reporters/            Artifact builders (loop, patch-task, patch-context, etc.)
   splits.json           Split assignments
 
-bench-opt/              Optimizer layer
+script/bench-opt/              Optimizer layer
   candidates/           Built-in prompt/context candidates
   runner.ts             Main optimizer runner (orchestrates everything)
   score.ts              Candidate scoring heuristic
@@ -498,17 +498,17 @@ bench-opt/              Optimizer layer
   status.ts             Unified status builder
   autoloop.ts           Multi-cycle auto-resume
 
-bench-live/             Live evaluator (browser-backed)
+script/bench-live/             Live evaluator (browser-backed)
   scenarios/            Live scenario definitions
   evaluator.ts          Live evaluation engine
   driver.ts             Browser driver
   runtime.ts            Runtime abstraction
   source-runtime.ts     JSDOM/Vite SSR bridge
 
-bench-results/          Judge harness output
-bench-opt-results/      Optimizer output
+data/bench-results/          Judge harness output
+data/bench-opt-results/      Optimizer output
   store/                Persistent experiment/session store
-bench-live-results/     Live evaluator output
+data/bench-live-results/     Live evaluator output
 ```
 
 ---

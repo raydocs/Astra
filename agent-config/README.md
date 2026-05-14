@@ -36,7 +36,7 @@ agent-config/
 
 ## Consumed by
 
-- `bench-opt/mutate-tools.ts` reads and mutates `tool-registry.json`
-- `bench-opt/mutate-graph.ts` reads and mutates graph templates
-- `bench-opt/candidates/tool-config.ts` generates tool mutation candidates
-- `bench-opt/candidates/agent-graph.ts` generates graph mutation candidates
+- `script/bench-opt/mutate-tools.ts` reads and mutates `tool-registry.json`
+- `script/bench-opt/mutate-graph.ts` reads and mutates graph templates
+- `script/bench-opt/candidates/tool-config.ts` generates tool mutation candidates
+- `script/bench-opt/candidates/agent-graph.ts` generates graph mutation candidates

@@ -14,17 +14,17 @@ implement -> pnpm bench -> inspect feedback -> refine -> pnpm bench -> pnpm test
 
 1. Read:
    - `docs/bench-harness.md`
-   - `bench-results/latest.json` if present
-   - `bench-results/latest.feedback.md` if present
-   - `bench-results/latest.handoff.json` if present
-   - `bench-results/latest.generator.md` if present
-   - `bench-results/latest.loop.json` if present
-   - `bench-results/latest.loop.md` if present
-   - `bench-results/latest.patch-task.md` if present
-   - `bench-results/latest.patch-context.md` if present
-   - `bench-results/latest.patch-pass.md` if present
-   - `bench-results/latest.executor.md` if present
-   - `bench-results/latest.dispatch.md` if present
+   - `data/bench-results/latest.json` if present
+   - `data/bench-results/latest.feedback.md` if present
+   - `data/bench-results/latest.handoff.json` if present
+   - `data/bench-results/latest.generator.md` if present
+   - `data/bench-results/latest.loop.json` if present
+   - `data/bench-results/latest.loop.md` if present
+   - `data/bench-results/latest.patch-task.md` if present
+   - `data/bench-results/latest.patch-context.md` if present
+   - `data/bench-results/latest.patch-pass.md` if present
+   - `data/bench-results/latest.executor.md` if present
+   - `data/bench-results/latest.dispatch.md` if present
 2. Fix regressions and failing scenarios before touching imperfect passes
 3. Implement the smallest change set that should improve the current highest-priority scenarios selected by the loop runner
 4. Use `latest.patch-task.md` as the current focused patch brief

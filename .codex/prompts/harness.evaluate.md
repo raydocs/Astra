@@ -11,8 +11,8 @@ Your job is to run the bench harness, inspect the structured results, and summar
 ## Process
 
 1. Run `pnpm bench`
-2. Read `bench-results/latest.json`
-3. Read `bench-results/latest.feedback.md`
+2. Read `data/bench-results/latest.json`
+3. Read `data/bench-results/latest.feedback.md`
 4. Report:
    - failing scenarios
    - score deltas vs previous run

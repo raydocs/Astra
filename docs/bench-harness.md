@@ -2,20 +2,20 @@
 
 ## Summary
 
-Astra 当前的 benchmark stack 不是单一的 `bench/`，而是 **三层 benchmark 治理 + 一层 test 基础设施**：
+Astra 当前的 benchmark stack 不是单一的 `script/bench/`，而是 **三层 benchmark 治理 + 一层 test 基础设施**：
 
 - `test/`：单元测试、组件测试、回归测试
-- `bench/`：deterministic、split-aware、evaluator-first 的 judge harness
-- `bench-live/`：source-backed / browser-backed 的 live validation 与显式 holdout
-- `bench-opt/`：建立在 deterministic + live + holdout 结果之上的 optimizer / proof / promotion 治理层
+- `script/bench/`：deterministic、split-aware、evaluator-first 的 judge harness
+- `script/bench-live/`：source-backed / browser-backed 的 live validation 与显式 holdout
+- `script/bench-opt/`：建立在 deterministic + live + holdout 结果之上的 optimizer / proof / promotion 治理层
 
 这三层 benchmark 治理共同回答三个不同问题：
 
-1. **`bench/`**：逻辑是否稳定、可复现、可打分
-2. **`bench-live/`**：真实 runtime / browser / source path 是否真能跑通
-3. **`bench-opt/`**：能力是否足够稳定，能否通过 proof / hidden gate / promotion 治理
+1. **`script/bench/`**：逻辑是否稳定、可复现、可打分
+2. **`script/bench-live/`**：真实 runtime / browser / source path 是否真能跑通
+3. **`script/bench-opt/`**：能力是否足够稳定，能否通过 proof / hidden gate / promotion 治理
 
-当前 deterministic `bench/` 已覆盖的 surface：
+当前 deterministic `script/bench/` 已覆盖的 surface：
 
 - page translation
 - site automation
@@ -32,7 +32,7 @@ Astra 当前的 benchmark stack 不是单一的 `bench/`，而是 **三层 bench
 - EPUB translation
 - provider routing
 
-当前 `bench-live/` 标准 live lane 已覆盖：
+当前 `script/bench-live/` 标准 live lane 已覆盖：
 
 - page translation
 - privacy-mode page translation
@@ -65,7 +65,7 @@ Astra 当前的 benchmark stack 不是单一的 `bench/`，而是 **三层 bench
 ## Benchmark Stack Layout
 
 ```text
-bench/
+script/bench/
   entry.ts                   # deterministic bench 主流程
   run.ts                     # deterministic CLI 入口
   splits.json                # split source of truth
@@ -73,7 +73,7 @@ bench/
   evaluators/                # 确定性打分逻辑
   reporters/                 # latest.json / feedback / loop / patch / dispatch artifacts
 
-bench-live/
+script/bench-live/
   entry.ts                   # live CLI 入口
   index.ts                   # live orchestration surface
   runtime.ts                 # live runtime event model
@@ -82,9 +82,9 @@ bench-live/
   source-runtime.ts          # source-backed execution path
   scenarios/                 # standard live scenarios
   scenarios/holdout/         # explicit live holdouts
-  results.ts                 # bench-live-results/ artifact persistence
+  results.ts                 # data/bench-live-results/ artifact persistence
 
-bench-opt/
+script/bench-opt/
   entry.ts                   # optimizer / orchestration CLI
   runner.ts                  # trial orchestration
   capability-proof.ts        # capability-proof prompt pack + summarization
@@ -95,7 +95,7 @@ bench-opt/
 
 ## Split Discipline
 
-`bench/splits.json` 是 deterministic split 的 source of truth，`bench/splits.ts` 负责加载和过滤。
+`script/bench/splits.json` 是 deterministic split 的 source of truth，`script/bench/splits.ts` 负责加载和过滤。
 
 当前 split 纪律：
 
@@ -111,13 +111,13 @@ CLI 支持 `--split train|validation|holdout`，也支持和 `--surface` 组合�
 
 - `pnpm bench:inventory` 给 deterministic inventory 真值
 - `pnpm bench:live -- --list` 给标准 live lane 真值
-- `bench-live/scenarios/holdout/index.ts` 给显式 live holdout 真值
+- `script/bench-live/scenarios/holdout/index.ts` 给显式 live holdout 真值
 
 作为 **2026-03-28** 的快照：
 
-- deterministic `bench/`：`62` 个 scenario，`14` 个 surface
+- deterministic `script/bench/`：`62` 个 scenario，`14` 个 surface
 - split 分布：`train=34`、`validation=16`、`holdout=12`
-- 标准 `bench-live/`：`18` 个 live scenario
+- 标准 `script/bench-live/`：`18` 个 live scenario
 - 显式 `bench-live` holdout：`21` 个 scenario
 
 如果这些数字变化，优先更新代码和 inventory，不要先改这份文档里的文字描述。
@@ -150,11 +150,11 @@ pnpm bench:dispatch
 
 ```bash
 pnpm bench:live -- --list
-pnpm bench:live -- --scenario bench-live/page-translation-article-basic-source-bilingual
-pnpm bench:live -- --scenario bench-live/pdf-reader-basic
-pnpm bench:live -- --scenario bench-live/privacy-mode-page-translation-source
-pnpm bench:live -- --scenario bench-live/holdout/privacy-mode-should-not-leak
-pnpm bench:live -- --scenario bench-live/holdout/background-routed-direct-relay-fallback-page-translation-source
+pnpm bench:live -- --scenario script/bench-live/page-translation-article-basic-source-bilingual
+pnpm bench:live -- --scenario script/bench-live/pdf-reader-basic
+pnpm bench:live -- --scenario script/bench-live/privacy-mode-page-translation-source
+pnpm bench:live -- --scenario script/bench-live/holdout/privacy-mode-should-not-leak
+pnpm bench:live -- --scenario script/bench-live/holdout/background-routed-direct-relay-fallback-page-translation-source
 ```
 
 ### Bench-opt / proof / status
@@ -180,29 +180,29 @@ pnpm bench:drill:current-failure:dispatch
 
 ## Output Artifacts
 
-### `bench-results/`
+### `data/bench-results/`
 
 deterministic bench 与 loop / executor / dispatch 的主 artifact 目录。
 
 每次 deterministic bench / loop 运行通常会更新：
 
-- `bench-results/latest.json`
-- `bench-results/latest.feedback.md`
-- `bench-results/latest.handoff.json`
-- `bench-results/latest.generator.md`
-- `bench-results/latest.loop.json`
-- `bench-results/latest.loop.md`
-- `bench-results/latest.patch-task.json`
-- `bench-results/latest.patch-task.md`
-- `bench-results/latest.patch-context.json`
-- `bench-results/latest.patch-context.md`
-- `bench-results/latest.patch-pass.json`
-- `bench-results/latest.patch-pass.md`
-- `bench-results/latest.executor.json`
-- `bench-results/latest.executor.md`
-- `bench-results/latest.dispatch.json`
-- `bench-results/latest.dispatch.md`
-- `bench-results/history/<run-id>.json`
+- `data/bench-results/latest.json`
+- `data/bench-results/latest.feedback.md`
+- `data/bench-results/latest.handoff.json`
+- `data/bench-results/latest.generator.md`
+- `data/bench-results/latest.loop.json`
+- `data/bench-results/latest.loop.md`
+- `data/bench-results/latest.patch-task.json`
+- `data/bench-results/latest.patch-task.md`
+- `data/bench-results/latest.patch-context.json`
+- `data/bench-results/latest.patch-context.md`
+- `data/bench-results/latest.patch-pass.json`
+- `data/bench-results/latest.patch-pass.md`
+- `data/bench-results/latest.executor.json`
+- `data/bench-results/latest.executor.md`
+- `data/bench-results/latest.dispatch.json`
+- `data/bench-results/latest.dispatch.md`
+- `data/bench-results/history/<run-id>.json`
 
 其中：
 
@@ -214,32 +214,32 @@ deterministic bench 与 loop / executor / dispatch 的主 artifact 目录。
 - `latest.executor.*`：自动 patch gate 结果
 - `latest.dispatch.*`：外部模型 dispatch 执行或阻断结果
 
-### `bench-live-results/`
+### `data/bench-live-results/`
 
-By default, `bench-live/results.ts` writes live results to `bench-live-results/`. Local runs may override the artifact root with `ASTRA_BENCH_LIVE_ARTIFACT_ROOT`; CI keeps the default path.
+By default, `script/bench-live/results.ts` writes live results to `data/bench-live-results/`. Local runs may override the artifact root with `ASTRA_BENCH_LIVE_ARTIFACT_ROOT`; CI keeps the default path.
 
-- `bench-live-results/latest.result.json`
-- `bench-live-results/latest.result.md`
-- `bench-live-results/<run-id>/result.json`
-- `bench-live-results/<run-id>/result.md`
-- `bench-live-results/<run-id>/...` 目录下的截图、HTML snapshot、fixture HTML、调试 artifact
+- `data/bench-live-results/latest.result.json`
+- `data/bench-live-results/latest.result.md`
+- `data/bench-live-results/<run-id>/result.json`
+- `data/bench-live-results/<run-id>/result.md`
+- `data/bench-live-results/<run-id>/...` 目录下的截图、HTML snapshot、fixture HTML、调试 artifact
 
 Bench-live helpers also support local path overrides for built extension and fixture roots:
 
 - `ASTRA_BENCH_LIVE_EXTENSION_PATH` overrides the default `.output/chrome-mv3` extension path.
 - `ASTRA_BENCH_FIXTURE_ROOT` overrides the default `test/fixtures/pages` fixture root.
 
-### `bench-opt-results/`
+### `data/bench-opt-results/`
 
-`bench-opt/` 会把 optimizer / status / proof / promotion 相关结果写到：
+`script/bench-opt/` 会把 optimizer / status / proof / promotion 相关结果写到：
 
-- `bench-opt-results/latest.json`
-- `bench-opt-results/latest.status.json`
-- `bench-opt-results/latest.status.md`
-- `bench-opt-results/latest.resolved.json`
-- `bench-opt-results/latest.orchestration.json`
-- `bench-opt-results/capability-proof/latest.capability-proof.json`
-- `bench-opt-results/capability-proof/latest.capability-proof.md`
+- `data/bench-opt-results/latest.json`
+- `data/bench-opt-results/latest.status.json`
+- `data/bench-opt-results/latest.status.md`
+- `data/bench-opt-results/latest.resolved.json`
+- `data/bench-opt-results/latest.orchestration.json`
+- `data/bench-opt-results/capability-proof/latest.capability-proof.json`
+- `data/bench-opt-results/capability-proof/latest.capability-proof.md`
 - 以及 `telemetry/`、`logs/`、`store/`、`promotions/`、`publish/`、`rollbacks/` 等子目录
 
 ## Scoring Model
@@ -266,7 +266,7 @@ Bench-live helpers also support local path overrides for built extension and fix
 
 ### Live evaluators
 
-`bench-live/` 的 evaluator 输出以 `pass / score / issues / artifacts / nextActions` 为主，重点不是复刻 deterministic 细粒度分解，而是确认：
+`script/bench-live/` 的 evaluator 输出以 `pass / score / issues / artifacts / nextActions` 为主，重点不是复刻 deterministic 细粒度分解，而是确认：
 
 - 真实 source/runtime path 是否跑通
 - browser-backed 产物是否可见
@@ -274,7 +274,7 @@ Bench-live helpers also support local path overrides for built extension and fix
 
 ### Bench-opt governance
 
-`bench-opt/` 不替代 deterministic / live，而是消费两者结果，继续做：
+`script/bench-opt/` 不替代 deterministic / live，而是消费两者结果，继续做：
 
 - capability-proof
 - hidden gate
@@ -292,7 +292,7 @@ Bench-live helpers also support local path overrides for built extension and fix
 4. promotion 前再跑 deterministic `holdout`
 5. 对涉及 runtime / browser / source path 的改动，补跑对应 `bench-live` 场景
 6. 运行 `pnpm bench:loop`
-7. 先看 `bench-results/latest.loop.json` / `latest.loop.md`
+7. 先看 `data/bench-results/latest.loop.json` / `latest.loop.md`
 8. 需要修复任务单时，看 `latest.patch-task.md`
 9. 需要上下文时，看 `latest.patch-context.md`
 10. 跑 `pnpm bench:execute` 看 `Executor Gate`

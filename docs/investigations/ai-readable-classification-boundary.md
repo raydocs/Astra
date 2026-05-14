@@ -15,7 +15,7 @@ Astra can be explained through four conceptual buckets. These buckets describe r
 | Conceptual bucket | Meaning | Current examples |
 |---|---|---|
 | `src/` | Product/runtime source and source-bearing assets. | `src/`, `src/web/src/`, `src/web/public/`, `public/`, `src/server/`, task-specific `src/platform/*/src/`. |
-| `script/` | Automation, CI, build, deployment, benchmark harness, and verification tooling. | `.github/`, `scripts/`, `ios/scripts/`, `bench/`, `bench-live/`, `bench-opt/`, `agent-config/`. |
+| `script/` | Automation, CI, build, deployment, benchmark harness, and verification tooling. | `.github/`, `script/maintenance/`, `ios/scripts/`, `script/bench/`, `script/bench-live/`, `script/bench-opt/`, `agent-config/`. |
 | `docs/` | Documentation, plans, specs, ADRs, investigations, reviews, and analysis. | `docs/`, legacy top-level `plans/`. |
 | `data/` | Generated outputs, local runtime state, caches, result artifacts, and committed reference artifacts. | `.output/`, `.wxt/`, `dist/`, `data/server/`, legacy `server/data/`, bench result folders, `store/screenshots/`, `ios/AstraShell Extension/Resources/`. |
 
@@ -65,14 +65,14 @@ If a derived summary disagrees with this document, use this document as the sour
 | `.specify/` | `task-specific-source` | Specification memory/templates/scripts. |
 | `agent-config/` | `task-specific-source` | Agent graph templates and agent configuration. |
 | `astra (ui)/` | `task-specific-source` | UI/design working area; `uploads/` is a reference-artifact exception. |
-| `bench/` | `task-specific-source` | Benchmark harness source. |
-| `bench-live/` | `task-specific-source` | Live browser benchmark scenario source. |
-| `bench-opt/` | `task-specific-source` | Optimization harness/candidate source. |
+| `script/bench/` | `task-specific-source` | Benchmark harness source. |
+| `script/bench-live/` | `task-specific-source` | Live browser benchmark scenario source. |
+| `script/bench-opt/` | `task-specific-source` | Optimization harness/candidate source. |
 | `docs/` | `task-specific-source` | Project documentation; `docs/design-comparison/` is a reference-artifact exception. |
 | `ios/` | `task-specific-source` | Safari/iOS shell source; see nested exceptions below. |
 | `plan.md` | `task-specific-source` | Local/planning note; read only when task references planning history. |
 | `plans/` | `task-specific-source` | Legacy/transitional planning history; prefer `docs/plans/` unless older planning history is explicitly relevant. |
-| `scripts/` | `task-specific-source` | Build, verification, and support tooling. |
+| `script/maintenance/` | `task-specific-source` | Build, verification, and support tooling. |
 | `store/` | `task-specific-source` | Store-preparation area; `store/screenshots/` is a reference-artifact exception. |
 | `test/` | `task-specific-source` | Unit/integration test helpers, mocks, and fixtures. |
 | `.astra-open-extension-preview.cjs` | `task-specific-source` | Local preview helper; read only for preview tooling tasks. |
@@ -86,10 +86,10 @@ If a derived summary disagrees with this document, use this document as the sour
 | `.pnpm-store/` | `local-tool-cache` | Local pnpm package store. |
 | `.wrangler/` | `local-tool-cache` | Local Wrangler/Cloudflare cache/state. |
 | `.wxt/` | `generated-runtime` | WXT generated state. |
-| `bench-live-results/` | `generated-runtime` | Live benchmark output. |
-| `bench-live-results-test/` | `generated-runtime` | Test/live benchmark output. |
-| `bench-opt-results/` | `generated-runtime` | Optimizer output. |
-| `bench-results/` | `generated-runtime` | Benchmark output/history. |
+| `data/bench-live-results/` | `generated-runtime` | Live benchmark output. |
+| `data/bench-live-results-test/` | `generated-runtime` | Test/live benchmark output. |
+| `data/bench-opt-results/` | `generated-runtime` | Optimizer output. |
+| `data/bench-results/` | `generated-runtime` | Benchmark output/history. |
 | `coverage/` | `generated-runtime` | Test coverage output. |
 | `dist/` | `generated-runtime` | Build/deploy output. |
 | `logs/` | `generated-runtime` | Runtime/test/bench logs. |
@@ -153,17 +153,17 @@ Give these based on the product area named by the task:
 
 | Task area | Give AI these paths first | Add only if needed |
 |---|---|---|
-| Browser extension core | `src/`, `wxt.config.ts`, `public/`, `package.json`, `tsconfig.json` | Relevant tests in `test/` or `src/**/*.test.*`; live scenarios in `bench-live/` for browser regressions. |
-| Extension background/auth/storage/translation | `src/entrypoints/background/`, `src/utils/`, `src/types/`, `src/server/` if relay behavior is involved | `test/`, `bench/`, `bench-live/` depending on failing surface. |
-| In-page translation/content scripts | `src/entrypoints/content/`, `src/utils/dom/`, `src/utils/translate/`, `src/utils/storage/`, `src/types/` | `bench-live/scenarios/page-translation-*` for live browser proof. |
+| Browser extension core | `src/`, `wxt.config.ts`, `public/`, `package.json`, `tsconfig.json` | Relevant tests in `test/` or `src/**/*.test.*`; live scenarios in `script/bench-live/` for browser regressions. |
+| Extension background/auth/storage/translation | `src/entrypoints/background/`, `src/utils/`, `src/types/`, `src/server/` if relay behavior is involved | `test/`, `script/bench/`, `script/bench-live/` depending on failing surface. |
+| In-page translation/content scripts | `src/entrypoints/content/`, `src/utils/dom/`, `src/utils/translate/`, `src/utils/storage/`, `src/types/` | `script/bench-live/scenarios/page-translation-*` for live browser proof. |
 | Relay server/API | `src/server/`, `src/server/.env.example`, `package.json` | `src/platform/cloudflare/src/` when cloud/proxy parity matters. |
 | Cloudflare platform | `src/platform/cloudflare/src/`, `src/platform/cloudflare/wrangler.jsonc`, `src/platform/cloudflare/.dev.vars.example` | `src/platform/cloudflare/tests/`, `src/platform/cloudflare/sql/`, `.github/workflows/`. |
 | Relay-lite | `src/platform/relay-lite/src/`, `src/platform/relay-lite/wrangler.jsonc` | Cloudflare docs/workflows if deploy behavior is involved. |
 | Web companion | `src/web/src/`, `src/web/public/`, `src/web/vite.config.ts`, `src/assets/astra-style1-tokens.css` | `src/server/` or relay config only for API/auth issues. |
 | iOS/Safari shell | `ios/AstraShell/`, `ios/AstraShell Extension/SafariWebExtensionHandler.swift`, `ios/scripts/`, `ios/README.md` | `ios/AstraShell Extension/Resources/` only to verify committed generated Safari bundle drift. |
-| Bench or optimizer | `bench/`, `bench-live/`, `bench-opt/`, `agent-config/`, `docs/bench-opt*.md` | `bench-results*` only as generated evidence for a specific run. |
+| Bench or optimizer | `script/bench/`, `script/bench-live/`, `script/bench-opt/`, `agent-config/`, `docs/bench-opt*.md` | `data/bench-results*` only as generated evidence for a specific run. |
 | Tests/fixtures | `test/`, relevant `*.test.ts(x)` beside touched source | `coverage/` only for coverage-report tasks. |
-| CI/release | `.github/workflows/`, `scripts/`, `package.json`, relevant docs under `docs/` | Generated `.output/` only as build output to inspect after a build. |
+| CI/release | `.github/workflows/`, `script/maintenance/`, `package.json`, relevant docs under `docs/` | Generated `.output/` only as build output to inspect after a build. |
 
 ### Default source-priority bundle for broad AI exploration
 
@@ -200,10 +200,10 @@ node_modules/
 dist/
 coverage/
 logs/
-bench-results/
-bench-live-results/
-bench-live-results-test/
-bench-opt-results/
+data/bench-results/
+data/bench-live-results/
+data/bench-live-results-test/
+data/bench-opt-results/
 .bench-opt/
 .wrangler/
 data/server/

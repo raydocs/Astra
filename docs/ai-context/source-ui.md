@@ -59,10 +59,10 @@ store/screenshots/
 .wxt/
 dist/
 ios/AstraShell Extension/Resources/
-bench-results/
-bench-live-results/
-bench-live-results-test/
-bench-opt-results/
+data/bench-results/
+data/bench-live-results/
+data/bench-live-results-test/
+data/bench-opt-results/
 coverage/
 ```
 

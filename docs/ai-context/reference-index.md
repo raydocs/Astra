@@ -25,10 +25,10 @@ Read only for artifact analysis, release verification, benchmark evidence, scree
 .output/
 .wxt/
 dist/
-bench-results/
-bench-live-results/
-bench-live-results-test/
-bench-opt-results/
+data/bench-results/
+data/bench-live-results/
+data/bench-live-results-test/
+data/bench-opt-results/
 coverage/
 logs/
 prompt-exports/

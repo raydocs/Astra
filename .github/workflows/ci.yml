@@ -117,10 +117,10 @@ jobs:
           echo "- source-core: bench-live/page-translation-article-basic-source-bilingual, bench-live/article-extraction-proof, bench-live/dynamic-content-append" >> $GITHUB_STEP_SUMMARY
           echo "- extension-core: bench-live/site-automation-autostart, bench-live/onboarding-smoke, bench-live/vocabulary-srs-smoke" >> $GITHUB_STEP_SUMMARY
           echo "- learning-loop: non-blocking informational lane (popup-proof + vocabulary-srs-smoke + learning-loop-revisit-smoke) — [m1-bf-01-popup-learning-loop-replay-2026-04-14.md](https://github.com/${GITHUB_REPOSITORY}/blob/${GITHUB_SHA}/docs/investigations/m1-bf-01-popup-learning-loop-replay-2026-04-14.md)" >> $GITHUB_STEP_SUMMARY
-          if [ -f bench-live-results/latest.result.md ]; then
+          if [ -f data/bench-live-results/latest.result.md ]; then
             echo "" >> $GITHUB_STEP_SUMMARY
             echo "### Last scenario result (latest.result.md)" >> $GITHUB_STEP_SUMMARY
-            sed -n '1,80p' bench-live-results/latest.result.md >> $GITHUB_STEP_SUMMARY
+            sed -n '1,80p' data/bench-live-results/latest.result.md >> $GITHUB_STEP_SUMMARY
           fi
 
       - name: Upload live bench results
@@ -128,7 +128,7 @@ jobs:
         uses: actions/upload-artifact@v7
         with:
           name: live-bench-results
-          path: bench-live-results/
+          path: data/bench-live-results/
           retention-days: 14
 
   build-extension:

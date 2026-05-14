@@ -2,11 +2,11 @@
 
 ## Summary
 
-`/Users/ruirui/Downloads/GitHub/Astra/bench-opt/` 是 Astra 的 Phase 2 optimizer foundation。
+`/Users/ruirui/Downloads/GitHub/Astra/script/bench-opt/` 是 Astra 的 Phase 2 optimizer foundation。
 
-它目前不替换 `/Users/ruirui/Downloads/GitHub/Astra/bench/`，而是在 judge harness 之外先补一层独立的 experiment runner：
+它目前不替换 `/Users/ruirui/Downloads/GitHub/Astra/script/bench/`，而是在 judge harness 之外先补一层独立的 experiment runner：
 
-- 读取当前 `/Users/ruirui/Downloads/GitHub/Astra/bench-results/latest.json` 作为 baseline
+- 读取当前 `/Users/ruirui/Downloads/GitHub/Astra/data/bench-results/latest.json` 作为 baseline
 - 组合 Phase 1 的 prompt/context candidates
 - 对 candidate 做只读打分
 - materialize trial / champion / store metadata
@@ -51,10 +51,10 @@ pnpm bench:opt:execute
 pnpm bench:opt:dispatch
 pnpm bench:opt:history
 pnpm bench:live
-pnpm bench:live -- --scenario bench-live/page-translation-article-basic-source-bilingual
-pnpm bench:live -- --scenario bench-live/page-translation-article-basic-source-translation-only
-pnpm bench:live -- --scenario bench-live/page-translation-article-basic-bilingual
-pnpm bench:live -- --scenario bench-live/fixture-playwright-smoke
+pnpm bench:live -- --scenario script/bench-live/page-translation-article-basic-source-bilingual
+pnpm bench:live -- --scenario script/bench-live/page-translation-article-basic-source-translation-only
+pnpm bench:live -- --scenario script/bench-live/page-translation-article-basic-bilingual
+pnpm bench:live -- --scenario script/bench-live/fixture-playwright-smoke
 ```
 
 以及：
@@ -74,10 +74,10 @@ pnpm bench:opt -- --live --promotion-plan
 说明：
 
 - `pnpm bench:opt`
-  - 运行 `/Users/ruirui/Downloads/GitHub/Astra/bench-opt/entry.ts`
+  - 运行 `/Users/ruirui/Downloads/GitHub/Astra/script/bench-opt/entry.ts`
   - 默认 materialize Phase 1 registry candidates
-  - 读取 `/Users/ruirui/Downloads/GitHub/Astra/bench-results/latest.json`
-  - 写入 `/Users/ruirui/Downloads/GitHub/Astra/bench-opt-results/latest.json`、`latest.md`，以及 `latest.resolved.json` / `latest.resolved.md`
+  - 读取 `/Users/ruirui/Downloads/GitHub/Astra/data/bench-results/latest.json`
+  - 写入 `/Users/ruirui/Downloads/GitHub/Astra/data/bench-opt-results/latest.json`、`latest.md`，以及 `latest.resolved.json` / `latest.resolved.md`
   - 额外支持：
     - `--evaluated-split train|validation|holdout`
     - `--promotion-splits validation,holdout`
@@ -100,7 +100,7 @@ pnpm bench:opt -- --live --promotion-plan
     - `--publish-allow`
     - `--rollback-allow`
     - `--live`
-    - `--live-scenario bench-live/page-translation-article-basic-source-bilingual`
+    - `--live-scenario script/bench-live/page-translation-article-basic-source-bilingual`
     - `--materialize`
     - `--apply-edits`
   - 如果额外传入 `--materialize` / `--apply-edits`，会在本轮选中的 candidate 上创建真实 worktree 并应用 candidate JSON 中的结构化 edits
@@ -108,7 +108,7 @@ pnpm bench:opt -- --live --promotion-plan
   - 如果同时传入 `--session-resume` / `--session-checkpoint` / `--session-handoff`，runner 会把上一轮 session 链接回本轮 orchestration loop，而不是强制新建 session
   - 如果额外传入 `--promotion-plan`，会写出 promotion / publish / rollback dry-run artifacts
   - 如果额外传入 `--live`，runner 会执行当前 opt-in live evaluator，并写出 `latest.live.json` / `latest.live.md`
-  - 默认 live path 现在优先运行 `bench-live/page-translation-article-basic-source-bilingual`：它会先在 JSDOM/Vite SSR 里调用真实 `/Users/ruirui/Downloads/GitHub/Astra/src/entrypoints/content/page-translate.ts`，再把生成后的 snapshot 放进真实 Chrome/Playwright 会话里截图，并复用 `/Users/ruirui/Downloads/GitHub/Astra/bench/evaluators/page-translation.ts` 做评分
+  - 默认 live path 现在优先运行 `bench-live/page-translation-article-basic-source-bilingual`：它会先在 JSDOM/Vite SSR 里调用真实 `/Users/ruirui/Downloads/GitHub/Astra/src/entrypoints/content/page-translate.ts`，再把生成后的 snapshot 放进真实 Chrome/Playwright 会话里截图，并复用 `/Users/ruirui/Downloads/GitHub/Astra/script/bench/evaluators/page-translation.ts` 做评分
   - `bench-live/page-translation-article-basic-bilingual` 仍保留，作为 contract-shaped browser fallback
   - `bench-live/fixture-playwright-smoke` 仍保留，用作更窄的 browser/bootstrap smoke
   - 如果同时传入 `--live --promotion-plan`，promotion gate 会优先消费 live evaluator 的 pass bit；如果当前环境没有可用浏览器，live scenario 会显式 `skipped`，promotion 仍保持 blocked
@@ -117,7 +117,7 @@ pnpm bench:opt -- --live --promotion-plan
 - `pnpm bench:opt:list`
   - 列出 built-in prompt/context candidates
 - `pnpm bench:opt:resume-latest`
-  - 读取 `/Users/ruirui/Downloads/GitHub/Astra/bench-opt-results/store/index.json` 中最新的 session/checkpoint/handoff bundle
+  - 读取 `/Users/ruirui/Downloads/GitHub/Astra/data/bench-opt-results/store/index.json` 中最新的 session/checkpoint/handoff bundle
   - 自动把这些路径转发给现有 `--session-resume` / `--session-checkpoint` / `--session-handoff`
   - 用于继续上一轮 bounded orchestration session，而不是手动抄三条路径
 - `pnpm bench:opt:autoloop`
@@ -125,94 +125,94 @@ pnpm bench:opt -- --live --promotion-plan
   - 基于 store 中最新 session bundle 连续跑多轮 bounded orchestration
   - 默认在每轮之间自动读取最新 session/checkpoint/handoff，直到 session terminal 或达到 cycle cap
   - 产出：
-    - `/Users/ruirui/Downloads/GitHub/Astra/bench-opt-results/latest.autoloop.json`
-    - `/Users/ruirui/Downloads/GitHub/Astra/bench-opt-results/latest.autoloop.md`
+    - `/Users/ruirui/Downloads/GitHub/Astra/data/bench-opt-results/latest.autoloop.json`
+    - `/Users/ruirui/Downloads/GitHub/Astra/data/bench-opt-results/latest.autoloop.md`
 - `pnpm bench:opt:loop`
-  - 继续复用现有 `/Users/ruirui/Downloads/GitHub/Astra/bench/loop.ts`
-  - 默认附带 `--use-bench-opt`，优先消费 `/Users/ruirui/Downloads/GitHub/Astra/bench-opt-results/latest.resolved.json`
+  - 继续复用现有 `/Users/ruirui/Downloads/GitHub/Astra/script/bench/loop.ts`
+  - 默认附带 `--use-bench-opt`，优先消费 `/Users/ruirui/Downloads/GitHub/Astra/data/bench-opt-results/latest.resolved.json`
 - `pnpm bench:opt:execute`
-  - 继续复用现有 `/Users/ruirui/Downloads/GitHub/Astra/bench/loop.ts --skip-bench`
+  - 继续复用现有 `/Users/ruirui/Downloads/GitHub/Astra/script/bench/loop.ts --skip-bench`
 - `pnpm bench:opt:dispatch`
-  - 继续复用现有 `/Users/ruirui/Downloads/GitHub/Astra/bench/dispatch.ts`
+  - 继续复用现有 `/Users/ruirui/Downloads/GitHub/Astra/script/bench/dispatch.ts`
 - `pnpm bench:opt:history`
-  - 继续复用现有 `/Users/ruirui/Downloads/GitHub/Astra/bench/history.ts`
+  - 继续复用现有 `/Users/ruirui/Downloads/GitHub/Astra/script/bench/history.ts`
 - `pnpm bench:opt:status`
-  - 直接读取 `/Users/ruirui/Downloads/GitHub/Astra/bench-opt-results/latest.status.json`
+  - 直接读取 `/Users/ruirui/Downloads/GitHub/Astra/data/bench-opt-results/latest.status.json`
   - 输出当前 operator-facing 统一状态摘要
 
 ## Experiment Store and Artifacts
 
 `pnpm bench:opt -- --write` 当前会产出：
 
-- `/Users/ruirui/Downloads/GitHub/Astra/bench-opt-results/latest.json`
+- `/Users/ruirui/Downloads/GitHub/Astra/data/bench-opt-results/latest.json`
   - 本轮 candidate score report
-- `/Users/ruirui/Downloads/GitHub/Astra/bench-opt-results/latest.md`
+- `/Users/ruirui/Downloads/GitHub/Astra/data/bench-opt-results/latest.md`
   - 人类可读的 score summary
-- `/Users/ruirui/Downloads/GitHub/Astra/bench-opt-results/latest.resolved.json`
+- `/Users/ruirui/Downloads/GitHub/Astra/data/bench-opt-results/latest.resolved.json`
   - downstream bench loop 直接消费的 concrete optimizer config
-- `/Users/ruirui/Downloads/GitHub/Astra/bench-opt-results/latest.resolved.md`
+- `/Users/ruirui/Downloads/GitHub/Astra/data/bench-opt-results/latest.resolved.md`
   - resolved config 的 Markdown 说明
-- `/Users/ruirui/Downloads/GitHub/Astra/bench-opt-results/latest.orchestration.json`
+- `/Users/ruirui/Downloads/GitHub/Astra/data/bench-opt-results/latest.orchestration.json`
   - opt-in planner/generator/evaluator orchestration artifact
-- `/Users/ruirui/Downloads/GitHub/Astra/bench-opt-results/latest.orchestration.md`
+- `/Users/ruirui/Downloads/GitHub/Astra/data/bench-opt-results/latest.orchestration.md`
   - orchestration Markdown 摘要
-- `/Users/ruirui/Downloads/GitHub/Astra/bench-opt-results/latest.orchestration-loop.json`
+- `/Users/ruirui/Downloads/GitHub/Astra/data/bench-opt-results/latest.orchestration-loop.json`
   - opt-in bounded orchestration loop artifact（多轮 iteration、termination、final decision）
-- `/Users/ruirui/Downloads/GitHub/Astra/bench-opt-results/latest.orchestration-loop.md`
+- `/Users/ruirui/Downloads/GitHub/Astra/data/bench-opt-results/latest.orchestration-loop.md`
   - orchestration loop Markdown 摘要
-- `/Users/ruirui/Downloads/GitHub/Astra/bench-opt-results/orchestration-iterations/`
+- `/Users/ruirui/Downloads/GitHub/Astra/data/bench-opt-results/orchestration-iterations/`
   - 每轮 orchestration iteration 的 JSON / Markdown snapshot
-- `/Users/ruirui/Downloads/GitHub/Astra/bench-opt-results/latest.session.json`
+- `/Users/ruirui/Downloads/GitHub/Astra/data/bench-opt-results/latest.session.json`
   - 当前 bounded session state
-- `/Users/ruirui/Downloads/GitHub/Astra/bench-opt-results/latest.session.md`
+- `/Users/ruirui/Downloads/GitHub/Astra/data/bench-opt-results/latest.session.md`
   - session lifecycle Markdown 摘要
-- `/Users/ruirui/Downloads/GitHub/Astra/bench-opt-results/latest.checkpoint.json`
+- `/Users/ruirui/Downloads/GitHub/Astra/data/bench-opt-results/latest.checkpoint.json`
   - 当前 run 的 checkpoint artifact
-- `/Users/ruirui/Downloads/GitHub/Astra/bench-opt-results/latest.checkpoint.md`
+- `/Users/ruirui/Downloads/GitHub/Astra/data/bench-opt-results/latest.checkpoint.md`
   - checkpoint Markdown 摘要
-- `/Users/ruirui/Downloads/GitHub/Astra/bench-opt-results/latest.compaction.json`
+- `/Users/ruirui/Downloads/GitHub/Astra/data/bench-opt-results/latest.compaction.json`
   - opt-in compaction artifact（仅在触发时写出）
-- `/Users/ruirui/Downloads/GitHub/Astra/bench-opt-results/latest.compaction.md`
+- `/Users/ruirui/Downloads/GitHub/Astra/data/bench-opt-results/latest.compaction.md`
   - compaction Markdown 摘要
-- `/Users/ruirui/Downloads/GitHub/Astra/bench-opt-results/latest.handoff.json`
+- `/Users/ruirui/Downloads/GitHub/Astra/data/bench-opt-results/latest.handoff.json`
   - opt-in handoff artifact（仅在触发时写出）
-- `/Users/ruirui/Downloads/GitHub/Astra/bench-opt-results/latest.handoff.md`
+- `/Users/ruirui/Downloads/GitHub/Astra/data/bench-opt-results/latest.handoff.md`
   - handoff Markdown 摘要
-- `/Users/ruirui/Downloads/GitHub/Astra/bench-opt-results/latest.live.json`
-  - opt-in live evaluator 结果；当前默认来源于 `/Users/ruirui/Downloads/GitHub/Astra/bench-live/scenarios/page-translation-article-basic-source.ts`
-- `/Users/ruirui/Downloads/GitHub/Astra/bench-opt-results/latest.live.md`
+- `/Users/ruirui/Downloads/GitHub/Astra/data/bench-opt-results/latest.live.json`
+  - opt-in live evaluator 结果；当前默认来源于 `/Users/ruirui/Downloads/GitHub/Astra/script/bench-live/scenarios/page-translation-article-basic-source.ts`
+- `/Users/ruirui/Downloads/GitHub/Astra/data/bench-opt-results/latest.live.md`
   - live evaluator 的人类可读摘要
-- `/Users/ruirui/Downloads/GitHub/Astra/bench-live-results/<run-id>/`
+- `/Users/ruirui/Downloads/GitHub/Astra/data/bench-live-results/<run-id>/`
   - browser-backed live artifacts，包括 materialized fixture HTML、screenshot、snapshot HTML，以及 standalone `bench:live` 写出的 `result.json` / `result.md`
-- `/Users/ruirui/Downloads/GitHub/Astra/bench-live-results/latest.result.json`
+- `/Users/ruirui/Downloads/GitHub/Astra/data/bench-live-results/latest.result.json`
   - standalone `bench:live` 最近一次运行的 JSON 结果
-- `/Users/ruirui/Downloads/GitHub/Astra/bench-live-results/latest.result.md`
+- `/Users/ruirui/Downloads/GitHub/Astra/data/bench-live-results/latest.result.md`
   - standalone `bench:live` 最近一次运行的 Markdown 摘要
-- `/Users/ruirui/Downloads/GitHub/Astra/bench-opt-results/latest.promotion.json`
+- `/Users/ruirui/Downloads/GitHub/Astra/data/bench-opt-results/latest.promotion.json`
   - promotion gate decision
-- `/Users/ruirui/Downloads/GitHub/Astra/bench-opt-results/latest.promotion.md`
+- `/Users/ruirui/Downloads/GitHub/Astra/data/bench-opt-results/latest.promotion.md`
   - promotion gate Markdown 摘要
-- `/Users/ruirui/Downloads/GitHub/Astra/bench-opt-results/latest.publish.json`
+- `/Users/ruirui/Downloads/GitHub/Astra/data/bench-opt-results/latest.publish.json`
   - downstream publish dry-run plan
-- `/Users/ruirui/Downloads/GitHub/Astra/bench-opt-results/latest.publish.md`
+- `/Users/ruirui/Downloads/GitHub/Astra/data/bench-opt-results/latest.publish.md`
   - publish plan Markdown 摘要
-- `/Users/ruirui/Downloads/GitHub/Astra/bench-opt-results/latest.rollback.json`
+- `/Users/ruirui/Downloads/GitHub/Astra/data/bench-opt-results/latest.rollback.json`
   - downstream rollback dry-run plan
-- `/Users/ruirui/Downloads/GitHub/Astra/bench-opt-results/latest.rollback.md`
+- `/Users/ruirui/Downloads/GitHub/Astra/data/bench-opt-results/latest.rollback.md`
   - rollback plan Markdown 摘要
-- `/Users/ruirui/Downloads/GitHub/Astra/bench-opt-results/latest.status.json`
+- `/Users/ruirui/Downloads/GitHub/Astra/data/bench-opt-results/latest.status.json`
   - operator-facing unified status artifact，汇总当前 report / resolved config / execution / live / orchestration / session / promotion / publish / rollback 状态
-- `/Users/ruirui/Downloads/GitHub/Astra/bench-opt-results/latest.status.md`
+- `/Users/ruirui/Downloads/GitHub/Astra/data/bench-opt-results/latest.status.md`
   - 统一的人类可读状态面板，适合直接查看当前长跑位置
-- `/Users/ruirui/Downloads/GitHub/Astra/bench-opt-results/store/index.json`
+- `/Users/ruirui/Downloads/GitHub/Astra/data/bench-opt-results/store/index.json`
   - experiment / champion / session lifecycle 索引
-- `/Users/ruirui/Downloads/GitHub/Astra/bench-opt-results/latest.autoloop.json`
+- `/Users/ruirui/Downloads/GitHub/Astra/data/bench-opt-results/latest.autoloop.json`
   - 多轮 autoloop 摘要，包括每轮 start/resume mode、decision、phase、termination
-- `/Users/ruirui/Downloads/GitHub/Astra/bench-opt-results/latest.autoloop.md`
+- `/Users/ruirui/Downloads/GitHub/Astra/data/bench-opt-results/latest.autoloop.md`
   - autoloop Markdown 摘要
-- `/Users/ruirui/Downloads/GitHub/Astra/bench-opt-results/store/experiments/*.json`
+- `/Users/ruirui/Downloads/GitHub/Astra/data/bench-opt-results/store/experiments/*.json`
   - 单次 experiment 持久化结果
-- `/Users/ruirui/Downloads/GitHub/Astra/bench-opt-results/store/champions/*.json`
+- `/Users/ruirui/Downloads/GitHub/Astra/data/bench-opt-results/store/champions/*.json`
   - 当前 champion record
 
 说明：
@@ -250,11 +250,11 @@ bench-opt 的 trial model 也已经显式建模了这些 split。当前 Phase 2 
 
 当前结构：
 
-- `/Users/ruirui/Downloads/GitHub/Astra/bench-opt/worktree.ts`
+- `/Users/ruirui/Downloads/GitHub/Astra/script/bench-opt/worktree.ts`
   - 只负责生成 worktree 计划
-- `/Users/ruirui/Downloads/GitHub/Astra/bench-opt/materialize.ts`
+- `/Users/ruirui/Downloads/GitHub/Astra/script/bench-opt/materialize.ts`
   - 可选地把 worktree 计划落地成真实 worktree
-- `/Users/ruirui/Downloads/GitHub/Astra/bench-opt/apply.ts`
+- `/Users/ruirui/Downloads/GitHub/Astra/script/bench-opt/apply.ts`
   - 结构化 rewrite / replace skeleton
 
 边界：
@@ -301,19 +301,19 @@ bench-opt 的 trial model 也已经显式建模了这些 split。当前 Phase 2 
 
 - 当前 score 主要还是 baseline-aware heuristic score，不是 agent self-play score
 - 当前 built-in registry 重点是把“prompt candidate / context candidate / scoring / worktree plan / resolved config / experiment store / split-aware promotion gate”这条骨架固定下来
-- `bench-opt-results/latest.resolved.json` 是 downstream bench loop 的 concrete config 输入：它显式包含选中的 prompt/context candidate IDs、rendered prompt/context payload 和 worktree 计划，不需要再从 summary 里猜
+- `data/bench-opt-results/latest.resolved.json` 是 downstream bench loop 的 concrete config 输入：它显式包含选中的 prompt/context candidate IDs、rendered prompt/context payload 和 worktree 计划，不需要再从 summary 里猜
 - prompt/context candidate 现在带有结构化 policy，已经开始驱动下游 runtime 分支：
   - prompt policy: `analysisMode` / `toolPolicy` / `writeScopeMode`
   - context policy: `rankingMode` / `maxFiles` / `maxLinesPerFile` / `preferHistory`
-- 当前这些 policy 已接到 `/Users/ruirui/Downloads/GitHub/Astra/bench/reporters/patch-task.ts`、`patch-context.ts`、`executor.ts`
+- 当前这些 policy 已接到 `/Users/ruirui/Downloads/GitHub/Astra/script/bench/reporters/patch-task.ts`、`patch-context.ts`、`executor.ts`
 
 ## Phase 8 Promotion / Publish / Rollback Skeleton
 
 新的 Phase 8 skeleton 已存在于：
 
-- `/Users/ruirui/Downloads/GitHub/Astra/bench-opt/promote.ts`
-- `/Users/ruirui/Downloads/GitHub/Astra/bench-opt/publish.ts`
-- `/Users/ruirui/Downloads/GitHub/Astra/bench-opt/rollback.ts`
+- `/Users/ruirui/Downloads/GitHub/Astra/script/bench-opt/promote.ts`
+- `/Users/ruirui/Downloads/GitHub/Astra/script/bench-opt/publish.ts`
+- `/Users/ruirui/Downloads/GitHub/Astra/script/bench-opt/rollback.ts`
 
 当前能力：
 
@@ -340,10 +340,10 @@ bench-opt 的 trial model 也已经显式建模了这些 split。当前 Phase 2 
 
 新的 Phase 2 骨架已经存在于：
 
-- `/Users/ruirui/Downloads/GitHub/Astra/bench-opt/rerun.ts`
-- `/Users/ruirui/Downloads/GitHub/Astra/bench-opt/verify.ts`
-- `/Users/ruirui/Downloads/GitHub/Astra/bench-opt/compare.ts`
-- `/Users/ruirui/Downloads/GitHub/Astra/bench-opt/keep-reject.ts`
+- `/Users/ruirui/Downloads/GitHub/Astra/script/bench-opt/rerun.ts`
+- `/Users/ruirui/Downloads/GitHub/Astra/script/bench-opt/verify.ts`
+- `/Users/ruirui/Downloads/GitHub/Astra/script/bench-opt/compare.ts`
+- `/Users/ruirui/Downloads/GitHub/Astra/script/bench-opt/keep-reject.ts`
 
 当前能力：
 
@@ -362,11 +362,11 @@ bench-opt 的 trial model 也已经显式建模了这些 split。当前 Phase 2 
 
 新的 Phase 3 角色骨架已经存在于：
 
-- `/Users/ruirui/Downloads/GitHub/Astra/bench-opt/planner.ts`
-- `/Users/ruirui/Downloads/GitHub/Astra/bench-opt/generator.ts`
-- `/Users/ruirui/Downloads/GitHub/Astra/bench-opt/evaluator.ts`
-- `/Users/ruirui/Downloads/GitHub/Astra/bench-opt/strategy.ts`
-- `/Users/ruirui/Downloads/GitHub/Astra/bench-opt/orchestrator.ts`
+- `/Users/ruirui/Downloads/GitHub/Astra/script/bench-opt/planner.ts`
+- `/Users/ruirui/Downloads/GitHub/Astra/script/bench-opt/generator.ts`
+- `/Users/ruirui/Downloads/GitHub/Astra/script/bench-opt/evaluator.ts`
+- `/Users/ruirui/Downloads/GitHub/Astra/script/bench-opt/strategy.ts`
+- `/Users/ruirui/Downloads/GitHub/Astra/script/bench-opt/orchestrator.ts`
 
 当前能力：
 
@@ -384,10 +384,10 @@ bench-opt 的 trial model 也已经显式建模了这些 split。当前 Phase 2 
 
 新的 Phase 4 session scaffolding 已存在于：
 
-- `/Users/ruirui/Downloads/GitHub/Astra/bench-opt/session.ts`
-- `/Users/ruirui/Downloads/GitHub/Astra/bench-opt/checkpoints.ts`
-- `/Users/ruirui/Downloads/GitHub/Astra/bench-opt/compaction.ts`
-- `/Users/ruirui/Downloads/GitHub/Astra/bench-opt/handoff.ts`
+- `/Users/ruirui/Downloads/GitHub/Astra/script/bench-opt/session.ts`
+- `/Users/ruirui/Downloads/GitHub/Astra/script/bench-opt/checkpoints.ts`
+- `/Users/ruirui/Downloads/GitHub/Astra/script/bench-opt/compaction.ts`
+- `/Users/ruirui/Downloads/GitHub/Astra/script/bench-opt/handoff.ts`
 
 当前能力：
 
@@ -406,27 +406,27 @@ bench-opt 的 trial model 也已经显式建模了这些 split。当前 Phase 2 
 
 新的 Phase 5 live bench skeleton 已存在于：
 
-- `/Users/ruirui/Downloads/GitHub/Astra/bench-live/runtime.ts`
-- `/Users/ruirui/Downloads/GitHub/Astra/bench-live/rubrics.ts`
-- `/Users/ruirui/Downloads/GitHub/Astra/bench-live/evaluator.ts`
-- `/Users/ruirui/Downloads/GitHub/Astra/bench-live/scenarios/fixture-playwright-smoke.ts`
-- `/Users/ruirui/Downloads/GitHub/Astra/bench-live/scenarios/page-translation-article-basic-source.ts`
-- `/Users/ruirui/Downloads/GitHub/Astra/bench-live/scenarios/page-translation-article-basic-source-translation-only.ts`
-- `/Users/ruirui/Downloads/GitHub/Astra/bench-live/scenarios/page-translation-article-basic.ts`
-- `/Users/ruirui/Downloads/GitHub/Astra/bench-live/source-runtime.ts`
-- `/Users/ruirui/Downloads/GitHub/Astra/bench-live/scenarios/placeholder.ts`
-- `/Users/ruirui/Downloads/GitHub/Astra/bench-live/driver.ts`
-- `/Users/ruirui/Downloads/GitHub/Astra/bench-live/entry.ts`
+- `/Users/ruirui/Downloads/GitHub/Astra/script/bench-live/runtime.ts`
+- `/Users/ruirui/Downloads/GitHub/Astra/script/bench-live/rubrics.ts`
+- `/Users/ruirui/Downloads/GitHub/Astra/script/bench-live/evaluator.ts`
+- `/Users/ruirui/Downloads/GitHub/Astra/script/bench-live/scenarios/fixture-playwright-smoke.ts`
+- `/Users/ruirui/Downloads/GitHub/Astra/script/bench-live/scenarios/page-translation-article-basic-source.ts`
+- `/Users/ruirui/Downloads/GitHub/Astra/script/bench-live/scenarios/page-translation-article-basic-source-translation-only.ts`
+- `/Users/ruirui/Downloads/GitHub/Astra/script/bench-live/scenarios/page-translation-article-basic.ts`
+- `/Users/ruirui/Downloads/GitHub/Astra/script/bench-live/source-runtime.ts`
+- `/Users/ruirui/Downloads/GitHub/Astra/script/bench-live/scenarios/placeholder.ts`
+- `/Users/ruirui/Downloads/GitHub/Astra/script/bench-live/driver.ts`
+- `/Users/ruirui/Downloads/GitHub/Astra/script/bench-live/entry.ts`
 
 可直接运行：
 
 ```bash
 pnpm bench:live
 pnpm bench:live -- --list
-pnpm bench:live -- --scenario bench-live/page-translation-article-basic-source-bilingual
-pnpm bench:live -- --scenario bench-live/page-translation-article-basic-source-translation-only
-pnpm bench:live -- --scenario bench-live/page-translation-article-basic-bilingual
-pnpm bench:live -- --scenario bench-live/fixture-playwright-smoke
+pnpm bench:live -- --scenario script/bench-live/page-translation-article-basic-source-bilingual
+pnpm bench:live -- --scenario script/bench-live/page-translation-article-basic-source-translation-only
+pnpm bench:live -- --scenario script/bench-live/page-translation-article-basic-bilingual
+pnpm bench:live -- --scenario script/bench-live/fixture-playwright-smoke
 ```
 
 当前已经有两条真实 browser-backed 路径：
@@ -442,9 +442,9 @@ pnpm bench:live -- --scenario bench-live/fixture-playwright-smoke
   - 显式检查 hidden source wrappers 是否和 translated node count 对齐
 - `bench-live/page-translation-article-basic-bilingual`
   - 保留 contract-shaped browser fallback，方便隔离 source bridge 与 browser capture 问题
-- materialize fixture HTML 到 `/Users/ruirui/Downloads/GitHub/Astra/bench-live-results/<run-id>/`
+- materialize fixture HTML 到 `/Users/ruirui/Downloads/GitHub/Astra/data/bench-live-results/<run-id>/`
 - 把结果接进 live evaluator / bench-opt status / promotion gate
 
 placeholder scenario 仍保留，用于无浏览器环境下的 contract fallback。
 
-另外，standalone `pnpm bench:live` 现在会自动把最近一次 live run 持久化到 `/Users/ruirui/Downloads/GitHub/Astra/bench-live-results/latest.result.json` 和 `latest.result.md`，并在对应 `runId` 目录下追加 `result.json` / `result.md`。
+另外，standalone `pnpm bench:live` 现在会自动把最近一次 live run 持久化到 `/Users/ruirui/Downloads/GitHub/Astra/data/bench-live-results/latest.result.json` 和 `latest.result.md`，并在对应 `runId` 目录下追加 `result.json` / `result.md`。

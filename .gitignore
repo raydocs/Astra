@@ -15,6 +15,10 @@ bench-results/
 bench-opt-results/
 bench-live-results/
 bench-live-results-test/
+data/bench-results/
+data/bench-opt-results/
+data/bench-live-results/
+data/bench-live-results-test/
 .bench-opt/
 .claude/
 DerivedData/
