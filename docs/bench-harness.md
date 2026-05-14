@@ -87,6 +87,7 @@ script/bench-live/
 script/bench-opt/
   entry.ts                   # optimizer / orchestration CLI
   runner.ts                  # trial orchestration
+  config/                    # canonical declarative agent config (moved from agent-config/)
   capability-proof.ts        # capability-proof prompt pack + summarization
   proof-suite.ts             # multi-run proof suite + hidden gate
   capabilities.ts            # capability registry / coverage model
@@ -231,7 +232,9 @@ Bench-live helpers also support local path overrides for built extension and fix
 
 ### `data/bench-opt-results/`
 
-`script/bench-opt/` 会把 optimizer / status / proof / promotion 相关结果写到：
+`script/bench-opt/` uses `script/bench-opt/config/` as the canonical declarative agent-config location. Runtime path audit found no active legacy `agent-config/` file readers; current mutation code models these JSON shapes. Future readers should default to `script/bench-opt/config/` and support `ASTRA_BENCH_OPT_CONFIG_DIR`.
+
+`script/bench-opt/` writes optimizer / status / proof / promotion results to:
 
 - `data/bench-opt-results/latest.json`
 - `data/bench-opt-results/latest.status.json`

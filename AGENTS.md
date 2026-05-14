@@ -26,6 +26,7 @@ For the canonical source-priority/default-read vs generated/runtime classificati
 | Extension dev (Chrome) | `pnpm dev` |
 | Web app dev | `pnpm dev:web` (port 4173). Imports **`src/assets/astra-style1-tokens.css`**; **default UI theme is light** (`data-astra-theme="light"`). Use **`--accent-primary`** in new CSS (legacy alias: `--accent-blue`). |
 | Relay server | `pnpm relay:start` (port 8787) or `pnpm relay:dev` (watch) |
+| Repo knowledge guardrail | `pnpm check:repo-knowledge` |
 | Type check | `pnpm type-check` |
 | Lint | `pnpm lint` |
 | Unit tests | `pnpm test` |
@@ -59,5 +60,6 @@ Expect `{"translations":["…"]}` when keys are loaded.
 - The web app at port 4173 communicates with the relay at `http://127.0.0.1:8787/v1`. In a headless Cloud Agent VM, **CORS blocks browser-initiated requests** from localhost:4173 to 127.0.0.1:8787. This is expected; the web app is primarily designed to work alongside the browser extension. For terminal-based API testing, use `curl` directly against the relay.
 - **Lint has ~3900 pre-existing errors** (mostly `@typescript-eslint` strict rules). This is the current state of the codebase — lint exit code 1 is expected.
 - **3 flaky/pre-existing test failures** are normal: a timing issue in `translation-cache.test.ts`, a Blob type mismatch in `astra-web.test.ts`, and a query ordering issue in `shadow-state.test.ts`. The remaining 116 test files (906 tests) pass.
+- Repo structure is guarded by `pnpm check:repo-knowledge`; tracked files should not be reintroduced under legacy top-level `server/`, `web/`, `platform/`, `bench/`, `bench-live/`, `bench-opt/`, `agent-config/`, `scripts/`, or `plans/`.
 - TypeScript type-check (`pnpm type-check`) passes cleanly.
 - The lockfile may require `pnpm install` (without `--frozen-lockfile`) if `package.json` has been updated but `pnpm-lock.yaml` hasn't been regenerated.

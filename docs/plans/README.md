@@ -13,13 +13,14 @@ Prefer plans that state:
 
 When relevant, use sections such as `Implementation Progress`, `Acceptance criteria`, or `Done when` to make status clear.
 
-## Relationship to top-level `plans/`
+## Historical plans
 
-The top-level [`../../plans/`](../../plans/) directory is legacy/transitional planning history. Do not move it as part of docs-only work. Use it only when a task explicitly references older planning history, such as [`../../plans/learning-loop-month-plan-2026-04-15.md`](../../plans/learning-loop-month-plan-2026-04-15.md).
+Older planning history now lives under [`history/`](./history/). Use it only when a task explicitly references older planning history, such as [`history/learning-loop-month-plan-2026-04-15.md`](./history/learning-loop-month-plan-2026-04-15.md). The legacy top-level `plans/` root should not contain tracked files.
 
 ## Current index
 
-- [`repo-four-bucket-migration-checklist.md`](./repo-four-bucket-migration-checklist.md) — future-only checklist for any later physical migration toward the conceptual `data/script/docs/src` model.
+- [`history/learning-loop-month-plan-2026-04-15.md`](./history/learning-loop-month-plan-2026-04-15.md) — historical month plan moved from the legacy top-level `plans/` root.
+- [`repo-four-bucket-migration-checklist.md`](./repo-four-bucket-migration-checklist.md) — migration checklist for the current physical cleanup toward the conceptual `data/script/docs/src` model.
 - [`ui-backed-product-gaps-2026-05-13.md`](./ui-backed-product-gaps-2026-05-13.md) — representative UI-backed product-gap plan.
 
 ## Done-when convention for future plans

@@ -106,6 +106,7 @@ pnpm build:safari
 pnpm ios:prepare
 
 # 质量检查
+pnpm check:repo-knowledge
 pnpm type-check
 pnpm lint
 pnpm test
@@ -168,12 +169,20 @@ src/
     background/               # service worker、请求编排、命令入口
     content/                  # 页面翻译、悬停、划词、输入框、字幕
     popup/                    # 设置与当前标签页控制
+  server/                     # Astra relay server
+  web/                        # React/Vite web companion
+  platform/                   # Cloudflare / relay-lite platform code
   types/                      # config、messages、translation state
   utils/
     dom/                      # 内容提取与 DOM 注入
     extension/                # runtime messaging helpers
     providers/                # provider 路由与 Astra relay client
     storage/                  # 配置持久化与迁移
+script/
+  maintenance/                # verification and repo-knowledge checks
+  bench/                      # deterministic benchmark harness
+  bench-live/                 # live/browser benchmark harness
+  bench-opt/                  # optimizer harness and config
 ios/
   AstraShell.xcodeproj/       # iOS Safari shell project
   AstraShell/                 # host app

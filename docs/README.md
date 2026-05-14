@@ -9,9 +9,9 @@ Astra uses many convention-bound physical roots. In docs, the repository can be 
 | Conceptual bucket | Meaning | Current physical examples |
 |---|---|---|
 | `src/` | Product/runtime source and source-bearing assets | `src/`, `src/web/src/`, `src/web/public/`, `public/`, `src/server/`, task-specific `src/platform/*/src/` |
-| `script/` | Automation, CI, harnesses, deployment, verification tooling | `.github/`, `script/maintenance/`, `ios/scripts/`, `script/bench/`, `script/bench-live/`, `script/bench-opt/`, `agent-config/` |
-| `docs/` | Plans, specs, reviews, investigations, ADRs, analysis | `docs/`, legacy top-level `plans/` |
-| `data/` | Generated output, local runtime state, caches, result artifacts, committed reference artifacts | `.output/`, `.wxt/`, `dist/`, `data/server/`, legacy `server/data/`, `bench-*results/`, `store/screenshots/`, `ios/AstraShell Extension/Resources/` |
+| `script/` | Automation, CI, harnesses, deployment, verification tooling | `.github/`, `script/maintenance/`, `ios/scripts/`, `script/bench/`, `script/bench-live/`, `script/bench-opt/`, `script/bench-opt/config/` |
+| `docs/` | Plans, specs, reviews, investigations, ADRs, analysis | `docs/`, including `docs/plans/history/` |
+| `data/` | Generated output, local runtime state, caches, result artifacts, committed reference artifacts | `.output/`, `.wxt/`, `dist/`, `data/server/`, legacy `server/data/`, `data/bench-*results/`, `store/screenshots/`, `ios/AstraShell Extension/Resources/` |
 
 For the canonical read-priority boundary, see [`docs/investigations/ai-readable-classification-boundary.md`](./investigations/ai-readable-classification-boundary.md).
 
@@ -31,4 +31,4 @@ For the canonical read-priority boundary, see [`docs/investigations/ai-readable-
 
 ## Current docs-only refactor status
 
-The four-bucket layer is a repository-knowledge/index layer only. Current product source consolidation preserves public package script names while moving relay, web, and platform source paths under `src/`.
+The four-bucket layer is now enforced by `pnpm check:repo-knowledge`, which fails if tracked files return under legacy owned roots such as top-level `server/`, `web/`, `platform/`, `bench*`, `agent-config/`, `scripts/`, or `plans/`. Public package script names remain stable while owned source/config/tooling paths live under `src/`, `script/`, `docs/`, or generated `data/` locations.

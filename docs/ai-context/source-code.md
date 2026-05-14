@@ -40,7 +40,7 @@ Platform source is real source, but it is task-specific; add `src/platform/cloud
 | Relay-lite | `src/platform/relay-lite/src/`, `src/platform/relay-lite/wrangler.jsonc` | Cloudflare docs/workflows for deploy behavior. |
 | Web companion | `src/web/src/`, `src/web/public/`, `src/web/vite.config.ts`, `src/assets/astra-style1-tokens.css` | `src/server/` or relay config only for API/auth issues. |
 | iOS/Safari shell | `ios/AstraShell/`, `ios/AstraShell Extension/SafariWebExtensionHandler.swift`, `ios/scripts/`, `ios/README.md` | `ios/AstraShell Extension/Resources/` only to verify committed generated Safari bundle drift. |
-| Bench or optimizer | `script/bench/`, `script/bench-live/`, `script/bench-opt/`, `agent-config/`, `docs/bench-opt*.md` | Generated `data/bench-results*` only for a specific run's evidence. |
+| Bench or optimizer | `script/bench/`, `script/bench-live/`, `script/bench-opt/`, `script/bench-opt/config/`, `docs/bench-opt*.md` | Generated `data/bench-results*` only for a specific run's evidence. |
 | Tests/fixtures | `test/`, relevant `*.test.ts(x)` beside touched source | `coverage/` only for coverage-report tasks. |
 | CI/release | `.github/workflows/`, `script/maintenance/`, `package.json`, relevant docs under `docs/` | `.output/` only after a build when inspecting generated output. |
 

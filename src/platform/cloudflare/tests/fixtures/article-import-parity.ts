@@ -56,7 +56,7 @@ const FIXTURE_SOURCES: FixtureSource[] = [
 
 const SHARED_FIXTURE_ROOT = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
-  "../../../../test/fixtures/pages",
+  "../../../../../test/fixtures/pages",
 )
 
 export async function loadArticleImportParityFixtures(): Promise<ArticleImportParityFixture[]> {

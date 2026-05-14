@@ -6,7 +6,7 @@ These short AI-context docs are derived routing summaries. If a summary disagree
 
 ## Conceptual four-bucket model
 
-The `data/script/docs/src` model is conceptual only; it does not imply physical moves:
+The `data/script/docs/src` model is conceptual first, with owned source/config/tooling now physically consolidated where practical:
 
 - `src/` — product/runtime source roots.
 - `script/` — automation, CI, harness, deploy, build, and verification tooling.

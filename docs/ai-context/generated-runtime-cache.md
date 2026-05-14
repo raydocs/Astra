@@ -2,7 +2,7 @@
 
 This derived routing summary lists paths that should **not** be handed to AI by default. The canonical repository classification boundary is [`../investigations/ai-readable-classification-boundary.md`](../investigations/ai-readable-classification-boundary.md).
 
-These paths are conceptual `data/`-like context. They are not a physical `data/` directory and this doc does not imply any move.
+These paths are `data/`-like context. Some generated/runtime paths now physically live under `data/`, while convention-bound outputs such as `.output/`, `.wxt/`, and `dist/` stay at their framework/tool roots.
 
 ## Local package/tool caches
 

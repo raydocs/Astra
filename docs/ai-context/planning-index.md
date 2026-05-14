@@ -12,13 +12,13 @@ Use the smallest planning context that answers the task. Add source bundles from
 | Research, support matrices, classification, gap analysis | [`../investigations/`](../investigations/) | Use the classification boundary for read-priority decisions. |
 | Critiques, reviews, certification notes | [`../reviews/`](../reviews/) | Pair with source only when verifying a current claim. |
 | Product/API/architecture contracts | [`../specs/`](../specs/), [`../adr/`](../adr/) | Use when behavior or architecture decisions are in scope. |
-| Older planning history | [`../../plans/`](../../plans/) | Legacy/transitional; read only when explicitly referenced or clearly relevant. |
+| Older planning history | [`../plans/history/`](../plans/history/) | Historical; read only when explicitly referenced or clearly relevant. |
 
 ## Four-bucket planning lens
 
 The `data/script/docs/src` model is conceptual, not physical:
 
-- `docs/` planning context lives mostly under `docs/`, with legacy history under top-level `plans/`.
+- `docs/` planning context lives under `docs/`, including historical plans in `docs/plans/history/`.
 - `src/` context comes from source-bearing roots only when an implementation task needs it.
 - `script/` context comes from automation, CI, bench, deploy, or verification roots.
 - `data/` context is generated evidence, local runtime state, screenshots, or reference artifacts and is not default planning context.

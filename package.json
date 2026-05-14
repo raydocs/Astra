@@ -33,6 +33,7 @@
     "type-check:web": "tsc -p src/web/tsconfig.json --noEmit",
     "preview:web": "vite preview --config src/web/vite.config.ts",
     "check:zod-entrypoints": "tsx script/maintenance/verify-zod-entrypoints.ts",
+    "check:repo-knowledge": "tsx script/maintenance/check-repo-knowledge.ts",
     "verify:content-bundles": "tsx script/maintenance/verify-content-script-bundles.ts",
     "verify:firefox-lint": "tsx script/maintenance/verify-firefox-lint.ts",
     "lint": "pnpm check:zod-entrypoints && eslint . --ext .ts,.tsx",

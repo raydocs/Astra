@@ -1,15 +1,15 @@
 # Agent Configuration
 
-This directory holds the declarative configuration files that the bench-opt
-optimizer uses to drive agent behavior. The optimizer reads these files at
-the start of each trial, applies candidate mutations, and writes the
-mutated variants into the trial worktree so the bench harness can evaluate
-them.
+This directory is the canonical home for declarative bench-opt agent
+configuration. It was moved from the legacy top-level `agent-config/` root.
+Current mutation code models these files as typed config shapes; any runtime
+reader added later should default to this directory and expose
+`ASTRA_BENCH_OPT_CONFIG_DIR` as an override.
 
 ## Structure
 
 ```
-agent-config/
+script/bench-opt/config/
   defaults.json          - Default agent configuration (model routing,
                            temperature, system prompts, retry policy)
   tool-registry.json     - Registry of available tools with metadata
@@ -36,7 +36,7 @@ agent-config/
 
 ## Consumed by
 
-- `script/bench-opt/mutate-tools.ts` reads and mutates `tool-registry.json`
-- `script/bench-opt/mutate-graph.ts` reads and mutates graph templates
+- `script/bench-opt/mutate-tools.ts` defines and mutates `tool-registry.json`-shaped configs
+- `script/bench-opt/mutate-graph.ts` defines and mutates graph template-shaped configs
 - `script/bench-opt/candidates/tool-config.ts` generates tool mutation candidates
 - `script/bench-opt/candidates/agent-graph.ts` generates graph mutation candidates

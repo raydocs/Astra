@@ -1,6 +1,6 @@
 # AI-Readable Classification Boundary
 
-Last updated: 2026-05-13
+Last updated: 2026-05-14
 
 ## Purpose
 
@@ -10,13 +10,13 @@ This is a **classification and read-priority plan only**. It is not permission t
 
 ## Conceptual four-bucket model
 
-Astra can be explained through four conceptual buckets. These buckets describe repository knowledge; they do **not** create, move, or rename physical directories.
+Astra can be explained through four conceptual buckets. These buckets describe repository knowledge while the physical layout keeps convention-bound roots where needed.
 
 | Conceptual bucket | Meaning | Current examples |
 |---|---|---|
 | `src/` | Product/runtime source and source-bearing assets. | `src/`, `src/web/src/`, `src/web/public/`, `public/`, `src/server/`, task-specific `src/platform/*/src/`. |
-| `script/` | Automation, CI, build, deployment, benchmark harness, and verification tooling. | `.github/`, `script/maintenance/`, `ios/scripts/`, `script/bench/`, `script/bench-live/`, `script/bench-opt/`, `agent-config/`. |
-| `docs/` | Documentation, plans, specs, ADRs, investigations, reviews, and analysis. | `docs/`, legacy top-level `plans/`. |
+| `script/` | Automation, CI, build, deployment, benchmark harness, verification tooling, and optimizer config. | `.github/`, `script/maintenance/`, `ios/scripts/`, `script/bench/`, `script/bench-live/`, `script/bench-opt/`, `script/bench-opt/config/`. |
+| `docs/` | Documentation, plans, specs, ADRs, investigations, reviews, and analysis. | `docs/`, including `docs/plans/history/`. |
 | `data/` | Generated outputs, local runtime state, caches, result artifacts, and committed reference artifacts. | `.output/`, `.wxt/`, `dist/`, `data/server/`, legacy `server/data/`, bench result folders, `store/screenshots/`, `ios/AstraShell Extension/Resources/`. |
 
 Read-priority categories below decide whether to inspect a path for a task. The four buckets explain what kind of repository knowledge a path represents.
@@ -63,16 +63,14 @@ If a derived summary disagrees with this document, use this document as the sour
 | `src/platform/` | `task-specific-source` | Source-bearing platform subtree; read nested runtime source paths only when platform work is relevant. |
 | `.github/` | `task-specific-source` | CI/workflow source; read for automation and validation tasks. |
 | `.specify/` | `task-specific-source` | Specification memory/templates/scripts. |
-| `agent-config/` | `task-specific-source` | Agent graph templates and agent configuration. |
 | `astra (ui)/` | `task-specific-source` | UI/design working area; `uploads/` is a reference-artifact exception. |
 | `script/bench/` | `task-specific-source` | Benchmark harness source. |
 | `script/bench-live/` | `task-specific-source` | Live browser benchmark scenario source. |
-| `script/bench-opt/` | `task-specific-source` | Optimization harness/candidate source. |
+| `script/bench-opt/` | `task-specific-source` | Optimization harness/candidate source and canonical `config/` directory. |
 | `docs/` | `task-specific-source` | Project documentation; `docs/design-comparison/` is a reference-artifact exception. |
 | `ios/` | `task-specific-source` | Safari/iOS shell source; see nested exceptions below. |
 | `plan.md` | `task-specific-source` | Local/planning note; read only when task references planning history. |
-| `plans/` | `task-specific-source` | Legacy/transitional planning history; prefer `docs/plans/` unless older planning history is explicitly relevant. |
-| `script/maintenance/` | `task-specific-source` | Build, verification, and support tooling. |
+| `script/maintenance/` | `task-specific-source` | Build, verification, repo-knowledge guardrail, and support tooling. |
 | `store/` | `task-specific-source` | Store-preparation area; `store/screenshots/` is a reference-artifact exception. |
 | `test/` | `task-specific-source` | Unit/integration test helpers, mocks, and fixtures. |
 | `.astra-open-extension-preview.cjs` | `task-specific-source` | Local preview helper; read only for preview tooling tasks. |
@@ -161,7 +159,7 @@ Give these based on the product area named by the task:
 | Relay-lite | `src/platform/relay-lite/src/`, `src/platform/relay-lite/wrangler.jsonc` | Cloudflare docs/workflows if deploy behavior is involved. |
 | Web companion | `src/web/src/`, `src/web/public/`, `src/web/vite.config.ts`, `src/assets/astra-style1-tokens.css` | `src/server/` or relay config only for API/auth issues. |
 | iOS/Safari shell | `ios/AstraShell/`, `ios/AstraShell Extension/SafariWebExtensionHandler.swift`, `ios/scripts/`, `ios/README.md` | `ios/AstraShell Extension/Resources/` only to verify committed generated Safari bundle drift. |
-| Bench or optimizer | `script/bench/`, `script/bench-live/`, `script/bench-opt/`, `agent-config/`, `docs/bench-opt*.md` | `data/bench-results*` only as generated evidence for a specific run. |
+| Bench or optimizer | `script/bench/`, `script/bench-live/`, `script/bench-opt/`, `script/bench-opt/config/`, `docs/bench-opt*.md` | `data/bench-results*` only as generated evidence for a specific run. |
 | Tests/fixtures | `test/`, relevant `*.test.ts(x)` beside touched source | `coverage/` only for coverage-report tasks. |
 | CI/release | `.github/workflows/`, `script/maintenance/`, `package.json`, relevant docs under `docs/` | Generated `.output/` only as build output to inspect after a build. |
 
