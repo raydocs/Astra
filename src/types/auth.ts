@@ -48,7 +48,7 @@ export const AstraAccountSchema = z.object({
   createdAt: z.string().trim().min(1),
   plan: AstraPlanSchema.default("free"),
   subscriptionStatus: AstraSubscriptionStatusSchema.default("active"),
-  providerEntitlements: z.array(ProviderIdSchema).default(["openai", "gemini"]),
+  providerEntitlements: z.array(ProviderIdSchema).default(["google_translate", "openai", "gemini"]),
 })
 
 export const AstraUsageSnapshotSchema = z.object({
@@ -205,7 +205,7 @@ export const AstraSessionSchema = z.object({
   email: z.string().trim().min(1),
   plan: AstraPlanSchema.default("free"),
   subscriptionStatus: AstraSubscriptionStatusSchema.default("active"),
-  providerEntitlements: z.array(ProviderIdSchema).default(["openai", "gemini"]),
+  providerEntitlements: z.array(ProviderIdSchema).default(["google_translate", "openai", "gemini"]),
   quota: AstraQuotaSchema.default({
     dailyRequestsLimit: 0,
     dailyCharactersLimit: 0,

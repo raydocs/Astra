@@ -44,6 +44,7 @@ export interface RelayEnv {
   corsAllowedOrigins?: string[]
   openaiApiKey: string
   googleApiKey: string
+  googleTranslateApiKey?: string
   openrouterApiKey: string
   /** When set, all managed translations route through OpenRouter instead of direct provider keys. */
   useOpenRouter: boolean

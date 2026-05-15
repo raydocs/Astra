@@ -5,6 +5,8 @@ import type { AstraPlan, AstraSubscriptionStatus } from "../types/auth"
 
 import type { RelayEnv } from "./types"
 
+const ALL_PROVIDER_IDS: ProviderId[] = ["google_translate", "openai", "gemini"]
+
 // ---------------------------------------------------------------------------
 // Default OpenRouter model mapping — maps Astra provider+model to OpenRouter model IDs
 // ---------------------------------------------------------------------------
@@ -31,16 +33,16 @@ function parseOpenRouterModelMap(raw: string | undefined): Record<string, string
 }
 
 function parseProviderEntitlements(raw: string | undefined): ProviderId[] {
-  const values = (raw ?? "openai,gemini")
+  const values = (raw ?? ALL_PROVIDER_IDS.join(","))
     .split(",")
     .map((item) => item.trim())
     .filter(Boolean)
 
-  return values.filter((item): item is ProviderId => item === "openai" || item === "gemini")
+  return values.filter((item): item is ProviderId => ALL_PROVIDER_IDS.includes(item as ProviderId))
 }
 
 function parsePlan(raw: string | undefined): AstraPlan {
-  return raw === "free" ? "free" : "pro"
+  return raw === "pro" ? "pro" : "free"
 }
 
 function parseSubscriptionStatus(raw: string | undefined): AstraSubscriptionStatus {
@@ -115,13 +117,16 @@ export function loadRelayEnv(env: NodeJS.ProcessEnv = process.env): RelayEnv {
     corsAllowedOrigins: parseCorsAllowedOrigins(env.ASTRA_CORS_ALLOWED_ORIGINS),
     openaiApiKey: env.OPENAI_API_KEY?.trim() ?? "",
     googleApiKey: env.GOOGLE_GENERATIVE_AI_API_KEY?.trim() ?? "",
+    googleTranslateApiKey: env.GOOGLE_TRANSLATE_API_KEY?.trim()
+      ?? env.GOOGLE_CLOUD_TRANSLATE_API_KEY?.trim()
+      ?? "",
     openrouterApiKey: env.OPENROUTER_API_KEY?.trim() ?? "",
     useOpenRouter: (env.ASTRA_USE_OPENROUTER ?? "").toLowerCase() === "true"
       || (env.OPENROUTER_API_KEY?.trim().length ?? 0) > 0,
     openrouterModelMap: parseOpenRouterModelMap(env.ASTRA_OPENROUTER_MODEL_MAP),
-    freeDailyRequests: Number(env.ASTRA_FREE_DAILY_REQUESTS ?? "200"),
-    freeDailyCharacters: Number(env.ASTRA_FREE_DAILY_CHARACTERS ?? "200000"),
-    freeRpm: Number(env.ASTRA_FREE_RPM ?? "20"),
+    freeDailyRequests: Number(env.ASTRA_FREE_DAILY_REQUESTS ?? "2000"),
+    freeDailyCharacters: Number(env.ASTRA_FREE_DAILY_CHARACTERS ?? "500000"),
+    freeRpm: Number(env.ASTRA_FREE_RPM ?? "120"),
     proDailyRequests: Number(env.ASTRA_PRO_DAILY_REQUESTS ?? "2000"),
     proDailyCharacters: Number(env.ASTRA_PRO_DAILY_CHARACTERS ?? "500000"),
     proRpm: Number(env.ASTRA_PRO_RPM ?? "120"),

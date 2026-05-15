@@ -37,9 +37,31 @@ const LANGUAGE_LEVEL_OPTIONS = [
 ] as const
 
 const PROVIDER_OPTIONS = [
+  { value: "google_translate", label: "Google Translate" },
   { value: "openai", label: "OpenAI" },
   { value: "gemini", label: "Gemini" },
 ] as const
+
+function getProviderApiKeyPlaceholder(providerId: ProviderId): string {
+  switch (providerId) {
+    case "google_translate":
+    case "gemini":
+      return "AIzaSy..."
+    case "openai":
+      return "sk-..."
+  }
+}
+
+function getProviderDirectServiceName(providerId: ProviderId): string {
+  switch (providerId) {
+    case "google_translate":
+      return "Google Cloud Translation"
+    case "gemini":
+      return "Google Gemini"
+    case "openai":
+      return "OpenAI"
+  }
+}
 
 export interface GlobalSettingsSectionProps {
   config: AstraConfig
@@ -118,11 +140,11 @@ export default function GlobalSettingsSection({
           type="password"
           value={config.provider.apiKey ?? ""}
           onChange={(e) => onProviderChange({ apiKey: e.target.value })}
-          placeholder={config.provider.id === "gemini" ? "AIzaSy..." : "sk-..."}
+          placeholder={getProviderApiKeyPlaceholder(config.provider.id)}
           className="astra-input"
         />
         <div style={{ fontSize: 11, color: "var(--astra-text-muted)", marginTop: 2 }}>
-          {t("label_apiKeyDirectConnect", config.provider.id === "gemini" ? "Google" : "OpenAI")}
+          {t("label_apiKeyDirectConnect", getProviderDirectServiceName(config.provider.id))}
         </div>
 
         <button

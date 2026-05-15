@@ -72,9 +72,31 @@ const CONTENT_SCOPE_OPTIONS = [
 ] as const
 
 const PROVIDER_OPTIONS = [
+  { value: "google_translate", label: "Google Translate" },
   { value: "openai", label: "OpenAI" },
   { value: "gemini", label: "Gemini" },
 ] as const
+
+function getProviderApiKeyPlaceholder(providerId: ProviderId): string {
+  switch (providerId) {
+    case "google_translate":
+    case "gemini":
+      return "AIzaSy..."
+    case "openai":
+      return "sk-..."
+  }
+}
+
+function getProviderDirectServiceName(providerId: ProviderId): string {
+  switch (providerId) {
+    case "google_translate":
+      return "Google Cloud Translation"
+    case "gemini":
+      return "Google Gemini"
+    case "openai":
+      return "OpenAI"
+  }
+}
 
 const MODE_OPTIONS = [
   { value: "bilingual", label: "Bilingual" },
@@ -633,7 +655,7 @@ function ProvidersSection({
       <SectionHeader
         eyebrow="Engine · AI providers"
         headline="Which model does the heavy lifting"
-        intro="Astra can talk to any compatible relay or call OpenAI / Gemini directly with your own key. The active model lives next to every translation row."
+        intro="Astra can talk to any compatible relay or call Google Translate, OpenAI, or Gemini directly with your own key. The active model lives next to every translation row."
       />
 
       <h2 className="astra-section-heading astra-sr-only">Providers</h2>
@@ -687,10 +709,10 @@ function ProvidersSection({
           className="astra-input"
           value={config.provider.apiKey ?? ""}
           onChange={(e) => onProviderChange({ apiKey: e.target.value })}
-          placeholder={config.provider.id === "gemini" ? "AIzaSy..." : "sk-..."}
+          placeholder={getProviderApiKeyPlaceholder(config.provider.id)}
         />
         <div style={hintStyle}>
-          With an API key, requests go directly to {config.provider.id === "gemini" ? "Google" : "OpenAI"} -- no Astra account required.
+          With an API key, requests go directly to {getProviderDirectServiceName(config.provider.id)} -- no Astra account required.
         </div>
       </div>
 

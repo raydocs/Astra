@@ -19,7 +19,7 @@ type SessionPayload = {
 }
 
 const CORS_HEADERS = "authorization, content-type, idempotency-key, x-astra-device-id"
-const PROVIDER_ENTITLEMENTS = ["openai"] as const
+const PROVIDER_ENTITLEMENTS = ["google_translate", "openai", "gemini"] as const
 const SYNC_COLLECTIONS = ["config", "vocabulary", "review_schedule", "reading_history", "study_progress"] as const
 
 function json(data: unknown, init: ResponseInit = {}, extraHeaders: Record<string, string> = {}) {

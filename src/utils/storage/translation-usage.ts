@@ -11,7 +11,7 @@ const TranslationRouteSchema = z.enum(["direct", "relay", "fallback"])
 const StoredTranslationUsageEventSchema = z.object({
   id: z.string(),
   timestamp: z.number(),
-  providerId: z.enum(["openai", "gemini"]),
+  providerId: z.enum(["google_translate", "openai", "gemini"]),
   model: z.string(),
   task: z.enum(["translate", "explain", "custom"]),
   textCount: z.number().int().nonnegative(),

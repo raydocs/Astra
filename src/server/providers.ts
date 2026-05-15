@@ -3,6 +3,7 @@ import { createGoogleGenerativeAI } from "@ai-sdk/google"
 import { generateText } from "ai"
 
 import { AstraError } from "../types/translation"
+import { translateWithGoogleTranslate } from "../utils/providers/google-translate"
 import { buildTranslationPrompt, parseTranslationsResponse } from "../utils/providers/openai"
 import type { ProviderId } from "../types/config"
 
@@ -18,7 +19,10 @@ function resolveOpenRouterModel(
   modelMap: Record<string, string>,
 ): string {
   const key = `${provider}/${model}`
-  return modelMap[key] ?? `${provider === "openai" ? "openai" : "google"}/${model}`
+  if (modelMap[key]) return modelMap[key]
+  if (provider === "openai") return `openai/${model}`
+  if (provider === "gemini") return `google/${model}`
+  return model
 }
 
 // ---------------------------------------------------------------------------
@@ -47,6 +51,17 @@ async function generateWithProvider(params: {
   apiKey: string
   request: RelayTranslateRequest
 }): Promise<string> {
+  if (params.provider === "google_translate") {
+    const translations = await translateWithGoogleTranslate({
+      apiKey: params.apiKey,
+      model: params.model,
+      texts: params.request.texts,
+      targetLang: params.request.targetLang,
+      sourceLang: params.request.sourceLang,
+    })
+    return JSON.stringify({ translations })
+  }
+
   const prompt = buildTranslationPrompt(params.request)
   const system = systemPromptForTask(params.request.task)
 
@@ -104,7 +119,25 @@ async function generateViaOpenRouter(params: {
 // ---------------------------------------------------------------------------
 
 function getProviderApiKey(provider: ProviderId, env: RelayEnv): string {
-  return provider === "openai" ? env.openaiApiKey : env.googleApiKey
+  switch (provider) {
+    case "google_translate":
+      return env.googleTranslateApiKey ?? ""
+    case "openai":
+      return env.openaiApiKey
+    case "gemini":
+      return env.googleApiKey
+  }
+}
+
+function getMissingApiKeyMessage(provider: ProviderId): string {
+  switch (provider) {
+    case "google_translate":
+      return "GOOGLE_TRANSLATE_API_KEY is not configured on the Astra relay."
+    case "openai":
+      return "OPENAI_API_KEY is not configured on the Astra relay."
+    case "gemini":
+      return "GOOGLE_GENERATIVE_AI_API_KEY is not configured on the Astra relay."
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -116,7 +149,7 @@ export async function translateViaManagedProvider(
   env: RelayEnv,
 ): Promise<string[]> {
   // Route through OpenRouter when configured (API key stays server-side only)
-  if (env.useOpenRouter && env.openrouterApiKey) {
+  if (env.useOpenRouter && env.openrouterApiKey && request.provider !== "google_translate") {
     const rawText = await generateViaOpenRouter({
       provider: request.provider,
       model: request.model,
@@ -132,9 +165,7 @@ export async function translateViaManagedProvider(
   if (!apiKey) {
     throw new AstraError(
       "CONFIG_MISSING",
-      request.provider === "openai"
-        ? "OPENAI_API_KEY is not configured on the Astra relay."
-        : "GOOGLE_GENERATIVE_AI_API_KEY is not configured on the Astra relay.",
+      getMissingApiKeyMessage(request.provider),
     )
   }
 

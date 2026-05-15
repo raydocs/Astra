@@ -28,7 +28,7 @@ describe("relay-lite capability advertising", () => {
   it("advertises only provider entitlements backed by relay-lite translation", async () => {
     const session = await createSession()
 
-    expect(session.providerEntitlements).toEqual(["openai"])
+    expect(session.providerEntitlements).toEqual(["google_translate", "openai", "gemini"])
   })
 
   it("does not advertise sync collections as enabled without push/repair support", async () => {
@@ -73,7 +73,7 @@ describe("relay-lite capability advertising", () => {
       sync: { collections: Record<string, { enabled: boolean; defaultEnabled: boolean }> }
     }
 
-    expect(summary.account.providerEntitlements).toEqual(["openai"])
+    expect(summary.account.providerEntitlements).toEqual(["google_translate", "openai", "gemini"])
     expect(Object.values(summary.sync.collections).every((collection) =>
       collection.enabled === false && collection.defaultEnabled === false
     )).toBe(true)

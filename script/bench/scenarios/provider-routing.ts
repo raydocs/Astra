@@ -167,6 +167,10 @@ async function executeProviderRoutingScenario(options: {
           directAttemptCount += 1
           throw new AstraError("PROVIDER_REQUEST_FAILED", "unexpected gemini path")
         },
+        translateWithGoogleTranslate: async () => {
+          directAttemptCount += 1
+          throw new AstraError("PROVIDER_REQUEST_FAILED", "unexpected google translate path")
+        },
         translateWithRelay: async (request) => {
           relayAttemptCount += 1
           relayRequest = {
@@ -308,6 +312,10 @@ const NON_ASTRA_ERROR_PROVIDER_ROUTING_SCENARIO: BenchmarkScenario<ProviderRouti
           translateWithGemini: async () => {
             directAttemptCount += 1
             throw new AstraError("PROVIDER_REQUEST_FAILED", "unexpected gemini path")
+          },
+          translateWithGoogleTranslate: async () => {
+            directAttemptCount += 1
+            throw new AstraError("PROVIDER_REQUEST_FAILED", "unexpected google translate path")
           },
           translateWithRelay: async () => {
             relayAttemptCount += 1

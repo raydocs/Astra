@@ -25,6 +25,24 @@ export interface ProviderModelInfo {
 }
 
 export const PROVIDER_CAPABILITIES: Record<ProviderId, ProviderCapability> = {
+  google_translate: {
+    id: "google_translate",
+    name: "Google Translate",
+    models: [
+      {
+        id: "nmt",
+        label: "Cloud Translation Basic NMT",
+        inputCostPer1kTokens: 0.0,
+        outputCostPer1kTokens: 0.0,
+        maxContextTokens: 30000,
+        recommended: true,
+      },
+    ],
+    supportsDirectAccess: true,
+    supportsRelay: true,
+    maxBatchSize: 20,
+    maxInputCharsPerRequest: 8000,
+  },
   openai: {
     id: "openai",
     name: "OpenAI",

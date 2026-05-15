@@ -92,7 +92,7 @@ Current high-confidence surfaces:
 - **Article mode** — prioritize main content and reduce noisy page regions.
 - **Site rules** — enable/disable, auto-translate, target language, hover behavior, scope, and presentation style per site.
 - **Subtitle translation** — works with page-accessible subtitle or caption tracks where the browser can read them.
-- **Provider routing** — OpenAI and Gemini direct provider paths, plus Astra relay support and direct → relay fallback.
+- **Provider routing** — Google Translate, OpenAI, and Gemini direct provider paths, plus Astra relay support and direct → relay fallback.
 
 Evolving surfaces:
 
@@ -119,8 +119,8 @@ Canonical support boundaries live in [`docs/investigations/support-matrix-2026-q
 
 Astra can run through two outbound paths:
 
-- **Direct provider** — your configured provider credentials call the model provider directly.
-- **Astra relay** — requests go through an Astra-managed or self-hosted relay.
+- **Direct provider** — your configured provider credentials call the provider directly. Google Translate uses Cloud Translation Basic v2 (`nmt`).
+- **Astra relay** — requests go through an Astra-managed or self-hosted relay. Current defaults put accounts on the free plan with Google Translate, OpenAI, and Gemini entitlements.
 
 Important boundaries:
 
@@ -170,7 +170,7 @@ pnpm test
 
 Load the Chromium build from `.output/chrome-mv3/` as an unpacked extension.
 
-For relay configuration, see [`src/server/.env.example`](src/server/.env.example) and [`docs/relay-server.md`](docs/relay-server.md). The relay reads `process.env`; it does not automatically load a local env file.
+For relay configuration, see [`src/server/.env.example`](src/server/.env.example) and [`docs/relay-server.md`](docs/relay-server.md). The relay reads `process.env`; export provider keys such as `GOOGLE_TRANSLATE_API_KEY` before `pnpm relay:start`.
 
 ## Architecture
 

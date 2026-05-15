@@ -548,8 +548,9 @@ describe("Astra relay server", () => {
     expect(summary.sync.maxMutationsPerRequest).toBe(200)
   })
 
-  it("updates the account plan and applies downgraded provider access", async () => {
+  it("updates the account plan while keeping temporary free provider access", async () => {
     await startServer(await createUserDb())
+    translateViaManagedProviderMock.mockResolvedValue(["你好"])
     const { session } = await createSession()
 
     const patchResponse = await fetch(`${baseURL}/v1/account/plan`, {
@@ -564,7 +565,7 @@ describe("Astra relay server", () => {
 
     expect(patchResponse.status).toBe(200)
     expect(patched.plan).toBe("free")
-    expect(patched.providerEntitlements).toEqual(["openai"])
+    expect(patched.providerEntitlements).toEqual(["google_translate", "openai", "gemini"])
 
     const translateResponse = await fetch(`${baseURL}/v1/translate`, {
       method: "POST",
@@ -580,10 +581,10 @@ describe("Astra relay server", () => {
       }),
     })
 
-    const errorPayload = await translateResponse.json() as { error: { message: string } }
-    expect(translateResponse.status).toBe(400)
-    expect(errorPayload.error.message).toContain("does not allow provider: gemini")
-    expect(translateViaManagedProviderMock).not.toHaveBeenCalled()
+    const translatePayload = await translateResponse.json() as { translations: string[] }
+    expect(translateResponse.status).toBe(200)
+    expect(translatePayload.translations).toEqual(["你好"])
+    expect(translateViaManagedProviderMock).toHaveBeenCalledTimes(1)
   })
 
   it("rejects translate requests when the per-minute limit is exhausted", async () => {

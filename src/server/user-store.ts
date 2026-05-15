@@ -20,7 +20,7 @@ import {
   type AstraUsage,
   type AstraUsageSnapshot,
 } from "../types/auth"
-import { ProviderIdSchema } from "../types/config"
+import { ProviderIdSchema, type ProviderId } from "../types/config"
 import { AstraError } from "../types/translation"
 import { isSyncCollectionEnabled, validateSyncMutationPayload } from "../utils/astra/sync-push"
 import { buildAstraAnonymousIdentity } from "../utils/astra/anonymous-identity"
@@ -199,13 +199,26 @@ function defaultLimits(plan: ServerUserRecord["plan"], env?: RelayEnv): ServerUs
       ? { dailyRequests: env.proDailyRequests, dailyCharacters: env.proDailyCharacters, requestsPerMinute: env.proRpm }
       : { dailyRequests: env.freeDailyRequests, dailyCharacters: env.freeDailyCharacters, requestsPerMinute: env.freeRpm }
   }
-  return plan === "pro"
-    ? { dailyRequests: 2000, dailyCharacters: 500_000, requestsPerMinute: 120 }
-    : { dailyRequests: 100, dailyCharacters: 50_000, requestsPerMinute: 10 }
+  return { dailyRequests: 2000, dailyCharacters: 500_000, requestsPerMinute: 120 }
 }
 
-function defaultEntitlements(plan: ServerUserRecord["plan"]): ServerUserRecord["providerEntitlements"] {
-  return plan === "pro" ? ["openai", "gemini"] : ["openai"]
+function defaultEntitlements(_plan: ServerUserRecord["plan"]): ServerUserRecord["providerEntitlements"] {
+  return ["google_translate", "openai", "gemini"]
+}
+
+function freeFirstEntitlements(env: RelayEnv): ServerUserRecord["providerEntitlements"] {
+  return env.providerEntitlements.length ? env.providerEntitlements : defaultEntitlements("free")
+}
+
+function applyTemporaryFreeDefaults(db: ServerUserDatabase, env: RelayEnv): ServerUserDatabase {
+  return {
+    ...db,
+    users: db.users.map((user) => ({
+      ...user,
+      plan: "free",
+      providerEntitlements: freeFirstEntitlements(env),
+    })),
+  }
 }
 
 function createEmptyUsage(now: Date = new Date()): ServerUserUsage {
@@ -254,19 +267,19 @@ async function migrateDatabase(
 ): Promise<ServerUserDatabase> {
   const legacy = LegacyServerUserDatabaseSchema.safeParse(raw)
   if (legacy.success) {
-    return {
+    return applyTemporaryFreeDefaults({
       version: 2,
       users: legacy.data.users,
       devices: [],
       sessions: [],
       syncMutations: [],
       nextSyncCursor: 0,
-    }
+    }, env)
   }
 
   const current = ServerUserDatabaseSchema.safeParse(raw)
   if (current.success) {
-    return current.data
+    return applyTemporaryFreeDefaults(current.data, env)
   }
 
   if (options.seedOnInvalid ?? true) {
@@ -1148,7 +1161,7 @@ export class FileUserStore {
 
   async recordTranslationUsage(params: {
     email: string
-    provider: "openai" | "gemini"
+    provider: ProviderId
     characterCount: number
     timestamp?: Date
   }): Promise<RelaySession> {

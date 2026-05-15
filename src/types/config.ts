@@ -1,7 +1,7 @@
 import { z } from "zod"
 import type { AstraSession } from "./auth"
 
-export const ProviderIdSchema = z.enum(["openai", "gemini"])
+export const ProviderIdSchema = z.enum(["google_translate", "openai", "gemini"])
 
 export const TranslationModeSchema = z.enum(["bilingual", "translation-only"])
 export const TranslationThemeSchema = z.enum(["default", "underline", "highlight", "mask"])
@@ -143,7 +143,13 @@ export const GeminiProviderConfigSchema = ManagedProviderBaseSchema.extend({
   model: z.string().trim().min(1).default("gemini-3.1-flash-lite-preview"),
 })
 
+export const GoogleTranslateProviderConfigSchema = ManagedProviderBaseSchema.extend({
+  id: z.literal("google_translate"),
+  model: z.string().trim().min(1).default("nmt"),
+})
+
 export const ProviderConfigSchema = z.discriminatedUnion("id", [
+  GoogleTranslateProviderConfigSchema,
   OpenAIProviderConfigSchema,
   GeminiProviderConfigSchema,
 ])
@@ -173,10 +179,10 @@ export const AstraConfigSchema = z.object({
   explanationGlossary: z.array(ExplanationGlossaryTermSchema).default([]),
   privacyMode: z.boolean().default(false),
   provider: ProviderConfigSchema.default({
-    id: "openai",
+    id: "google_translate",
     accessToken: "",
     apiKey: "",
-    model: "gpt-5.4-nano",
+    model: "nmt",
   }),
   tts: TTSSettingsSchema.default({
     enabled: true,
@@ -244,8 +250,8 @@ export const AstraSyncedConfigSchema = z.object({
   explanationGlossary: z.array(ExplanationGlossaryTermSchema).default([]),
   privacyMode: z.boolean().default(false),
   provider: AstraSyncedProviderConfigSchema.default({
-    id: "openai",
-    model: "gpt-5.4-nano",
+    id: "google_translate",
+    model: "nmt",
   }),
   tts: AstraSyncedTTSSettingsSchema.default({
     enabled: true,
@@ -277,8 +283,8 @@ export const AstraSyncedConfigGlobalSchema = z.object({
   explanationGlossary: z.array(ExplanationGlossaryTermSchema).default([]),
   privacyMode: z.boolean().default(false),
   provider: AstraSyncedProviderConfigSchema.default({
-    id: "openai",
-    model: "gpt-5.4-nano",
+    id: "google_translate",
+    model: "nmt",
   }),
   tts: AstraSyncedTTSSettingsSchema.default({
     enabled: true,
@@ -338,6 +344,7 @@ export type SiteConfig = z.infer<typeof SiteConfigSchema>
 export type SiteConfigInput = z.infer<typeof SiteConfigInputSchema>
 export type OpenAIProviderConfig = z.infer<typeof OpenAIProviderConfigSchema>
 export type GeminiProviderConfig = z.infer<typeof GeminiProviderConfigSchema>
+export type GoogleTranslateProviderConfig = z.infer<typeof GoogleTranslateProviderConfigSchema>
 export type ProviderConfig = z.infer<typeof ProviderConfigSchema>
 export type AstraConfig = z.infer<typeof AstraConfigSchema>
 export type AstraConfigInput = z.infer<typeof AstraConfigInputSchema>
@@ -409,10 +416,10 @@ export const DEFAULT_ASTRA_CONFIG: AstraConfig = {
   explanationGlossary: [],
   privacyMode: false,
   provider: {
-    id: "openai",
+    id: "google_translate",
     accessToken: "",
     apiKey: "",
-    model: "gpt-5.4-nano",
+    model: "nmt",
   },
   tts: {
     enabled: true,
@@ -434,6 +441,8 @@ export const DEFAULT_ASTRA_CONFIG: AstraConfig = {
 
 export function getDefaultProviderModel(providerId: ProviderId): string {
   switch (providerId) {
+    case "google_translate":
+      return "nmt"
     case "openai":
       return "gpt-5.4-nano"
     case "gemini":
@@ -441,7 +450,7 @@ export function getDefaultProviderModel(providerId: ProviderId): string {
   }
 }
 
-export function createDefaultProviderConfig(providerId: ProviderId = "openai"): ProviderConfig {
+export function createDefaultProviderConfig(providerId: ProviderId = "google_translate"): ProviderConfig {
   return {
     id: providerId,
     accessToken: "",

@@ -279,7 +279,7 @@ async function buildAnonymousUserSnapshot(params: {
     subscriptionStatus: AstraSubscriptionStatusSchema.parse("active"),
     identityMode: "anonymous",
     installId: params.installId,
-    providerEntitlements: ["openai"],
+    providerEntitlements: ["google_translate", "openai", "gemini"],
     syncPreferences: {
       reading_history: false,
       study_progress: false,

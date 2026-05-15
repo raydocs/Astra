@@ -2,6 +2,7 @@ import { AstraError, type TranslationErrorCode } from "@/types/translation"
 import { trackEvent } from "@/utils/telemetry"
 
 import { translateWithGemini } from "./gemini"
+import { translateWithGoogleTranslate } from "./google-translate"
 import { translateWithOpenAI } from "./openai"
 import { translateWithRelay } from "./relay"
 import { summarizeProviderRoute, type ProviderTransport, type ProviderRoute } from "./routing-metadata"
@@ -29,6 +30,7 @@ export interface ProviderTranslationResult {
 export interface ProviderRouterDependencies {
   translateWithOpenAI: typeof translateWithOpenAI
   translateWithGemini: typeof translateWithGemini
+  translateWithGoogleTranslate: typeof translateWithGoogleTranslate
   translateWithRelay: typeof translateWithRelay
 }
 
@@ -48,6 +50,7 @@ export const PROVIDER_FAILURE_POLICY: Record<TranslationErrorCode, ProviderFailu
 const DEFAULT_ROUTER_DEPENDENCIES: ProviderRouterDependencies = {
   translateWithOpenAI,
   translateWithGemini,
+  translateWithGoogleTranslate,
   translateWithRelay,
 }
 
@@ -158,6 +161,12 @@ async function translateDirect(
   const apiKey = provider.apiKey
 
   switch (provider.id) {
+    case "google_translate":
+      return deps.translateWithGoogleTranslate({
+        apiKey,
+        model: provider.model,
+        ...request,
+      })
     case "openai":
       return deps.translateWithOpenAI({
         apiKey,
