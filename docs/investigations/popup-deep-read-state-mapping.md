@@ -120,15 +120,16 @@ Optional standalone popup proof command:
 pnpm bench:live:lane:popup-proof
 ```
 
-Optional learning-loop command:
+Required learning-loop release lane:
 
 ```bash
 pnpm bench:live:lane:learning-loop
 ```
 
-Current lane contents:
+Current `learning-loop` lane contents:
 
 - `bench-live/popup-deep-read-proof`
 - `bench-live/vocabulary-srs-smoke`
+- `bench-live/learning-loop-revisit-smoke`
 
-Both lanes are **optional** for now. They are evidence for popup deep-read credibility, not required release-proof gates yet.
+`popup-proof` remains optional as a standalone lane. `learning-loop` is the required release lane that carries popup deep-read credibility plus vocabulary/revisit proof.

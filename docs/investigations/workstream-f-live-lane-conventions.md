@@ -21,7 +21,7 @@ Compatibility aliases remain available:
 - `bench:live:extension` -> `bench:live:lane:extension-core`
 - `bench:live:smoke` -> `bench:live:lane:release-proof`
 
-## Required scenario inventory (Month 1 baseline)
+## Required scenario inventory (current release gate)
 
 ### source-core
 
@@ -35,6 +35,12 @@ Compatibility aliases remain available:
 2. `bench-live/onboarding-smoke`
 3. `bench-live/vocabulary-srs-smoke`
 
+### learning-loop
+
+1. `bench-live/popup-deep-read-proof` (popup proof anchor)
+2. `bench-live/vocabulary-srs-smoke` (downstream vocabulary continuation)
+3. `bench-live/learning-loop-revisit-smoke` (vocabulary Reading tab → Open → http article fixture)
+
 ## Optional but credible scenario inventory (not release-blocking yet)
 
 ### hover-selection
@@ -46,17 +52,11 @@ Compatibility aliases remain available:
 
 1. `bench-live/popup-deep-read-proof` (standalone popup deep-read proof)
 
-### learning-loop
-
-1. `bench-live/popup-deep-read-proof` (popup proof anchor)
-2. `bench-live/vocabulary-srs-smoke` (downstream vocabulary continuation)
-3. `bench-live/learning-loop-revisit-smoke` (vocabulary Reading tab → Open → http article fixture)
-
 ## Month 1 gate policy decisions
 
 - `hover-selection` remains **optional** for Month 1. The repo now has credible browser-backed proof, but the lane is still a combined UX lane rather than a dedicated required CI gate with separate ownership semantics.
-- `popup-proof` remains **optional** as a standalone lane. Its proof is also exercised through `learning-loop` in CI.
-- `learning-loop` now has first-class required status in the `CI / live-browser` workflow. Treat failures as release-facing until explicitly downgraded in the flaky inventory / closeout docs.
+- `popup-proof` remains **optional** as a standalone lane. Its proof is also exercised through the required `learning-loop` lane in CI.
+- `learning-loop` has first-class required status in the `CI / live-browser` workflow under current Month 2+ release policy. Treat failures as release-facing until explicitly downgraded in the release checklist and CI in the same change set.
 - Canonical artifact guidance for this lane is the same as other live-browser gates: local runs write `bench-live-results/<run-id>/`; CI uploads the `live-bench-results` artifact bundle.
 
 ## Notes

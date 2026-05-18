@@ -16,6 +16,7 @@ on:
           - release-proof
           - source-core
           - extension-core
+          - learning-loop
           - hover-selection
           - smoke
           - source
@@ -71,6 +72,8 @@ jobs:
             xvfb-run -a pnpm bench:live:lane:source-core
           elif [ "$ASTRA_LIVE_LANE" = "extension-core" ] || [ "$ASTRA_LIVE_LANE" = "extension" ]; then
             xvfb-run -a pnpm bench:live:lane:extension-core
+          elif [ "$ASTRA_LIVE_LANE" = "learning-loop" ]; then
+            xvfb-run -a pnpm bench:live:lane:learning-loop
           elif [ "$ASTRA_LIVE_LANE" = "hover-selection" ]; then
             xvfb-run -a pnpm bench:live:lane:hover-selection
           else

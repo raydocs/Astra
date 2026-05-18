@@ -23,9 +23,9 @@ _Use before release or after risky changes to popup, vocabulary, review, reading
 
 - Deterministic harness: `pnpm bench`
 - Required browser-backed lane: `pnpm bench:live:lane:extension-core`
-- Optional learning-loop proof lane: `pnpm bench:live:lane:learning-loop`
+- Required learning-loop release lane: `pnpm bench:live:lane:learning-loop`
 - Dedicated revisit proof: `pnpm bench:live -- --scenario bench-live/learning-loop-revisit-smoke`
 
 ## Policy note
 
-The `learning-loop` lane is still **optional** in release policy for Month 2. This checklist treats it as the minimum credibility bar for the Month 2 learning-loop narrative, not as an already-promoted Gate 2 requirement.
+The `learning-loop` lane is required in release policy and CI. Failures block release unless explicitly downgraded in the release checklist and CI in the same change set.

@@ -28,7 +28,7 @@ Fresh commands executed for `M1-BF-01` on this repo snapshot:
 |---------|--------|------------------------|-------|
 | `pnpm build` | **pass** | `.output/chrome-mv3/` | Extension build completed successfully before the live replay. |
 | `CI=true pnpm bench:live:lane:popup-proof` | **pass** | `live-20260414T095344-ol5adc` → `bench-live-results/live-20260414T095344-ol5adc/` | Canonical popup proof reran green with `result.json` / `result.md` written. |
-| `CI=true pnpm bench:live:lane:learning-loop` | **pass** | see per-scenario table below | Full optional learning-loop chain reran green immediately after popup-proof. |
+| `CI=true pnpm bench:live:lane:learning-loop` | **pass** | see per-scenario table below | Full learning-loop chain reran green immediately after popup-proof. Historical note: this lane was optional at Month 1; current release policy requires it. |
 
 `package.json` runs the `learning-loop` lane as **three separate** `pnpm bench:live` invocations, so each scenario gets its own **Run ID** and artifact directory:
 

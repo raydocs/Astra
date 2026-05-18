@@ -1,6 +1,6 @@
 # Astra Live Coverage Matrix (Current Reality)
 
-_Last updated: 2026-04-14 (subtitle-file learning-chain smoke added; Month 3 reader / revisit evidence sync retained)_
+_Last updated: 2026-05-18 (learning-loop promoted to required CI release gate; historical Month 1–4 evidence retained)_
 
 This matrix is the release-facing truth source for live coverage.
 
@@ -26,7 +26,8 @@ It separates:
 | site-automation | Yes | Yes (`bench-live/site-automation-autostart`) | **Yes** (`extension-core`) | Extension-loaded bootstrap proof is in required lane |
 | onboarding | No deterministic bench lane in `bench/` (live-only smoke today) | Yes (`bench-live/onboarding-smoke`) | **Yes** (`extension-core`) | Treated as extension-loaded smoke credibility check |
 | vocabulary | Deterministic bench exists (learning-loop surfaces) | Yes (`bench-live/vocabulary-srs-smoke`) | **Yes** (`extension-core`) | Extension-loaded smoke in required lane |
-| popup-deep-read | No deterministic bench lane yet | Yes (`bench-live/popup-deep-read-proof`) | No | Credible optional browser-backed popup proof exists via `popup-proof`; `learning-loop` remains optional in Month 1. **Replay doc:** `docs/investigations/m1-bf-01-popup-learning-loop-replay-2026-04-14.md` (fresh green standalone `popup-proof`, fresh green optional `learning-loop` chain, and pre-harness failure baseline for archaeology). |
+| popup-deep-read | No deterministic bench lane yet | Yes (`bench-live/popup-deep-read-proof`) | **Yes** (via `learning-loop`; standalone `popup-proof` remains optional) | Popup proof is required as part of the current `learning-loop` lane. **Replay doc:** `docs/investigations/m1-bf-01-popup-learning-loop-replay-2026-04-14.md` preserves fresh green standalone `popup-proof`, then-optional green `learning-loop` chain, and pre-harness failure baseline for archaeology. |
+| learning-loop / revisit v1 | Yes | Yes (`bench-live/learning-loop-revisit-smoke`, chained by `bench:live:lane:learning-loop`) | **Yes** (`learning-loop`) | Current required lane proves popup → vocabulary/review → Vocabulary Reading tab → Open article revisit continuity. |
 | interaction-priority | Yes | Yes (`bench-live/interaction-priority-basic` + holdout stress) | No | Live scenario exists but is not release-blocking today |
 | frame-coordination | Yes | Yes (`bench-live/frame-coordination-basic`) | No | Live scenario exists but is not release-blocking today |
 | hover | Yes | Yes (`bench-live/hover-translation-basic` + holdout moving-targets) | No | Standard browser-backed relay-stub proof exists; currently optional |
@@ -37,7 +38,7 @@ It separates:
 | PDF reader | Yes | Yes (`pdf-reader-basic` + holdout layout-noise) | No | Optional scenario proof only; fresh Month 3 artifact proves the fixture-backed reader path, not universal PDF reopen parity |
 | EPUB reader | Yes | Yes (`epub-reader-basic` + holdout long-chapter) | No | Optional scenario proof only; fresh Month 3 artifact proves the fixture-backed EPUB path, not universal queue reopen parity |
 
-## Required Month 1 release-proof lanes (authoritative)
+## Required release-proof lanes (authoritative current policy)
 
 ### `source-core`
 
@@ -51,6 +52,12 @@ It separates:
 2. `bench-live/onboarding-smoke`
 3. `bench-live/vocabulary-srs-smoke`
 
+### `learning-loop`
+
+1. `bench-live/popup-deep-read-proof`
+2. `bench-live/vocabulary-srs-smoke`
+3. `bench-live/learning-loop-revisit-smoke`
+
 ## Optional-but-credible live proof (not release-blocking yet)
 
 ### `hover-selection`
@@ -62,12 +69,6 @@ It separates:
 
 1. `bench-live/popup-deep-read-proof`
 
-### `learning-loop`
-
-1. `bench-live/popup-deep-read-proof`
-2. `bench-live/vocabulary-srs-smoke`
-3. `bench-live/learning-loop-revisit-smoke`
-
 ### `reader-revisit-baseline` (Month 3, optional/manual)
 
 1. `bench-live/pdf-reader-basic`
@@ -78,7 +79,7 @@ It separates:
 ## Open credibility gaps (must stay explicit)
 
 1. **Hover/selection now have credible browser-backed proof, but remain optional by Month 1 policy**: the current lane is a combined UX lane, separate required-lane semantics/CI ownership are not yet defined, and Month 1 should avoid over-promoting non-core UX proof.
-2. **Popup deep-read now has credible browser-backed proof, but is still optional** (`bench-live/popup-deep-read-proof`, `popup-proof`, `learning-loop`) and is not a required release gate in Month 1. Treat older `ERR_BLOCKED_BY_CLIENT` / wrong-relay failures as **harness regressions** superseded by the 2026-04-14 driver + scenario fixes unless reproduced on current `main`; the replay note now records fresh green standalone `popup-proof` and fresh green `learning-loop` reruns on current code.
+2. **Popup deep-read standalone proof remains optional, but popup proof is now required through `learning-loop`** (`bench-live/popup-deep-read-proof`, `popup-proof`, `learning-loop`). Treat older `ERR_BLOCKED_BY_CLIENT` / wrong-relay failures as **harness regressions** superseded by the 2026-04-14 driver + scenario fixes unless reproduced on current `main`; the replay note preserves fresh green standalone `popup-proof` and green `learning-loop` reruns on current code.
 3. Several other live-covered surfaces remain **optional** rather than release-blocking.
 4. **Subtitle timing instability risk** remains open (`docs/investigations/workstream-f-live-flaky-inventory.md`).
 5. **Month 3/4 reader-revisit proofs remain optional scenario evidence, not required CI lanes**: the repo now has fresh replayable PDF / EPUB / subtitle-file / article-revisit artifacts, and subtitle-file now also has a dedicated browser-backed learning-chain smoke, but non-article local-file reopen flows still depend on reader handoff rather than fully automatic resume.

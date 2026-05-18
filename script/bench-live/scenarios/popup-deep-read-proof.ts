@@ -562,7 +562,8 @@ export const popupDeepReadProofScenario: LiveScenarioDefinition<PopupDeepReadPro
             { timeout: 15_000 },
           )
           await destinationPage.locator('[data-testid="review-card"]').click()
-          await destinationPage.waitForSelector(".astra-review-answer-right", { timeout: 10_000 })
+          const goodReviewGradeSelector = 'button[data-review-grade="good"]'
+          await destinationPage.waitForSelector(goodReviewGradeSelector, { timeout: 10_000 })
 
           const destinationText = await destinationPage.locator("body").innerText()
           sourceContextVisible = destinationText.includes("Popup deep-read")
@@ -570,7 +571,7 @@ export const popupDeepReadProofScenario: LiveScenarioDefinition<PopupDeepReadPro
             && destinationText.includes("Readers can keep the original text visible")
           explainProfileReviewVisible = destinationText.includes("Explain profile: Exam · Beginner")
 
-          await destinationPage.locator(".astra-review-answer-right").click()
+          await destinationPage.locator(goodReviewGradeSelector).click()
           await destinationPage.waitForSelector('[data-testid="review-return-deep-read"]', { timeout: 10_000 })
           focusedReviewAnswered = true
 

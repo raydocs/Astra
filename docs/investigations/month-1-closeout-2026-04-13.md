@@ -17,10 +17,10 @@ Score: `69 / 100`
 
 - smoke/live/proof artifacts:
   - canonical popup proof scenario: `bench-live/popup-deep-read-proof`
-  - optional popup proof lane: `pnpm bench:live:lane:popup-proof`
-  - optional learning-loop lane: `pnpm bench:live:lane:learning-loop` (chains `popup-proof` → `bench-live/vocabulary-srs-smoke` → `bench-live/learning-loop-revisit-smoke` per `package.json`)
+  - optional standalone popup proof lane: `pnpm bench:live:lane:popup-proof`
+  - learning-loop lane: `pnpm bench:live:lane:learning-loop` (chains `popup-proof` → `bench-live/vocabulary-srs-smoke` → `bench-live/learning-loop-revisit-smoke` per `package.json`; historically optional in Month 1, required under current release policy)
   - artifact output path when run: `bench-live-results/<run-id>/`
-  - fresh replay summary attached in-repo: **yes** — `docs/investigations/m1-bf-01-popup-learning-loop-replay-2026-04-14.md` (documents fresh **green** reruns for standalone `popup-proof` `live-20260414T095344-ol5adc` and optional `learning-loop` chain `live-20260414T095422-yqripy` / `live-20260414T095427-992iaf` / `live-20260414T095429-kahn2o`; retains the pre-fix **fail** baseline `live-20260414T061146-0odzcd` and notes the superseded sandbox-local stall `live-20260414T093931-hlpkms`)
+  - fresh replay summary attached in-repo: **yes** — `docs/investigations/m1-bf-01-popup-learning-loop-replay-2026-04-14.md` (documents fresh **green** reruns for standalone `popup-proof` `live-20260414T095344-ol5adc` and `learning-loop` chain `live-20260414T095422-yqripy` / `live-20260414T095427-992iaf` / `live-20260414T095429-kahn2o`; retains the pre-fix **fail** baseline `live-20260414T061146-0odzcd` and notes the superseded sandbox-local stall `live-20260414T093931-hlpkms`)
 - updated docs:
   - `docs/release-readiness-checklist.md`
   - `docs/investigations/workstream-a-live-coverage-matrix.md`

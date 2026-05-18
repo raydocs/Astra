@@ -668,6 +668,7 @@ describe("resolveSiteTranslationSettings", () => {
       ...DEFAULT_ASTRA_CONFIG,
       provider: {
         ...DEFAULT_ASTRA_CONFIG.provider,
+        id: "openai",
         apiKey: "sk-openai",
         model: "gpt-5.4-mini",
       },
@@ -684,6 +685,7 @@ describe("resolveSiteTranslationSettings", () => {
           enabled: true,
           alwaysTranslate: false,
           provider: {
+            id: "openai",
             model: "gpt-5.4-www",
           },
         },

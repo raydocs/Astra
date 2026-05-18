@@ -71,7 +71,7 @@ async function main(): Promise<void> {
     path.join(ENTRYPOINTS_ROOT, "background", "index.ts"),
     path.join(ENTRYPOINTS_ROOT, "content", "index.tsx"),
     ...discoveredMainEntrypoints,
-    path.join("web", "src", "main.tsx"),
+    path.join("src", "web", "src", "main.tsx"),
   ]
 
   const results = await Promise.all(filesToCheck.map((filePath) => checkEntrypoint(filePath)))

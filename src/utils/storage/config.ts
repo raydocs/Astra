@@ -46,6 +46,9 @@ async function persistConfig(config: AstraConfig): Promise<void> {
 
 export async function migrateLegacyConfig(): Promise<AstraConfig> {
   const legacy = await browser.storage.local.get([...LEGACY_KEYS])
+  const hasLegacyProvider = typeof legacy.apiKey === "string" && legacy.apiKey.trim().length > 0
+    || typeof legacy.baseURL === "string" && legacy.baseURL.trim().length > 0
+    || typeof legacy.model === "string" && legacy.model.trim().length > 0
 
   const config = normalizeConfig({
     ...DEFAULT_ASTRA_CONFIG,
@@ -54,18 +57,20 @@ export async function migrateLegacyConfig(): Promise<AstraConfig> {
         ? legacy.targetLang
         : DEFAULT_ASTRA_CONFIG.targetLang,
     hoverTrigger: DEFAULT_ASTRA_CONFIG.hoverTrigger,
-    provider: {
-      id: "openai",
-      accessToken: typeof legacy.apiKey === "string" ? legacy.apiKey : "",
-      apiKey: "",
-      model:
-        typeof legacy.model === "string" && legacy.model.trim().length > 0
-          ? legacy.model
-          : DEFAULT_ASTRA_CONFIG.provider.model,
-      ...(typeof legacy.baseURL === "string" && legacy.baseURL.trim().length > 0
-        ? { relayBaseURL: legacy.baseURL }
-        : {}),
-    },
+    provider: hasLegacyProvider
+      ? {
+          id: "openai",
+          accessToken: typeof legacy.apiKey === "string" ? legacy.apiKey : "",
+          apiKey: "",
+          model:
+            typeof legacy.model === "string" && legacy.model.trim().length > 0
+              ? legacy.model
+              : getDefaultProviderModel("openai"),
+          ...(typeof legacy.baseURL === "string" && legacy.baseURL.trim().length > 0
+            ? { relayBaseURL: legacy.baseURL }
+            : {}),
+        }
+      : DEFAULT_ASTRA_CONFIG.provider,
     tts: DEFAULT_ASTRA_CONFIG.tts,
     presentation: DEFAULT_ASTRA_CONFIG.presentation,
     subtitleQualityControls: DEFAULT_SUBTITLE_QUALITY_CONTROLS,

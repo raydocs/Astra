@@ -27,7 +27,7 @@ Ledger item **Month 2 AI Task Ledger #33** — minimal operator-facing definitio
 | Popup proof green | `bench-live/popup-deep-read-proof` green with artifact path |
 | Vocabulary smoke green | `bench-live/vocabulary-srs-smoke` green with artifact path |
 | Revisit smoke green | `bench-live/learning-loop-revisit-smoke` green with artifact path |
-| Full `learning-loop` lane green | Fresh optional chain proving popup → vocab → revisit continuity |
+| Full `learning-loop` lane green | Fresh required chain proving popup → vocab → revisit continuity |
 | Regression checklist | All **P0** rows in `learning-loop-regression-checklist-2026-04-13.md` |
 
 ## Current fresh evidence snapshot

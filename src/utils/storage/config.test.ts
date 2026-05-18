@@ -372,8 +372,8 @@ describe("config storage", () => {
     const syncSafeConfig = await readSyncSafeConfig()
 
     expect(syncSafeConfig.provider).toEqual({
-      id: "openai",
-      model: "gpt-5.4-nano",
+      id: "google_translate",
+      model: "nmt",
     })
     expect(syncSafeConfig.tts).not.toHaveProperty("voiceName")
   })

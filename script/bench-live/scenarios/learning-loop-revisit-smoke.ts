@@ -485,12 +485,7 @@ export const learningLoopRevisitSmokeScenario: LiveScenarioDefinition<LearningLo
           card?.click()
         })
         await sleep(200)
-        await pageReviewTab.evaluate(() => {
-          const btn = Array.from(document.querySelectorAll("button")).find(
-            (b) => (b.textContent ?? "").trim() === "Know it",
-          ) as HTMLButtonElement | undefined
-          btn?.click()
-        })
+        await pageReviewTab.locator('button[data-review-grade="good"]').click({ timeout: 10_000 })
         await pageReviewTab.waitForFunction(() => document.body.innerText.includes("Page review complete"), null, { timeout: 10_000 }).catch(() => undefined)
         const completionState = await pageReviewTab.evaluate(() => {
           const body = document.body.innerText

@@ -8,12 +8,12 @@
 
 ## What we must not over-claim
 
-- **Learning-loop is not a required release gate** in Month 2 unless release checklist + CI are explicitly changed.
+- **Learning-loop is required in release policy and CI** for the narrow Month 2 popup → vocabulary/review → article revisit path; broader learning continuity claims still need separate proof.
 - **SRS review “Card X of Y”** is session ordering, not the same UI model as popup page-level `completedSteps`; they are related, not identical.
 - **No guarantee** of cross-device study continuity without validated relay sync paths for study progress in your deployment.
 - **No generalized resume center** or sentence-position restoration is promised by Month 2 revisit v1.
 
 ## External comms
 
-- Describe the learning loop as **“implemented and browser-proved, with the full chained lane still optional in release policy.”**
+- Describe the learning loop as **“implemented, browser-proved, and release-gated for the narrow Month 2 learning-loop path.”**
 - Describe revisit as **“one supported reopen path”**, not a generalized multi-surface resume system.

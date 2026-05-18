@@ -28,10 +28,11 @@ For the canonical source-priority/default-read vs generated/runtime classificati
 | Relay server | `pnpm relay:start` (port 8787) or `pnpm relay:dev` (watch) |
 | Repo knowledge guardrail | `pnpm check:repo-knowledge` |
 | Type check | `pnpm type-check` |
-| Lint | `pnpm lint` |
+| Release lint | `pnpm lint:ci` |
 | Unit tests | `pnpm test` |
+| Deterministic bench | `pnpm bench` |
 | Build extension | `pnpm build` |
-| Live bench (Playwright, extension-loaded) | `pnpm build` then `npx playwright install chromium` (or `npx playwright install --with-deps chromium` like CI). Run `pnpm bench:live:lane:release-proof` or a single scenario: `pnpm bench:live -- --scenario bench-live/site-automation-autostart`. On Linux without a real display, prefix with `xvfb-run -a` (matches `.github/workflows/ci.yml` `live-browser` job). |
+| Live bench (Playwright, extension-loaded) | `pnpm build` then `npx playwright install chromium` (or `npx playwright install --with-deps chromium` like CI). Required release lanes are `pnpm bench:live:lane:release-proof` and `pnpm bench:live:lane:learning-loop`. On Linux without a real display, prefix with `xvfb-run -a` (matches `.github/workflows/ci.yml` `live-browser` job). |
 
 ### Non-obvious Caveats
 
@@ -39,7 +40,7 @@ For the canonical source-priority/default-read vs generated/runtime classificati
 - **Extension-loaded live scenarios** (`bench-live/site-automation-autostart`, onboarding, vocabulary smoke, etc.) launch Chromium with `--load-extension`. They resolve the browser via `script/bench-live/driver.ts`, preferring **Playwright’s Chromium** (`chromium.executablePath()`) when installed. If that binary is missing, the driver falls back to system **Google Chrome**, which often returns **`net::ERR_BLOCKED_BY_CLIENT`** on `chrome-extension://…` URLs used to seed `chrome.storage` — not an extension logic bug. Fix: run `npx playwright install chromium` once per machine/CI image. In **`CI=true`**, the driver also avoids Playwright’s `channel: "chrome"` for the same reason.
 - `pnpm install` may warn about ignored build scripts (esbuild, core-js, etc.). These do not block development — esbuild ships a pre-built WASM fallback.
 - The relay server does **not** auto-load `src/server/.env`. It reads **`process.env` only** (see `src/server/config.ts`). Copy `src/server/.env.example` → `src/server/.env` for documentation, but to actually use keys you must either **export** them in the shell before `pnpm relay:start` or inject them via your host/CI secret store.
-- **Managed translation keys**: When `OPENAI_API_KEY` and/or `OPENROUTER_API_KEY` are provided (e.g. Cursor Cloud user secrets), **restart the relay** after adding them so the Node process inherits the variables. A long-running relay started without keys will keep returning `OPENAI_API_KEY is not configured on the Astra relay` until restarted.
+- **Managed translation keys**: When `GOOGLE_TRANSLATE_API_KEY` / `GOOGLE_CLOUD_TRANSLATE_API_KEY`, `OPENAI_API_KEY`, `GOOGLE_GENERATIVE_AI_API_KEY`, and/or `OPENROUTER_API_KEY` are provided (e.g. Cursor Cloud user secrets), **restart the relay** after adding them so the Node process inherits the variables. A long-running relay started without keys will keep returning provider-key configuration errors until restarted.
 - **Hello world (translate) check** (terminal, relay on `127.0.0.1:8787`):
 
 ```bash
@@ -58,8 +59,8 @@ Expect `{"translations":["…"]}` when keys are loaded.
 
 - The default dev credentials are `demo@astra.local` / `astra-demo-pass` (port 8787).
 - The web app at port 4173 communicates with the relay at `http://127.0.0.1:8787/v1`. In a headless Cloud Agent VM, **CORS blocks browser-initiated requests** from localhost:4173 to 127.0.0.1:8787. This is expected; the web app is primarily designed to work alongside the browser extension. For terminal-based API testing, use `curl` directly against the relay.
-- **Lint has ~3900 pre-existing errors** (mostly `@typescript-eslint` strict rules). This is the current state of the codebase — lint exit code 1 is expected.
-- **3 flaky/pre-existing test failures** are normal: a timing issue in `translation-cache.test.ts`, a Blob type mismatch in `astra-web.test.ts`, and a query ordering issue in `shadow-state.test.ts`. The remaining 116 test files (906 tests) pass.
+- **Release lint uses `pnpm lint:ci`**. It covers the release-critical TypeScript, provider, storage, Cloudflare, live-bench, maintenance, and web entrypoint files and is expected to pass. Full-repo strict lint may still include legacy cleanup outside the release gate.
+- **`pnpm test` is expected to pass**. As of the 2026-05-18 release-gate run, the full suite is 161 files / 1416 tests green.
 - Repo structure is guarded by `pnpm check:repo-knowledge`; tracked files should not be reintroduced under legacy top-level `server/`, `web/`, `platform/`, `bench/`, `bench-live/`, `bench-opt/`, `agent-config/`, `scripts/`, or `plans/`.
 - TypeScript type-check (`pnpm type-check`) passes cleanly.
 - The lockfile may require `pnpm install` (without `--frozen-lockfile`) if `package.json` has been updated but `pnpm-lock.yaml` hasn't been regenerated.

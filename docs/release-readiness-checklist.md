@@ -1,6 +1,6 @@
 # Astra Release Readiness Checklist
 
-_Last updated: 2026-04-14 (Month 6 release-gate and claim audit sync; earlier Month 1–5 evidence notes retained)_
+_Last updated: 2026-05-18 (CI/docs release-gate alignment; earlier Month 1–6 evidence notes retained)_
 
 This checklist defines the **blocking release decision**. A release candidate is ready only when:
 
@@ -19,6 +19,8 @@ This checklist defines the **blocking release decision**. A release candidate is
 
 | Check | How to verify | Artifact | Required |
 |---|---|---|---|
+| Repo knowledge guardrail is green | `pnpm check:repo-knowledge` | `CI / quality` job logs | Yes |
+| Zod entrypoint verification is green | `pnpm check:zod-entrypoints` | `CI / quality` job logs | Yes |
 | Lint is green | `pnpm lint:ci` | `CI / quality` job logs | Yes |
 | Type check is green | `pnpm type-check` | `CI / quality` job logs | Yes |
 | Unit/integration tests are green | `pnpm test` | `CI / quality` job logs | Yes |
@@ -77,7 +79,7 @@ CI enforces these in `.github/workflows/ci.yml` (`live-browser` job).
 
 ## Month 6 — Privacy / routing / glossary policy (2026-04-14)
 
-- **Required gates unchanged**: `source-core` + `extension-core` only. No Month 6-only live lane is required in Gate 2 today.
+- **Historical note:** Month 6 added no Month 6-only live lane. Current Gate 2 authority remains the table above: `source-core`, `extension-core`, and `learning-loop` are required.
 - **Current honest Month 6 / next-window classification**:
   - privacy mode: **background-owned request-context sanitization at the translation transport boundary; still partial as a broader privacy claim**
   - provider routing: **implemented and test-covered; one popup-backed local last-event support/operator path now exists for the most recent uncached request on the current device, but broader observability is still partial**
@@ -98,7 +100,7 @@ CI enforces these in `.github/workflows/ci.yml` (`live-browser` job).
 
 ## Month 3 — Reader / owned-reading policy (2026-04-14)
 
-- **Required gates unchanged**: `source-core` + `extension-core` only. No dedicated Month 3 reader / revisit lane is required in Gate 2 today.
+- **Historical note:** Month 3 added no dedicated reader / revisit lane. Current Gate 2 authority remains the table above: `source-core`, `extension-core`, and `learning-loop` are required.
 - **Fresh optional proof exists** for the Month 3 reader / revisit baseline:
   - PDF reader: `CI=true pnpm bench:live -- --scenario bench-live/pdf-reader-basic` → `live-20260414T113547-e7a9ks`
   - EPUB reader: `CI=true pnpm bench:live -- --scenario bench-live/epub-reader-basic` → `live-20260414T113605-p0m6bj`
@@ -114,7 +116,7 @@ CI enforces these in `.github/workflows/ci.yml` (`live-browser` job).
 
 ## Month 4 — Video / subtitle policy (2026-04-14)
 
-- **Required gates unchanged**: `source-core` + `extension-core` only. No video/subtitle adapter lane is required in Gate 2 today.
+- **Historical note:** Month 4 added no video/subtitle adapter lane. Current Gate 2 authority remains the table above: `source-core`, `extension-core`, and `learning-loop` are required.
 - **Current honest Month 4 classification**:
   - YouTube: **supported** (best-effort within supported tier)
   - Bilibili: **best-effort / secondary adapter**
@@ -140,7 +142,7 @@ CI enforces these in `.github/workflows/ci.yml` (`live-browser` job).
 
 ## Month 5 — Mobile web / iOS bridge policy (2026-04-14)
 
-- **Required gates unchanged**: `source-core` + `extension-core` only. No mobile-web or iOS-shell lane is required in Gate 2 today.
+- **Historical note:** Month 5 added no mobile-web or iOS-shell lane. Current Gate 2 authority remains the table above: `source-core`, `extension-core`, and `learning-loop` are required.
 - **Current honest Month 5 classification**:
   - mobile web: **portable control-plane surface only**
   - iOS Safari shell / bridge: **experimental**
@@ -170,31 +172,33 @@ CI enforces these in `.github/workflows/ci.yml` (`live-browser` job).
 
 ## Current Month 1 reality notes (not a pass override)
 
-- Required release-proof lanes now cover: page-translation (source-backed), article-extraction (`bench-live/article-extraction-proof`), dynamic-content (source-contract), site-automation (extension-loaded), onboarding (extension-loaded), vocabulary (extension-loaded).
+- Required release-proof lanes now cover: page-translation (source-backed), article-extraction (`bench-live/article-extraction-proof`), dynamic-content (source-contract), site-automation (extension-loaded), onboarding (extension-loaded), vocabulary (extension-loaded), and the learning-loop chain (`popup-proof` + vocabulary/review + article revisit).
 - Month 1 policy decision: hover and selection-explain remain **optional** (`pnpm bench:live:lane:hover-selection`) rather than required release gates. Rationale: current evidence is credible, but the lane is still modeled as a combined UX proof lane, does not yet have separate required-lane semantics in CI, and Month 1 release discipline should not over-promote non-core UX proof before that structure exists.
-- Popup deep-read now has credible optional live proof via `bench-live/popup-deep-read-proof`, `pnpm bench:live:lane:popup-proof`, and `pnpm bench:live:lane:learning-loop`, but it remains outside required release-proof lanes for Month 1 and must stay explicit in matrix/close-out notes. **Replay note:** `docs/investigations/m1-bf-01-popup-learning-loop-replay-2026-04-14.md` now records fresh **green** reruns for standalone `popup-proof` (`live-20260414T095344-ol5adc`) and the optional learning-loop chain (`live-20260414T095422-yqripy` / `live-20260414T095427-992iaf` / `live-20260414T095429-kahn2o`), plus the earlier pre-fix baseline for archaeology.
+- Popup deep-read has credible optional standalone proof via `bench-live/popup-deep-read-proof` / `pnpm bench:live:lane:popup-proof`; it is also exercised as part of the required current `learning-loop` lane. **Replay note:** `docs/investigations/m1-bf-01-popup-learning-loop-replay-2026-04-14.md` preserves fresh **green** 2026-04-14 reruns for standalone `popup-proof` (`live-20260414T095344-ol5adc`) and the then-optional learning-loop chain (`live-20260414T095422-yqripy` / `live-20260414T095427-992iaf` / `live-20260414T095429-kahn2o`), plus the earlier pre-fix baseline for archaeology.
 - Month 1 gate close-out is recorded in `docs/investigations/month-1-closeout-2026-04-13.md`; the close-out verdict does not by itself override required lane failures.
 
 ## Pre-release execution order
 
-1. `pnpm lint:ci`
-2. `pnpm type-check`
-3. `pnpm test`
-4. `pnpm bench`
-5. `pnpm bench:live:lane:release-proof`
-6. `pnpm bench:live:lane:learning-loop`
-7. Confirm CI `quality` + `live-browser` jobs are green
-8. Review Gate 4 core docs:
+1. `pnpm check:repo-knowledge`
+2. `pnpm check:zod-entrypoints`
+3. `pnpm lint:ci`
+4. `pnpm type-check`
+5. `pnpm test`
+6. `pnpm bench`
+7. `pnpm bench:live:lane:release-proof`
+8. `pnpm bench:live:lane:learning-loop`
+9. Confirm CI `quality` + `live-browser` jobs are green
+10. Review Gate 4 core docs:
    - `docs/investigations/workstream-a-live-coverage-matrix.md`
    - `docs/investigations/workstream-f-live-lane-conventions.md`
    - `docs/investigations/workstream-f-live-flaky-inventory.md`
    - `docs/investigations/support-matrix-2026-q2.md`
    - `docs/capability-matrix-v2.md`
    - `README.md`
-9. If the RC touches a conditional surface, review the matching Month 3/4/5/6 evidence bundle before approving the RC
-10. (Optional confidence boost) Run `pnpm bench:live:lane:hover-selection`
-11. (Optional confidence boost) Run `pnpm bench:live:lane:popup-proof`
-12. Only then tag the release candidate
+11. If the RC touches a conditional surface, review the matching Month 3/4/5/6 evidence bundle before approving the RC
+12. (Optional confidence boost) Run `pnpm bench:live:lane:hover-selection`
+13. (Optional confidence boost) Run `pnpm bench:live:lane:popup-proof`
+14. Only then tag the release candidate
 
 ## Escalation rule
 
