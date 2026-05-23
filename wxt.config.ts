@@ -1,5 +1,16 @@
 import { defineConfig } from "wxt"
 
+const generatedSourcePackageExcludes = [
+  "bench-results/**",
+  "bench-opt-results/**",
+  "bench-live-results/**",
+  "bench-live-results-test/**",
+  "data/bench-results/**",
+  "data/bench-opt-results/**",
+  "data/bench-live-results/**",
+  "data/bench-live-results-test/**",
+]
+
 /**
  * Build profiles:
  * - chromium-full: Chrome/Edge full-feature build (default)
@@ -18,6 +29,12 @@ export default defineConfig({
   imports: false,
   modules: ["@wxt-dev/module-react"],
   manifestVersion: 3,
+  zip: {
+    // Keep generated benchmark/browser profiles out of WXT source packages so
+    // local sockets under data/bench-live-results/_extension-profile-* cannot
+    // break store packaging.
+    excludeSources: generatedSourcePackageExcludes,
+  },
   manifest: ({ browser }) => {
     // Base permissions available in all builds
     const permissions: string[] = ["storage", "tabs", "activeTab"]

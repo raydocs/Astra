@@ -27,8 +27,8 @@ with production smoke, support/incident owner, and rollback evidence recorded.
 | Evidence date | 2026-05-22 |
 | Repo path | `/Users/ruirui/Downloads/GitHub/Astra` |
 | Branch | `main` tracking `origin/main` |
-| Last commit observed | `9b9b1a5dc58dd2c873500a14db3c76dc2b08b025` (`chore: align release gates`) |
-| Working tree state observed | Dirty: commercial launch readiness docs/copy/config-example changes are present and not yet committed in this record. |
+| Last commit observed | `80c55ae` (`docs: prepare commercial launch packet`) before this packaging-hardening follow-up. |
+| Working tree state observed | Dirty: packaging hardening follow-up changes are present in `wxt.config.ts`, this evidence record, and `docs/runbooks/browser-store-submission.md`. |
 | Work Item 5 files added | `docs/runbooks/commercial-public-launch.md`, `docs/reviews/commercial-launch-completion-2026-05-22.md` |
 
 Observed working tree changes are repo-side launch-readiness work. They do not certify external deployment, store submission, legal approval, or public availability.
@@ -69,15 +69,30 @@ These commands were run locally after Work Items 1–5, from `/Users/ruirui/Down
 | `CI=true pnpm bench:live:lane:release-proof` | 0 | Required live lane passed. Run IDs: `live-20260523T053751-zwpxan`, `live-20260523T053758-wtwo3x`, `live-20260523T053800-47t438`, `live-20260523T053802-e76gbv`, `live-20260523T053853-dkbg4w`, `live-20260523T053855-skvjjg`. |
 | `CI=true pnpm bench:live:lane:learning-loop` | 0 | Required live lane passed. Run IDs: `live-20260523T053858-523w2m`, `live-20260523T053905-8ekbxb`, `live-20260523T053908-cihodl`. |
 
+### Follow-up store packaging hardening — 2026-05-23
+
+A follow-up hardening pass added WXT source-package excludes for ignored/generated benchmark and live-browser artifact roots in `wxt.config.ts`, including both legacy top-level result paths and canonical `data/bench-live-results/`. This specifically prevents local live-bench browser profile directories such as `_extension-profile-*` and their Unix sockets from being read during Firefox source packaging.
+
+Targeted verification from `/Users/ruirui/Downloads/GitHub/Astra`:
+
+| Command / check | Exit status | Evidence / notes |
+|---|---:|---|
+| `pnpm type-check` | 0 | WXT config and TypeScript checks passed. |
+| Simulated sockets under `data/bench-live-results/_extension-profile-packaging-hardening/SingletonSocket` and `bench-live-results/_extension-profile-packaging-hardening/SingletonSocket`, then ran `pnpm zip` | 0 | Chrome zip succeeded with generated live-bench profile sockets present. |
+| Same socket simulation, then ran `pnpm zip:firefox` | 0 | Firefox extension zip and WXT source zip succeeded with generated live-bench profile sockets present. |
+| Same socket simulation, then ran `pnpm zip:safari` | 0 | Safari zip succeeded with generated live-bench profile sockets present. |
+| Python zip inspection of `.output/astra-0.1.0-sources.zip` for bench result paths | 0 | Found `0` generated bench/live result entries in the source zip. |
+| `pnpm check:repo-knowledge` | 0 | Repo-knowledge guardrail passed; Node emitted only the existing `module.register()` deprecation warning. |
+
 ## Artifact record
 
 Launch artifacts were built locally for verification, but no store upload occurred in this pass.
 
 | Artifact | Path | SHA-256 | Status |
 |---|---|---:|---|
-| Chrome MV3 zip | `.output/astra-0.1.0-chrome.zip` | `b86334a198f3751fd9bc058627a98792ae9adb8f52f05e9945b51e183f1704f1` | Built locally; not uploaded. |
-| Firefox MV3 zip | `.output/astra-0.1.0-firefox.zip` | `89d6bca4718da966c90db965dcbf539f0a05b2cc50344cf71046279d61dd58dc` | Built locally after generated live-bench profile cleanup; not uploaded. |
-| Safari MV3 zip | `.output/astra-0.1.0-safari.zip` | `9f38a2f78ed5a6f75f5f7f73ff083fd63f526fde815ebfbbcae5185b890e2999` | Built locally; App Store artifact/upload not performed. |
+| Chrome MV3 zip | `.output/astra-0.1.0-chrome.zip` | `e8984ef6837ff8ad2b36202f215f828666ef0a3636b2f12c879e638e5925db35` | Built locally after packaging hardening; not uploaded. |
+| Firefox MV3 zip | `.output/astra-0.1.0-firefox.zip` | `295c52200f0f141a380fcfc79c789ef9b55113f140b4d7ffb887fed1a3993b6e` | Built locally after packaging hardening with generated live-bench sockets present; not uploaded. |
+| Safari MV3 zip | `.output/astra-0.1.0-safari.zip` | `2e05680bcf0f5a44d0b67e5eeedbb8f8945d6f0c65829b5e9b64ff50ce7e162b` | Built locally after packaging hardening; App Store artifact/upload not performed. |
 | Web build/deploy output | Cloudflare Pages deployment URL | `TBD` | `pnpm build:web` passed; not deployed. |
 | Relay-lite Worker deployment | Cloudflare Worker deployment URL | `TBD` | Not deployed. |
 
@@ -164,7 +179,7 @@ No external store submission or approval was evidenced during Work Item 5.
 - No store approval or public listing/live channel is recorded.
 - No legal/privacy approval is recorded.
 - No final support/incident owner is recorded.
-- No launch artifact paths or hashes are recorded.
+- Launch artifact paths and local hashes are recorded for the packaging-hardening pass, but no artifacts have been uploaded to a public store.
 - Firefox remains a beta follow-up, Desktop Safari remains beta, and iOS Safari shell remains experimental.
 - Paid subscriptions, Pro upgrades, billing, durable paid entitlements, and paid quota reconciliation remain blocked by `docs/runbooks/billing-free-policy.md`.
 

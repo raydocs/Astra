@@ -166,6 +166,8 @@ Run from repo root with Node 22 and pnpm 10.
 
 Record the exact zip filename, SHA-256, git SHA, and command exit status in the later launch completion evidence before upload.
 
+Packaging hardening: `wxt.config.ts` excludes generated benchmark/live-browser artifact roots (`bench-results/`, `bench-opt-results/`, `bench-live-results/`, `bench-live-results-test/`, and the corresponding `data/...` paths) from WXT source packages. This keeps local live-bench profile directories such as `data/bench-live-results/_extension-profile-*` and their browser sockets out of Firefox source packaging, so store zips do not require manual cleanup of ignored runtime outputs before `pnpm zip`, `pnpm zip:firefox`, or `pnpm zip:safari`.
+
 ## Firefox AMO beta follow-up
 
 ### Repo workflow
