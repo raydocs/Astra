@@ -414,7 +414,7 @@ const NAV_ITEMS: NavigationItem[] = [
   { route: "/files/subtitles", label: "Subtitle & docs", detail: "translate + export" },
   { route: "/video-notes", label: "Video notes", detail: "job + artifact viewer" },
   { route: "/assets", label: "Assets", detail: "library + details" },
-  { route: "/account", label: "Account", detail: "session / usage / billing" },
+  { route: "/account", label: "Account", detail: "session / usage / beta limits" },
 ]
 
 const PUBLIC_ONLY_ROUTES = ["/sign-in"] as const satisfies readonly AppRoute[]
@@ -424,7 +424,7 @@ const PORTABLE_SURFACES = [
   "URL article import with readable extraction and local resume",
   "resumable PDF / EPUB / subtitle workspaces",
   "recent imports and explicit file-to-text handoff",
-  "account, quota, billing, sync health, and read-only cloud continuity surfaces",
+  "account, quota, beta limits, sync health, and read-only cloud continuity surfaces",
 ]
 
 const EXTENSION_ONLY_SURFACES = [
@@ -2343,7 +2343,7 @@ function OverviewPage(props: {
     },
     {
       title: "Account & quota",
-      detail: "Inspect session state, entitlements, usage, billing, devices, and cloud continuity surfaces.",
+      detail: "Inspect session state, entitlements, usage, beta limits, devices, and cloud continuity surfaces.",
       route: "/account" as const,
     },
   ]
@@ -4854,16 +4854,16 @@ function AccountPage(props: {
             </div>
 
             <div className="card">
-              <div className="card-title">Billing handoff</div>
+              <div className="card-title">Billing unavailable during beta</div>
               <div className="card-copy">
-                Billing stays server-owned. The web shell opens checkout and portal flows without pulling any extension APIs into the path.
+                Astra is in a free public beta. Paid upgrades, checkout, and billing portal access are not available yet.
               </div>
               <div className="row gap wrap">
-                <button type="button" className="button primary" onClick={() => void props.onBilling("checkout", "pro")}>
-                  Upgrade to Pro
+                <button type="button" className="button primary" disabled>
+                  Paid upgrades unavailable
                 </button>
-                <button type="button" className="button secondary" onClick={() => void props.onBilling("portal")}>
-                  Open billing portal
+                <button type="button" className="button secondary" disabled>
+                  Billing portal unavailable
                 </button>
               </div>
               <div className="helper-copy">Session expires: {formatRelativeDate(props.session.expiresAt)}</div>

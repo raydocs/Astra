@@ -5,49 +5,52 @@
 ### Short description (132 characters max)
 
 ```
-AI-powered webpage translator with bilingual reading, vocabulary saving, flashcard review, and PDF/subtitle support. Free to use.
+AI web translator for bilingual reading, selection/hover help, vocabulary review, and PDF/YouTube study. Free public beta.
 ```
 
-(128 characters)
+(117 characters)
 
 ### Detailed description
 
 ```
-Astra is an AI-powered language learning assistant that turns every webpage into a learning opportunity. Translate entire pages into bilingual side-by-side views, hover over paragraphs for instant translations, and build vocabulary as you browse.
+Astra is an AI-powered language learning assistant for reading the web in another language. It helps translate pages, explain selected text, save vocabulary, and review learning material while you browse.
+
+FREE PUBLIC BETA
+Astra is currently offered as a free public beta. Chrome/Chromium is the primary validated desktop path. Firefox and desktop Safari are narrower beta paths, and the iOS Safari shell is experimental.
 
 FULL-PAGE BILINGUAL TRANSLATION
-Translate any webpage with one click. Astra renders the original text alongside the translation so you can read both languages in parallel. Choose bilingual, translation-only, underline, or highlight display modes to suit your reading style.
+Translate supported web pages with one click. Astra can render original text alongside translations for parallel reading, or show translation-only, underline, and highlight display modes depending on site behavior.
 
 SELECTION TOOLBAR
-Select any text to reveal a smart toolbar with Translate, Explain, Grammar, Save, Speak, and Share actions. Get AI-generated explanations and grammar breakdowns right where you are reading -- no tab-switching required.
+Select text to reveal a toolbar with Translate, Explain, Grammar, Save, Speak, and Share actions. AI-generated explanations and grammar breakdowns appear near the text you are reading.
 
 HOVER TRANSLATION
-Hold Alt and hover over any paragraph for an instant translation tooltip. Configurable to always-on or disabled per site.
+Hold Alt and hover over readable paragraphs for a translation tooltip. Hover behavior can be configured or disabled per site.
 
 VIDEO SUBTITLE TRANSLATION
-Watch YouTube, Bilibili, and Netflix with bilingual subtitles. Astra translates subtitles in real time so you can enjoy foreign-language videos while learning.
+Astra has a best-effort YouTube subtitle path and a narrower beta/best-effort Bilibili adapter. Other video services, including Netflix, are not claimed as supported for this launch.
 
 PDF & EPUB READER
-Open PDF and EPUB documents in Astra's built-in reader with inline bilingual translation. Great for academic papers, technical docs, and foreign-language books.
+Open PDF and EPUB documents in Astra reader surfaces for bilingual reading workflows. Reader and owned-reading features are under active beta development.
 
 STUDY HUB & VOCABULARY
-The popup Study Hub guides you through a structured learning loop for every page: Read, Guided Read, Explain, Save Words, Review. Save new words to your vocabulary notebook and review them later with spaced repetition flashcards.
+The popup Study Hub guides a learning loop: Read, Guided Read, Explain, Save Words, Review. Save useful words to a vocabulary notebook and review them later with spaced repetition flashcards.
 
 USAGE TRANSPARENCY
-Monitor your translation usage in real time -- see request counts, estimated tokens, cost estimates, and routing information (direct API vs. Astra relay) right in the popup.
+Monitor translation usage locally in the popup, including request counts, token estimates, and routing information when available.
 
-MULTIPLE AI PROVIDERS
-Works with OpenAI and Google Gemini. Use the free Astra managed service or bring your own API key for direct access. Automatic fallback routing ensures translations always go through.
+AI PROVIDER OPTIONS
+Use your own provider keys for direct translation where configured, or use Astra's managed beta relay where available. Direct-to-relay fallback can occur only when both paths are configured and a fallback-eligible provider failure happens.
 
-PRIVACY FIRST
-No analytics, no tracking, no telemetry. All vocabulary, settings, and reading history stay on your device. Privacy Mode strips URL parameters and metadata before any text leaves your browser. Open source for full transparency.
+PRIVACY BOUNDARY
+Astra does not include product analytics or advertising tracking. Translation text can leave your device through direct provider or Astra relay paths. Privacy Mode sanitizes request context, such as URL parameters and richer page metadata, before translation requests; it is not a local-only AI guarantee. Local vocabulary, settings, reading history, and translation cache stay in browser storage unless you enable an account/sync surface.
 
 CUSTOMIZABLE PER SITE
-Configure translation mode, hover trigger, target language, content scope, CSS selectors, and custom styles on a per-site basis. Export and import site rules to share configurations.
+Configure translation mode, hover trigger, target language, content scope, CSS selectors, and presentation style on a per-site basis.
 
 Supports 8 target languages: Chinese (Simplified/Traditional), English, Japanese, Korean, French, German, and Spanish.
 
-Free to use. No account required.
+Free public beta. Managed translation uses an anonymous Astra session or optional account; bring-your-own-key/direct mode is available where configured.
 ```
 
 ### Category suggestions
@@ -66,49 +69,52 @@ Free to use. No account required.
 ### Short description (132 characters max)
 
 ```
-AI 驱动的网页翻译与语言学习助手：双语对照阅读、生词本、间隔重复复习、PDF/字幕翻译，免费使用。
+AI 网页翻译与语言学习助手：双语阅读、划词/悬停解释、生词复习、PDF 与 YouTube 学习，免费公开测试版。
 ```
 
-(46 characters)
+(55 characters)
 
 ### Detailed description
 
 ```
-Astra 是一款 AI 驱动的语言学习助手，把每一个网页都变成学习机会。一键翻译整页为双语对照视图，悬停即得段落翻译，边浏览边积累词汇。
+Astra 是一款 AI 驱动的语言学习助手，帮助你用另一种语言阅读网页、解释选中文本、保存词汇，并在日常浏览中复习学习材料。
+
+免费公开测试版
+Astra 目前是免费公开测试版。Chrome/Chromium 是主要验证过的桌面路径；Firefox 和桌面 Safari 属于范围更窄的 Beta 路径；iOS Safari 壳仍为实验性路径。
 
 整页双语翻译
-一键翻译任意网页。Astra 将原文和译文并排显示，方便你同时阅读两种语言。支持双语对照、仅译文、下划线、高亮等显示模式，适应不同阅读习惯。
+一键翻译受支持的网页。Astra 可将原文和译文并排显示，也可根据站点情况使用仅译文、下划线、高亮等显示模式。
 
 划词工具栏
-选中任意文本，弹出智能工具栏，提供翻译、解释、语法分析、收藏、朗读、分享等操作。AI 生成的解释和语法拆解就在你阅读的位置展示，无需切换标签页。
+选中文本后弹出工具栏，提供翻译、解释、语法分析、收藏、朗读、分享等操作。AI 解释和语法拆解会在阅读位置附近展示。
 
 悬停翻译
-按住 Alt 悬停在任意段落上，即可获得即时翻译。可按站点配置为始终开启或关闭。
+按住 Alt 悬停在可读段落上即可获得翻译提示。悬停行为可按站点配置或关闭。
 
 视频字幕翻译
-支持 YouTube、Bilibili、Netflix 双语字幕。Astra 实时翻译字幕，让你在看外语视频的同时学习语言。
+Astra 目前有 YouTube 字幕的 best-effort 支持路径，以及范围更窄的 Bilibili Beta/best-effort 适配。包括 Netflix 在内的其他视频服务，本次发布不宣称支持。
 
 PDF 与 EPUB 阅读器
-在 Astra 内置阅读器中打开 PDF 和 EPUB 文档，享受行内双语翻译。非常适合学术论文、技术文档和外语书籍。
+可在 Astra 阅读器中打开 PDF 和 EPUB 文档，进行双语阅读。阅读器和 owned-reading 工作流仍在 Beta 开发中。
 
 学习中心与词汇表
-弹窗中的学习中心为每个页面提供结构化学习流程：阅读 → 引导阅读 → 讲解 → 保存生词 → 复习。将生词保存到词汇本，稍后通过间隔重复闪卡复习。
+弹窗中的学习中心提供结构化学习流程：阅读 → 引导阅读 → 讲解 → 保存生词 → 复习。将有用词汇保存到词汇本，稍后用间隔重复闪卡复习。
 
 用量透明
-实时监控翻译用量——在弹窗中查看请求数、估算 tokens、费用预估和路由信息（直连 API 或 Astra 中继）。
+在弹窗中查看本地翻译用量，包括请求数、token 估算以及可用时的路由信息。
 
-多 AI 提供方
-支持 OpenAI 和 Google Gemini。可使用免费的 Astra 托管服务，也可自带 API 密钥直连。自动回退路由确保翻译始终可用。
+AI 提供方选项
+你可以在配置后使用自己的提供方密钥进行直连翻译，也可以在可用时使用 Astra 托管 Beta 中继。仅当直连和中继都已配置、且出现符合回退条件的提供方失败时，才可能发生直连到中继的回退。
 
-隐私优先
-无分析、无追踪、无遥测。所有词汇、设置和阅读记录均存储在本地。隐私模式会在文本发送前剥离 URL 参数和页面元数据。完全开源，透明可审查。
+隐私边界
+Astra 不包含产品分析或广告追踪代码。翻译文本可能通过直连提供方或 Astra 中继离开设备。隐私模式会在翻译请求前清理请求上下文，例如 URL 参数和更丰富的页面元数据；它不是“AI 完全本地处理”的保证。词汇、设置、阅读历史和翻译缓存默认保存在浏览器本地，除非你启用账号/同步相关功能。
 
 按站点自定义
-可按站点配置翻译模式、悬停触发、目标语言、内容范围、CSS 选择器和自定义样式。支持导出和导入站点规则。
+可按站点配置翻译模式、悬停触发、目标语言、内容范围、CSS 选择器和展示样式。
 
 支持 8 种目标语言：简体中文、繁体中文、英语、日语、韩语、法语、德语、西班牙语。
 
-免费使用，无需注册账号。
+免费公开测试版。托管翻译使用匿名 Astra 会话或可选账号；自带密钥/直连模式可在配置后使用。
 ```
 
 ### Category suggestions

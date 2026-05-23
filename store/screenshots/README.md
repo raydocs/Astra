@@ -1,6 +1,6 @@
 # Store Listing Screenshots
 
-Capture guidelines for Chrome Web Store and Firefox AMO screenshots.
+Capture guidelines for Chrome Web Store and Firefox AMO screenshots for the free public beta.
 
 ## Resolution requirements
 
@@ -9,59 +9,62 @@ Capture guidelines for Chrome Web Store and Firefox AMO screenshots.
 | Chrome Web Store | 1280x800 or 640x400 px | PNG or JPEG | 1--5 (at least 1 required) |
 | Firefox AMO | Any reasonable size; 1280x800 recommended for consistency | PNG or JPEG | up to 5 |
 
-Use 1280x800 for all screenshots so the same set works for both stores.
+Use 1280x800 for all screenshots so the same set works for both stores. Because Chrome's practical listing limit is 1--5, the launch packet should contain **no more than five primary screenshots**.
 
-## Required screenshots
+## Launch-safe primary screenshot set (1--5)
 
 ### 1. `01-page-translation.png` -- Full-page bilingual translation
 
-Show a real English news article or Wikipedia page with Astra's bilingual (side-by-side) translation active. The original text and the translated text should both be clearly visible in the default theme. Include the floating translate button in the corner.
+Show a representative public article or documentation page with Astra's bilingual translation active. The original text and translated text should both be clearly visible in the default light theme. Include the floating translate button if it is visible without covering important content.
 
-**Key elements visible:** bilingual paragraphs, Astra float ball, page content clearly readable.
+**Key elements visible:** bilingual paragraphs, Astra float ball or page action, readable non-sensitive page content.
 
 ### 2. `02-selection-toolbar.png` -- Selection toolbar
 
-Select a sentence on a webpage so the Astra selection toolbar appears. The toolbar should show the action buttons: Translate, Explain, Grammar, Save, Speak, and Share. Ideally capture a state where a translation or explanation result is visible below the toolbar.
+Select a sentence on a webpage so the Astra selection toolbar appears. The toolbar may show Translate, Explain, Grammar, Save, Speak, and Share actions. Prefer a state where a translation or explanation result is visible below the toolbar.
 
 **Key elements visible:** highlighted selection, toolbar button row, inline result panel.
 
-### 3. `03-popup-control-center.png` -- Popup with Study Hub and Usage
+### 3. `03-popup-control-center.png` -- Popup with Study Hub and routing transparency
 
-Open the extension popup while on a translated page. The popup should show:
-- The "Translate This Page" button area
-- The Study Hub section with study-loop progress steps (Read, Guided Read, Explain, Save Words, Review)
-- The Usage & Routing card showing request counts and token estimates
+Open the extension popup while on a translated page. The popup should show launch-safe beta surfaces:
+- the page translation control area;
+- the Study Hub / learning-loop section;
+- local usage or routing information when available.
 
-**Key elements visible:** popup header, study progress bar, usage metrics, recent translation history.
+**Key elements visible:** popup header, study progress or learning steps, local usage/routing card. Do not show real account emails, API keys, private URLs, or paid/Pro upsell states.
 
-### 4. `04-options-settings.png` -- Options / Settings page (Diagnostics)
+### 4. `04-options-settings.png` -- Options / Settings page (privacy and provider boundary)
 
-Open the Options page and scroll to the Diagnostics section. Show the Provider Status panel, Transport Routes, Provider Capabilities table (model names, costs, context window), and Workflow Configuration. This demonstrates the extension's transparency and configurability.
+Open the Options page and capture settings that explain provider configuration, Privacy Mode, or diagnostics without exposing secrets. This screenshot should support the truthful claim that Astra exposes provider/routing controls and request-context privacy settings.
 
-**Key elements visible:** diagnostics section, provider capabilities table, connection mode indicator.
+**Key elements visible:** provider status without keys, Privacy Mode or diagnostics controls, connection/route indication if available.
 
 ### 5. `05-pdf-reader.png` -- PDF reader with translation
 
-Open a PDF document in the Astra PDF Reader (right-click a PDF link and choose "Open PDF in Astra Reader"). Show bilingual translation active on a research paper or technical document.
+Open a non-sensitive public PDF document in the Astra PDF Reader and show bilingual translation active. Treat this as a beta reader surface, not proof of universal document/layout support.
 
-**Key elements visible:** PDF content, bilingual translation overlays, Astra reader chrome.
+**Key elements visible:** PDF content, bilingual translation, Astra reader chrome.
 
-### 6. `06-vocabulary-flashcard.png` -- Vocabulary review flashcard
+## Optional backlog screenshots (do not include in Chrome launch packet unless replacing one above)
 
-Open the Vocabulary section and show the flashcard review interface with spaced repetition. If possible, capture a card mid-review showing the word, context sentence, and the answer/translation side.
+- `06-vocabulary-flashcard.png` -- Vocabulary review flashcard / spaced repetition. Useful if the final store packet wants to emphasize the learning loop over diagnostics or PDF.
+- YouTube subtitle screenshot -- allowed only if it clearly presents YouTube as best-effort and does not imply broad video-platform support.
+- Bilibili subtitle screenshot -- beta/best-effort only; avoid if space is limited.
 
-**Key elements visible:** flashcard UI, word and context, review action buttons, due-count badge.
+Do **not** include screenshots that imply Netflix, Prime Video, Disney+, Udemy, Coursera, image/comic translation, paid subscriptions, production billing, or full cross-device continuity for this launch.
 
 ## Capture checklist
 
-- [ ] Use a clean browser profile with no other extensions visible in the toolbar.
+- [ ] Use a clean browser profile with no unrelated extensions visible in the toolbar.
 - [ ] Set the browser window to exactly **1280x800** before capturing (use a window-resizer extension or DevTools device toolbar).
-- [ ] Use real, representative content -- a Wikipedia article, BBC News, or arXiv paper works well.
+- [ ] Use public, representative content -- Wikipedia, public docs, public-domain text, or a non-sensitive public PDF.
 - [ ] Make sure Astra UI elements (toolbar, popup, overlays) are fully rendered and not clipped.
-- [ ] Avoid any personal or sensitive information (email addresses, API keys, browsing history with private URLs).
-- [ ] Use the default Astra theme (indigo accent, light background) for visual consistency.
-- [ ] For the Chinese store listing, capture the same screens with Astra's UI set to Chinese (zh-CN locale) if separate localized screenshots are needed.
+- [ ] Avoid personal or sensitive information: email addresses, API keys, tokens, browsing history, private URLs, account IDs, or unreleased domains.
+- [ ] Use the default Astra theme (light theme with the current accent token) for visual consistency.
+- [ ] Avoid showing paid, Pro, subscription, billing, or upgrade UI unless it is explicitly disabled/unavailable and approved for store review.
+- [ ] For localized screenshots, capture the same screens with Astra's UI set to Chinese (zh-CN locale) if the store console supports separate localized assets.
 
 ## File naming
 
-Place all final screenshots in this directory with the filenames listed above. For localized variants, use the pattern `01-page-translation-zh.png`.
+Place final screenshots in this directory with the filenames listed above. For localized variants, use the pattern `01-page-translation-zh.png`.

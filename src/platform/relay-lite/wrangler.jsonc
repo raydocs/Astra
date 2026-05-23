@@ -3,8 +3,12 @@
   "main": "src/index.ts",
   "compatibility_date": "2026-04-09",
   "workers_dev": true,
+
+  // Non-secret production defaults for the free public beta Worker.
+  // Before launch, replace the CORS placeholder with the verified web origin(s), comma-separated, no trailing slash.
+  // Do not use "*" in production. Secrets stay out of this file: set OPENROUTER_API_KEY and ASTRA_SESSION_SECRET with `wrangler secret put`.
   "vars": {
-    "ASTRA_CORS_ALLOWED_ORIGINS": "https://astra-web.pages.dev",
+    "ASTRA_CORS_ALLOWED_ORIGINS": "https://web.example.invalid",
     "ASTRA_OPENROUTER_MODEL": "openai/gpt-4o-mini",
     "ASTRA_FREE_DAILY_REQUESTS": "200",
     "ASTRA_FREE_DAILY_CHARACTERS": "200000",

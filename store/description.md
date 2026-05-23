@@ -1,15 +1,15 @@
-Astra -- AI-Powered Language Learning
+Astra -- AI-Powered Language Learning (Free Public Beta)
 
-Translate any webpage into your target language. Learn vocabulary as you browse. Review with flashcards.
+Translate web pages into your target language, learn vocabulary as you browse, and review with flashcards. Astra is currently a free public beta, with Chrome/Chromium as the primary supported desktop path.
 
 Features:
-- Full-page bilingual translation (side-by-side)
-- Hover translation (Alt + hover over any paragraph)
-- Selection toolbar (translate, explain, save words)
-- YouTube/Bilibili/Netflix subtitle translation
-- PDF and ePub reader with translation
+- Full-page bilingual translation (side-by-side or translation-only)
+- Hover translation (Alt + hover over readable paragraphs)
+- Selection toolbar (translate, explain, grammar, save words)
+- Best-effort YouTube subtitle translation; Bilibili is beta/best-effort
+- PDF and EPUB reader surfaces with translation
 - Vocabulary notebook with spaced repetition flashcards
-- Multiple AI providers (managed or bring your own key)
-- Privacy mode -- control what context is sent
+- Direct provider mode with your own keys, or Astra managed beta relay where available
+- Privacy mode sanitizes request context before translation requests; translation text still leaves the device when using AI/provider translation
 
-Free to use. No account required.
+Free public beta. Managed translation uses an anonymous Astra session or optional account; bring-your-own-key/direct mode is available where configured.

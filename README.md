@@ -91,8 +91,8 @@ Current high-confidence surfaces:
 - **Input translation** — assist expression in everyday input fields.
 - **Article mode** — prioritize main content and reduce noisy page regions.
 - **Site rules** — enable/disable, auto-translate, target language, hover behavior, scope, and presentation style per site.
-- **Subtitle translation** — works with page-accessible subtitle or caption tracks where the browser can read them.
-- **Provider routing** — Google Translate, OpenAI, and Gemini direct provider paths, plus Astra relay support and direct → relay fallback.
+- **Subtitle translation** — best-effort YouTube subtitle path, with Bilibili as a narrower beta/best-effort adapter; other video adapters are not public launch claims.
+- **Provider routing** — direct provider paths where configured, plus Astra relay / relay-lite support and direct → relay fallback when both paths are configured and the failure is fallback-eligible.
 
 Evolving surfaces:
 
@@ -120,7 +120,7 @@ Canonical support boundaries live in [`docs/investigations/support-matrix-2026-q
 Astra can run through two outbound paths:
 
 - **Direct provider** — your configured provider credentials call the provider directly. Google Translate uses Cloud Translation Basic v2 (`nmt`).
-- **Astra relay** — requests go through an Astra-managed or self-hosted relay. Current defaults put accounts on the free plan with Google Translate, OpenAI, and Gemini entitlements.
+- **Astra relay / relay-lite** — requests go through an Astra-managed, relay-lite, or self-hosted relay, then to the relay's configured upstream provider. Free public beta managed translation uses an anonymous Astra session or optional account session for authentication and quotas; this is not a paid-launch or durable entitlement claim.
 
 Important boundaries:
 
@@ -207,7 +207,7 @@ pnpm check:repo-knowledge
 - **Now: daily-use translation** — stable page translation, low-interruption interactions, article mode, site rules, provider routing.
 - **Next: learning loop** — save useful words/sentences, preserve context, build review material.
 - **Later: owned reading/video surfaces** — PDF, EPUB, video subtitles, web companion workspace, continuity.
-- **Ecosystem: multi-surface learning system** — browser, reading, video, vocabulary, progress, sync, and subscription surfaces connected into one product.
+- **Ecosystem: multi-surface learning system** — browser, reading, video, vocabulary, progress, sync, and future subscription surfaces connected into one product after the required billing/legal work is complete.
 
 See [`docs/product-roadmap.md`](docs/product-roadmap.md) for the fuller direction.
 

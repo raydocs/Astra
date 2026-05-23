@@ -1,129 +1,138 @@
 # China Browser Compatibility Guide
 
-Astra provides two Chromium build profiles to support the diverse browser landscape in China.
+Astra provides Chromium build profiles that can help test China-market desktop browsers, but public launch claims must follow the canonical support matrix in `docs/investigations/support-matrix-2026-q2.md`.
+
+## Claim boundary for public launch
+
+| Platform family | Public launch status | Allowed wording | Do not claim |
+|---|---|---|---|
+| Chrome / standard Chromium desktop | Supported primary path | Chrome/Chromium is Astra's main validated desktop path. | Full parity across every Chromium fork or device profile. |
+| Firefox desktop | Beta | Firefox has a build/release path and narrower beta validation. | Same maturity/performance as Chrome. |
+| Desktop Safari | Beta | Desktop Safari has an active packaging/build path. | Chrome parity or iOS runtime proof. |
+| iOS Safari shell | Experimental | iOS Safari shell exists for testing and iterative validation. | Fully supported mobile product or desktop parity. |
+| Android / China mobile browsers | Not supported for launch, except niche experimental testing where extension support exists | No mainstream China mobile browser is a supported Astra launch target. | Mobile browser support, userscript support, or broad mobile compatibility. |
 
 ## Build Profiles
 
-| Profile | Command | Target Browsers | Permissions |
-|---------|---------|-----------------|-------------|
-| **chromium-full** | `pnpm build` | Chrome, Edge | Full (webNavigation, contextMenus, alarms, commands) |
-| **chromium-compat** | `pnpm build:compat` | 360, QQ, Sogou, 2345, mobile Chromium | Conservative (storage, tabs, activeTab only) |
-| **firefox** | `pnpm build:firefox` | Firefox | Full + Gecko settings |
-| **safari** | `pnpm build:safari` | Safari / iOS | Full + Safari settings |
+| Profile | Command | Intended use | Permissions |
+|---------|---------|--------------|-------------|
+| **chromium-full** | `pnpm build` | Chrome and standard Chromium-family desktop testing | Full extension profile (`webNavigation`, `contextMenus`, `alarms`, commands where available) |
+| **chromium-compat** | `pnpm build:compat` | Conservative desktop Chromium-fork testing; not a support-parity claim | Conservative (`storage`, `tabs`, `activeTab` only) |
+| **firefox** | `pnpm build:firefox` | Firefox beta package path | Gecko settings |
+| **safari** | `pnpm build:safari` | Desktop Safari beta package path and iOS shell resource sync | Safari settings |
 
-## PC Browser Market Share & Support Matrix (China)
+> **Important:** “Buildable” is not the same as “supported.” The compat build reduces optional API usage, but it is still a Manifest V3 extension path and does not make older MV2-only browsers supported.
 
-Research data (2025-2026, approximate desktop share):
+## PC Browser Compatibility Notes (China)
 
-| Browser | ~Share | Chromium Version | Extension Support | MV3 | Recommended Profile |
-|---------|--------|-----------------|-------------------|-----|-------------------|
-| Chrome | 35-40% | Latest | Chrome Web Store / .crx | Yes | chromium-full |
-| Edge | 15-18% | Latest | Edge Add-ons / .crx | Yes | chromium-full |
-| 360 安全浏览器 | 10-15% | ~110-118 | 360 Extension Store / .crx sideload | Partial | chromium-compat |
-| QQ 浏览器 | 5-8% | ~94-108 | QQ Extension Store / .crx sideload | No (MV2) | chromium-compat |
-| 搜狗浏览器 | 3-5% | ~80-90 | .crx sideload | No (MV2) | chromium-compat |
-| 2345 浏览器 | 2-4% | ~78-90 | .crx sideload | No (MV2) | chromium-compat |
-| UC 浏览器 (PC) | 1-2% | Older | Minimal | No | chromium-compat |
+These notes are operational guidance, not market-share claims or launch approval.
 
-> **Important:** QQ, Sogou, 2345 browsers use Chromium cores that are 20-50+ versions behind Chrome. They typically only support MV2. Astra's current architecture is MV3-only. If these browsers are a priority target, a separate MV2 build pipeline would be needed (not currently implemented). The compat build reduces permission friction but still requires MV3 service worker support.
->
-> **Dual-engine mode:** 360/QQ/Sogou ship with both Chromium and Trident/IE cores. Extensions only run in Chromium mode. Users in IE compatibility mode will not see Astra at all.
+| Browser | Expected extension reality | Recommended profile | Launch-safe status |
+|---------|----------------------------|---------------------|-------------------|
+| Chrome | Modern MV3 extension support | `chromium-full` | Supported primary path |
+| Edge | Modern Chromium extension support | `chromium-full` | Chromium-family desktop, but not a separate parity claim |
+| 360 安全浏览器 | Chromium fork; MV3/API behavior can vary by version and mode | `chromium-compat` for exploratory testing | Compatibility testing only until store/device evidence is recorded |
+| QQ 浏览器 | Often older Chromium core / MV2-oriented extension behavior | `chromium-compat` only if MV3 works in the tested version | Not supported for launch |
+| 搜狗浏览器 | Older Chromium core likely; extension APIs can be incomplete | `chromium-compat` only if MV3 works in the tested version | Not supported for launch |
+| 2345 浏览器 | Older Chromium core likely; extension APIs can be incomplete | `chromium-compat` only if MV3 works in the tested version | Not supported for launch |
+| UC 浏览器 (PC) | Older/non-standard extension behavior | Exploratory only | Not supported for launch |
 
-## Mobile Browser Market Share & Support Matrix (China)
+> **Dual-engine mode:** Some China desktop browsers ship both Chromium and Trident/IE modes. Astra content scripts can only run in Chromium/WebExtension-compatible mode. IE compatibility mode is out of scope.
 
-Research data (2025-2026, approximate mobile share):
+## Mobile Browser Compatibility Notes (China)
 
-| Browser | ~Share | Platform | Engine | Extension Support | Status |
-|---------|--------|----------|--------|-------------------|--------|
-| Safari | 25-30% | iOS | WebKit | Safari Web Extension | **Supported** (Astra Shell) |
-| Chrome (Android) | 15-20% | Android | Blink | None on mobile | Not supported |
-| UC 浏览器 | 10-15% | Both | U4 (Blink) | Proprietary plugins only | Not supported |
-| QQ 浏览器 | 8-12% | Both | X5 (Blink) | Proprietary plugins only | Not supported |
-| 360 手机浏览器 | 3-5% | Android | Blink | Own store (proprietary) | Not supported |
-| 夸克浏览器 | 3-5% | Both | Blink | None (AI-focused) | Not supported |
-| Via 浏览器 | 1-2% | Android | System WebView | **Userscript support** | Experimental (compat) |
-| Kiwi Browser | <1% | Android | Blink | **Chrome extensions** | Experimental (compat) |
-| Lemur Browser | <1% | Android | Blink | Chrome extensions | Experimental (compat) |
+No mainstream China mobile browser is a supported Astra public-launch target. The iOS Safari shell remains **experimental** under the canonical support matrix, and Android browsers that support Chrome extensions are niche testing targets rather than launch-supported platforms.
 
-> **Key insight:** No mainstream Chinese mobile browser supports the WebExtension API. Safari iOS is the only fully supported mobile path. Kiwi/Via/Lemur are niche but extension-capable.
->
-> **For broader mobile reach**, a userscript version or a standalone web app/PWA would be needed (future roadmap). The compat build + responsive UI currently covers Kiwi/Via/Lemur users.
->
-> **X5 and U4 engines** (QQ and UC) are Blink forks with non-standard quirks — CSS injection, DOM API differences, and data compression proxies can break content scripts.
+| Browser | Platform | Extension support reality | Launch-safe status |
+|---------|----------|---------------------------|-------------------|
+| Safari | iOS | Safari Web Extension shell path exists | Experimental, not supported parity |
+| Chrome (Android) | Android | Chrome extensions are not supported on standard mobile Chrome | Not supported |
+| UC 浏览器 | Android/iOS | Proprietary/non-standard plugin behavior | Not supported |
+| QQ 浏览器 | Android/iOS | Proprietary/non-standard plugin behavior | Not supported |
+| 360 手机浏览器 | Android | Proprietary store/plugin behavior | Not supported |
+| 夸克浏览器 | Android/iOS | No WebExtension launch path | Not supported |
+| Via 浏览器 | Android | Userscript-oriented path, not Astra WebExtension support | Not supported for launch |
+| Kiwi Browser | Android | Chrome-extension capable but niche and not in the canonical support matrix | Experimental testing only |
+| Lemur Browser | Android | Chrome-extension capable but niche and not in the canonical support matrix | Experimental testing only |
+
+> **For broader mobile reach:** a userscript, native app, or standalone mobile web/PWA path would need its own product plan, evidence, privacy review, and store/legal claims. The current compat build and responsive UI do not create a public mobile support claim.
 
 ## Feature Degradation in Compat Build
 
-The compat build omits optional permissions to maximize compatibility:
+The compat build omits optional permissions to maximize the chance of running on stricter Chromium-family browsers. This table describes expected degradation only; each browser/store still needs evidence before external claims are made.
 
-| Feature | Full | Compat | Notes |
-|---------|------|--------|-------|
-| Page translation | Yes | Yes | Core feature, always available |
-| Selection toolbar | Yes | Yes | Touch-friendly on mobile |
-| Hover translation | Yes | Desktop only | Disabled on touch-only devices |
-| Input translation | Yes | Yes | With mobile viewport handling |
-| Float ball | Yes | Yes | Touch-sized on mobile |
+| Feature | Full profile | Compat profile | Notes |
+|---------|--------------|----------------|-------|
+| Page translation | Yes | Expected, if MV3 content scripts run | Core feature; still depends on browser API compatibility |
+| Selection toolbar | Yes | Expected, if content scripts run | Touch behavior is not a mobile support claim |
+| Hover translation | Yes | Desktop only | Disabled or impractical on touch-only devices |
+| Input translation | Yes | Expected, if content scripts run | Sensitive-input suppression still applies heuristically |
+| Float ball | Yes | Expected, if content scripts run | Touch-sized UI does not imply mobile support |
 | Keyboard shortcuts | Yes | No | `commands` API omitted |
 | Context menu | Yes | No | `contextMenus` API omitted |
-| Multi-frame support | Yes | Top-frame only | `webNavigation` API omitted |
+| Multi-frame support | Yes | Narrower | `webNavigation` API omitted; fallback is top-frame oriented |
 | Periodic badge refresh | Yes | Startup + on-change only | `alarms` API omitted |
-| PDF/EPUB/Subtitle readers | Yes | Yes | Responsive mobile layout |
+| PDF/EPUB/subtitle-file readers | Beta/controlled reader surfaces | Expected only if extension pages and file access work | Do not claim universal document/video support from compat behavior |
 
 ## Packaging for Chinese Browser Stores
 
-### 360 Extension Store
+Chinese browser-store submission is not part of the Chrome-first free public beta unless a separate evidence record and store/legal review are completed.
+
+### 360 Extension Store (future / conditional)
 1. Build: `pnpm build:compat`
 2. Zip: `pnpm zip:compat`
-3. Submit `.zip` to [360 Extension Open Platform](https://ext.se.360.cn/)
-4. Use localized description from `store/description.md`
+3. Submit to the 360 Extension Open Platform only after MV3 runtime smoke evidence is recorded for the target version.
+4. Use launch-safe localized copy from `store/description.md` and this compatibility guide.
 
-### QQ Browser Extension Store
-1. Build: `pnpm build:compat`
-2. Zip: `pnpm zip:compat`
-3. Submit to QQ Browser extension platform
-4. QQ may require additional review for `host_permissions`
+### QQ Browser Extension Store (future / conditional)
+1. Confirm the target QQ Browser version supports the required MV3 extension model.
+2. Build: `pnpm build:compat`
+3. Zip: `pnpm zip:compat`
+4. Submit only after target-version smoke evidence is recorded.
 
-### Manual Sideload (all Chromium browsers)
+### Manual Sideload (developer/testing only)
 1. Build: `pnpm build` or `pnpm build:compat`
-2. Open browser extensions page (usually `chrome://extensions/`)
-3. Enable "Developer mode"
-4. Click "Load unpacked" and select `.output/chrome-mv3/`
+2. Open the browser extensions page (usually `chrome://extensions/` or the browser-specific equivalent)
+3. Enable developer mode
+4. Load the generated extension output for testing
 
-### Mobile Sideload (Kiwi/Via/Lemur)
-1. Build: `pnpm zip:compat`
-2. Transfer `.zip` to device
-3. Open browser extensions page
-4. Install from file
+### Mobile sideload (experimental testing only)
+
+Mobile sideloading on Kiwi/Lemur-style browsers is an experimental testing activity, not a public support path. Do not use mobile sideload success as store-copy evidence without a separate review.
 
 ## Smoke Test Checklist
 
-Before submitting to any store, verify:
+Before any China-browser store submission or external compatibility claim, record browser name, version, OS, build profile, artifact SHA, and screenshots/logs for:
 
 - [ ] Service worker starts without errors
-- [ ] Content script injects on web pages
+- [ ] Content script injects on public web pages
 - [ ] Popup opens and loads config
-- [ ] Options page renders (check mobile layout too)
+- [ ] Options page renders
 - [ ] Page translation start/stop works
 - [ ] Selection toolbar appears on text selection
-- [ ] Selection toolbar works with touch (on mobile)
-- [ ] PDF reader opens and translates
-- [ ] EPUB reader opens and renders
-- [ ] Subtitle reader parses files
+- [ ] Privacy Mode/request-context behavior is still accurate for the tested path
+- [ ] Provider routing works through the intended direct or managed beta relay path
+- [ ] PDF reader opens and translates if the submission copy mentions PDF
+- [ ] EPUB reader opens and renders if the submission copy mentions EPUB
+- [ ] YouTube/Bilibili subtitle paths are smoke-tested if any subtitle claim is included
 
 ## Architecture Notes
 
 ### Runtime API Detection
-Background script (`src/entrypoints/background/index.ts`) wraps all optional API calls in existence checks AND try/catch blocks. This handles both:
+Background script (`src/entrypoints/background/index.ts`) wraps optional API calls in existence checks and try/catch blocks. This handles both:
 - APIs missing from the manifest (compat build)
-- APIs present in namespace but throwing permission errors (browser quirks)
+- APIs present in the namespace but throwing permission errors (browser quirks)
 
 ### Frame Coordination Fallback
-`frame-coordinator.ts` attempts `webNavigation.getAllFrames()` first, then falls back to synthesizing a top-frame entry from `tabs.get()`. This ensures page commands work even without `webNavigation` permission.
+`frame-coordinator.ts` attempts `webNavigation.getAllFrames()` first, then falls back to synthesizing a top-frame entry from `tabs.get()`. This helps page commands work even without `webNavigation` permission, but it is not a full multi-frame parity guarantee.
 
 ### Touch/Pointer Detection
 Content overlays use `(pointer: coarse)` and `(hover: none)` media queries to:
-- Gate hover translation (disabled on touch-only)
-- Size toolbar buttons (larger touch targets)
-- Use `selectionchange` instead of `mouseup` for selection detection
+- Gate hover translation on touch-only devices
+- Size toolbar buttons for coarse pointers
+- Use selection-change oriented behavior where appropriate
+
+These responsive affordances are useful for testing but do not create a mobile support claim.
 
 ### Responsive UI
-All HTML pages use `viewport-fit=cover` for safe-area support. Popup uses fluid width (280-400px). Options page switches from sidebar to top nav on narrow viewports (<640px).
+Extension pages use responsive layout patterns for narrow viewports. This improves portability but does not change the canonical support tier for mobile or niche browsers.

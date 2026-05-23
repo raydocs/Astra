@@ -1,69 +1,108 @@
 # Astra Privacy Policy
 
-_Last updated: 2026-03-25_
+_Last updated: 2026-05-22_
 
 ## Overview
 
-Astra is an open-source browser extension for AI-powered language learning. We are committed to protecting your privacy. This policy explains what data Astra handles and how.
+Astra is an open-source browser extension and web companion for AI-powered language learning. This policy explains what data Astra handles during the current **free public beta**.
 
-## Data sent to external services
+Astra is not a local-only translator. When you use AI translation or explanation features, the text you ask Astra to process can leave your device through one of the outbound paths described below.
 
-When you use translation features, the text you translate is sent to an AI provider (OpenAI or Google Gemini) to generate the translation. This happens either:
+## Translation and AI request paths
 
-- **Via Astra Relay** (managed mode): your text is forwarded through the Astra relay server to the AI provider. The relay server does not log or store your translation text.
-- **Directly** (bring-your-own-key mode): your text is sent directly from your browser to the AI provider using your own API key. Astra never sees your text or your key.
+When you use translation, explanation, grammar, subtitle, PDF/EPUB, or related AI features, Astra may send the following request data to an AI provider or relay:
 
-No data other than the translation text and necessary API parameters is included in these requests.
+- the text segments you ask Astra to translate or explain;
+- target language, task type, provider/model settings, and request options;
+- optional request context such as hostname, page URL, page title, nearby selection context, content summary, or glossary/terminology data, depending on feature and Privacy Mode settings;
+- session or authorization data needed for Astra-managed relay requests.
 
-When **Privacy Mode** is enabled, Astra strips URL query parameters and page metadata before sending any contextual information, so no personally identifiable browsing data reaches the AI provider.
+Astra supports two main outbound paths:
 
-## Data stored locally
+1. **Direct provider / bring-your-own-key mode.** Your browser sends the request directly to the configured provider, such as Google Translate, OpenAI, or Google Gemini, using credentials you provide. Astra's managed service does not receive your direct-provider text or API key, but the selected provider receives and processes the request according to that provider's terms and privacy policy.
+2. **Astra managed relay / relay-lite mode.** Your browser or the web companion sends the request to an Astra relay endpoint, which forwards the request to an upstream provider configured for the beta service. The free public beta may use relay-lite and OpenRouter-backed model routing where deployed. Astra relay requests require an anonymous Astra session or optional account session so the service can authenticate requests and apply beta quotas.
 
-All of the following data is stored entirely on your device using the browser's local storage and IndexedDB APIs:
+If you configure both direct provider credentials and an Astra relay/session, a direct-provider request can fall back to the relay after certain provider or network failures. The popup may show routing/usage information when available.
 
-- **Configuration**: your settings (provider, model, target language, UI preferences)
-- **Vocabulary**: saved words and phrases from your browsing
-- **Reading history**: records of pages you have translated
-- **Translation cache**: previously translated segments, used to avoid redundant API calls
+## Privacy Mode
 
-None of this local data is transmitted to Astra or any third party.
+Privacy Mode changes **what context is sent** with translation requests; it does not keep AI processing fully on-device.
 
-## Analytics and tracking
+For covered page-translation and subtitle-translation request surfaces, Privacy Mode sanitizes request context before transport by:
 
-Astra does **not** include any analytics, telemetry, or tracking code. No usage data is collected or transmitted.
+- stripping URL query strings and fragments;
+- reducing page URL context to origin/path-style information;
+- omitting richer page metadata such as page title, meta description, content summary, and selection context where the covered caller applies the sanitizer.
 
-## Third-party data sharing
+Privacy Mode is a request-context minimization feature. Translation text still leaves the device when you use provider-backed AI translation, and new or experimental surfaces may have narrower proof until they are explicitly audited.
 
-Astra does **not** sell, share, or transfer your data to any third party, aside from the AI provider requests described above that are strictly necessary to deliver translation functionality.
+## Local browser storage
+
+Astra stores product data in browser extension storage and IndexedDB so the extension can work across browsing sessions. This may include:
+
+- **Configuration:** provider, model, target language, UI preferences, site rules, and feature settings;
+- **Vocabulary and review data:** saved words/phrases, review state, and study progress;
+- **Reading history / owned-reading state:** records needed to reopen or continue reading workflows;
+- **Translation cache and local usage records:** cached segments, request counts, token estimates, routing metadata, and recent local usage details.
+
+By default, this local product data stays in your browser profile. It is not sent to Astra unless you use a feature that explicitly requires relay/account/sync behavior.
+
+## Anonymous sessions, optional accounts, and sync
+
+The free public beta supports managed translation with an anonymous Astra session and may also expose optional account/sign-in surfaces. Depending on the path you use, Astra-managed services may process or store:
+
+- session token metadata, session ID, device/install ID, identity mode, and expiry;
+- optional account identifiers such as email address when you sign in;
+- quota and usage counters used to operate the free beta;
+- device/session summary data for account management;
+- optional sync data for enabled collections such as configuration, vocabulary, review schedule, reading history, and study progress.
+
+Cross-device continuity and durable paid-account behavior are not launch claims for this free public beta. Paid subscriptions, billing webhooks, entitlement enforcement, refunds, and cancellation workflows are blocked until separately implemented and reviewed.
+
+## Analytics, advertising, and tracking
+
+Astra does not include third-party advertising tracking or product analytics SDKs in the extension. The extension does not sell personal data.
+
+Operational infrastructure, browser stores, hosting providers, and upstream AI providers may process request metadata such as IP address, timestamps, user agent, request IDs, or error information as needed to provide, secure, debug, or rate-limit the service. Upstream providers process translation requests according to their own terms.
+
+## Third-party sharing
+
+Astra shares data only as needed to provide requested functionality or operate the beta service:
+
+- with the configured AI provider on direct-provider requests;
+- with Astra relay infrastructure and its configured upstream provider on managed relay requests;
+- with browser/extension platforms and hosting providers as necessary to distribute and run the extension/web companion.
+
+Astra does not sell your data.
 
 ## Deleting your data
 
-You can delete all locally stored data at any time:
+You can delete locally stored extension data at any time by using Astra's options/vocabulary controls where available or by clearing extension data in your browser.
 
-- Open the extension's **Options** page
-- Navigate to **Vocabulary > Clear** to remove saved words
-- Use your browser's built-in "Clear extension data" feature to remove all Astra data
+For Astra-managed beta sessions or optional accounts, account deletion/export workflows require production legal/support review before paid or durable-account launch. Until those workflows are finalized, use the support contact below for managed-service data questions.
 
 ## Permissions
 
-Astra requests the following browser permissions:
+Astra requests browser permissions to provide translation and learning features:
 
 | Permission | Purpose |
 |---|---|
-| `storage` | Save your settings, vocabulary, and translation cache locally |
-| `tabs` | Detect the active tab for translation context |
-| `activeTab` | Access the current page content for translation |
-| `webNavigation` | Coordinate frame-aware content script injection |
-| `contextMenus` | Add right-click menu actions for translation |
-| `alarms` | Schedule spaced repetition review reminders |
-| `host_permissions (*://*/*)` | Access page content on any website for translation |
+| `storage` | Save settings, vocabulary, review state, local usage records, and translation cache |
+| `tabs` | Detect the active tab for translation context and commands |
+| `activeTab` | Access the current page content when you ask Astra to translate or explain it |
+| `webNavigation` | Coordinate frame-aware content script injection where supported |
+| `contextMenus` | Add right-click menu actions for translation where supported |
+| `alarms` | Schedule background refresh/review reminders where supported |
+| `host_permissions (*://*/*)` | Access page content on websites where you use Astra translation features |
+
+Some compatibility builds omit optional permissions; feature behavior may be narrower in those builds.
 
 ## Open source
 
-Astra is open source. You can review the complete source code at:
+Astra is open source. You can review the source code at:
 
 https://github.com/nicepkg/astra
 
 ## Contact
 
-If you have questions about this privacy policy, please open an issue on the GitHub repository.
+If you have questions about this privacy policy, please open an issue on the GitHub repository or use the support/contact channel listed in the browser-store console for the submitted extension.
