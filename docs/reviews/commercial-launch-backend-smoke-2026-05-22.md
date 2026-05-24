@@ -1,39 +1,40 @@
 # Commercial Launch Backend Smoke — 2026-05-22
 
-Status: **not executed — external launch blockers remain**
+Status: **passed — Cloudflare relay-lite + Pages free-beta deployment smoke completed**
 
-This evidence record belongs to Work Item 2 in `docs/plans/commercial-public-launch-2026-05-22.md` and should be filled during the first real free-public relay-lite + web deployment attempt.
+This evidence record belongs to Work Item 2 in `docs/plans/commercial-public-launch-2026-05-22.md`.
 
 ## Scope
 
 - Backend: `src/platform/relay-lite` Cloudflare Worker as the free public beta API front door.
-- Web: `src/web` Cloudflare Pages deployment configured with `VITE_ASTRA_API_BASE_URL` and, if applicable, `VITE_ASTRA_PLATFORM_BASE_URL`.
-- Explicitly out of scope: store copy/privacy/listing files, billing policy, paid subscriptions, durable paid entitlements, and full Cloudflare platform migration approval.
+- Web: `src/web` Cloudflare Pages deployment configured with `VITE_ASTRA_API_BASE_URL` and `VITE_ASTRA_PLATFORM_BASE_URL`.
+- Explicitly out of scope: browser-store submission/approval, legal/privacy approval, paid subscriptions, durable paid entitlements, and full Cloudflare platform migration approval.
 
 ## Deployment metadata
 
 | Field | Value |
 |---|---|
-| Git SHA | `TBD` |
-| Relay-lite Worker URL | `TBD` |
-| Relay-lite API base URL ending `/v1` | `TBD` |
-| Web Pages URL/origin | `TBD` |
-| Optional platform Worker API base URL | `TBD / not launched` |
-| Deployer | `TBD` |
-| Deployment time | `TBD` |
-| Rollback owner | `TBD` |
-| Last known-good deployment reference | `TBD` |
+| Git SHA deployed from | `9b5d9f9` plus local CORS/env documentation update in this pass |
+| Relay-lite Worker URL | `https://astra-relay-lite.courseshare.workers.dev` |
+| Relay-lite API base URL ending `/v1` | `https://astra-relay-lite.courseshare.workers.dev/v1` |
+| Web Pages production origin | `https://astra-web.pages.dev` |
+| Web Pages deployment URL | `https://55846464.astra-web.pages.dev` |
+| Optional platform Worker API base URL | Not launched; web points platform base to relay-lite `/v1` for this free-beta deployment. |
+| Deployer | `ruiruiwan8@gmail.com` Cloudflare account via Wrangler OAuth |
+| Deployment time | 2026-05-24 UTC |
+| Relay-lite version ID | `35e5fd09-46fa-43a6-b188-ed9d1c0fe6b6` |
+| Rollback owner | Not separately assigned; same Cloudflare account/deployer for this pass. |
 
 ## Non-secret production vars
 
 | Var | Value used |
 |---|---|
-| `ASTRA_CORS_ALLOWED_ORIGINS` | `TBD` |
-| `ASTRA_OPENROUTER_MODEL` | `TBD` |
-| `ASTRA_FREE_DAILY_REQUESTS` | `TBD` |
-| `ASTRA_FREE_DAILY_CHARACTERS` | `TBD` |
-| `ASTRA_FREE_RPM` | `TBD` |
-| `ASTRA_SESSION_TTL_SECONDS` | `TBD` |
+| `ASTRA_CORS_ALLOWED_ORIGINS` | `https://astra-web.pages.dev` |
+| `ASTRA_OPENROUTER_MODEL` | `openai/gpt-4o-mini` |
+| `ASTRA_FREE_DAILY_REQUESTS` | `200` |
+| `ASTRA_FREE_DAILY_CHARACTERS` | `200000` |
+| `ASTRA_FREE_RPM` | `20` |
+| `ASTRA_SESSION_TTL_SECONDS` | `2592000` |
 
 ## Secret setup confirmation
 
@@ -41,35 +42,35 @@ Do not paste secret values.
 
 | Secret | Confirmed in Cloudflare? | Notes |
 |---|---:|---|
-| `OPENROUTER_API_KEY` | `TBD` | Provider budget controls must be enabled outside the repo. |
-| `ASTRA_SESSION_SECRET` | `TBD` | Production high-entropy secret, not shared with local/dev. |
+| `OPENROUTER_API_KEY` | Yes, functionally confirmed | `POST /v1/translate` returned a real translation. Provider budget controls remain an external account operation. |
+| `ASTRA_SESSION_SECRET` | Yes, functionally confirmed | Anonymous auth/session endpoints issued and verified signed bearer sessions. |
 
 ## Smoke matrix
 
-Run the exact commands from `docs/runbooks/free-public-launch-backend.md`.
+Commands were run from `/Users/ruirui/Downloads/GitHub/Astra` against the final public origins.
 
 | Smoke check | Status | Evidence / notes |
 |---|---:|---|
-| CORS preflight from final web origin | `TBD` | Must return final origin, not `*`. |
-| `POST /v1/auth/anonymous` | `TBD` | Anonymous free session token issued. |
-| `GET /v1/auth/session` | `TBD` | Session refresh works. |
-| `GET /v1/account/summary` | `TBD` | Free active-account semantics only. |
-| `GET /v1/sync/bootstrap` | `TBD` | Collections present and disabled/default-disabled. |
-| `POST /v1/translate` | `TBD` | Requires real provider key and budget controls. |
-| Web build with production env | `TBD` | `pnpm build:web` or `pnpm deploy:web:cloudflare`. |
-| Web-to-relay browser-origin smoke | `TBD` | Re-run after final Pages/custom origin exists. |
+| Web production origin responds | Pass | `curl -I https://astra-web.pages.dev` returned `HTTP/2 200`. |
+| Web bundle uses relay-lite API URL | Pass | Production JS contains `https://astra-relay-lite.courseshare.workers.dev/v1`. |
+| CORS preflight from final web origin | Pass | `OPTIONS /v1/auth/anonymous` returned `204` and `access-control-allow-origin: https://astra-web.pages.dev`. |
+| `POST /v1/auth/anonymous` | Pass | Returned `identityMode: anonymous`, `plan: free`, `relayBaseURL: https://astra-relay-lite.courseshare.workers.dev/v1`, and a session token. |
+| `GET /v1/auth/session` | Pass | Bearer session refresh returned anonymous/free session semantics. |
+| `GET /v1/account/summary` | Pass | Returned free quota: 200 daily requests, 200000 daily characters, 20 RPM. |
+| `GET /v1/sync/bootstrap` | Pass | Endpoint returned successfully with default/empty bootstrap state. |
+| `POST /v1/translate` | Pass | `Hello, world.` translated to `你好，世界。`. |
+| Web build/deploy with production env | Pass | `pnpm deploy:web:cloudflare` ran `pnpm build:web` and deployed 12 files. Vite emitted chunk-size warning only. |
+| Relay-lite deploy | Pass | `pnpm deploy:relay-lite:cloudflare` uploaded and deployed Worker version `35e5fd09-46fa-43a6-b188-ed9d1c0fe6b6`. |
 
-## Current blockers
+## Remaining external launch blockers
 
-- Final public web origin is not recorded.
-- Final relay-lite API base URL is not recorded.
-- Cloudflare account/project/DNS access is external to the repo.
-- Production OpenRouter key and provider budget controls are external to the repo.
-- Production `ASTRA_SESSION_SECRET` must be generated and installed as a Worker secret.
-- Optional platform Worker origin is unresolved if article import is intended for launch.
+- Browser-store submissions and approvals are not evidenced here.
+- Legal/privacy review and support/incident ownership are not evidenced here.
+- Provider spend/budget controls are not inspectable from this repo evidence and should be confirmed in the provider account before broad public traffic.
+- Paid launch remains blocked by `docs/runbooks/billing-free-policy.md`.
 
 ## Verdict
 
-`blocked`
+`passed`
 
-Do not mark Work Item 2 deployment evidence `ready` until the blockers above are resolved and the smoke matrix passes against the final public origins.
+The free public beta backend and Astra Web Cloudflare deployment are live and smoke-tested. This does not by itself make Astra commercially launched through browser stores; store/legal/support gates remain separate.

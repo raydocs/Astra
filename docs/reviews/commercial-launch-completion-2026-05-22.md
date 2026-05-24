@@ -27,18 +27,18 @@ with production smoke, support/incident owner, and rollback evidence recorded.
 | Evidence date | 2026-05-22 |
 | Repo path | `/Users/ruirui/Downloads/GitHub/Astra` |
 | Branch | `main` tracking `origin/main` |
-| Last commit observed | `80c55ae` (`docs: prepare commercial launch packet`) before this packaging-hardening follow-up. |
-| Working tree state observed | Dirty: packaging hardening follow-up changes are present in `wxt.config.ts`, this evidence record, and `docs/runbooks/browser-store-submission.md`. |
+| Last commit observed before Cloudflare deploy pass | `9b5d9f9` (`chore: harden store packaging`). |
+| Working tree state observed | Dirty during this evidence update: Cloudflare deployment configuration and evidence docs are present in this pass. |
 | Work Item 5 files added | `docs/runbooks/commercial-public-launch.md`, `docs/reviews/commercial-launch-completion-2026-05-22.md` |
 
-Observed working tree changes are repo-side launch-readiness work. They do not certify external deployment, store submission, legal approval, or public availability.
+Observed working tree changes record the Cloudflare free-beta deployment evidence. They do not certify browser-store submission, legal approval, or paid commercial availability.
 
 ## Work Item status summary
 
 | Work item | Repo-side status | External/public status | Evidence |
 |---|---:|---:|---|
 | 1. Claim, legal, and store-copy freeze | Ready for repo copy freeze | Legal/privacy review and store questionnaire approval not evidenced | `docs/reviews/commercial-launch-claims-2026-05-22.md` |
-| 2. Free public backend and web deployment runbook | Runbook/template ready | Production relay-lite/web deploy and smoke not executed; final URLs/secrets external blockers | `docs/runbooks/free-public-launch-backend.md`, `docs/reviews/commercial-launch-backend-smoke-2026-05-22.md` |
+| 2. Free public backend and web deployment runbook | Deployed and smoke-tested for free public beta | Relay-lite Worker and Astra Web Pages are live; store/legal/support gates remain separate | `docs/runbooks/free-public-launch-backend.md`, `docs/reviews/commercial-launch-backend-smoke-2026-05-22.md` |
 | 3. Store packaging, screenshots, and submission readiness | Runbook ready | Chrome/AMO/Safari submissions and approvals not evidenced | `docs/runbooks/browser-store-submission.md` |
 | 4. Billing/free-policy decision and paid-launch blocker list | Free-beta policy and paid blocker list ready | Paid launch remains blocked | `docs/runbooks/billing-free-policy.md` |
 | 5. Launch runbook and completion evidence | Complete in repo | Public launch not executed | `docs/runbooks/commercial-public-launch.md`, this file |
@@ -86,44 +86,45 @@ Targeted verification from `/Users/ruirui/Downloads/GitHub/Astra`:
 
 ## Artifact record
 
-Launch artifacts were built locally for verification, but no store upload occurred in this pass.
+Launch artifacts were built locally for verification, and the Cloudflare web/relay-lite deployment was executed in this pass. No browser-store upload occurred in this pass.
 
 | Artifact | Path | SHA-256 | Status |
 |---|---|---:|---|
 | Chrome MV3 zip | `.output/astra-0.1.0-chrome.zip` | `e8984ef6837ff8ad2b36202f215f828666ef0a3636b2f12c879e638e5925db35` | Built locally after packaging hardening; not uploaded. |
 | Firefox MV3 zip | `.output/astra-0.1.0-firefox.zip` | `295c52200f0f141a380fcfc79c789ef9b55113f140b4d7ffb887fed1a3993b6e` | Built locally after packaging hardening with generated live-bench sockets present; not uploaded. |
 | Safari MV3 zip | `.output/astra-0.1.0-safari.zip` | `2e05680bcf0f5a44d0b67e5eeedbb8f8945d6f0c65829b5e9b64ff50ce7e162b` | Built locally after packaging hardening; App Store artifact/upload not performed. |
-| Web build/deploy output | Cloudflare Pages deployment URL | `TBD` | `pnpm build:web` passed; not deployed. |
-| Relay-lite Worker deployment | Cloudflare Worker deployment URL | `TBD` | Not deployed. |
+| Web build/deploy output | `https://astra-web.pages.dev` / `https://55846464.astra-web.pages.dev` | `TBD` | `pnpm deploy:web:cloudflare` built and deployed 12 files. |
+| Relay-lite Worker deployment | `https://astra-relay-lite.courseshare.workers.dev` | `35e5fd09-46fa-43a6-b188-ed9d1c0fe6b6` | `pnpm deploy:relay-lite:cloudflare` deployed with production CORS. |
 
 ## Deployment URLs and production configuration
 
 | Field | Current value | Status |
 |---|---|---:|
-| Final public web origin | `TBD` | External blocker. |
-| Final relay-lite API base URL ending `/v1` | `TBD` | External blocker. |
-| Optional platform Worker API base URL | `TBD / not launched` | External blocker if article import is included. |
-| Cloudflare relay-lite Worker URL | `TBD` | Not deployed/evidenced. |
-| Cloudflare Pages web URL | `TBD` | Not deployed/evidenced. |
-| `OPENROUTER_API_KEY` production secret | Not recorded | Must be set in Cloudflare only; no value should be pasted here. |
-| `ASTRA_SESSION_SECRET` production secret | Not recorded | Must be set in Cloudflare only; no value should be pasted here. |
-| Provider budget/spend controls | Not evidenced | External blocker before managed relay launch. |
-| Relay-lite rollback reference | `TBD` | Requires actual Cloudflare deployment. |
-| Web rollback reference | `TBD` | Requires actual Cloudflare Pages deployment. |
+| Final public web origin | `https://astra-web.pages.dev` | Deployed and smoke-tested. |
+| Final relay-lite API base URL ending `/v1` | `https://astra-relay-lite.courseshare.workers.dev/v1` | Deployed and smoke-tested. |
+| Optional platform Worker API base URL | Relay-lite `/v1` for this free-beta deployment | Full platform Worker remains not launched. |
+| Cloudflare relay-lite Worker URL | `https://astra-relay-lite.courseshare.workers.dev` | Worker version `35e5fd09-46fa-43a6-b188-ed9d1c0fe6b6`. |
+| Cloudflare Pages web URL | `https://astra-web.pages.dev` / `https://55846464.astra-web.pages.dev` | Deployed via `pnpm deploy:web:cloudflare`. |
+| `OPENROUTER_API_KEY` production secret | Functionally confirmed | `POST /v1/translate` returned a real translation; value not recorded. |
+| `ASTRA_SESSION_SECRET` production secret | Functionally confirmed | Anonymous auth/session bearer flow passed; value not recorded. |
+| Provider budget/spend controls | Not evidenced | Confirm in provider account before broad public traffic. |
+| Relay-lite rollback reference | `35e5fd09-46fa-43a6-b188-ed9d1c0fe6b6` | Previous deployments visible via Wrangler deployment history. |
+| Web rollback reference | `https://55846464.astra-web.pages.dev` | Cloudflare Pages deployment reference from this pass. |
 
 ## Backend production smoke
 
-Status: **not executed** for Work Item 5. `docs/reviews/commercial-launch-backend-smoke-2026-05-22.md` currently records the backend/web smoke as blocked by external launch prerequisites.
+Status: **passed** for the free public beta Cloudflare deployment. See `docs/reviews/commercial-launch-backend-smoke-2026-05-22.md`.
 
 | Smoke check | Status | Evidence / notes |
 |---|---:|---|
-| CORS preflight from final web origin | Not run | Final web origin and API base not recorded. |
-| `POST /v1/auth/anonymous` | Not run | Requires deployed relay-lite. |
-| `GET /v1/auth/session` | Not run | Requires deployed relay-lite and session token. |
-| `GET /v1/account/summary` | Not run | Requires deployed relay-lite. Free active semantics only. |
-| `GET /v1/sync/bootstrap` | Not run | Requires deployed relay-lite. |
-| `POST /v1/translate` | Not run | Requires deployed relay-lite, provider key, and budget controls. |
-| Web-to-relay browser-origin smoke | Not run | Requires final web deployment and CORS configuration. |
+| Web production origin | Pass | `https://astra-web.pages.dev` returned `HTTP/2 200`. |
+| Web bundle API configuration | Pass | Production JS contains `https://astra-relay-lite.courseshare.workers.dev/v1`. |
+| CORS preflight from final web origin | Pass | `OPTIONS /v1/auth/anonymous` returned `204` and exact allow-origin `https://astra-web.pages.dev`. |
+| `POST /v1/auth/anonymous` | Pass | Anonymous/free session token issued. |
+| `GET /v1/auth/session` | Pass | Bearer session refresh works. |
+| `GET /v1/account/summary` | Pass | Free quota summary returned. |
+| `GET /v1/sync/bootstrap` | Pass | Endpoint returned successfully with default/empty bootstrap state. |
+| `POST /v1/translate` | Pass | `Hello, world.` translated to `你好，世界。`. |
 
 ## Browser/package live smoke
 
@@ -170,11 +171,11 @@ No external store submission or approval was evidenced during Work Item 5.
 ## Known limitations and blockers
 
 - Public launch is limited to a free public beta; paid launch remains blocked.
-- No final public web origin is recorded.
-- No final relay-lite API base URL is recorded.
-- No Cloudflare production deploy evidence is recorded.
-- No production `OPENROUTER_API_KEY`, `ASTRA_SESSION_SECRET`, or provider budget-control evidence is recorded.
-- No production backend/web smoke has been run against final origins.
+- Final public web origin is deployed: `https://astra-web.pages.dev`.
+- Final relay-lite API base URL is deployed: `https://astra-relay-lite.courseshare.workers.dev/v1`.
+- Cloudflare production deploy evidence is recorded for free public beta web + relay-lite.
+- Production `OPENROUTER_API_KEY` and `ASTRA_SESSION_SECRET` are functionally confirmed by smoke, but provider budget-control evidence is still external.
+- Production backend/web smoke has passed against final origins.
 - No Chrome Web Store, AMO, or Apple submission is recorded.
 - No store approval or public listing/live channel is recorded.
 - No legal/privacy approval is recorded.
@@ -187,8 +188,8 @@ No external store submission or approval was evidenced during Work Item 5.
 
 | Area | Status | Evidence / notes |
 |---|---:|---|
-| Relay-lite rollback | Template only | See `docs/runbooks/free-public-launch-backend.md`; actual deployment reference pending. |
-| Web rollback | Template only | See `docs/runbooks/free-public-launch-backend.md`; actual Pages deployment reference pending. |
+| Relay-lite rollback | Deployment reference recorded | Current Worker version `35e5fd09-46fa-43a6-b188-ed9d1c0fe6b6`; previous deployments visible via Wrangler deployment history. |
+| Web rollback | Deployment reference recorded | Current Pages deployment `https://55846464.astra-web.pages.dev`; rollback via Cloudflare Pages deployments. |
 | Store rollback | Template only | See `docs/runbooks/commercial-public-launch.md`; no submitted/approved/live channel exists yet. |
 | Provider key rotation / abuse response | Not evidenced | Must be assigned before managed relay launch. |
 | Support incident process | Not evidenced | Must be assigned before public launch. |
@@ -207,4 +208,4 @@ No external store submission or approval was evidenced during Work Item 5.
 
 `ready`
 
-Repo-side launch documentation for Work Item 5 is complete. Astra is **not submitted, not approved, and not launched** as of this evidence record. External deployment, legal/privacy approval, support ownership, store submission, store approval, and public live-channel evidence are still required before any public launch verdict can advance.
+Repo-side launch documentation and the free public beta Cloudflare web/relay-lite deployment are complete. Astra is **not submitted, not approved, and not launched through browser stores** as of this evidence record. Legal/privacy approval, support ownership, store submission, store approval, and public store live-channel evidence are still required before any public commercial launch verdict can advance.
