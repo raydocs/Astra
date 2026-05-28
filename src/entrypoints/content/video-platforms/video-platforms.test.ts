@@ -844,7 +844,7 @@ describe("video platform subtitle translation", () => {
     })
   })
 
-  it("supports transcript copy, explain, save sentence, add word, and export actions", async () => {
+  it("supports transcript copy, explain, save sentence, and add word; export is removed for beta", async () => {
     setLocation("www.youtube.com", "/watch")
     appendYouTubeFixture("", 0.2)
     setYouTubePlayerResponse()
@@ -931,27 +931,11 @@ describe("video platform subtitle translation", () => {
       }),
     }))
 
-    copyTextToClipboardMock.mockClear()
-    const clickSpy = vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(() => {})
-    const exportButton = Array.from(panel.querySelectorAll("button"))
-      .find((button) => button.textContent === "Export bilingual transcript") as HTMLButtonElement
-    exportButton.click()
-    await flushPromises(2)
-    expect(copyTextToClipboardMock).toHaveBeenCalledWith(expect.stringContaining("[translated] Hello world"))
-    expect(URL.createObjectURL).toHaveBeenCalledWith(expect.any(Blob))
-    expect(clickSpy).toHaveBeenCalledTimes(1)
-    expect(panel.textContent).toContain("bilingual transcript downloaded and copied")
-
-    copyTextToClipboardMock.mockClear()
-    const exportSrtButton = Array.from(panel.querySelectorAll("button"))
-      .find((button) => button.textContent === "Export SRT") as HTMLButtonElement
-    exportSrtButton.click()
-    await flushPromises(2)
-    expect(copyTextToClipboardMock).toHaveBeenCalledWith(expect.stringContaining("00:00:00,000 --> 00:00:01,000"))
-    expect(copyTextToClipboardMock).toHaveBeenCalledWith(expect.stringContaining("Hello world\n[translated] Hello world"))
-    const srtBlob = vi.mocked(URL.createObjectURL).mock.calls.at(-1)?.[0] as Blob
-    await expect(srtBlob.text()).resolves.toContain("00:00:00,000 --> 00:00:01,000")
-    expect(panel.textContent).toContain("SRT transcript downloaded and copied")
+    // Transcript export (bilingual / SRT / learning-notes download) is intentionally
+    // removed for the paid beta (YouTube ToS + source copyright); see transcript-panel.ts.
+    expect(Array.from(panel.querySelectorAll("button")).some((button) => button.textContent === "Export bilingual transcript")).toBe(false)
+    expect(Array.from(panel.querySelectorAll("button")).some((button) => button.textContent === "Export SRT")).toBe(false)
+    expect(Array.from(panel.querySelectorAll("button")).some((button) => button.textContent === "Export learning notes")).toBe(false)
   })
 
   it("applies global presentation overrides to video subtitle spans", async () => {

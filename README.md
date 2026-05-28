@@ -91,7 +91,7 @@ Current high-confidence surfaces:
 - **Input translation** — assist expression in everyday input fields.
 - **Article mode** — prioritize main content and reduce noisy page regions.
 - **Site rules** — enable/disable, auto-translate, target language, hover behavior, scope, and presentation style per site.
-- **Subtitle translation** — proof-backed YouTube subtitle path, with Bilibili as a narrower beta/best-effort adapter; other video adapters are not public launch claims.
+- **Subtitle translation (YouTube)** — proof-backed YouTube subtitle + transcript path: bilingual subtitles, seek-recovery, track-switch, click-to-jump, and save-a-line/word to Review with a click-to-replay timestamp. **YouTube is the only claimed video platform for the paid beta.** Other adapters (Bilibili, etc.) remain code-present but are not claimed, gated, or tested for beta. Transcript file export (bilingual / SRT / notes download) is intentionally not offered — Astra keeps source content in Review, not redistributed as files.
 - **Controlled reader/file workflows** — PDF, EPUB, and SRT/VTT subtitle-file readers have proof-backed intake/reader lanes and in-reader confidence labels; ASS/Markdown/TXT/HTML parser support is opportunistic.
 - **Astra-managed AI access** — users choose a reading style and target language; Astra handles service details behind the scenes.
 
@@ -113,6 +113,8 @@ For deeper status, use the [capability matrix](docs/capability-matrix-v2.md). It
 | Firefox | Beta | Build and validation path exists; not equal maturity with Chromium. |
 | Desktop Safari | Beta | Safari extension packaging path exists. |
 | iOS Safari shell | Experimental | Host shell exists, but this is not full mobile product parity. |
+
+**Video learning (paid beta scope):** YouTube only, proof-gated (`bench:live:lane:beta-proof`). Other video platforms are code-present but not claimed, not gated, and not in scope. No transcript file export.
 
 Canonical support boundaries live in [`docs/investigations/support-matrix-2026-q2.md`](docs/investigations/support-matrix-2026-q2.md).
 

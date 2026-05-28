@@ -100,64 +100,10 @@ function formatCueForClipboard(cue: YouTubeTranscriptCueSnapshot): string {
   ].filter(Boolean).join("\n")
 }
 
-function formatTranscriptExport(snapshot: YouTubeTranscriptSnapshot): string {
-  const header = [
-    snapshot.title ?? "YouTube transcript",
-    snapshot.pageUrl,
-    snapshot.language ? `Language: ${snapshot.language}` : null,
-  ].filter(Boolean).join("\n")
-
-  const body = snapshot.cues
-    .map((cue) => formatCueForClipboard(cue))
-    .join("\n\n")
-
-  return `${header}\n\n${body}`.trim()
-}
-
-function formatSrtTimestamp(ms: number): string {
-  const normalized = Math.max(0, Math.floor(ms))
-  const hours = Math.floor(normalized / 3_600_000)
-  const minutes = Math.floor((normalized % 3_600_000) / 60_000)
-  const seconds = Math.floor((normalized % 60_000) / 1000)
-  const milliseconds = normalized % 1000
-  return `${String(hours).padStart(2, "0")}:${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")},${String(milliseconds).padStart(3, "0")}`
-}
-
-function formatTranscriptSrtExport(snapshot: YouTubeTranscriptSnapshot): string {
-  return snapshot.cues
-    .map((cue, index) => {
-      const startMs = Math.max(0, cue.startMs)
-      const endMs = cue.endMs > cue.startMs ? cue.endMs : cue.startMs + 2_000
-      const text = [cue.text, cue.translation].filter(Boolean).join("\n")
-      return `${index + 1}\n${formatSrtTimestamp(startMs)} --> ${formatSrtTimestamp(endMs)}\n${text}`
-    })
-    .join("\n\n")
-}
-
-function sanitizeTranscriptFileName(value: string): string {
-  return value
-    .replace(/[\\/:*?"<>|]+/g, " ")
-    .replace(/\s+/g, " ")
-    .trim()
-    .slice(0, 80)
-    || "youtube-transcript"
-}
-
-function downloadTranscriptText(fileName: string, text: string): boolean {
-  if (typeof URL.createObjectURL !== "function") return false
-
-  const blob = new Blob([text], { type: "text/plain;charset=utf-8" })
-  const url = URL.createObjectURL(blob)
-  const anchor = document.createElement("a")
-  anchor.href = url
-  anchor.download = /\.(txt|srt)$/i.test(fileName) ? fileName : `${fileName}.txt`
-  anchor.rel = "noopener"
-  document.body.appendChild(anchor)
-  anchor.click()
-  anchor.remove()
-  setTimeout(() => URL.revokeObjectURL(url), 0)
-  return true
-}
+// Transcript export (bilingual / SRT / learning-notes download) is intentionally
+// NOT shipped in the paid beta: redistributing full bilingual transcripts raises
+// YouTube ToS + source-copyright concerns (master execution plan §4.3, §13). The
+// per-cue copy path (formatCueForClipboard) is retained for single-line copy.
 
 function injectTranscriptPanelStyles(): void {
   if (document.getElementById(STYLE_ID)) return
@@ -876,30 +822,6 @@ async function handleOpenDeepRead(): Promise<void> {
   setPanelSuccess("Opened transcript in Deep Read")
 }
 
-async function handleExportTranscript(kind: "bilingual" | "srt" | "notes"): Promise<void> {
-  if (!latestSnapshot) return
-  const summaryBlock = videoLearningSummary
-    ? `\n\n## Video summary\n${videoLearningSummary.aiSummary}\n\n## Expressions\n${videoLearningSummary.expressions.map((item) => `- ${item}`).join("\n")}\n\n## Quiz\n${videoLearningSummary.quiz.map((item) => `- Q: ${item.question}\n  A: ${item.answer}`).join("\n")}`
-    : ""
-  const exportText = kind === "notes"
-    ? `# ${latestSnapshot.title ?? "Video learning notes"}\n\nSource: ${latestSnapshot.pageUrl}${summaryBlock}\n\n${formatTranscriptExport(latestSnapshot)}`
-    : kind === "srt"
-      ? formatTranscriptSrtExport(latestSnapshot)
-      : `${formatTranscriptExport(latestSnapshot)}${summaryBlock}`
-  const baseFileName = sanitizeTranscriptFileName(latestSnapshot.title ?? (kind === "notes" ? "video-learning-notes" : "youtube-transcript"))
-  const extension = kind === "srt" ? "bilingual-transcript.srt" : `${kind === "notes" ? "learning-notes" : "bilingual-transcript"}.txt`
-  const downloaded = downloadTranscriptText(
-    `${baseFileName}.${extension}`,
-    exportText,
-  )
-  await copyTextToClipboard(exportText)
-  if (downloaded) {
-    setPanelSuccess(kind === "notes" ? "learning notes downloaded and copied" : kind === "srt" ? "SRT transcript downloaded and copied" : "bilingual transcript downloaded and copied")
-  } else {
-    setPanelSuccess(kind === "notes" ? "learning notes copied" : kind === "srt" ? "SRT transcript copied" : "bilingual transcript copied")
-  }
-}
-
 function appendLearningCard(parent: HTMLElement, title: string, body: string | HTMLElement): HTMLElement {
   const card = document.createElement("section")
   card.dataset.astraVideoLearningCard = "true"
@@ -1039,27 +961,14 @@ function renderTranscriptPanel(): void {
   openDeepRead.type = "button"
   openDeepRead.textContent = "Open in Deep Read"
   openDeepRead.addEventListener("click", handleOpenDeepRead)
-  const exportTranscript = document.createElement("button")
-  exportTranscript.type = "button"
-  exportTranscript.textContent = "Export bilingual transcript"
-  exportTranscript.disabled = !snapshot?.cues.length
-  exportTranscript.addEventListener("click", () => { void handleExportTranscript("bilingual") })
-  const exportSrt = document.createElement("button")
-  exportSrt.type = "button"
-  exportSrt.textContent = "Export SRT"
-  exportSrt.disabled = !snapshot?.cues.length
-  exportSrt.addEventListener("click", () => { void handleExportTranscript("srt") })
-  const exportNotes = document.createElement("button")
-  exportNotes.type = "button"
-  exportNotes.textContent = "Export learning notes"
-  exportNotes.disabled = !snapshot?.cues.length
-  exportNotes.addEventListener("click", () => { void handleExportTranscript("notes") })
+  // Transcript export buttons (bilingual / SRT / learning-notes) intentionally
+  // removed for the paid beta — see the export-helper note above (ToS/copyright).
   const generateSummary = document.createElement("button")
   generateSummary.type = "button"
   generateSummary.textContent = videoLearningSummary ? "Regenerate summary" : "Generate summary"
   generateSummary.disabled = !snapshot?.cues.length || summaryGenerationInFlight !== null
   generateSummary.addEventListener("click", () => { void handleGenerateVideoSummary(true) })
-  actions.append(openDeepRead, generateSummary, exportTranscript, exportSrt, exportNotes)
+  actions.append(openDeepRead, generateSummary)
   panelRoot.appendChild(actions)
 
   const tabs = document.createElement("div")
