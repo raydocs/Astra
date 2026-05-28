@@ -2,7 +2,7 @@ import { join } from "node:path"
 
 import { describe, expect, it } from "vitest"
 
-import { loadRelayEnv } from "./config"
+import { findFreeTierLimitViolations, loadRelayEnv } from "./config"
 
 function env(overrides: NodeJS.ProcessEnv = {}): NodeJS.ProcessEnv {
   return overrides
@@ -20,6 +20,48 @@ describe("loadRelayEnv relay data paths", () => {
     expect(relayEnv.opsAuditLogPath).toBe("data/server/ops-audit-log.json")
     expect(relayEnv.cancellationReasonStorePath).toBe("data/server/cancellation-reasons.json")
     expect(relayEnv.operatorPrincipals).toEqual([])
+  })
+
+  it("bounds the Free tier below Pro by default (AC8 cost guardrail)", () => {
+    const relayEnv = loadRelayEnv(env())
+
+    // Unconfigured deployments must never leave Free == Pro (uncapped-cost path).
+    expect(relayEnv.freeDailyRequests).toBeLessThan(relayEnv.proDailyRequests)
+    expect(relayEnv.freeDailyCharacters).toBeLessThan(relayEnv.proDailyCharacters)
+    expect(relayEnv.freeRpm).toBeLessThan(relayEnv.proRpm)
+    expect(findFreeTierLimitViolations(relayEnv)).toEqual([])
+  })
+
+  it("keeps Free below Pro when limits are tuned via env", () => {
+    const relayEnv = loadRelayEnv(env({
+      ASTRA_FREE_DAILY_REQUESTS: "120",
+      ASTRA_FREE_DAILY_CHARACTERS: "60000",
+      ASTRA_FREE_RPM: "30",
+      ASTRA_PRO_DAILY_REQUESTS: "5000",
+      ASTRA_PRO_DAILY_CHARACTERS: "1000000",
+      ASTRA_PRO_RPM: "240",
+    }))
+
+    expect(relayEnv.freeDailyRequests).toBe(120)
+    expect(relayEnv.proDailyRequests).toBe(5000)
+    expect(findFreeTierLimitViolations(relayEnv)).toEqual([])
+  })
+
+  it("flags every axis where Free is not strictly below Pro", () => {
+    const relayEnv = loadRelayEnv(env({
+      ASTRA_FREE_DAILY_REQUESTS: "2000",
+      ASTRA_FREE_DAILY_CHARACTERS: "500000",
+      ASTRA_FREE_RPM: "120",
+      ASTRA_PRO_DAILY_REQUESTS: "2000",
+      ASTRA_PRO_DAILY_CHARACTERS: "500000",
+      ASTRA_PRO_RPM: "120",
+    }))
+
+    const violations = findFreeTierLimitViolations(relayEnv)
+    expect(violations).toHaveLength(3)
+    expect(violations.some((v) => v.includes("freeDailyRequests"))).toBe(true)
+    expect(violations.some((v) => v.includes("freeDailyCharacters"))).toBe(true)
+    expect(violations.some((v) => v.includes("freeRpm"))).toBe(true)
   })
 
   it("parses env-backed operator principals", () => {

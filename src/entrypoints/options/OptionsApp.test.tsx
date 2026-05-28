@@ -240,6 +240,7 @@ describe("OptionsApp — Sites section", () => {
 
   beforeEach(async () => {
     vi.clearAllMocks()
+    window.history.replaceState(null, "", "/options.html")
     vi.stubGlobal("confirm", vi.fn(() => true))
     ensureAstraDeviceIdentityMock.mockResolvedValue({
       version: 1,
@@ -532,7 +533,7 @@ describe("OptionsApp — Sites section", () => {
 
   async function navigateToDiagnostics() {
     await act(async () => {
-      clickButton("Diagnostics")
+      clickButton("Help & privacy")
       await Promise.resolve()
       await Promise.resolve()
     })
@@ -636,10 +637,15 @@ describe("OptionsApp — Sites section", () => {
 
   it("shows Astra AI as automatic instead of exposing engine configuration", async () => {
     await act(async () => {
-      ;(container.querySelector('[data-section="providers"]') as HTMLButtonElement).click()
+      root.unmount()
+      window.history.replaceState(null, "", "/options.html?advanced=1&section=providers")
+      root = ReactDOM.createRoot(container)
+      root.render(<OptionsApp />)
+      await Promise.resolve()
       await Promise.resolve()
     })
 
+    expect(container.querySelector('[data-section="providers"]')?.getAttribute("aria-current")).toBe("page")
     expect(container.textContent).toContain("Astra chooses the best path automatically")
     expect(container.textContent).toContain("Zero setup. Just sign in and read.")
     expect(container.textContent).toContain("During the free public beta")
@@ -741,7 +747,11 @@ describe("OptionsApp — Sites section", () => {
 
   it("saves the Astra AI service preference without exposing provider choices", async () => {
     await act(async () => {
-      ;(container.querySelector('[data-section="providers"]') as HTMLButtonElement).click()
+      root.unmount()
+      window.history.replaceState(null, "", "/options.html?advanced=1&section=providers")
+      root = ReactDOM.createRoot(container)
+      root.render(<OptionsApp />)
+      await Promise.resolve()
       await Promise.resolve()
     })
 
@@ -1065,7 +1075,7 @@ describe("OptionsApp — Sites section", () => {
 
   it("exports a metadata-only report bundle from Diagnostics", async () => {
     await act(async () => {
-      clickButton("Diagnostics")
+      clickButton("Help & privacy")
       await Promise.resolve()
       await Promise.resolve()
       await Promise.resolve()
@@ -1227,7 +1237,7 @@ describe("OptionsApp — Sites section", () => {
     })
 
     await act(async () => {
-      clickButton("Diagnostics")
+      clickButton("Help & privacy")
       await Promise.resolve()
       await Promise.resolve()
       await Promise.resolve()
@@ -1268,6 +1278,15 @@ describe("OptionsApp — Sites section", () => {
   })
 
   it("shows local activation dashboard metrics in Diagnostics", async () => {
+    // Telemetry dashboards are advanced-only; re-mount with the advanced flag.
+    await act(async () => {
+      root.unmount()
+      window.history.replaceState(null, "", "/options.html?advanced=1")
+      root = ReactDOM.createRoot(container)
+      root.render(<OptionsApp />)
+      await Promise.resolve()
+      await Promise.resolve()
+    })
     const now = Date.now()
     getRecentEventsMock.mockResolvedValue([
       {
@@ -1333,7 +1352,7 @@ describe("OptionsApp — Sites section", () => {
     ])
 
     await act(async () => {
-      clickButton("Diagnostics")
+      clickButton("Help & privacy")
       await Promise.resolve()
       await Promise.resolve()
       await Promise.resolve()
@@ -1353,6 +1372,15 @@ describe("OptionsApp — Sites section", () => {
   })
 
   it("shows local learning dashboard metrics in Diagnostics", async () => {
+    // Telemetry dashboards are advanced-only; re-mount with the advanced flag.
+    await act(async () => {
+      root.unmount()
+      window.history.replaceState(null, "", "/options.html?advanced=1")
+      root = ReactDOM.createRoot(container)
+      root.render(<OptionsApp />)
+      await Promise.resolve()
+      await Promise.resolve()
+    })
     const now = Date.UTC(2026, 0, 4, 12, 0, 0)
     getRecentEventsMock.mockResolvedValue([
       {
@@ -1430,7 +1458,7 @@ describe("OptionsApp — Sites section", () => {
     ])
 
     await act(async () => {
-      clickButton("Diagnostics")
+      clickButton("Help & privacy")
       await Promise.resolve()
       await Promise.resolve()
       await Promise.resolve()
@@ -1452,6 +1480,15 @@ describe("OptionsApp — Sites section", () => {
   })
 
   it("shows local retention dashboard metrics in Diagnostics", async () => {
+    // Telemetry dashboards are advanced-only; re-mount with the advanced flag.
+    await act(async () => {
+      root.unmount()
+      window.history.replaceState(null, "", "/options.html?advanced=1")
+      root = ReactDOM.createRoot(container)
+      root.render(<OptionsApp />)
+      await Promise.resolve()
+      await Promise.resolve()
+    })
     const now = Date.UTC(2026, 0, 21, 12, 0, 0)
     getRecentEventsMock.mockResolvedValue([
       {
@@ -1517,7 +1554,7 @@ describe("OptionsApp — Sites section", () => {
     ])
 
     await act(async () => {
-      clickButton("Diagnostics")
+      clickButton("Help & privacy")
       await Promise.resolve()
       await Promise.resolve()
       await Promise.resolve()
@@ -1537,6 +1574,15 @@ describe("OptionsApp — Sites section", () => {
   })
 
   it("shows local A/B learning-loop funnel results in Diagnostics", async () => {
+    // Telemetry dashboards are advanced-only; re-mount with the advanced flag.
+    await act(async () => {
+      root.unmount()
+      window.history.replaceState(null, "", "/options.html?advanced=1")
+      root = ReactDOM.createRoot(container)
+      root.render(<OptionsApp />)
+      await Promise.resolve()
+      await Promise.resolve()
+    })
     const now = Date.now()
     getRecentEventsMock.mockResolvedValue([
       {
@@ -1590,7 +1636,7 @@ describe("OptionsApp — Sites section", () => {
     ])
 
     await act(async () => {
-      clickButton("Diagnostics")
+      clickButton("Help & privacy")
       await Promise.resolve()
       await Promise.resolve()
       await Promise.resolve()
@@ -1622,6 +1668,15 @@ describe("OptionsApp — Sites section", () => {
   })
 
   it("shows beta-safe upgrade prompt observability in Diagnostics", async () => {
+    // Telemetry dashboards are advanced-only; re-mount with the advanced flag.
+    await act(async () => {
+      root.unmount()
+      window.history.replaceState(null, "", "/options.html?advanced=1")
+      root = ReactDOM.createRoot(container)
+      root.render(<OptionsApp />)
+      await Promise.resolve()
+      await Promise.resolve()
+    })
     const now = Date.now()
     getRecentEventsMock.mockResolvedValue([
       {
@@ -1657,7 +1712,7 @@ describe("OptionsApp — Sites section", () => {
     ])
 
     await act(async () => {
-      clickButton("Diagnostics")
+      clickButton("Help & privacy")
       await Promise.resolve()
       await Promise.resolve()
       await Promise.resolve()

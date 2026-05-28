@@ -212,9 +212,14 @@ export function loadRelayEnv(env: NodeJS.ProcessEnv = process.env): RelayEnv {
     useOpenRouter: (env.ASTRA_USE_OPENROUTER ?? "").toLowerCase() === "true"
       || (env.OPENROUTER_API_KEY?.trim().length ?? 0) > 0,
     openrouterModelMap: parseOpenRouterModelMap(env.ASTRA_OPENROUTER_MODEL_MAP),
-    freeDailyRequests: Number(env.ASTRA_FREE_DAILY_REQUESTS ?? "2000"),
-    freeDailyCharacters: Number(env.ASTRA_FREE_DAILY_CHARACTERS ?? "500000"),
-    freeRpm: Number(env.ASTRA_FREE_RPM ?? "120"),
+    // Free is a *taste*, not a workhorse. These defaults are deliberately bounded
+    // well below Pro so an unconfigured deployment can never leave Free uncapped
+    // (previously all tiers defaulted to 2000/500000/120 — i.e. Free == Pro, an
+    // uncapped-cost path). Paid-beta cost guardrail: see findFreeTierLimitViolations
+    // and the AC8 config test. Override via env for production tuning.
+    freeDailyRequests: Number(env.ASTRA_FREE_DAILY_REQUESTS ?? "80"),
+    freeDailyCharacters: Number(env.ASTRA_FREE_DAILY_CHARACTERS ?? "40000"),
+    freeRpm: Number(env.ASTRA_FREE_RPM ?? "20"),
     trialDailyRequests: Number(env.ASTRA_TRIAL_DAILY_REQUESTS ?? env.ASTRA_PRO_DAILY_REQUESTS ?? "2000"),
     trialDailyCharacters: Number(env.ASTRA_TRIAL_DAILY_CHARACTERS ?? env.ASTRA_PRO_DAILY_CHARACTERS ?? "500000"),
     trialRpm: Number(env.ASTRA_TRIAL_RPM ?? env.ASTRA_PRO_RPM ?? "120"),
@@ -241,4 +246,29 @@ export function loadRelayEnv(env: NodeJS.ProcessEnv = process.env): RelayEnv {
       apiBaseUrl: parseOptionalText(env.ASTRA_CF_API_BASE_URL),
     },
   }
+}
+
+/**
+ * Zero-config cost guardrail (paid-beta AC8): the Free tier must stay strictly
+ * below Pro on every daily axis. If Free >= Pro on any axis, an unconfigured or
+ * mis-tuned deployment leaves Free effectively uncapped, which is the cost hole
+ * the paid-beta plan closes before any user is invited. Returns human-readable
+ * violations; an empty array means the limits are safely bounded.
+ */
+export function findFreeTierLimitViolations(relayEnv: RelayEnv): string[] {
+  const violations: string[] = []
+  if (relayEnv.freeDailyRequests >= relayEnv.proDailyRequests) {
+    violations.push(
+      `freeDailyRequests (${relayEnv.freeDailyRequests}) must be < proDailyRequests (${relayEnv.proDailyRequests})`,
+    )
+  }
+  if (relayEnv.freeDailyCharacters >= relayEnv.proDailyCharacters) {
+    violations.push(
+      `freeDailyCharacters (${relayEnv.freeDailyCharacters}) must be < proDailyCharacters (${relayEnv.proDailyCharacters})`,
+    )
+  }
+  if (relayEnv.freeRpm >= relayEnv.proRpm) {
+    violations.push(`freeRpm (${relayEnv.freeRpm}) must be < proRpm (${relayEnv.proRpm})`)
+  }
+  return violations
 }

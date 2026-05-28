@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react"
+import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { browser } from "#imports"
 import { Toast, ToastViewport } from "@/components/Toast"
 import type {
@@ -56,9 +56,17 @@ import { useViewportProfile } from "@/utils/ui/useViewportProfile"
 import { useAstraTheme } from "@/utils/ui/useAstraTheme"
 import { t } from "@/utils/i18n"
 import { getSafeAiUnavailableCopy } from "@/utils/copy-dictionary"
+import {
+  isOptionsAdvancedEnabled,
+  sanitizeRequestedSection,
+  SECTION_META,
+  visibleNavGroups,
+  visibleNavItems,
+  type Section,
+} from "./option-sections"
 
-type Section = "general" | "providers" | "translation" | "actions" | "sites" | "vocabulary" | "diagnostics" | "about"
-const OPTION_SECTIONS: Section[] = ["general", "providers", "translation", "actions", "sites", "vocabulary", "diagnostics", "about"]
+// Section model + the zero-config advanced gate live in ./option-sections
+// (pure + unit-testable). Imported at the top of this file.
 
 type PendingRevokeDevice = {
   deviceId: string
@@ -154,72 +162,6 @@ const SERVICE_MODE_OPTIONS: Array<{
   { value: "best_quality", label: "Best quality", hint: "Uses the most careful service path for harder content and study work." },
 ]
 
-const NAV_ITEMS: { key: Section; label: string }[] = [
-  { key: "translation", label: "Translation" },
-  { key: "actions", label: "Actions" },
-  { key: "sites", label: "Sites" },
-  { key: "vocabulary", label: "Vocabulary" },
-  { key: "providers", label: "Astra AI" },
-  { key: "diagnostics", label: "Diagnostics" },
-  { key: "general", label: "General" },
-  { key: "about", label: "About" },
-]
-
-type NavGroupItem = {
-  key: Section
-  label: string
-  getCount?: (config: AstraConfig) => number | null
-}
-
-const NAV_GROUPS: { label: string; items: NavGroupItem[] }[] = [
-  {
-    label: "Reading",
-    items: [
-      { key: "translation", label: "Translation" },
-      { key: "actions", label: "Actions" },
-      {
-        key: "sites",
-        label: "Sites",
-        getCount: (cfg) => {
-          const count = Object.keys(cfg.sites).length
-          return count > 0 ? count : null
-        },
-      },
-    ],
-  },
-  {
-    label: "Learning",
-    items: [
-      { key: "vocabulary", label: "Vocabulary" },
-    ],
-  },
-  {
-    label: "Service",
-    items: [
-      { key: "providers", label: "Astra AI" },
-      { key: "diagnostics", label: "Diagnostics" },
-    ],
-  },
-  {
-    label: "Account",
-    items: [
-      { key: "general", label: "General" },
-      { key: "about", label: "About" },
-    ],
-  },
-]
-
-const SECTION_META: Record<Section, { breadcrumb: string }> = {
-  translation: { breadcrumb: "Translation" },
-  actions: { breadcrumb: "Actions" },
-  sites: { breadcrumb: "Sites" },
-  vocabulary: { breadcrumb: "Vocabulary" },
-  providers: { breadcrumb: "Astra AI" },
-  diagnostics: { breadcrumb: "Diagnostics" },
-  general: { breadcrumb: "General" },
-  about: { breadcrumb: "About" },
-}
-
 const BRAND_COLOR = "var(--astra-brand)"
 
 function detectBrowserLabel(): string {
@@ -246,8 +188,11 @@ function detectOsLabel(): string {
 function getInitialOptionsSection(): Section {
   if (typeof window === "undefined") return "translation"
   try {
+    const advanced = isOptionsAdvancedEnabled(window.location.search)
     const candidate = new URLSearchParams(window.location.search).get("section")
-    return OPTION_SECTIONS.includes(candidate as Section) ? candidate as Section : "translation"
+    // Advanced-only sections (provider/model controls) are never opened from a
+    // deep link unless the explicit advanced flag is also present.
+    return sanitizeRequestedSection(candidate, advanced)
   } catch {
     return "translation"
   }
@@ -758,7 +703,7 @@ function GeneralSection({
         <ul style={{ ...hintStyle, margin: "0 0 12px 18px", padding: 0 }}>
           <li>Export learning data from Vocabulary as JSON; full webpages and full transcripts are not intentionally included.</li>
           <li>Delete saved words, sentences, source records, and related review cards from the Library controls.</li>
-          <li>For account data deletion, use Diagnostics to send a metadata-only account request until self-serve deletion ships.</li>
+          <li>For account data deletion, open Help &amp; privacy to send a metadata-only account request until self-serve deletion ships.</li>
         </ul>
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
           <button type="button" className="astra-btn-secondary" data-testid="privacy-export-learning-data-link" onClick={() => onNavigate("vocabulary")}>
@@ -2196,7 +2141,7 @@ function VocabularySection() {
   )
 }
 
-function DiagnosticsSection({ config }: { config: AstraConfig }) {
+function DiagnosticsSection({ config, advanced }: { config: AstraConfig; advanced: boolean }) {
   const [activationDashboard, setActivationDashboard] = useState<LearningLoopActivationDashboard>(() => aggregateLearningLoopActivationDashboard([]))
   const [learningDashboard, setLearningDashboard] = useState<LearningLoopLearningDashboard>(() => aggregateLearningLoopLearningDashboard([]))
   const [retentionDashboard, setRetentionDashboard] = useState<LearningLoopRetentionDashboard>(() => aggregateLearningLoopRetentionDashboard([]))
@@ -2361,12 +2306,12 @@ function DiagnosticsSection({ config }: { config: AstraConfig }) {
   return (
     <div className="astra-settings-section">
       <SectionHeader
-        eyebrow="Astra · Diagnostics"
-        headline="What Astra sees from this device"
-        intro="Local learning-loop telemetry and support details — visible only to you, on this machine."
+        eyebrow="Astra · Help & privacy"
+        headline="Help, support & privacy"
+        intro="Report a problem, manage your saved data, or send cancellation feedback — all metadata-only, on this device."
       />
 
-      <h2 className="astra-section-heading astra-sr-only">Diagnostics</h2>
+      <h2 className="astra-section-heading astra-sr-only">Help and privacy</h2>
 
       <div className="astra-card" data-testid="support-bundle-card">
         <h3 className="astra-section-subheading">Report a problem</h3>
@@ -2500,6 +2445,12 @@ function DiagnosticsSection({ config }: { config: AstraConfig }) {
         </button>
       </div>
 
+      {/* Developer telemetry dashboards stay off the default zero-config path;
+          they render only under the explicit advanced flag (?advanced=1). The
+          support report, cancellation feedback, and account-deletion request
+          above remain reachable for every user. */}
+      {advanced && (
+      <>
       <div className="astra-card" data-testid="activation-dashboard-card" style={{ marginTop: 16 }}>
         <h3 className="astra-section-subheading">Activation dashboard</h3>
         <div style={hintStyle}>
@@ -2777,6 +2728,8 @@ function DiagnosticsSection({ config }: { config: AstraConfig }) {
           </div>
         </div>
       </div>
+      </>
+      )}
     </div>
   )
 }
@@ -3171,6 +3124,9 @@ function AboutSection({
 export default function OptionsApp() {
   const { astraTheme, astraDirection } = useAstraTheme()
   const [section, setSection] = useState<Section>(() => getInitialOptionsSection())
+  // Zero-config default path: provider/model controls ("Astra AI") are hidden
+  // unless the explicit advanced flag is on, which ordinary beta users never set.
+  const optionsAdvancedEnabled = useMemo(() => isOptionsAdvancedEnabled(), [])
   const [searchQuery, setSearchQuery] = useState("")
   const [config, setConfig] = useState<AstraConfig>(DEFAULT_ASTRA_CONFIG)
   const [availableVoices, setAvailableVoices] = useState<TTSVoiceOption[]>([])
@@ -3509,6 +3465,18 @@ export default function OptionsApp() {
           />
         )
       case "providers":
+        // Defensive: provider/model controls only render on the advanced path.
+        // Nav and deep-link resolution already exclude this section by default,
+        // so an ordinary user can never land here.
+        if (!optionsAdvancedEnabled) {
+          return (
+            <TranslationSection
+              config={config}
+              onPresentationChange={updatePresentation}
+              onConfigChange={updateConfig}
+            />
+          )
+        }
         return <ProvidersSection config={config} onConfigChange={updateConfig} />
       case "translation":
         return (
@@ -3525,7 +3493,7 @@ export default function OptionsApp() {
       case "vocabulary":
         return <VocabularySection />
       case "diagnostics":
-        return <DiagnosticsSection config={config} />
+        return <DiagnosticsSection config={config} advanced={optionsAdvancedEnabled} />
       case "about":
         return (
           <AboutSection
@@ -3560,7 +3528,7 @@ export default function OptionsApp() {
       : "Continuity preparing…"
 
   const trimmedQuery = searchQuery.trim().toLowerCase()
-  const filteredGroups = NAV_GROUPS.map((group) => ({
+  const filteredGroups = visibleNavGroups(optionsAdvancedEnabled).map((group) => ({
     ...group,
     items: trimmedQuery.length > 0
       ? group.items.filter((item) =>
@@ -3656,7 +3624,7 @@ export default function OptionsApp() {
 
           {isMobile && (
             <nav className="astra-settings-mobile-nav" aria-label="Settings sections">
-              {NAV_ITEMS.map((item) => (
+              {visibleNavItems(optionsAdvancedEnabled).map((item) => (
                 <button
                   type="button"
                   key={item.key}
