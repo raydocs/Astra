@@ -241,13 +241,28 @@ describe("Astra product metrics contract", () => {
     ])
   })
 
+  it("accepts stable short production metric export ids and query versions", () => {
+    const decision = evaluateAstraProductionMetricsExportPacket(completeProductionExportRows.map((row) => ({
+      ...row,
+      exportId: `${row.category}-v3`,
+      queryVersion: "v1.0.0",
+    })))
+
+    expect(decision).toEqual({ acceptable: true, findings: [] })
+  })
+
   it("rejects weak production metric export dates and non-link evidence references", () => {
     const decision = evaluateAstraProductionMetricsExportPacket([
       {
         ...completeProductionExportRows[0],
         dateRange: "release week",
+        cohortDefinition: "local cohort",
+        dashboardOrQuerySource: "sample dashboard",
+        exportId: "000000000000",
         exportedAt: "release day",
-        evidenceLink: "docs/../metrics/activation.csv",
+        exportDigest: "latest",
+        queryVersion: "latest",
+        evidenceLink: "http://[fe80::1]/metrics/activation.csv",
         ownerDate: "metrics owner / 2026-99-99",
         privacyReviewLink: "docs/reviews//privacy-review.md",
       },
@@ -257,11 +272,29 @@ describe("Astra product metrics contract", () => {
     expect(decision.acceptable).toBe(false)
     expect(decision.findings.map((finding) => finding.code)).toEqual(expect.arrayContaining([
       "invalid_date_range",
+      "invalid_cohort_definition",
+      "invalid_dashboard_or_query_source",
+      "invalid_export_id",
       "invalid_exported_at",
+      "invalid_export_digest",
+      "invalid_query_version",
       "invalid_evidence_link",
       "invalid_owner_date",
       "invalid_privacy_review_link",
     ]))
+  })
+
+  it("rejects repeated-character production metric export digests", () => {
+    const decision = evaluateAstraProductionMetricsExportPacket([
+      {
+        ...completeProductionExportRows[0],
+        exportDigest: "aaaaaaaaaaaa",
+      },
+      ...completeProductionExportRows.slice(1),
+    ])
+
+    expect(decision.acceptable).toBe(false)
+    expect(decision.findings.map((finding) => finding.code)).toContain("invalid_export_digest")
   })
 
   it("rejects impossible or reversed production metric export date ranges", () => {

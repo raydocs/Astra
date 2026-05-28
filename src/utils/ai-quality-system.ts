@@ -516,6 +516,27 @@ function isPlaceholderEvidenceReference(value: string): boolean {
   return normalizedValue.includes("example") || normalizedValue.includes("placeholder") || normalizedValue.includes("todo")
 }
 
+function hasWeakEvidenceKeyword(value: string): boolean {
+  return /\b(?:dummy|sample|fake|local|none|n\/a|na|latest|dev|test)\b/.test(value.trim().toLowerCase())
+}
+
+function isWeakIdentityOrVersionReference(value: string): boolean {
+  const normalizedValue = value.trim().toLowerCase()
+  const identityValue = normalizedValue
+    .replace(/^(?:version|build|run|rubric|fixture|manifest)[:=/ -]+/, "")
+    .replace(/[^a-z0-9]/g, "")
+
+  return identityValue.length < 12
+    || /^0+$/.test(identityValue)
+    || /^([a-z0-9])\1+$/.test(identityValue)
+    || hasWeakEvidenceKeyword(normalizedValue)
+}
+
+function isWeakContextEvidenceReference(value: string): boolean {
+  const normalizedValue = value.trim().toLowerCase()
+  return isPlaceholderEvidenceReference(normalizedValue) || hasWeakEvidenceKeyword(normalizedValue)
+}
+
 function includesIsoDate(value: string): boolean {
   const match = /\b(20\d{2})-(\d{2})-(\d{2})\b/.exec(value)
   if (!match) return false
@@ -643,6 +664,12 @@ export function evaluateAiQualityHumanScoredReportEvidence(
       "Human-scored AI quality report is missing target environment evidence.",
       "Record the target release environment, provider, model/config, and scoring surface used for the report.",
     ))
+  } else if (isWeakContextEvidenceReference(evidence.environment)) {
+    findings.push(makeHumanReportFinding(
+      "missing_environment",
+      "Human-scored AI quality report target environment is placeholder evidence.",
+      "Record the real target release environment, provider, model/config, and scoring surface used for the report.",
+    ))
   }
 
   if (isBlank(evidence.runId) || isBlank(evidence.rubricVersion)) {
@@ -657,6 +684,12 @@ export function evaluateAiQualityHumanScoredReportEvidence(
       "Human-scored AI quality report run metadata is placeholder evidence.",
       "Record a real run id and rubric version for the target release scoring run.",
     ))
+  } else if (isWeakIdentityOrVersionReference(evidence.runId) || isWeakIdentityOrVersionReference(evidence.rubricVersion)) {
+    findings.push(makeHumanReportFinding(
+      "missing_run_metadata",
+      "Human-scored AI quality report run metadata must use a stable run id and rubric version.",
+      "Record a real run id and rubric version for the target release scoring run.",
+    ))
   }
 
   if (isBlank(evidence.fixtureManifestPath) || isBlank(evidence.fixtureManifestVersion)) {
@@ -669,6 +702,12 @@ export function evaluateAiQualityHumanScoredReportEvidence(
     findings.push(makeHumanReportFinding(
       "missing_fixture_manifest",
       "Human-scored AI quality report fixture manifest evidence is placeholder evidence.",
+      "Attach the real fixture manifest path/version used for target release scoring.",
+    ))
+  } else if (isWeakIdentityOrVersionReference(evidence.fixtureManifestVersion)) {
+    findings.push(makeHumanReportFinding(
+      "missing_fixture_manifest",
+      "Human-scored AI quality report fixture manifest version must be stable evidence.",
       "Attach the real fixture manifest path/version used for target release scoring.",
     ))
   } else if (!isFixtureManifestReference(evidence.fixtureManifestPath)) {

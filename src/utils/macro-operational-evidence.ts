@@ -164,6 +164,8 @@ export interface AstraMacroCiArtifactPacketEvidence {
   workflowName: string
   runId: string
   jobName: string
+  workflowConclusion?: string
+  jobConclusion?: string
   artifactId: string
   artifactDigest: string
   artifactManifestPath: string
@@ -755,11 +757,11 @@ export function evaluateAstraMacroOperationalEvidenceCompletionPacket(
         message: `${item.label} is missing environment or target release context.`,
         nextStep: "Record target build, browser/OS, deployment, cohort, provider, or release-candidate context.",
       })
-    } else if (isPlaceholderEvidenceReference(row.environment)) {
+    } else if (isWeakContextEvidenceReference(row.environment)) {
       findings.push({
         areaId: item.id,
         message: `${item.label} environment is placeholder evidence.`,
-        nextStep: "Record the real target build, browser/OS, deployment, cohort, provider, or release-candidate context.",
+        nextStep: "Record the real target environment or release context for this proof.",
       })
     }
     if (isBlank(row.evidenceLink)) {
@@ -818,6 +820,47 @@ function isPlaceholderEvidenceReference(value: string): boolean {
   return normalizedValue.includes("example") || normalizedValue.includes("placeholder") || normalizedValue.includes("todo")
 }
 
+function digestOrVersionIdentity(value: string): string {
+  return value
+    .trim()
+    .toLowerCase()
+    .replace(/^(?:sha(?:256|384|512)?|checksum|digest|version|build|artifact)[:=/ -]+/, "")
+}
+
+function hasWeakEvidenceKeyword(value: string): boolean {
+  return /\b(?:dummy|sample|fake|local|none|n\/a|na|latest|dev|test)\b/.test(value.trim().toLowerCase())
+}
+
+function isWeakDigestReference(value: string): boolean {
+  const normalizedValue = value.trim().toLowerCase()
+  const identityValue = digestOrVersionIdentity(value).replace(/[^a-z0-9]/g, "")
+
+  return identityValue.length < 12
+    || /^0+$/.test(identityValue)
+    || /^([a-z0-9])\1+$/.test(identityValue)
+    || hasWeakEvidenceKeyword(normalizedValue)
+}
+
+function isWeakContextEvidenceReference(value: string): boolean {
+  const normalizedValue = value.trim().toLowerCase()
+  return isPlaceholderEvidenceReference(normalizedValue) || hasWeakEvidenceKeyword(normalizedValue)
+}
+
+function isStableVersionReference(value: string): boolean {
+  const normalizedValue = digestOrVersionIdentity(value)
+  if (hasWeakEvidenceKeyword(normalizedValue) || isPlaceholderEvidenceReference(normalizedValue)) return false
+
+  const compactValue = normalizedValue.replace(/[^a-z0-9]/g, "")
+  if (!/\d/.test(compactValue) || /^0+$/.test(compactValue) || /^([a-z0-9])\1+$/.test(compactValue)) return false
+  if (/^v?\d+\.\d+\.\d+(?:[-+][a-z0-9.-]+)?$/i.test(normalizedValue)) return true
+  if (/^20\d{2}-\d{2}-\d{2}$/.test(normalizedValue)) return includesIsoDate(normalizedValue)
+  return /^[a-z][a-z0-9]*(?:[-_.][a-z0-9]+)+$/i.test(normalizedValue)
+}
+
+function isWeakDigestOrVersionReference(value: string): boolean {
+  return isWeakDigestReference(value) && !isStableVersionReference(value)
+}
+
 function includesIsoDate(value: string): boolean {
   const match = /\b(20\d{2})-(\d{2})-(\d{2})\b/.exec(value)
   if (!match) return false
@@ -864,15 +907,26 @@ function isLocalUrlReference(value: string): boolean {
       || /^192\.168(?:\.\d{1,3}){2}$/.test(hostname)
       || /^172\.(?:1[6-9]|2\d|3[0-1])(?:\.\d{1,3}){2}$/.test(hostname)
       || /^169\.254(?:\.\d{1,3}){2}$/.test(hostname)
-      || hostname === "::1"
-      || hostname === "[::1]"
+      || isPrivateIpv6Hostname(hostname)
   } catch {
     return true
   }
 }
 
+function isPrivateIpv6Hostname(hostname: string): boolean {
+  const normalizedHostname = hostname.replace(/^\[|\]$/g, "")
+  return normalizedHostname === "::1"
+    || /^f[cd][0-9a-f]{2}:/i.test(normalizedHostname)
+    || /^fe[89ab][0-9a-f]:/i.test(normalizedHostname)
+}
+
+function isSuccessfulCiConclusion(value: string | undefined): boolean {
+  return value?.trim().toLowerCase() === "success"
+}
+
 function isCommitShaLike(value: string): boolean {
-  return /^[a-f0-9]{7,40}$/i.test(value.trim())
+  const trimmedValue = value.trim()
+  return /^[a-f0-9]{7,40}$/i.test(trimmedValue) && !/^0+$/.test(trimmedValue)
 }
 
 function includesRequiredEvidenceTerms(value: string, item: AstraMacroOperationalEvidenceItem): boolean {
@@ -987,19 +1041,33 @@ export function evaluateAstraMacroCiArtifactPacket(
       findings.push({ evidenceField: requirement.evidenceField, message: `${requirement.label} is missing the CI run id.`, nextStep: "Record the immutable CI run id for the target run." })
     } else if (isPlaceholderEvidenceReference(item.runId)) {
       findings.push({ evidenceField: requirement.evidenceField, message: `${requirement.label} CI run id is placeholder evidence.`, nextStep: "Record the real immutable CI run id for the target run." })
+    } else if (isWeakDigestOrVersionReference(item.runId)) {
+      findings.push({ evidenceField: requirement.evidenceField, message: `${requirement.label} CI run id must be a stable run identity.`, nextStep: "Record the real immutable CI run id for the target run." })
     }
     if (isBlank(item.jobName)) {
       findings.push({ evidenceField: requirement.evidenceField, message: `${requirement.label} is missing the CI job name.`, nextStep: "Record the CI job name that produced the artifact." })
+    } else if (isWeakContextEvidenceReference(item.jobName)) {
+      findings.push({ evidenceField: requirement.evidenceField, message: `${requirement.label} CI job name is placeholder evidence.`, nextStep: "Record the real CI job name that produced the artifact." })
+    }
+    if (!isSuccessfulCiConclusion(item.workflowConclusion)) {
+      findings.push({ evidenceField: requirement.evidenceField, message: `${requirement.label} workflow conclusion must be success.`, nextStep: "Attach artifact evidence only from a completed successful CI workflow run, not an always-uploaded artifact from a failed run." })
+    }
+    if (!isSuccessfulCiConclusion(item.jobConclusion)) {
+      findings.push({ evidenceField: requirement.evidenceField, message: `${requirement.label} job conclusion must be success.`, nextStep: "Attach artifact evidence only from a successful CI job that produced the required artifact." })
     }
     if (isBlank(item.artifactId)) {
       findings.push({ evidenceField: requirement.evidenceField, message: `${requirement.label} is missing the artifact id.`, nextStep: "Record the uploaded artifact id from the target CI run." })
     } else if (isPlaceholderEvidenceReference(item.artifactId)) {
       findings.push({ evidenceField: requirement.evidenceField, message: `${requirement.label} artifact id is placeholder evidence.`, nextStep: "Record the real uploaded artifact id from the target CI run." })
+    } else if (isWeakDigestOrVersionReference(item.artifactId)) {
+      findings.push({ evidenceField: requirement.evidenceField, message: `${requirement.label} artifact id must be a stable artifact identity.`, nextStep: "Record the real uploaded artifact id from the target CI run." })
     }
     if (isBlank(item.artifactDigest)) {
       findings.push({ evidenceField: requirement.evidenceField, message: `${requirement.label} is missing the artifact digest/checksum.`, nextStep: "Record the artifact digest or checksum so the downloaded artifact can be verified." })
     } else if (isPlaceholderEvidenceReference(item.artifactDigest)) {
       findings.push({ evidenceField: requirement.evidenceField, message: `${requirement.label} artifact digest/checksum is placeholder evidence.`, nextStep: "Record the real artifact digest or checksum so the downloaded artifact can be verified." })
+    } else if (isWeakDigestReference(item.artifactDigest)) {
+      findings.push({ evidenceField: requirement.evidenceField, message: `${requirement.label} artifact digest/checksum must be a stable digest, checksum, or artifact identity.`, nextStep: "Record the real artifact digest or checksum so the downloaded artifact can be verified." })
     }
     if (isBlank(item.artifactManifestPath)) {
       findings.push({ evidenceField: requirement.evidenceField, message: `${requirement.label} is missing the artifact manifest path.`, nextStep: "Attach or point to the manifest inside the uploaded artifact that lists command/lane results." })
@@ -1027,7 +1095,7 @@ export function evaluateAstraMacroCiArtifactPacket(
     } else if (isPlaceholderEvidenceReference(item.commitSha)) {
       findings.push({ evidenceField: requirement.evidenceField, message: `${requirement.label} target commit/SHA is placeholder evidence.`, nextStep: "Record the exact commit/SHA covered by the CI run." })
     } else if (!isCommitShaLike(item.commitSha)) {
-      findings.push({ evidenceField: requirement.evidenceField, message: `${requirement.label} target commit/SHA must be a 7-40 character hex SHA.`, nextStep: "Record the exact git commit SHA covered by the CI run." })
+      findings.push({ evidenceField: requirement.evidenceField, message: `${requirement.label} target commit/SHA must be a 7-40 character non-zero hex SHA.`, nextStep: "Record the exact git commit SHA covered by the CI run." })
     }
     if (isBlank(item.ownerDate)) {
       findings.push({ evidenceField: requirement.evidenceField, message: `${requirement.label} is missing owner/date.`, nextStep: "Record who attached/reviewed the artifact and when." })
@@ -1123,6 +1191,8 @@ export function evaluateAstraMacroManualQaEvidencePacket(
       }
       if (isBlank(row.environment)) {
         findings.push({ section: requirement.section, qaRow, message: `Section ${requirement.section} / ${qaRow} is missing environment.`, nextStep: "Record browser, OS, build, and relevant relay/API environment." })
+      } else if (isWeakContextEvidenceReference(row.environment)) {
+        findings.push({ section: requirement.section, qaRow, message: `Section ${requirement.section} / ${qaRow} environment is placeholder evidence.`, nextStep: "Record the real browser, OS, build, and relevant relay/API environment." })
       }
       if (isBlank(row.evidenceLink)) {
         findings.push({ section: requirement.section, qaRow, message: `Section ${requirement.section} / ${qaRow} is missing evidence link.`, nextStep: "Attach screenshot, recording, run folder, log excerpt, or written QA note." })
@@ -1162,7 +1232,7 @@ export function evaluateAstraMacroReleaseApprovalPacket(
   } else if (isPlaceholderEvidenceReference(evidence.targetCommitSha)) {
     findings.push({ message: "Release approval target commit/SHA is placeholder evidence.", nextStep: "Record the exact commit/SHA being approved." })
   } else if (!isCommitShaLike(evidence.targetCommitSha)) {
-    findings.push({ message: "Release approval target commit/SHA must be a 7-40 character hex SHA.", nextStep: "Record the exact git commit SHA being approved." })
+    findings.push({ message: "Release approval target commit/SHA must be a 7-40 character non-zero hex SHA.", nextStep: "Record the exact git commit SHA being approved." })
   }
   if (evidence.decision === "rejected") {
     findings.push({ message: "Release approval decision is rejected.", nextStep: "Do not mark ownerReleaseApprovalRecorded true until the owner approves this target commit/worktree." })
@@ -1278,7 +1348,7 @@ export function evaluateAstraMacroLaunchArtifactPacket(
         message: `${requirement.label} is missing artifact type.`,
         nextStep: "Record whether the proof is a billing provider record, legal approval, store-console record, signed build artifact, screenshot set, or GTM media artifact.",
       })
-    } else if (isPlaceholderEvidenceReference(item.artifactType)) {
+    } else if (isWeakContextEvidenceReference(item.artifactType)) {
       findings.push({
         requirementId: requirement.id,
         group: requirement.group,
@@ -1300,6 +1370,13 @@ export function evaluateAstraMacroLaunchArtifactPacket(
         message: `${requirement.label} artifact id is placeholder evidence.`,
         nextStep: requirement.requiredEvidence,
       })
+    } else if (isWeakDigestOrVersionReference(item.artifactId)) {
+      findings.push({
+        requirementId: requirement.id,
+        group: requirement.group,
+        message: `${requirement.label} artifact id must be a stable artifact identity.`,
+        nextStep: "Record the real external artifact id, run id, upload id, approval record id, or media id for this launch proof.",
+      })
     }
     if (isBlank(item.artifactDigestOrVersion)) {
       findings.push({
@@ -1315,6 +1392,13 @@ export function evaluateAstraMacroLaunchArtifactPacket(
         message: `${requirement.label} artifact digest or version is placeholder evidence.`,
         nextStep: requirement.requiredEvidence,
       })
+    } else if (isWeakDigestOrVersionReference(item.artifactDigestOrVersion)) {
+      findings.push({
+        requirementId: requirement.id,
+        group: requirement.group,
+        message: `${requirement.label} artifact digest or version must be a stable digest, checksum, build hash, policy version, store version, or media version.`,
+        nextStep: "Record a stable external artifact digest, checksum, build hash, policy version, store version, or media version tying the artifact to the target release.",
+      })
     }
     if (isBlank(item.targetChannel)) {
       findings.push({
@@ -1323,7 +1407,7 @@ export function evaluateAstraMacroLaunchArtifactPacket(
         message: `${requirement.label} is missing target channel.`,
         nextStep: "Record the billing provider mode, legal/public URL context, browser/mobile store channel, or GTM launch channel.",
       })
-    } else if (isPlaceholderEvidenceReference(item.targetChannel)) {
+    } else if (isWeakContextEvidenceReference(item.targetChannel)) {
       findings.push({
         requirementId: requirement.id,
         group: requirement.group,
@@ -1375,6 +1459,13 @@ export function evaluateAstraMacroLaunchArtifactPacket(
         message: `${requirement.label} is missing environment or target channel context.`,
         nextStep: "Record target environment, billing provider, store channel, or GTM channel context.",
       })
+    } else if (isWeakContextEvidenceReference(item.environment)) {
+      findings.push({
+        requirementId: requirement.id,
+        group: requirement.group,
+        message: `${requirement.label} environment or target channel context is placeholder evidence.`,
+        nextStep: "Record the real target environment, billing provider, store channel, or GTM channel context.",
+      })
     }
   }
 
@@ -1398,21 +1489,21 @@ export function evaluateAstraMacroPlanCompletion(
   if (!evidence.ciQualityArtifactsAttached) {
     blockers.push({
       code: "ci_quality_artifacts",
-      message: "Attach CI `quality-gate-results` artifact packet rows with CI run URL, run/job/artifact identity, distinct artifact id/URL, artifact digest/checksum, URL or repo artifact-path manifest, 7-40 character hex target commit/SHA, owner/date containing a real calendar YYYY-MM-DD, and required quality-command coverage.",
+      message: "Attach CI `quality-gate-results` artifact packet rows with CI run URL, success workflow/job conclusions, stable non-weak run/job/artifact identity, distinct artifact id/URL, stable non-weak artifact digest/checksum, URL or repo artifact-path manifest, 7-40 character non-zero hex target commit/SHA, owner/date containing a real calendar YYYY-MM-DD, and required quality-command coverage.",
     })
   }
 
   if (!evidence.ciLiveBrowserArtifactsAttached) {
     blockers.push({
       code: "ci_live_browser_artifacts",
-      message: "Attach CI `live-bench-results` uploaded artifact packet rows with CI run URL, run/job/artifact identity, distinct artifact id/URL, artifact digest/checksum, URL or repo artifact-path manifest, 7-40 character hex target commit/SHA, owner/date containing a real calendar YYYY-MM-DD, and required release-proof lane coverage.",
+      message: "Attach CI `live-bench-results` uploaded artifact packet rows with CI run URL, success workflow/job conclusions, stable non-weak run/job/artifact identity, distinct artifact id/URL, stable non-weak artifact digest/checksum, URL or repo artifact-path manifest, 7-40 character non-zero hex target commit/SHA, owner/date containing a real calendar YYYY-MM-DD, and required release-proof lane coverage.",
     })
   }
 
   if (!evidence.ownerReleaseApprovalRecorded) {
     blockers.push({
       code: "owner_release_approval",
-      message: "Record owner release approval with approver/date containing a real calendar YYYY-MM-DD, URL or repo artifact-path approval record, 7-40 character hex target commit/SHA, reviewed Gate 4/RC/final-gate artifacts, and remaining-blocker/downgrade acknowledgements.",
+      message: "Record owner release approval with approver/date containing a real calendar YYYY-MM-DD, URL or repo artifact-path approval record, 7-40 character non-zero hex target commit/SHA, reviewed Gate 4/RC/final-gate artifacts, and remaining-blocker/downgrade acknowledgements.",
     })
   }
 
@@ -1431,11 +1522,11 @@ export function evaluateAstraMacroPlanCompletion(
   }
 
   if (!evidence.billingLegalStoreGtmArtifactsAttached) {
-    blockers.push({ code: "billing_legal_store_gtm_artifacts", message: "Attach billing, legal, store submission, and GTM launch artifact rows with artifact type/id, digest or version, target channel, claim boundary, owner/date containing a real calendar YYYY-MM-DD, environment/channel, and URL or repo artifact-path evidence link before launch-complete claims." })
+    blockers.push({ code: "billing_legal_store_gtm_artifacts", message: "Attach billing, legal, store submission, and GTM launch artifact rows with artifact type/id, stable non-weak digest or version, target channel, claim boundary, owner/date containing a real calendar YYYY-MM-DD, environment/channel, and URL or repo artifact-path evidence link before launch-complete claims." })
   }
 
   if (!evidence.productionMetricsExportAttached) {
-    blockers.push({ code: "production_metrics_export", message: "Attach production/cohort metric dashboard exports with valid non-reversed shared YYYY-MM-DD..YYYY-MM-DD date range, ISO exported-at timestamp, export id, digest/checksum, query version, category-aligned non-duplicated metric ids, URL or repo artifact-path evidence/privacy links, and owner/date containing a real calendar YYYY-MM-DD before metric maturity claims." })
+    blockers.push({ code: "production_metrics_export", message: "Attach production/cohort metric dashboard exports with valid non-reversed shared YYYY-MM-DD..YYYY-MM-DD date range, ISO exported-at timestamp, export id, stable non-weak digest/checksum, query version, category-aligned non-duplicated metric ids, URL or repo artifact-path evidence/privacy links, and owner/date containing a real calendar YYYY-MM-DD before metric maturity claims." })
   }
 
   return {

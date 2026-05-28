@@ -58,12 +58,17 @@ export type AstraProductionMetricExportFindingCode =
   | "missing_date_range"
   | "invalid_date_range"
   | "missing_cohort_definition"
+  | "invalid_cohort_definition"
   | "missing_dashboard_or_query_source"
+  | "invalid_dashboard_or_query_source"
   | "missing_export_id"
+  | "invalid_export_id"
   | "missing_exported_at"
   | "invalid_exported_at"
   | "missing_export_digest"
+  | "invalid_export_digest"
   | "missing_query_version"
+  | "invalid_query_version"
   | "missing_metric_ids"
   | "duplicate_metric_id"
   | "unknown_metric_id"
@@ -266,6 +271,37 @@ function isPlaceholderEvidenceReference(value: string): boolean {
   return normalizedValue.includes("example") || normalizedValue.includes("placeholder") || normalizedValue.includes("todo")
 }
 
+function hasWeakEvidenceKeyword(value: string): boolean {
+  return /\b(?:dummy|sample|fake|local|none|n\/a|na|latest|dev|test)\b/.test(value.trim().toLowerCase())
+}
+
+function isWeakContextEvidenceReference(value: string): boolean {
+  const normalizedValue = value.trim().toLowerCase()
+  return isPlaceholderEvidenceReference(normalizedValue) || hasWeakEvidenceKeyword(normalizedValue)
+}
+
+function isWeakDigestReference(value: string): boolean {
+  const normalizedValue = value.trim().toLowerCase()
+  const identityValue = normalizedValue
+    .replace(/^(?:sha(?:256|384|512)?|checksum|digest|version|build|artifact)[:=/ -]+/, "")
+    .replace(/[^a-z0-9]/g, "")
+
+  return identityValue.length < 12
+    || /^0+$/.test(identityValue)
+    || /^([a-z0-9])\1+$/.test(identityValue)
+    || hasWeakEvidenceKeyword(normalizedValue)
+}
+
+function isStableExportIdentityReference(value: string): boolean {
+  const normalizedValue = value.trim().toLowerCase()
+  const compactValue = normalizedValue.replace(/[^a-z0-9]/g, "")
+  return compactValue.length >= 4
+    && /\d/.test(compactValue)
+    && !/^0+$/.test(compactValue)
+    && !/^([a-z0-9])\1+$/.test(compactValue)
+    && !isWeakContextEvidenceReference(normalizedValue)
+}
+
 function includesIsoDate(value: string): boolean {
   const match = /\b(20\d{2}-\d{2}-\d{2})\b/.exec(value)
   return match ? parseIsoDate(match[1]) !== null : false
@@ -328,11 +364,17 @@ function isLocalUrlReference(value: string): boolean {
       || /^192\.168(?:\.\d{1,3}){2}$/.test(hostname)
       || /^172\.(?:1[6-9]|2\d|3[0-1])(?:\.\d{1,3}){2}$/.test(hostname)
       || /^169\.254(?:\.\d{1,3}){2}$/.test(hostname)
-      || hostname === "::1"
-      || hostname === "[::1]"
+      || isPrivateIpv6Hostname(hostname)
   } catch {
     return true
   }
+}
+
+function isPrivateIpv6Hostname(hostname: string): boolean {
+  const normalizedHostname = hostname.replace(/^\[|\]$/g, "")
+  return normalizedHostname === "::1"
+    || /^f[cd][0-9a-f]{2}:/i.test(normalizedHostname)
+    || /^fe[89ab][0-9a-f]:/i.test(normalizedHostname)
 }
 
 export function evaluateAstraProductionMetricsExportPacket(
@@ -434,12 +476,20 @@ export function evaluateAstraProductionMetricsExportPacket(
     }
     if (isBlank(row.cohortDefinition)) {
       findings.push({ code: "missing_cohort_definition", category: row.category, message: `${row.category} export is missing cohort definition.`, nextStep: "Record the release cohort or query cohort definition." })
+    } else if (isWeakContextEvidenceReference(row.cohortDefinition)) {
+      findings.push({ code: "invalid_cohort_definition", category: row.category, message: `${row.category} export cohort definition is placeholder evidence.`, nextStep: "Record the real release cohort or query cohort definition." })
     }
     if (isBlank(row.dashboardOrQuerySource)) {
       findings.push({ code: "missing_dashboard_or_query_source", category: row.category, message: `${row.category} export is missing dashboard or query source.`, nextStep: "Link or name the dashboard, warehouse query, or analytics export source." })
+    } else if (isWeakContextEvidenceReference(row.dashboardOrQuerySource)) {
+      findings.push({ code: "invalid_dashboard_or_query_source", category: row.category, message: `${row.category} export dashboard or query source is placeholder evidence.`, nextStep: "Link the real dashboard, warehouse query, or analytics export source." })
     }
     if (isBlank(row.exportId)) {
       findings.push({ code: "missing_export_id", category: row.category, message: `${row.category} export is missing export id.`, nextStep: "Record the dashboard/export/run id so the evidence can be traced." })
+    } else if (isPlaceholderEvidenceReference(row.exportId)) {
+      findings.push({ code: "invalid_export_id", category: row.category, message: `${row.category} export id is placeholder evidence.`, nextStep: "Record the real dashboard/export/run id so the evidence can be traced." })
+    } else if (!isStableExportIdentityReference(row.exportId)) {
+      findings.push({ code: "invalid_export_id", category: row.category, message: `${row.category} export id must be a stable export identity.`, nextStep: "Record the real dashboard/export/run id so the evidence can be traced." })
     }
     if (isBlank(row.exportedAt)) {
       findings.push({ code: "missing_exported_at", category: row.category, message: `${row.category} export is missing exported-at timestamp.`, nextStep: "Record when the production/cohort export was generated." })
@@ -448,9 +498,15 @@ export function evaluateAstraProductionMetricsExportPacket(
     }
     if (isBlank(row.exportDigest)) {
       findings.push({ code: "missing_export_digest", category: row.category, message: `${row.category} export is missing digest/checksum.`, nextStep: "Record a digest or checksum for the attached dashboard/query export artifact." })
+    } else if (isWeakDigestReference(row.exportDigest)) {
+      findings.push({ code: "invalid_export_digest", category: row.category, message: `${row.category} export digest/checksum must be a stable digest, checksum, or export artifact identity.`, nextStep: "Record a stable digest or checksum for the attached dashboard/query export artifact." })
     }
     if (isBlank(row.queryVersion)) {
       findings.push({ code: "missing_query_version", category: row.category, message: `${row.category} export is missing query version.`, nextStep: "Record the dashboard/query version used to generate the export." })
+    } else if (isPlaceholderEvidenceReference(row.queryVersion)) {
+      findings.push({ code: "invalid_query_version", category: row.category, message: `${row.category} export query version is placeholder evidence.`, nextStep: "Record the real dashboard/query version used to generate the export." })
+    } else if (!isStableExportIdentityReference(row.queryVersion)) {
+      findings.push({ code: "invalid_query_version", category: row.category, message: `${row.category} export query version must be a stable query version.`, nextStep: "Record the real dashboard/query version used to generate the export." })
     }
     if (row.metricIds.length === 0) {
       findings.push({ code: "missing_metric_ids", category: row.category, message: `${row.category} export is missing metric ids.`, nextStep: "List the canonical metric ids included in the category export." })

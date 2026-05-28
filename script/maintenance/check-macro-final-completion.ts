@@ -333,6 +333,8 @@ type CiArtifactPacketRow = {
   workflowName: string
   runId: string
   jobName: string
+  workflowConclusion: string
+  jobConclusion: string
   artifactId: string
   artifactDigest: string
   artifactManifestPath: string
@@ -453,6 +455,47 @@ function isPlaceholderEvidenceReference(value: string): boolean {
   return normalizedValue.includes("example") || normalizedValue.includes("placeholder") || normalizedValue.includes("todo")
 }
 
+function digestOrVersionIdentity(value: string): string {
+  return value
+    .trim()
+    .toLowerCase()
+    .replace(/^(?:sha(?:256|384|512)?|checksum|digest|version|build|artifact|run|rubric|fixture|manifest)[:=/ -]+/, "")
+}
+
+function hasWeakEvidenceKeyword(value: string): boolean {
+  return /\b(?:dummy|sample|fake|local|none|n\/a|na|latest|dev|test)\b/.test(value.trim().toLowerCase())
+}
+
+function isWeakDigestReference(value: string): boolean {
+  const normalizedValue = value.trim().toLowerCase()
+  const identityValue = digestOrVersionIdentity(value).replace(/[^a-z0-9]/g, "")
+
+  return identityValue.length < 12
+    || /^0+$/.test(identityValue)
+    || /^([a-z0-9])\1+$/.test(identityValue)
+    || hasWeakEvidenceKeyword(normalizedValue)
+}
+
+function isStableVersionReference(value: string): boolean {
+  const normalizedValue = digestOrVersionIdentity(value)
+  if (hasWeakEvidenceKeyword(normalizedValue) || isPlaceholderEvidenceReference(normalizedValue)) return false
+
+  const compactValue = normalizedValue.replace(/[^a-z0-9]/g, "")
+  if (!/\d/.test(compactValue) || /^0+$/.test(compactValue) || /^([a-z0-9])\1+$/.test(compactValue)) return false
+  if (/^v?\d+\.\d+\.\d+(?:[-+][a-z0-9.-]+)?$/i.test(normalizedValue)) return true
+  if (/^20\d{2}-\d{2}-\d{2}$/.test(normalizedValue)) return includesIsoDate(normalizedValue)
+  return /^[a-z][a-z0-9]*(?:[-_.][a-z0-9]+)+$/i.test(normalizedValue)
+}
+
+function isWeakDigestOrVersionReference(value: string): boolean {
+  return isWeakDigestReference(value) && !isStableVersionReference(value)
+}
+
+function isWeakContextEvidenceReference(value: string): boolean {
+  const normalizedValue = value.trim().toLowerCase()
+  return isPlaceholderEvidenceReference(normalizedValue) || hasWeakEvidenceKeyword(normalizedValue)
+}
+
 function includesIsoDate(value: string): boolean {
   const match = /\b(20\d{2}-\d{2}-\d{2})\b/.exec(value)
   return match ? parseIsoDate(match[1]) !== null : false
@@ -518,11 +561,17 @@ function isLocalUrlReference(value: string): boolean {
       || /^192\.168(?:\.\d{1,3}){2}$/.test(hostname)
       || /^172\.(?:1[6-9]|2\d|3[0-1])(?:\.\d{1,3}){2}$/.test(hostname)
       || /^169\.254(?:\.\d{1,3}){2}$/.test(hostname)
-      || hostname === "::1"
-      || hostname === "[::1]"
+      || isPrivateIpv6Hostname(hostname)
   } catch {
     return true
   }
+}
+
+function isPrivateIpv6Hostname(hostname: string): boolean {
+  const normalizedHostname = hostname.replace(/^\[|\]$/g, "")
+  return normalizedHostname === "::1"
+    || /^f[cd][0-9a-f]{2}:/i.test(normalizedHostname)
+    || /^fe[89ab][0-9a-f]:/i.test(normalizedHostname)
 }
 
 function validateExactKeys(value: Record<string, unknown>, expectedKeys: readonly string[], path: string, findings: string[]): void {
@@ -754,8 +803,8 @@ function validateCiArtifactPacket(value: unknown, findings: string[]): CiArtifac
       findings.push(`ciArtifactPacket.rows[${index}]: expected object.`)
       continue
     }
-    validateExactKeys(row, ["evidenceField", "artifactName", "workflowName", "runId", "jobName", "artifactId", "artifactDigest", "artifactManifestPath", "runUrl", "artifactUrl", "commitSha", "ownerDate", "coverage"], `ciArtifactPacket.rows[${index}]`, findings)
-    for (const field of ["evidenceField", "artifactName", "workflowName", "runId", "jobName", "artifactId", "artifactDigest", "artifactManifestPath", "runUrl", "artifactUrl", "commitSha", "ownerDate"] as const) {
+    validateExactKeys(row, ["evidenceField", "artifactName", "workflowName", "runId", "jobName", "workflowConclusion", "jobConclusion", "artifactId", "artifactDigest", "artifactManifestPath", "runUrl", "artifactUrl", "commitSha", "ownerDate", "coverage"], `ciArtifactPacket.rows[${index}]`, findings)
+    for (const field of ["evidenceField", "artifactName", "workflowName", "runId", "jobName", "workflowConclusion", "jobConclusion", "artifactId", "artifactDigest", "artifactManifestPath", "runUrl", "artifactUrl", "commitSha", "ownerDate"] as const) {
       if (typeof row[field] !== "string") {
         findings.push(`ciArtifactPacket.rows[${index}].${field}: expected string.`)
       }
@@ -773,6 +822,8 @@ function validateCiArtifactPacket(value: unknown, findings: string[]): CiArtifac
       workflowName: typeof row.workflowName === "string" ? row.workflowName : "",
       runId: typeof row.runId === "string" ? row.runId : "",
       jobName: typeof row.jobName === "string" ? row.jobName : "",
+      workflowConclusion: typeof row.workflowConclusion === "string" ? row.workflowConclusion : "",
+      jobConclusion: typeof row.jobConclusion === "string" ? row.jobConclusion : "",
       artifactId: typeof row.artifactId === "string" ? row.artifactId : "",
       artifactDigest: typeof row.artifactDigest === "string" ? row.artifactDigest : "",
       artifactManifestPath: typeof row.artifactManifestPath === "string" ? row.artifactManifestPath : "",
@@ -814,6 +865,17 @@ function validateCiArtifactPacketPreclaimRows(packet: CiArtifactPacket, findings
       if (row[field] && isPlaceholderEvidenceReference(row[field])) {
         findings.push(`ciArtifactPacket.rows.${row.evidenceField}.${field}: placeholder evidence links are not allowed.`)
       }
+    }
+    for (const field of ["runId", "artifactId"] as const) {
+      if (row[field] && isWeakDigestOrVersionReference(row[field])) {
+        findings.push(`ciArtifactPacket.rows.${row.evidenceField}.${field}: stable non-weak identity is required.`)
+      }
+    }
+    if (row.jobName && isWeakContextEvidenceReference(row.jobName)) {
+      findings.push(`ciArtifactPacket.rows.${row.evidenceField}.jobName: real CI job name is required.`)
+    }
+    if (row.artifactDigest && isWeakDigestReference(row.artifactDigest)) {
+      findings.push(`ciArtifactPacket.rows.${row.evidenceField}.artifactDigest: stable non-weak digest/checksum is required.`)
     }
   }
 
@@ -1035,6 +1097,17 @@ function validateLaunchArtifactPacketPreclaimRows(packet: LaunchArtifactPacket, 
 
     if (row.evidenceLink && isPlaceholderEvidenceReference(row.evidenceLink)) {
       findings.push(`launchArtifactPacket.rows.${row.requirementId}: placeholder evidence links are not allowed.`)
+    }
+    for (const field of ["artifactType", "targetChannel", "environment"] as const) {
+      if (row[field] && isWeakContextEvidenceReference(row[field])) {
+        findings.push(`launchArtifactPacket.rows.${row.requirementId}.${field}: real launch context is required.`)
+      }
+    }
+    if (row.artifactId && isWeakDigestOrVersionReference(row.artifactId)) {
+      findings.push(`launchArtifactPacket.rows.${row.requirementId}.artifactId: stable non-weak artifact identity is required.`)
+    }
+    if (row.artifactDigestOrVersion && isWeakDigestOrVersionReference(row.artifactDigestOrVersion)) {
+      findings.push(`launchArtifactPacket.rows.${row.requirementId}.artifactDigestOrVersion: stable non-weak digest or version is required.`)
     }
   }
 
@@ -1365,6 +1438,14 @@ function validateAiQualityHumanScoredPacketPreclaim(packet: AiQualityHumanScored
       findings.push(`aiQualityHumanScoredPacket.evidence.${field}: placeholder evidence links are not allowed.`)
     }
   }
+  if (packet.evidence.environment && isWeakContextEvidenceReference(packet.evidence.environment)) {
+    findings.push("aiQualityHumanScoredPacket.evidence.environment: real target environment is required.")
+  }
+  for (const field of ["runId", "rubricVersion", "fixtureManifestVersion"] as const) {
+    if (packet.evidence[field] && isWeakDigestOrVersionReference(packet.evidence[field])) {
+      findings.push(`aiQualityHumanScoredPacket.evidence.${field}: stable non-weak identity/version is required.`)
+    }
+  }
 
   const aiQualityDecision = evaluateAiQualityHumanScoredReportEvidence(packet.evidence)
   if (!aiQualityDecision.acceptable) {
@@ -1451,6 +1532,19 @@ function validateProductionMetricsExportPacketPreclaimRows(packet: ProductionMet
         findings.push(`productionMetricsExportPacket.rows.${row.category}.${field}: placeholder evidence links are not allowed.`)
       }
     }
+    for (const field of ["cohortDefinition", "dashboardOrQuerySource"] as const) {
+      if (row[field] && isWeakContextEvidenceReference(row[field])) {
+        findings.push(`productionMetricsExportPacket.rows.${row.category}.${field}: real cohort/source evidence is required.`)
+      }
+    }
+    for (const field of ["exportId", "queryVersion"] as const) {
+      if (row[field] && isWeakDigestReference(row[field])) {
+        findings.push(`productionMetricsExportPacket.rows.${row.category}.${field}: stable non-weak identity/version is required.`)
+      }
+    }
+    if (row.exportDigest && isWeakDigestReference(row.exportDigest)) {
+      findings.push(`productionMetricsExportPacket.rows.${row.category}.exportDigest: stable non-weak digest/checksum is required.`)
+    }
   }
 
   if (packet.rows.length > 0) {
@@ -1531,6 +1625,8 @@ function validateManualQaRows(rows: ManualQaChecklistRow[], findings: string[]):
     }
     if (!row.environment) {
       findings.push(`Section ${row.section} / ${row.qaRow}: non-not-run row requires environment.`)
+    } else if (isWeakContextEvidenceReference(row.environment)) {
+      findings.push(`Section ${row.section} / ${row.qaRow}: non-not-run row requires real browser/build environment.`)
     }
     if (!row.evidenceLink) {
       findings.push(`Section ${row.section} / ${row.qaRow}: non-not-run row requires evidence link.`)

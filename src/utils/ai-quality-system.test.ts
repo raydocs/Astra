@@ -190,9 +190,9 @@ describe("Astra AI quality system", () => {
     const decision = evaluateAiQualityHumanScoredReportEvidence({
       reviewer: "quality-owner@example.test",
       reviewedAt: "release day",
-      environment: "target release relay with managed providers enabled",
-      runId: "todo-run",
-      rubricVersion: "docs/quality/rubrics.md@2026-05-28",
+      environment: "local test provider",
+      runId: "000000000000",
+      rubricVersion: "latest",
       fixtureManifestPath: "test/fixtures/../quality/ai-quality-samples.json",
       fixtureManifestVersion: "astra-ai-quality-samples.v1",
       providerSampleEvidenceLink: "docs/reviews/ai-quality/provider-samples.json?local=true",
@@ -207,12 +207,36 @@ describe("Astra AI quality system", () => {
     expect(decision.acceptable).toBe(false)
     expect(decision.findings.map((finding) => finding.code)).toEqual([
       "invalid_review_date",
+      "missing_environment",
       "missing_run_metadata",
       "invalid_fixture_manifest_reference",
       "invalid_sample_counts",
       "invalid_live_provider_samples_reference",
       "invalid_blocker_triage_reference",
     ])
+  })
+
+  it("rejects weak human-scored quality fixture manifest versions", () => {
+    const summary = summarizePassingSamples(buildPassingSamples())
+    const decision = evaluateAiQualityHumanScoredReportEvidence({
+      reviewer: "quality-owner@example.test",
+      reviewedAt: "2026-05-28",
+      environment: "target release relay with managed providers enabled",
+      runId: "ai-quality-human-2026-05-28",
+      rubricVersion: "docs/quality/rubrics.md@2026-05-28",
+      fixtureManifestPath: "test/fixtures/quality/ai-quality-samples.json",
+      fixtureManifestVersion: "000000000000",
+      providerSampleEvidenceLink: "https://release-evidence.astra.internal/ai-quality/provider-samples/2026-05-28",
+      scoredSampleCount: summary.p0SampleCount,
+      liveProviderSampleCount: 12,
+      blockerTriageLink: "https://release-evidence.astra.internal/ai-quality/blocker-triage/2026-05-28",
+      trendDirection: "stable",
+      releaseDecision: "approve_with_downgrade",
+      summary,
+    })
+
+    expect(decision.acceptable).toBe(false)
+    expect(decision.findings.map((finding) => finding.code)).toEqual(["missing_fixture_manifest"])
   })
 
   it("rejects non-calendar human-scored quality report review dates", () => {

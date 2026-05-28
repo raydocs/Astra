@@ -32,7 +32,7 @@ Local V0 diagnostics make the following inspectable on a development or target b
 Do not claim operational metric maturity until all of the following are attached for the target release:
 
 1. CI or production export showing Activation, Understanding, Learning, and Membership metrics are queryable for the target commit/worktree or release cohort;
-2. dashboard screenshots or exported query results with valid non-reversed `YYYY-MM-DD..YYYY-MM-DD` date range, environment, owner/date containing a real calendar `YYYY-MM-DD`, export id, ISO exported-at timestamp, digest/checksum, query version, category-aligned metric ids, and URL or repo artifact-path evidence/privacy links with local-only/private-network/loopback URLs, malformed URLs, and path-traversal repo references rejected;
+2. dashboard screenshots or exported query results with valid non-reversed `YYYY-MM-DD..YYYY-MM-DD` date range, environment, owner/date containing a real calendar `YYYY-MM-DD`, real cohort/source/export id, ISO exported-at timestamp, stable non-weak digest/checksum, real query version, category-aligned metric ids, and URL or repo artifact-path evidence/privacy links with local-only/private-network/loopback URLs, malformed URLs, and path-traversal repo references rejected;
 3. cohort definitions and dashboard/query source for every exported category;
 4. privacy review confirming production queries preserve the same content-policy boundary;
 5. release owner approval tying metric evidence to Gate 1–4 claims.
@@ -41,4 +41,4 @@ Use `evaluateAstraProductionMetricsExportPacket()` before setting `productionMet
 
 ## Allowed downgrade copy
 
-Metrics contracts, local V0 Options diagnostics, metadata-only aggregators, and an aggregate-only mobile retention ops summary exist in repo for Activation, Learning, Retention, Digest, and Membership-value signals. Production/release-cohort dashboard exports with export identity, checksum/digest, query version, ISO export timestamps, URL or repo artifact-path evidence/privacy links with local-only/private-network/loopback URLs, malformed URLs, and path-traversal repo references rejected, and owner-approved dated query evidence remain required before claiming operational metric maturity.
+Metrics contracts, local V0 Options diagnostics, metadata-only aggregators, and an aggregate-only mobile retention ops summary exist in repo for Activation, Learning, Retention, Digest, and Membership-value signals. Production/release-cohort dashboard exports with real cohort/source/export identity, stable non-weak checksum/digest, real query version, ISO export timestamps, URL or repo artifact-path evidence/privacy links with local-only/private-network/loopback URLs, malformed URLs, and path-traversal repo references rejected, and owner-approved dated query evidence remain required before claiming operational metric maturity.

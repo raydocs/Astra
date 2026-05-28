@@ -256,6 +256,8 @@ const completeCiArtifactPacket = ASTRA_MACRO_CI_ARTIFACT_REQUIREMENTS.map((requi
   workflowName: requirement.workflowName,
   runId: `run-${requirement.evidenceField}`,
   jobName: `${requirement.workflowName} / release gate`,
+  workflowConclusion: "success",
+  jobConclusion: "success",
   artifactId: `artifact-${requirement.artifactName}`,
   artifactDigest: `sha256:${requirement.evidenceField.repeat(2)}`,
   artifactManifestPath: `data/release-artifacts/${requirement.artifactName}/manifest.json`,
@@ -855,7 +857,7 @@ describe("Astra macro operational evidence", () => {
       {
         areaId: "first_success_activation_evidence",
         ownerDate: "release-owner / 2026-99-99",
-        environment: "placeholder target environment",
+        environment: "local test evidence packet",
         evidenceLink: "docs/reviews/../private-evidence.md",
         requirementEvidence: "generic proof exists",
         verdict: "proved",
@@ -953,14 +955,14 @@ describe("Astra macro operational evidence", () => {
       ...completeReleaseApprovalPacket,
       approvalDate: "release day",
       approvalRecordLink: "owner-approved",
-      targetCommitSha: "not-a-sha",
+      targetCommitSha: "0000000",
     })
 
     expect(decision.acceptable).toBe(false)
     expect(decision.findings.map((finding) => finding.message)).toEqual([
       "Release approval date must include a YYYY-MM-DD date.",
       "Release approval record link must be a URL or repo artifact path.",
-      "Release approval target commit/SHA must be a 7-40 character hex SHA.",
+      "Release approval target commit/SHA must be a 7-40 character non-zero hex SHA.",
     ])
   })
 
@@ -1037,6 +1039,7 @@ describe("Astra macro operational evidence", () => {
       {
         ...completeManualQaRows[0],
         ownerDate: "QA owner",
+        environment: "local test browser",
         evidenceLink: "done",
       },
       ...completeManualQaRows.slice(1),
@@ -1049,6 +1052,12 @@ describe("Astra macro operational evidence", () => {
         qaRow: "Article source return",
         message: "Section 6 / Article source return owner/date must include a YYYY-MM-DD date.",
         nextStep: "Record owner/date with an ISO-style review date for this manual QA row.",
+      },
+      {
+        section: 6,
+        qaRow: "Article source return",
+        message: "Section 6 / Article source return environment is placeholder evidence.",
+        nextStep: "Record the real browser, OS, build, and relevant relay/API environment.",
       },
       {
         section: 6,
@@ -1165,6 +1174,8 @@ describe("Astra macro operational evidence", () => {
       "CI quality gate artifact must identify the quality workflow/job.",
       "CI quality gate artifact is missing the CI run id.",
       "CI quality gate artifact is missing the CI job name.",
+      "CI quality gate artifact workflow conclusion must be success.",
+      "CI quality gate artifact job conclusion must be success.",
       "CI quality gate artifact is missing the artifact id.",
       "CI quality gate artifact is missing the artifact digest/checksum.",
       "CI quality gate artifact is missing the artifact manifest path.",
@@ -1240,14 +1251,35 @@ describe("Astra macro operational evidence", () => {
     ])
   })
 
+  it("rejects failed or missing CI conclusions so always-uploaded artifacts cannot prove final CI evidence", () => {
+    const decision = evaluateAstraMacroCiArtifactPacket([
+      {
+        ...completeCiArtifactPacket[0],
+        workflowConclusion: "failure",
+        jobConclusion: "cancelled",
+      },
+      completeCiArtifactPacket[1],
+    ])
+
+    expect(decision.acceptable).toBe(false)
+    expect(decision.findings.map((finding) => finding.message)).toEqual([
+      "CI quality gate artifact workflow conclusion must be success.",
+      "CI quality gate artifact job conclusion must be success.",
+    ])
+  })
+
   it("rejects weak CI artifact URL, SHA, date, and manifest references", () => {
     const decision = evaluateAstraMacroCiArtifactPacket([
       {
         ...completeCiArtifactPacket[0],
+        runId: "000000000000",
+        jobName: "local test job",
+        artifactId: "aaaaaaaaaaaa",
+        artifactDigest: "000000000000",
         artifactManifestPath: "docs/../release-artifacts/quality-gate-manifest.json",
         runUrl: "https://",
-        artifactUrl: "http://10.0.0.5/artifacts/quality-gate-results.zip",
-        commitSha: "not-a-sha",
+        artifactUrl: "http://[fd00::1]/artifacts/quality-gate-results.zip",
+        commitSha: "0000000",
         ownerDate: "Release owner",
       },
       completeCiArtifactPacket[1],
@@ -1256,10 +1288,14 @@ describe("Astra macro operational evidence", () => {
     expect(decision.acceptable).toBe(false)
     expect(decision.findings.map((finding) => finding.message)).toEqual([
       "CI quality and live-browser artifacts must target the same commit/SHA.",
+      "CI quality gate artifact CI run id must be a stable run identity.",
+      "CI quality gate artifact CI job name is placeholder evidence.",
+      "CI quality gate artifact artifact id must be a stable artifact identity.",
+      "CI quality gate artifact artifact digest/checksum must be a stable digest, checksum, or artifact identity.",
       "CI quality gate artifact artifact manifest path must be a URL or repo artifact path.",
       "CI quality gate artifact CI run URL must be a URL.",
       "CI quality gate artifact downloadable artifact URL must be a URL.",
-      "CI quality gate artifact target commit/SHA must be a 7-40 character hex SHA.",
+      "CI quality gate artifact target commit/SHA must be a 7-40 character non-zero hex SHA.",
       "CI quality gate artifact owner/date must include a YYYY-MM-DD date.",
     ])
   })
@@ -1420,13 +1456,14 @@ describe("Astra macro operational evidence", () => {
     const decision = evaluateAstraMacroLaunchArtifactPacket([
       {
         ...completeLaunchArtifactRows[0],
-        artifactType: "placeholder billing artifact",
-        artifactId: "example-billing-artifact",
-        artifactDigestOrVersion: "todo-version",
-        targetChannel: "placeholder channel",
+        artifactType: "local billing artifact",
+        artifactId: "000000000000",
+        artifactDigestOrVersion: "000000000000",
+        targetChannel: "local channel",
         claimBoundary: "gtm",
         evidenceLink: "not-a-link",
         ownerDate: "Release owner",
+        environment: "placeholder environment",
       },
       ...completeLaunchArtifactRows.slice(1),
     ])
@@ -1435,12 +1472,22 @@ describe("Astra macro operational evidence", () => {
     expect(decision.findings.map((finding) => finding.message)).toEqual([
       "Billing checkout success/cancel claim boundary is gtm, expected billing.",
       "Billing checkout success/cancel artifact type is placeholder evidence.",
-      "Billing checkout success/cancel artifact id is placeholder evidence.",
-      "Billing checkout success/cancel artifact digest or version is placeholder evidence.",
+      "Billing checkout success/cancel artifact id must be a stable artifact identity.",
+      "Billing checkout success/cancel artifact digest or version must be a stable digest, checksum, build hash, policy version, store version, or media version.",
       "Billing checkout success/cancel target channel is placeholder evidence.",
       "Billing checkout success/cancel evidence link must be a URL or repo artifact path.",
       "Billing checkout success/cancel owner/date must include a YYYY-MM-DD date.",
+      "Billing checkout success/cancel environment or target channel context is placeholder evidence.",
     ])
+  })
+
+  it("accepts stable launch artifact version formats without requiring checksum-length identities", () => {
+    const decision = evaluateAstraMacroLaunchArtifactPacket(completeLaunchArtifactRows.map((row, index) => ({
+      ...row,
+      artifactDigestOrVersion: index % 3 === 0 ? "v1.0.0" : index % 3 === 1 ? "terms-v3" : "2026-05-28",
+    })))
+
+    expect(decision).toEqual({ acceptable: true, findings: [] })
   })
 
   it("accepts a launch artifact packet only when every required billing/legal/store/GTM artifact is linked and owned", () => {
@@ -1558,11 +1605,11 @@ describe("Astra macro operational evidence", () => {
     expect(committedNote).toContain("macro-operational-evidence-completion-packet-2026-05-28.json satisfies evaluateAstraMacroOperationalEvidenceCompletionPacket()")
     expect(committedNote).toContain("ci_quality_artifacts")
     expect(committedNote).toContain("run/job/artifact identity, distinct artifact id/URL")
-    expect(committedNote).toContain("7-40 character hex target commit/SHA")
+    expect(committedNote).toContain("7-40 character non-zero hex target commit/SHA")
     expect(committedNote).toContain("ci_live_browser_artifacts")
     expect(committedNote).toContain("owner_release_approval")
     expect(committedNote).toContain("approver/date containing a real calendar YYYY-MM-DD")
-    expect(committedNote).toContain("7-40 character hex target commit/SHA")
+    expect(committedNote).toContain("7-40 character non-zero hex target commit/SHA")
     expect(committedNote).toContain("manual_qa_checklist")
     expect(committedNote).toContain("Section 6/7/13/14/24/32")
     expect(committedNote).toContain("owner/date")
