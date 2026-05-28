@@ -3816,6 +3816,68 @@ describe("Astra relay server", () => {
     expect(translateViaManagedProviderMock).toHaveBeenCalledTimes(1)
   })
 
+  it("refuses a self-serve upgrade to a paid plan via a user session", async () => {
+    await startServer(await createUserDb(undefined, { plan: "free" }))
+    const { session } = await createSession()
+
+    const response = await fetch(`${baseURL}/v1/account/plan`, {
+      method: "PATCH",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${session.sessionToken}`,
+      },
+      body: JSON.stringify({ plan: "pro" }),
+    })
+
+    // A user session is not an operator principal — paid grants are refused, so
+    // a signed-in user cannot self-grant Pro.
+    expect(response.status).toBe(401)
+
+    // The plan must remain free (no self-grant happened).
+    const summaryResponse = await fetch(`${baseURL}/v1/account/summary`, {
+      headers: {
+        Authorization: `Bearer ${session.sessionToken}`,
+        "X-Astra-Device-Id": "device-main",
+      },
+    })
+    const summary = await summaryResponse.json() as { account: { plan: string } }
+    expect(summary.account.plan).toBe("free")
+  })
+
+  it("lets an operator grant a paid plan to a target account", async () => {
+    await startServer(await createUserDb(undefined, { plan: "free" }))
+    await createSession()
+
+    const response = await fetch(`${baseURL}/v1/account/plan`, {
+      method: "PATCH",
+      headers: {
+        "Content-Type": "application/json",
+        "X-Astra-Operator-Token": env.platformMirrorSecret ?? "",
+      },
+      body: JSON.stringify({ plan: "pro", email: env.loginEmail }),
+    })
+
+    expect(response.status).toBe(200)
+    const account = await response.json() as { plan: string }
+    expect(account.plan).toBe("pro")
+  })
+
+  it("requires a target account email for an operator paid grant", async () => {
+    await startServer(await createUserDb())
+    await createSession()
+
+    const response = await fetch(`${baseURL}/v1/account/plan`, {
+      method: "PATCH",
+      headers: {
+        "Content-Type": "application/json",
+        "X-Astra-Operator-Token": env.platformMirrorSecret ?? "",
+      },
+      body: JSON.stringify({ plan: "pro" }),
+    })
+
+    expect(response.status).toBe(400)
+  })
+
   it("enforces monthly high-cost task allowances before provider spend", async () => {
     await startServer(await createUserDb(undefined, { plan: "free" }))
     translateViaManagedProviderMock.mockResolvedValue({

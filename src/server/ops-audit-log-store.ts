@@ -28,6 +28,7 @@ export const OpsAuditActionSchema = z.enum([
   "ops_weekly_digest_delivery_summary_viewed",
   "support_report_submitted",
   "cancellation_reason_submitted",
+  "ops_account_plan_updated",
 ])
 export type OpsAuditAction = z.infer<typeof OpsAuditActionSchema>
 

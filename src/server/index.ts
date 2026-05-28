@@ -124,6 +124,9 @@ const TranslateSchema = TranslateBatchPayloadSchema.extend({
 
 const PlanUpdateSchema = z.object({
   plan: AstraPlanSchema,
+  // Operator-only: target account for a paid (pro/trial) grant. Ignored/forbidden
+  // for self-serve "free" downgrades (a user can only change their own plan).
+  email: z.string().trim().min(1).optional(),
 })
 
 const BillingCheckoutSchema = z.object({
@@ -1729,15 +1732,53 @@ async function handlePlanUpdate(
   response: ServerResponse,
   env: RelayEnv,
   users: FileUserStore,
+  auditLog: FileOpsAuditLogStore,
 ) {
-  const authenticated = await requireAuthenticatedSession(request, env, users)
   const payload = PlanUpdateSchema.parse(await readJsonBody(request))
-  const account = await users.updatePlan(authenticated.claims.email, payload.plan)
+
+  // Paid entitlement = manual operator grant (no gateway/IAP). A user session may
+  // only DOWNGRADE its own plan to "free" (self-cancellation); it can never
+  // self-grant a paid plan. Paid (pro/trial) grants require an operator principal
+  // and a named target account, so the entitlement cannot be self-served.
+  if (payload.plan === "free") {
+    if (payload.email) {
+      throw new HttpRouteError(400, "INVALID_REQUEST", "A self-serve plan change cannot target another account.")
+    }
+    const authenticated = await requireAuthenticatedSession(request, env, users)
+    const account = await users.updatePlan(authenticated.claims.email, "free")
+    if (!account) {
+      throw new AstraError("CONFIG_MISSING", "Unknown Astra user.")
+    }
+    await users.touchSession(authenticated.sessionRecord.sessionId, { seenAt: new Date() })
+    sendJson(response, 200, account)
+    return
+  }
+
+  const principal = await requireOperatorPrincipal(
+    request,
+    env,
+    auditLog,
+    "ops_account_plan_updated",
+    (role) => isRole(role, ["ops_engineer", "admin"]),
+    "account_plan:grant",
+  )
+  const targetEmail = payload.email?.trim()
+  if (!targetEmail) {
+    throw new HttpRouteError(400, "INVALID_REQUEST", "Operator plan grants require a target account email.")
+  }
+  const account = await users.updatePlan(targetEmail, payload.plan)
   if (!account) {
     throw new AstraError("CONFIG_MISSING", "Unknown Astra user.")
   }
-
-  await users.touchSession(authenticated.sessionRecord.sessionId, { seenAt: new Date() })
+  await auditLog.record({
+    actor: "operator",
+    action: "ops_account_plan_updated",
+    operatorToken: principal.token,
+    metadata: operatorAuditMetadata(principal, {
+      permission: "account_plan:grant",
+      targetPlan: payload.plan,
+    }),
+  })
   sendJson(response, 200, account)
 }
 
@@ -3711,7 +3752,7 @@ async function routeRequest(
     }
 
     if (url.pathname === "/v1/account/plan" && request.method === "PATCH") {
-      await handlePlanUpdate(request, response, env, users)
+      await handlePlanUpdate(request, response, env, users, auditLog)
       return
     }
 
