@@ -126,7 +126,8 @@ const PlanUpdateSchema = z.object({
   plan: AstraPlanSchema,
   // Operator-only: target account for a paid (pro/trial) grant. Ignored/forbidden
   // for self-serve "free" downgrades (a user can only change their own plan).
-  email: z.string().trim().min(1).optional(),
+  // Format + length validated here; case normalized at the handler.
+  email: z.string().trim().min(3).max(254).regex(/^[^@\s]+@[^@\s]+\.[^@\s]+$/, "must be a valid email").optional(),
 })
 
 const BillingCheckoutSchema = z.object({
@@ -1762,7 +1763,18 @@ async function handlePlanUpdate(
     (role) => isRole(role, ["ops_engineer", "admin"]),
     "account_plan:grant",
   )
-  const targetEmail = payload.email?.trim()
+  // Paid grants require an explicit operator principal (ASTRA_OPERATOR_TOKENS),
+  // NOT the deployment-wide legacy platform mirror secret. The mirror secret may
+  // still authorize other ops routes, but minting paid entitlement must be an
+  // attributable, per-operator action.
+  if (principal.source === "legacy_platform_operator") {
+    throw new HttpRouteError(
+      403,
+      "OPERATOR_PERMISSION_DENIED",
+      "Paid plan grants require an explicit operator token (ASTRA_OPERATOR_TOKENS), not the legacy platform mirror secret.",
+    )
+  }
+  const targetEmail = payload.email?.trim().toLowerCase()
   if (!targetEmail) {
     throw new HttpRouteError(400, "INVALID_REQUEST", "Operator plan grants require a target account email.")
   }
@@ -1774,10 +1786,14 @@ async function handlePlanUpdate(
     actor: "operator",
     action: "ops_account_plan_updated",
     operatorToken: principal.token,
+    subjectUserId: account.id,
+    // Attributable target (hashed, metadata-only — no raw email in the audit log).
+    subjectEmailHash: createHash("sha256").update(targetEmail).digest("hex"),
     metadata: operatorAuditMetadata(principal, {
       permission: "account_plan:grant",
       targetPlan: payload.plan,
     }),
+    privacy: { contentIncluded: false, contentAccess: "metadata_only" },
   })
   sendJson(response, 200, account)
 }

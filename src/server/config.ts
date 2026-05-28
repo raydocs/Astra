@@ -154,7 +154,7 @@ export function loadRelayEnv(env: NodeJS.ProcessEnv = process.env): RelayEnv {
   const sessionPublicBaseURL = env.ASTRA_SESSION_PUBLIC_BASE_URL ?? publicBaseURL
   const origin = publicBaseURL.replace(/\/v1\/?$/, "")
 
-  return {
+  const relayEnv: RelayEnv = {
     port: Number.isFinite(port) ? port : 8787,
     host,
     publicBaseURL,
@@ -217,15 +217,15 @@ export function loadRelayEnv(env: NodeJS.ProcessEnv = process.env): RelayEnv {
     // (previously all tiers defaulted to 2000/500000/120 — i.e. Free == Pro, an
     // uncapped-cost path). Paid-beta cost guardrail: see findFreeTierLimitViolations
     // and the AC8 config test. Override via env for production tuning.
-    freeDailyRequests: Number(env.ASTRA_FREE_DAILY_REQUESTS ?? "80"),
-    freeDailyCharacters: Number(env.ASTRA_FREE_DAILY_CHARACTERS ?? "40000"),
-    freeRpm: Number(env.ASTRA_FREE_RPM ?? "20"),
-    trialDailyRequests: Number(env.ASTRA_TRIAL_DAILY_REQUESTS ?? env.ASTRA_PRO_DAILY_REQUESTS ?? "2000"),
-    trialDailyCharacters: Number(env.ASTRA_TRIAL_DAILY_CHARACTERS ?? env.ASTRA_PRO_DAILY_CHARACTERS ?? "500000"),
-    trialRpm: Number(env.ASTRA_TRIAL_RPM ?? env.ASTRA_PRO_RPM ?? "120"),
-    proDailyRequests: Number(env.ASTRA_PRO_DAILY_REQUESTS ?? "2000"),
-    proDailyCharacters: Number(env.ASTRA_PRO_DAILY_CHARACTERS ?? "500000"),
-    proRpm: Number(env.ASTRA_PRO_RPM ?? "120"),
+    freeDailyRequests: parsePositiveInteger(env.ASTRA_FREE_DAILY_REQUESTS, 80),
+    freeDailyCharacters: parsePositiveInteger(env.ASTRA_FREE_DAILY_CHARACTERS, 40000),
+    freeRpm: parsePositiveInteger(env.ASTRA_FREE_RPM, 20),
+    trialDailyRequests: parsePositiveInteger(env.ASTRA_TRIAL_DAILY_REQUESTS ?? env.ASTRA_PRO_DAILY_REQUESTS, 2000),
+    trialDailyCharacters: parsePositiveInteger(env.ASTRA_TRIAL_DAILY_CHARACTERS ?? env.ASTRA_PRO_DAILY_CHARACTERS, 500000),
+    trialRpm: parsePositiveInteger(env.ASTRA_TRIAL_RPM ?? env.ASTRA_PRO_RPM, 120),
+    proDailyRequests: parsePositiveInteger(env.ASTRA_PRO_DAILY_REQUESTS, 2000),
+    proDailyCharacters: parsePositiveInteger(env.ASTRA_PRO_DAILY_CHARACTERS, 500000),
+    proRpm: parsePositiveInteger(env.ASTRA_PRO_RPM, 120),
     sessionTtlMs: Number(env.ASTRA_SESSION_TTL_MS ?? String(30 * 24 * 60 * 60 * 1000)),
     syncMaxMutationsPerRequest: parsePositiveInteger(env.ASTRA_SYNC_MAX_MUTATIONS_PER_REQUEST, 200),
     videoNoteMaxConcurrentJobs: parsePositiveInteger(env.ASTRA_VIDEO_NOTE_MAX_CONCURRENT_JOBS, 1),
@@ -246,6 +246,18 @@ export function loadRelayEnv(env: NodeJS.ProcessEnv = process.env): RelayEnv {
       apiBaseUrl: parseOptionalText(env.ASTRA_CF_API_BASE_URL),
     },
   }
+
+  // Fail fast: a deployment must never leave the Free tier uncapped (Free >= Pro
+  // on any axis) — that is the paid-beta cost guardrail (AC8). This is enforced
+  // at load, not merely reported, so a mis-tuned env aborts startup.
+  const freeTierViolations = findFreeTierLimitViolations(relayEnv)
+  if (freeTierViolations.length > 0) {
+    throw new Error(
+      `Invalid Astra tier limits — Free must be strictly below Pro on every axis: ${freeTierViolations.join("; ")}`,
+    )
+  }
+
+  return relayEnv
 }
 
 /**

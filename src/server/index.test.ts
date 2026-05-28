@@ -3794,7 +3794,9 @@ describe("Astra relay server", () => {
 
     expect(patchResponse.status).toBe(200)
     expect(patched.plan).toBe("free")
-    expect(patched.providerEntitlements).toEqual(["google_translate", "openai", "gemini"])
+    // Entitlements follow the deployment's configured provider allowlist
+    // (env providerEntitlements = ["openai","gemini"]), not a hardcoded all-3.
+    expect(patched.providerEntitlements).toEqual(["openai", "gemini"])
 
     const translateResponse = await fetch(`${baseURL}/v1/translate`, {
       method: "POST",
@@ -3844,7 +3846,99 @@ describe("Astra relay server", () => {
     expect(summary.account.plan).toBe("free")
   })
 
-  it("lets an operator grant a paid plan to a target account", async () => {
+  it("lets an explicit operator principal grant a paid plan to a target account", async () => {
+    await startServer(await createUserDb(undefined, { plan: "free" }), {
+      operatorPrincipals: [{ id: "ops-grant", role: "ops_engineer", token: "ops-grant-secret" }],
+    })
+    await createSession()
+
+    const response = await fetch(`${baseURL}/v1/account/plan`, {
+      method: "PATCH",
+      headers: {
+        "Content-Type": "application/json",
+        "X-Astra-Operator-Token": "ops-grant-secret",
+      },
+      body: JSON.stringify({ plan: "pro", email: env.loginEmail }),
+    })
+
+    expect(response.status).toBe(200)
+    const account = await response.json() as { plan: string }
+    expect(account.plan).toBe("pro")
+  })
+
+  it("records paid operator grants as metadata-only audit events without raw target email", async () => {
+    await startServer(await createUserDb(undefined, { plan: "free" }), {
+      operatorPrincipals: [{ id: "admin-grant", role: "admin", token: "admin-grant-secret" }],
+    })
+    await createSession()
+
+    const targetEmail = env.loginEmail.toUpperCase()
+    const response = await fetch(`${baseURL}/v1/account/plan`, {
+      method: "PATCH",
+      headers: {
+        "Content-Type": "application/json",
+        "X-Astra-Operator-Token": "admin-grant-secret",
+      },
+      body: JSON.stringify({ plan: "pro", email: targetEmail }),
+    })
+    expect(response.status).toBe(200)
+
+    const auditResponse = await fetch(`${baseURL}/v1/ops/audit/summary`, {
+      headers: { "X-Astra-Operator-Token": "admin-grant-secret" },
+    })
+    const auditPayload = await auditResponse.json() as {
+      recent: Array<{
+        action: string
+        subjectUserId: string | null
+        subjectEmailHash: string | null
+        metadata: Record<string, string | number | boolean | null>
+        privacy: { contentIncluded: boolean; contentAccess: string }
+      }>
+    }
+    const targetHash = createHash("sha256").update(env.loginEmail.toLowerCase()).digest("hex")
+    expect(auditResponse.status).toBe(200)
+    expect(auditPayload.recent).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        action: "ops_account_plan_updated",
+        subjectUserId: "usr_demo",
+        subjectEmailHash: targetHash,
+        metadata: expect.objectContaining({
+          permission: "account_plan:grant",
+          targetPlan: "pro",
+          operatorId: "admin-grant",
+          operatorRole: "admin",
+          operatorSource: "env",
+        }),
+        privacy: expect.objectContaining({ contentIncluded: false, contentAccess: "metadata_only" }),
+      }),
+    ]))
+    const serialized = JSON.stringify(auditPayload)
+    expect(serialized).not.toContain(env.loginEmail)
+    expect(serialized).not.toContain(targetEmail)
+    expect(serialized).not.toContain("admin-grant-secret")
+  })
+
+  it("resolves a mixed-case target email for an operator grant", async () => {
+    await startServer(await createUserDb(undefined, { plan: "free" }), {
+      operatorPrincipals: [{ id: "ops-grant", role: "ops_engineer", token: "ops-grant-secret" }],
+    })
+    await createSession()
+
+    const response = await fetch(`${baseURL}/v1/account/plan`, {
+      method: "PATCH",
+      headers: {
+        "Content-Type": "application/json",
+        "X-Astra-Operator-Token": "ops-grant-secret",
+      },
+      body: JSON.stringify({ plan: "pro", email: env.loginEmail.toUpperCase() }),
+    })
+
+    expect(response.status).toBe(200)
+    const account = await response.json() as { plan: string }
+    expect(account.plan).toBe("pro")
+  })
+
+  it("refuses a paid grant authenticated only by the legacy platform mirror secret", async () => {
     await startServer(await createUserDb(undefined, { plan: "free" }))
     await createSession()
 
@@ -3857,20 +3951,21 @@ describe("Astra relay server", () => {
       body: JSON.stringify({ plan: "pro", email: env.loginEmail }),
     })
 
-    expect(response.status).toBe(200)
-    const account = await response.json() as { plan: string }
-    expect(account.plan).toBe("pro")
+    // Legacy mirror secret may authorize other ops routes, but not paid grants.
+    expect(response.status).toBe(403)
   })
 
   it("requires a target account email for an operator paid grant", async () => {
-    await startServer(await createUserDb())
+    await startServer(await createUserDb(), {
+      operatorPrincipals: [{ id: "ops-grant", role: "ops_engineer", token: "ops-grant-secret" }],
+    })
     await createSession()
 
     const response = await fetch(`${baseURL}/v1/account/plan`, {
       method: "PATCH",
       headers: {
         "Content-Type": "application/json",
-        "X-Astra-Operator-Token": env.platformMirrorSecret ?? "",
+        "X-Astra-Operator-Token": "ops-grant-secret",
       },
       body: JSON.stringify({ plan: "pro" }),
     })

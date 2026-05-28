@@ -1575,7 +1575,7 @@ export class FileUserStore {
       passwordHash: await hashAstraCredentialSecret(identity.placeholderPassword),
       plan,
       subscriptionStatus: "active",
-      providerEntitlements: defaultEntitlements(plan),
+      providerEntitlements: freeFirstEntitlements(this.env),
       limits: defaultLimits(plan, this.env),
       usage: createEmptyUsage(),
       identityMode: "anonymous",
@@ -1638,7 +1638,7 @@ export class FileUserStore {
         passwordHash: await hashAstraCredentialSecret(`oauth-unusable-${randomUUID()}`),
         plan,
         subscriptionStatus: "active",
-        providerEntitlements: defaultEntitlements(plan),
+        providerEntitlements: freeFirstEntitlements(this.env),
         limits: defaultLimits(plan, this.env),
         usage: createEmptyUsage(),
         identityMode: "authenticated",
@@ -2336,7 +2336,10 @@ export class FileUserStore {
 
   async updatePlan(email: string, plan: ServerUserRecord["plan"]): Promise<AstraAccount | null> {
     const db = await this.load()
-    const userIndex = db.users.findIndex((user) => user.email === email.trim())
+    // Case-insensitive match so an operator-supplied target email (e.g. mixed
+    // case) resolves the account regardless of stored casing.
+    const normalizedEmail = email.trim().toLowerCase()
+    const userIndex = db.users.findIndex((user) => user.email.trim().toLowerCase() === normalizedEmail)
     if (userIndex === -1) return null
 
     const user = db.users[userIndex]!
@@ -2345,7 +2348,7 @@ export class FileUserStore {
       ...user,
       plan,
       subscriptionStatus: "active",
-      providerEntitlements: defaultEntitlements(plan),
+      providerEntitlements: freeFirstEntitlements(this.env),
       limits: defaultLimits(plan, this.env),
       usage: nextUsage,
     }

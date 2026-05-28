@@ -47,17 +47,33 @@ describe("loadRelayEnv relay data paths", () => {
     expect(findFreeTierLimitViolations(relayEnv)).toEqual([])
   })
 
-  it("flags every axis where Free is not strictly below Pro", () => {
-    const relayEnv = loadRelayEnv(env({
+  it("aborts startup when Free is not strictly below Pro on any axis", () => {
+    expect(() => loadRelayEnv(env({
       ASTRA_FREE_DAILY_REQUESTS: "2000",
       ASTRA_FREE_DAILY_CHARACTERS: "500000",
       ASTRA_FREE_RPM: "120",
       ASTRA_PRO_DAILY_REQUESTS: "2000",
       ASTRA_PRO_DAILY_CHARACTERS: "500000",
       ASTRA_PRO_RPM: "120",
-    }))
+    }))).toThrow(/Free must be strictly below Pro/)
+  })
 
-    const violations = findFreeTierLimitViolations(relayEnv)
+  it("rejects non-positive / non-numeric tier limit env values", () => {
+    expect(() => loadRelayEnv(env({ ASTRA_FREE_DAILY_REQUESTS: "not-a-number" }))).toThrow(/Invalid positive integer/)
+    expect(() => loadRelayEnv(env({ ASTRA_FREE_RPM: "0" }))).toThrow(/Invalid positive integer/)
+    expect(() => loadRelayEnv(env({ ASTRA_FREE_DAILY_CHARACTERS: "-5" }))).toThrow(/Invalid positive integer/)
+  })
+
+  it("flags every axis via findFreeTierLimitViolations on an unbounded env", () => {
+    const violations = findFreeTierLimitViolations({
+      freeDailyRequests: 2000,
+      freeDailyCharacters: 500000,
+      freeRpm: 120,
+      proDailyRequests: 2000,
+      proDailyCharacters: 500000,
+      proRpm: 120,
+    } as unknown as Parameters<typeof findFreeTierLimitViolations>[0])
+
     expect(violations).toHaveLength(3)
     expect(violations.some((v) => v.includes("freeDailyRequests"))).toBe(true)
     expect(violations.some((v) => v.includes("freeDailyCharacters"))).toBe(true)

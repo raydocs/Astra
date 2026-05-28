@@ -528,7 +528,9 @@ describe("file user store", () => {
 
     const account = await store.updatePlan("demo@astra.local", "free")
     expect(account?.plan).toBe("free")
-    expect(account?.providerEntitlements).toEqual(["google_translate", "openai", "gemini"])
+    // Entitlements follow the configured provider allowlist (env = ["openai","gemini"]),
+    // not a hardcoded all-3 — see freeFirstEntitlements.
+    expect(account?.providerEntitlements).toEqual(["openai", "gemini"])
   })
 
   it("returns existing anonymous user when installId matches", async () => {
