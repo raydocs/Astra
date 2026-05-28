@@ -10,8 +10,8 @@ This file is the closeout-ready Month 3 summary for reader / owned-reading work.
 |------|--------|---------|
 | `implemented` | **Yes** | Owned-reading schema v1, queue v1, source/backlink mapping, and reader entry contracts are landed in repo. |
 | `proved` | **Yes** | Fresh browser-backed artifacts exist for PDF, EPUB, subtitle-file, and article revisit. |
-| `gate-ready` | **No** | These reader / revisit scenarios are still optional proofs, not required Gate 2 live lanes in CI. |
-| `closeout verdict` | **`pass-with-carry`** | Month 3 is real and replayable, but still carries required-lane / proof-depth gaps. |
+| `gate-ready` | **Superseded by current release policy for controlled flows** | This historical closeout predates the current `document-proof` required lane. Current Gate 2 requires controlled PDF / EPUB / SRT/VTT document-file proof, while universal reopen and broader reader parity remain scoped out. |
+| `closeout verdict` | **`pass-with-scoped-claims` under current policy** | Month 3 controlled reader/file proof is release-critical now, but original carry boundaries still apply to universal reopen and unsupported formats. |
 
 ## Fresh replayable artifacts (minimum set satisfied)
 
@@ -59,8 +59,8 @@ Do not say:
 
 - Month 3 reader / owned-reading work is **implemented**.
 - Month 3 reader / owned-reading work is **proved enough for sequencing**.
-- Month 3 reader / owned-reading work is **not gate-ready as required release policy**.
-- Closeout should remain **`pass-with-carry`** until / unless reader proofs are promoted into a required CI-owned lane and broader queue reopen paths get dedicated browser-backed smokes.
+- Month 3 controlled PDF / EPUB / SRT/VTT document-file proof is **gate-ready under current release policy** via `document-proof`.
+- Closeout should remain **`pass-with-scoped-claims`** until / unless broader queue reopen paths get dedicated browser-backed smokes and unsupported formats receive separate proof.
 
 ## Pointers
 

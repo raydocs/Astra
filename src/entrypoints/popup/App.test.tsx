@@ -13,6 +13,7 @@ const {
   clearAstraSessionMock,
   createAstraSessionMock,
   refreshAstraSessionMock,
+  requestAstraMobileLinkMock,
   revokeAstraSessionMock,
   fetchAstraAccountSummaryMock,
   fetchAstraContinuitySnapshotMock,
@@ -38,6 +39,7 @@ const {
   speakMock,
   stopSpeakingMock,
   isTtsSupportedMock,
+  submitAstraSupportReportMock,
 } = vi.hoisted(() => ({
   readConfigMock: vi.fn(),
   saveConfigInBackgroundMock: vi.fn(),
@@ -47,6 +49,7 @@ const {
   clearAstraSessionMock: vi.fn(),
   createAstraSessionMock: vi.fn(),
   refreshAstraSessionMock: vi.fn(),
+  requestAstraMobileLinkMock: vi.fn(),
   revokeAstraSessionMock: vi.fn(),
   fetchAstraAccountSummaryMock: vi.fn(),
   fetchAstraContinuitySnapshotMock: vi.fn(),
@@ -72,6 +75,7 @@ const {
   speakMock: vi.fn(),
   stopSpeakingMock: vi.fn(),
   isTtsSupportedMock: vi.fn(),
+  submitAstraSupportReportMock: vi.fn(),
 }))
 
 vi.mock("@/utils/storage/config", () => ({
@@ -88,12 +92,17 @@ vi.mock("@/utils/storage/auth", () => ({
 vi.mock("@/utils/astra/auth", () => ({
   createAstraSession: createAstraSessionMock,
   refreshAstraSession: refreshAstraSessionMock,
+  requestAstraMobileLink: requestAstraMobileLinkMock,
   revokeAstraSession: revokeAstraSessionMock,
 }))
 
 vi.mock("@/utils/astra/account", () => ({
   fetchAstraAccountSummary: fetchAstraAccountSummaryMock,
   fetchAstraContinuitySnapshot: fetchAstraContinuitySnapshotMock,
+}))
+
+vi.mock("@/utils/astra/support", () => ({
+  submitAstraSupportReport: submitAstraSupportReportMock,
 }))
 
 vi.mock("@/utils/extension/messages", async (importOriginal) => {
@@ -198,6 +207,8 @@ import { DEFAULT_ASTRA_CONFIG, DEFAULT_SUBTITLE_QUALITY_CONTROLS } from "@/types
 import { t } from "@/utils/i18n"
 import { getRecentEvents } from "@/utils/telemetry"
 import { OWNED_READING_STORAGE_KEY } from "@/utils/storage/owned-reading"
+import { RETENTION_REMINDER_POLICY_STORAGE_KEY } from "@/utils/storage/retention-reminders"
+import { LEARNING_PROFILE_STORAGE_KEY, LEGACY_ONBOARDING_PRIMARY_GOAL_STORAGE_KEY } from "@/utils/storage/learning-profile"
 import App from "./App"
 
 function createConfig(patch: Partial<AstraConfig> = {}): AstraConfig {
@@ -379,6 +390,9 @@ describe("popup App", () => {
     vi.clearAllMocks()
 
     browserMock = (globalThis as { __ASTRA_TEST_BROWSER__?: any }).__ASTRA_TEST_BROWSER__
+    delete browserMock.__storage[RETENTION_REMINDER_POLICY_STORAGE_KEY]
+    delete browserMock.__storage[LEARNING_PROFILE_STORAGE_KEY]
+    delete browserMock.__storage[LEGACY_ONBOARDING_PRIMARY_GOAL_STORAGE_KEY]
     browserMock.tabs.query.mockResolvedValue([{ id: 1, url: "https://example.com/article" }])
 
     ensureAstraDeviceIdentityMock.mockResolvedValue({
@@ -408,8 +422,25 @@ describe("popup App", () => {
     clearAstraSessionMock.mockResolvedValue(undefined)
     createAstraSessionMock.mockResolvedValue(createSession())
     refreshAstraSessionMock.mockResolvedValue(createSession())
+    requestAstraMobileLinkMock.mockResolvedValue({
+      code: "123456",
+      expiresAt: "2026-05-28T00:10:00.000Z",
+      link: "astra-review://link?code=123456",
+    })
     revokeAstraSessionMock.mockResolvedValue(undefined)
     fetchAstraAccountSummaryMock.mockResolvedValue(createAccountSummary())
+    submitAstraSupportReportMock.mockResolvedValue({
+      report: {
+        reportId: "rpt_popup_remote_0001",
+        status: "submitted",
+        createdAt: "2026-05-27T00:00:00.000Z",
+        updatedAt: "2026-05-27T00:00:00.000Z",
+        submittedAt: "2026-05-27T00:00:00.000Z",
+        issueCategory: "page_not_working",
+        defaultContentIncluded: false,
+        knownIssue: null,
+      },
+    })
     fetchAstraContinuitySnapshotMock.mockImplementation(async (params: { includePull?: boolean }) => ({
       devices: [{
         deviceId: "device-123",
@@ -627,6 +658,20 @@ describe("popup App", () => {
     })
   }
 
+  async function waitForStorageValue(key: string) {
+    for (let i = 0; i < 200; i += 1) {
+      const value = browserMock.__storage[key]
+      if (value !== undefined) return value
+      await flushApp()
+      await act(async () => {
+        const timerTick = new Promise<void>((resolve) => { setTimeout(resolve, 0) })
+        await vi.advanceTimersByTimeAsync(0)
+        await timerTick
+      })
+    }
+    return browserMock.__storage[key]
+  }
+
   async function getLearningLoopTelemetryEvents() {
     await flushApp()
     const events = await getRecentEvents(50)
@@ -646,9 +691,11 @@ describe("popup App", () => {
     })
   }
 
-  async function setFormValue(element: HTMLInputElement | HTMLTextAreaElement, value: string) {
+  async function setFormValue(element: HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement, value: string) {
     const prototype = element instanceof HTMLTextAreaElement
       ? HTMLTextAreaElement.prototype
+      : element instanceof HTMLSelectElement
+        ? HTMLSelectElement.prototype
       : HTMLInputElement.prototype
     const setter = Object.getOwnPropertyDescriptor(prototype, "value")?.set
 
@@ -676,7 +723,7 @@ describe("popup App", () => {
       targetLang: "zh-CN",
       translationMode: "bilingual",
       translationTheme: "default",
-      contentScope: "page",
+      contentScope: "immersive",
     })
   })
 
@@ -826,7 +873,7 @@ describe("popup App", () => {
       await Promise.resolve()
       await Promise.resolve()
     })
-    expect(startActiveTabTranslationMock).toHaveBeenCalledWith(expect.objectContaining({ contentScope: "page" }))
+    expect(startActiveTabTranslationMock).toHaveBeenCalledWith(expect.objectContaining({ contentScope: "immersive" }))
 
     await act(async () => {
       ;(container.querySelector('[data-testid="learning-closure-primer-deep-read"]') as HTMLButtonElement).click()
@@ -1115,6 +1162,211 @@ describe("popup App", () => {
       adaptivePresetName: "saver",
       adaptivePresetLastAppliedAt: 60_000,
     })
+  })
+
+  it("exports a metadata-only page report bundle from the popup", async () => {
+    await act(async () => {
+      root.unmount()
+      await Promise.resolve()
+    })
+    readAstraSessionMock.mockResolvedValue(null)
+    root = ReactDOM.createRoot(container)
+    rootUnmounted = false
+    await act(async () => {
+      root.render(<App />)
+      await Promise.resolve()
+      await Promise.resolve()
+      await Promise.resolve()
+    })
+
+    let createdReportBlob: Blob | null = null
+    const createObjectURLMock = vi.fn((blob: Blob) => {
+      createdReportBlob = blob
+      return "blob:astra-page-report"
+    })
+    const revokeObjectURLMock = vi.fn()
+    const NativeBlob = globalThis.Blob
+    let lastDownloadBlobParts: BlobPart[] = []
+    let clickedDownloadAnchor: HTMLAnchorElement | null = null
+    vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(function (this: HTMLAnchorElement) {
+      clickedDownloadAnchor = this
+    })
+    Object.defineProperty(globalThis, "Blob", {
+      configurable: true,
+      value: class TestDownloadBlob extends NativeBlob {
+        constructor(blobParts?: BlobPart[], options?: BlobPropertyBag) {
+          lastDownloadBlobParts = [...(blobParts ?? [])]
+          super(blobParts, options)
+        }
+      },
+    })
+    Object.defineProperty(URL, "createObjectURL", {
+      configurable: true,
+      value: createObjectURLMock,
+    })
+    Object.defineProperty(URL, "revokeObjectURL", {
+      configurable: true,
+      value: revokeObjectURLMock,
+    })
+
+    await flushApp()
+    const card = container.querySelector('[data-testid="popup-report-page-card"]') as HTMLElement
+    expect(card).toBeTruthy()
+    expect(card.textContent).toContain("Report this page")
+    expect(card.textContent).toContain("no page text, saved snippets, screenshots, transcripts, or user input")
+
+    await act(async () => {
+      ;(container.querySelector('[data-testid="popup-export-page-report-btn"]') as HTMLButtonElement).click()
+      await Promise.resolve()
+    })
+
+    expect(createObjectURLMock).toHaveBeenCalledTimes(1)
+    expect((createdReportBlob as Blob | null)?.type).toBe("application/json;charset=utf-8")
+    const payload = JSON.parse(String(lastDownloadBlobParts[0] ?? ""))
+    expect(payload).toEqual(expect.objectContaining({
+      schema: "astra-support-bundle.v1",
+      featureSurface: "page",
+      action: "report_this_page",
+      issueCategory: "page_not_working",
+      runtimeSurface: "popup",
+      hostname: "example.com",
+      userMessageIncluded: false,
+      contactIncluded: false,
+      contentIncluded: { enabled: false, type: "none" },
+    }))
+    expect(JSON.stringify(payload)).not.toContain("/article")
+    expect(JSON.stringify(payload)).not.toContain("First article sentence")
+    expect((clickedDownloadAnchor as HTMLAnchorElement | null)?.download).toMatch(/^astra-page-report-.*\.json$/)
+    expect(revokeObjectURLMock).toHaveBeenCalledWith("blob:astra-page-report")
+    expect(container.querySelector('[data-testid="popup-report-page-status"]')?.textContent).toContain("Issue: page_not_working")
+  })
+
+  it("submits a metadata-only page report to Astra support when signed in", async () => {
+    submitAstraSupportReportMock.mockResolvedValueOnce({
+      report: {
+        reportId: "rpt_popup_remote_0001",
+        status: "submitted",
+        createdAt: "2026-05-27T00:00:00.000Z",
+        updatedAt: "2026-05-27T00:00:00.000Z",
+        submittedAt: "2026-05-27T00:00:00.000Z",
+        issueCategory: "page_not_working",
+        defaultContentIncluded: false,
+        knownIssue: {
+          issueId: "issue_page_retry",
+          status: "workaround",
+          featureSurface: "page",
+          issueCategory: "page_not_working",
+          affectedVersions: [],
+          firstSeenAt: "2026-05-27T00:00:00.000Z",
+          updatedAt: "2026-05-27T00:00:00.000Z",
+          workaroundKey: "use_simpler_mode",
+        },
+      },
+    })
+    const createObjectURLMock = vi.fn(() => "blob:should-not-download")
+    Object.defineProperty(URL, "createObjectURL", {
+      configurable: true,
+      value: createObjectURLMock,
+    })
+
+    await flushApp()
+    expect(container.querySelector('[data-testid="popup-export-page-report-btn"]')?.textContent).toContain("Submit report to Astra")
+
+    await act(async () => {
+      ;(container.querySelector('[data-testid="popup-export-page-report-btn"]') as HTMLButtonElement).click()
+      await Promise.resolve()
+      await Promise.resolve()
+    })
+
+    expect(submitAstraSupportReportMock).toHaveBeenCalledTimes(1)
+    expect(submitAstraSupportReportMock).toHaveBeenCalledWith(expect.objectContaining({
+      baseURL: "https://astra.example/v1",
+      sessionToken: "astra-session",
+      deviceId: "device-123",
+      bundle: expect.objectContaining({
+        schema: "astra-support-bundle.v1",
+        userConsent: true,
+        featureSurface: "page",
+        action: "report_this_page",
+        issueCategory: "page_not_working",
+        runtimeSurface: "popup",
+        hostname: "example.com",
+        contentIncluded: { enabled: false, type: "none" },
+      }),
+    }))
+    expect(createObjectURLMock).not.toHaveBeenCalled()
+    expect(container.querySelector('[data-testid="popup-report-page-status"]')?.textContent).toContain("Submitted metadata report rpt_popup_remote_0001")
+    expect(container.querySelector('[data-testid="popup-report-page-status"]')?.textContent).toContain("Known issue: Workaround available")
+    expect(container.querySelector('[data-testid="popup-report-page-status"]')?.textContent).toContain("Try a faster/simpler mode and retry")
+    const telemetryEvents = await getLearningLoopTelemetryEvents()
+    expect(telemetryEvents).toContainEqual(expect.objectContaining({
+      data: expect.objectContaining({
+        event: "support_report_submitted",
+        source: "popup",
+        reportId: "rpt_popup_remote_0001",
+        issueCategory: "page_not_working",
+        featureSurface: "page",
+      }),
+    }))
+    expect(telemetryEvents).toContainEqual(expect.objectContaining({
+      data: expect.objectContaining({
+        event: "known_issue_viewed",
+        source: "popup",
+        issueId: "issue_page_retry",
+        status: "workaround",
+        surface: "page",
+      }),
+    }))
+  })
+
+  it("downloads a metadata-only page report when remote support submission fails", async () => {
+    submitAstraSupportReportMock.mockRejectedValueOnce(new Error("relay unavailable"))
+    let createdReportBlob: Blob | null = null
+    const createObjectURLMock = vi.fn((blob: Blob) => {
+      createdReportBlob = blob
+      return "blob:astra-page-report-fallback"
+    })
+    const revokeObjectURLMock = vi.fn()
+    const NativeBlob = globalThis.Blob
+    let lastDownloadBlobParts: BlobPart[] = []
+    vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(() => {})
+    Object.defineProperty(globalThis, "Blob", {
+      configurable: true,
+      value: class TestDownloadBlob extends NativeBlob {
+        constructor(blobParts?: BlobPart[], options?: BlobPropertyBag) {
+          lastDownloadBlobParts = [...(blobParts ?? [])]
+          super(blobParts, options)
+        }
+      },
+    })
+    Object.defineProperty(URL, "createObjectURL", {
+      configurable: true,
+      value: createObjectURLMock,
+    })
+    Object.defineProperty(URL, "revokeObjectURL", {
+      configurable: true,
+      value: revokeObjectURLMock,
+    })
+
+    await flushApp()
+    await act(async () => {
+      ;(container.querySelector('[data-testid="popup-export-page-report-btn"]') as HTMLButtonElement).click()
+      await Promise.resolve()
+      await Promise.resolve()
+    })
+
+    expect(submitAstraSupportReportMock).toHaveBeenCalledTimes(1)
+    expect(createObjectURLMock).toHaveBeenCalledTimes(1)
+    expect((createdReportBlob as Blob | null)?.type).toBe("application/json;charset=utf-8")
+    const payload = JSON.parse(String(lastDownloadBlobParts[0] ?? ""))
+    expect(payload).toEqual(expect.objectContaining({
+      schema: "astra-support-bundle.v1",
+      userConsent: true,
+      featureSurface: "page",
+      contentIncluded: { enabled: false, type: "none" },
+    }))
+    expect(revokeObjectURLMock).toHaveBeenCalledWith("blob:astra-page-report-fallback")
+    expect(container.querySelector('[data-testid="popup-report-page-status"]')?.textContent).toContain("Support report submission failed; downloaded metadata-only JSON instead")
   })
 
   it("exports local subtitle QC diagnostics JSON from the popup", async () => {
@@ -1544,7 +1796,110 @@ describe("popup App", () => {
     await flushApp()
 
     expect(container.textContent).toContain("50%")
-    expect(container.textContent).toContain("100k / 200k tokens")
+    expect(container.textContent).toContain("20k / 40k 词")
+    expect(container.textContent).not.toContain("tokens")
+  })
+
+  it("surfaces trigger-specific Pro-value moments from the popup context", async () => {
+    await flushApp()
+
+    const card = container.querySelector('[data-testid="popup-pro-value-moments-card"]') as HTMLElement
+    expect(card).toBeTruthy()
+    expect(card.textContent).toContain("Pro value moments")
+    expect(container.querySelector('[data-testid="popup-pro-value-deep_read"]')?.textContent).toContain("Go deeper than page translation")
+    expect(container.querySelector('[data-testid="popup-pro-value-digest"]')?.textContent).toContain("Summarize what mattered")
+    expect(card.textContent?.toLowerCase()).not.toContain("provider")
+    expect(card.textContent?.toLowerCase()).not.toContain("token")
+    expect(card.textContent?.toLowerCase()).not.toContain("api key")
+
+    const telemetryEvents = await getLearningLoopTelemetryEvents()
+    expect(telemetryEvents).toContainEqual(expect.objectContaining({
+      data: expect.objectContaining({
+        event: "pro_value_seen",
+        source: "popup",
+        surface: "popup_pro_value",
+        trigger: "deep_read",
+        authState: "signed_in",
+        billingAvailable: false,
+      }),
+    }))
+    expect(telemetryEvents).toContainEqual(expect.objectContaining({
+      data: expect.objectContaining({
+        event: "pro_value_seen",
+        source: "popup",
+        surface: "popup_pro_value",
+        trigger: "digest",
+        authState: "signed_in",
+        billingAvailable: false,
+      }),
+    }))
+    for (const event of telemetryEvents.filter((item) => item.data.event === "pro_value_seen" && item.data.surface === "popup_pro_value")) {
+      expect(event.data).not.toHaveProperty("pageUrl")
+    }
+  })
+
+  it("renders a beta-safe upgrade prompt and records only local upgrade intent", async () => {
+    await flushApp()
+
+    const prompt = container.querySelector('[data-testid="popup-upgrade-prompt"]') as HTMLElement
+    expect(prompt).toBeTruthy()
+    expect(prompt.textContent).toContain("paid upgrades are not available")
+    expect(prompt.textContent).toContain("only records local interest")
+    expect(prompt.textContent).toContain("does not start checkout")
+    expect(prompt.textContent).toContain("email capture")
+    expect(prompt.textContent).toContain("subscription change")
+    expect(prompt.textContent?.toLowerCase()).not.toContain("buy now")
+    expect(prompt.textContent?.toLowerCase()).not.toContain("start trial")
+
+    let telemetryEvents = await getLearningLoopTelemetryEvents()
+    expect(telemetryEvents).toContainEqual(expect.objectContaining({
+      data: expect.objectContaining({
+        event: "paywall_viewed",
+        surface: "popup_upgrade_prompt",
+        experimentId: "upgrade_prompt_value_copy_v1",
+        authState: "signed_in",
+        billingAvailable: false,
+        hardBlock: false,
+      }),
+    }))
+    for (const event of telemetryEvents.filter((item) => item.data.event === "paywall_viewed" && item.data.surface === "popup_upgrade_prompt")) {
+      expect(event.data).not.toHaveProperty("pageUrl")
+      expect(event.data).not.toHaveProperty("checkoutUrl")
+      expect(event.data).not.toHaveProperty("payment")
+    }
+
+    const saveSessionCallsBefore = saveAstraSessionMock.mock.calls.length
+    await act(async () => {
+      ;(container.querySelector('[data-testid="popup-upgrade-interest-cta"]') as HTMLButtonElement).click()
+      await Promise.resolve()
+      await Promise.resolve()
+      await Promise.resolve()
+    })
+
+    expect(container.textContent).toContain("No checkout, trial, email capture, subscription change, or Pro activation was started")
+    expect(createAstraSessionMock).not.toHaveBeenCalled()
+    expect(saveAstraSessionMock).toHaveBeenCalledTimes(saveSessionCallsBefore)
+    expect(browserMock.tabs.create.mock.calls.some((call: Array<{ url?: string }>) => String(call[0]?.url ?? "").toLowerCase().includes("checkout"))).toBe(false)
+
+    telemetryEvents = await getLearningLoopTelemetryEvents()
+    expect(telemetryEvents).toContainEqual(expect.objectContaining({
+      data: expect.objectContaining({
+        event: "conversion_event",
+        conversion: "upgrade_intent_clicked",
+        surface: "popup_upgrade_prompt",
+        experimentId: "upgrade_prompt_value_copy_v1",
+        billingAvailable: false,
+        hardBlock: false,
+      }),
+    }))
+    expect(telemetryEvents.some((event) => event.data.event === "trial_started")).toBe(false)
+    expect(telemetryEvents.some((event) => event.data.event === "membership_activated")).toBe(false)
+    for (const event of telemetryEvents.filter((item) => item.data.event === "conversion_event" && item.data.conversion === "upgrade_intent_clicked")) {
+      expect(event.data).not.toHaveProperty("pageUrl")
+      expect(event.data).not.toHaveProperty("checkoutUrl")
+      expect(event.data).not.toHaveProperty("payment")
+      expect(event.data).not.toHaveProperty("email")
+    }
   })
 
   it("surfaces unauthenticated continuity copy and opens the existing sign-in panel from the CTA", async () => {
@@ -1577,6 +1932,28 @@ describe("popup App", () => {
     expect(container.querySelector('[data-testid="popup-account-continuity-proof-moment"]')?.textContent).toContain("Proof")
     expect(container.querySelector('[data-testid="study-account-continuity-proof-moment"]')?.textContent).toContain("Same CTA")
     expect(container.querySelector('[data-testid="study-account-continuity-sign-in-cta"]')?.textContent).toContain("Sign in to keep continuity")
+    expect(container.querySelector('[data-testid="popup-pro-value-sync"]')?.textContent).toContain("Keep today’s trail ready")
+    const unauthTelemetryEvents = await getLearningLoopTelemetryEvents()
+    expect(unauthTelemetryEvents).toContainEqual(expect.objectContaining({
+      data: expect.objectContaining({
+        event: "pro_value_seen",
+        source: "popup",
+        surface: "popup_pro_value",
+        trigger: "sync",
+        authState: "signed_out",
+        billingAvailable: false,
+      }),
+    }))
+    expect(unauthTelemetryEvents).toContainEqual(expect.objectContaining({
+      data: expect.objectContaining({
+        event: "pro_value_seen",
+        source: "popup",
+        surface: "popup_account_continuity",
+        trigger: "continuity_value",
+        authState: "signed_out",
+        billingAvailable: false,
+      }),
+    }))
 
     const signInPanel = container.querySelector('[data-testid="popup-sign-in-panel"]') as HTMLDetailsElement
     expect(signInPanel.open).toBe(false)
@@ -1677,6 +2054,26 @@ describe("popup App", () => {
     expect(saveAstraSessionMock).toHaveBeenCalled()
   })
 
+  it("creates a phone link code from the authenticated popup", async () => {
+    await flushApp()
+
+    const createLinkButton = container.querySelector('[data-testid="popup-mobile-link-create-button"]') as HTMLButtonElement
+    expect(createLinkButton).toBeTruthy()
+
+    await act(async () => {
+      createLinkButton.click()
+      await Promise.resolve()
+      await Promise.resolve()
+    })
+
+    expect(requestAstraMobileLinkMock).toHaveBeenCalledWith({
+      baseURL: "https://astra.example/v1",
+      sessionToken: "astra-session",
+    })
+    expect(container.querySelector('[data-testid="popup-mobile-link-code"]')?.textContent).toContain("123456")
+    expect(container.querySelector('[data-testid="popup-mobile-link-message"]')?.textContent).toContain("Mobile link code ready")
+  })
+
   it("shows sign out button when logged in and signs out", async () => {
     await flushApp()
 
@@ -1722,7 +2119,7 @@ describe("popup App", () => {
     expect(container.textContent).toContain("阅读文章")
   })
 
-  it("renders the weekly ROI summary from local study and vocabulary activity", async () => {
+  it("renders the weekly digest summary from local study and vocabulary activity", async () => {
     const now = new Date("2026-04-09T12:00:00.000Z").getTime()
     vi.setSystemTime(now)
     getStudyProgressMock.mockResolvedValue({
@@ -1774,14 +2171,94 @@ describe("popup App", () => {
 
     const card = container.querySelector('[data-testid="weekly-roi-summary-card"]') as HTMLElement
     expect(card).toBeTruthy()
-    expect(card.textContent).toContain("Weekly ROI")
-    expect(card.textContent).toContain("7-day learning return")
+    expect(card.textContent).toContain("Weekly Digest")
+    expect(card.textContent).toContain("You learned 2 expressions from 1 source this week.")
     expect(card.textContent).toContain("45 min")
     expect(card.textContent).toContain("50%")
+    expect(card.textContent).toContain("Reviewable")
     expect(card.textContent).toContain("1 active page")
     expect(card.textContent).toContain("1 loop closed")
     expect(card.textContent).toContain("2 saved")
     expect(card.textContent).toContain("2 reviewed")
+  })
+
+  it("renders calm metadata-only retention reminder readiness with local controls", async () => {
+    const now = new Date("2026-04-09T12:00:00.000Z").getTime()
+    vi.setSystemTime(now)
+    getDueVocabularyCountMock.mockResolvedValue(4)
+    getStudyProgressMock.mockResolvedValue({
+      pages: [{
+        url: "https://private.example/secret?token=abc",
+        hostname: "private.example",
+        title: "Private article title",
+        completedSteps: ["read"],
+        sentencesExplained: 1,
+        vocabSaved: 1,
+        vocabReviewed: 0,
+        startedAt: now - 30 * 60_000,
+        lastActivityAt: now,
+      }],
+      dailyStats: { date: "2026-04-09", pagesStudied: 1, sentencesExplained: 1, vocabSaved: 1, vocabReviewed: 0 },
+    })
+    getVocabularyEntriesMock.mockResolvedValue([
+      {
+        id: "due-private",
+        text: "private saved text should not render in reminders",
+        url: "https://private.example/secret?token=abc",
+        hostname: "private.example",
+        savedAt: now - 60_000,
+        srsBox: 1,
+        nextReviewAt: now - 1,
+        reviewCount: 0,
+      },
+    ])
+    browserMock.__storage[OWNED_READING_STORAGE_KEY] = {
+      version: 1,
+      items: [{
+        id: "or_article_private",
+        sourceType: "article",
+        title: "Private reading title should not render in reminders",
+        sourceUrl: "https://private.example/secret?token=abc",
+        openedAt: now - 60_000,
+        updatedAt: now,
+        status: "in_progress",
+      }],
+    }
+
+    await act(async () => {
+      window.dispatchEvent(new Event("focus"))
+      await Promise.resolve()
+      await Promise.resolve()
+      await Promise.resolve()
+    })
+    await flushApp()
+
+    const card = container.querySelector('[data-testid="retention-reminder-readiness-card"]') as HTMLElement
+    expect(card).toBeTruthy()
+    expect(card.textContent).toContain("Calm reminders")
+    expect(card.textContent).toContain("Today Review")
+    expect(card.textContent).toContain("Continue Reading")
+    expect(card.textContent).toContain("Weekly Digest")
+    expect(card.textContent).toContain("3 calm reminders ready.")
+    expect(card.textContent).toContain("No emails, push notifications, pressure loops, page text, transcripts, or private URLs.")
+    expect(card.textContent?.toLowerCase()).not.toContain("streak")
+    expect(card.textContent).not.toContain("Private reading title")
+    expect(card.textContent).not.toContain("private saved text")
+    expect(card.textContent).not.toContain("https://private.example")
+    expect(card.textContent?.toLowerCase()).not.toContain("streak pressure")
+
+    const turnOff = Array.from(container.querySelectorAll("button")).find((button) => button.textContent === "Turn off") as HTMLButtonElement
+    expect(turnOff).toBeTruthy()
+    await act(async () => {
+      turnOff.click()
+      await Promise.resolve()
+      await Promise.resolve()
+    })
+
+    expect(browserMock.__storage[RETENTION_REMINDER_POLICY_STORAGE_KEY]).toMatchObject({ enabled: false })
+    expect(card.textContent).toContain("Reminders are off.")
+    expect(card.textContent).toContain("Enable reminders")
+    expect(card.textContent).not.toContain("Today Review")
   })
 
   it("shows the same current-page progress counters and next-step hint in the popup", async () => {
@@ -1895,7 +2372,7 @@ describe("popup App", () => {
       await Promise.resolve()
     })
 
-    const ownedReadingStore = browserMock.__storage[OWNED_READING_STORAGE_KEY]
+    const ownedReadingStore = await waitForStorageValue(OWNED_READING_STORAGE_KEY) as { items: unknown[] }
     expect(ownedReadingStore).toEqual(expect.objectContaining({ version: 1 }))
     expect(ownedReadingStore.items).toContainEqual(expect.objectContaining({
       sourceType: "article",
@@ -1910,17 +2387,22 @@ describe("popup App", () => {
     expect(commitLearningContinuitySyncMock).toHaveBeenCalledWith("popup-content-assetization")
   })
 
-  it("shows usage and routing feedback in the popup", async () => {
+  it("shows local Astra activity without exposing technical routing in the popup", async () => {
     await flushApp()
 
-    expect(container.textContent).toContain("用量与路由")
+    expect(container.textContent).toContain("Astra activity")
     // Grid layout renders i18n-ized metrics
     expect(container.textContent).toContain("4")
     expect(container.textContent).toContain("请求数")
+    expect(container.textContent).toContain("阅读工作量")
     expect(container.textContent).toContain("24")
-    expect(container.textContent).toContain("openai / gpt-5.4-nano")
-    expect(container.textContent).toContain("direct → relay")
-    expect(container.textContent).toContain("这里只显示当前设备上的翻译活动；它不会改变你的 Astra 账户配额，命中缓存的内容也不会出现在这里。")
+    expect(container.textContent).toContain("已包含")
+    expect(container.textContent).not.toContain("openai / gpt-5.4-nano")
+    expect(container.textContent).toContain("Astra automatic retry")
+    expect(container.textContent).not.toContain("direct → relay")
+    expect(container.textContent).toContain("Daily reading is included")
+    expect(container.textContent).not.toContain("<$0.01")
+    expect(container.textContent).not.toContain("Est. cost")
   })
 
   it("opens the Image/OCR Translation Beta page from diagnostics", async () => {
@@ -1941,24 +2423,59 @@ describe("popup App", () => {
     })
   })
 
-  it("opens the Document Intake Hub page from diagnostics", async () => {
+  it("opens the Document Intake Hub page from the first-screen file entry and diagnostics", async () => {
     await flushApp()
 
-    const intakeButton = getButtons().find((button) => button.textContent === "Open Document Intake Hub")
-    expect(intakeButton).toBeDefined()
-    expect(container.textContent).toContain("Route PDF, EPUB, SRT, or VTT files to existing readers")
-    expect(container.textContent).toContain("short-lived local handoff can open the reader automatically")
-    expect(container.textContent).toContain("File bytes stay local and are never synced")
+    const openFileButton = getButtons().find((button) => button.textContent?.includes("Open file"))
+    expect(openFileButton).toBeDefined()
+    expect(container.textContent).toContain("PDF · EPUB · Subtitle")
 
     browserMock.tabs.create.mockClear()
     await act(async () => {
-      intakeButton?.click()
+      openFileButton?.click()
       await Promise.resolve()
     })
 
     expect(browserMock.tabs.create).toHaveBeenCalledWith({
       url: "/document-intake.html",
     })
+
+    const intakeButton = getButtons().find((button) => button.textContent === "Open Document Intake Hub")
+    expect(intakeButton).toBeDefined()
+    expect(container.textContent).toContain("Route PDF, EPUB, SRT, or VTT files to existing readers")
+    expect(container.textContent).toContain("short-lived local handoff can open the reader automatically")
+    expect(container.textContent).toContain("File bytes stay local and are never synced")
+  })
+
+  it("keeps video-note tools out of non-video popups", async () => {
+    await flushApp()
+
+    expect(container.textContent).toContain("More details")
+    expect(container.querySelector('[data-testid="popup-video-note-tools"]')).toBeNull()
+    expect(container.textContent).not.toContain("Open a YouTube or Bilibili tab to enable video-note creation.")
+    expect(getButtons().some((button) => button.textContent === "Create video note")).toBe(false)
+
+    await act(async () => {
+      root.unmount()
+      rootUnmounted = true
+      await Promise.resolve()
+    })
+
+    browserMock.tabs.query.mockResolvedValue([{ id: 1, url: "https://www.youtube.com/watch?v=astra" }])
+    root = ReactDOM.createRoot(container)
+    rootUnmounted = false
+
+    await act(async () => {
+      root.render(<App />)
+      await Promise.resolve()
+      await Promise.resolve()
+      await Promise.resolve()
+    })
+    await flushApp()
+
+    expect(container.querySelector('[data-testid="popup-video-note-tools"]')).toBeTruthy()
+    expect(getButtons().some((button) => button.textContent === "Create video note")).toBe(true)
+    expect(container.textContent).toContain("Supported video tab detected.")
   })
 
   it("persists the popup explanation glossary editor", async () => {
@@ -1975,6 +2492,22 @@ describe("popup App", () => {
         { sourceTerm: "Astra", preferredTerm: "阿斯特拉", enabled: true },
         { sourceTerm: "router", preferredTerm: "路由器", enabled: true },
       ],
+    }))
+  })
+
+  it("persists the simple Astra AI style without provider setup", async () => {
+    await flushApp()
+
+    const serviceModeSelect = container.querySelector('[data-testid="popup-service-mode-select"]') as HTMLSelectElement
+    expect(serviceModeSelect).toBeTruthy()
+    expect(container.textContent).toContain("Astra AI style")
+    expect(container.textContent).not.toContain("API key")
+
+    await setFormValue(serviceModeSelect, "best_quality")
+    await flushApp()
+
+    expect(saveConfigInBackgroundMock).toHaveBeenLastCalledWith(expect.objectContaining({
+      serviceMode: "best_quality",
     }))
   })
 
@@ -2204,6 +2737,7 @@ describe("popup App", () => {
 
   it("surfaces custom study actions in the popup and runs them against article context", async () => {
     readConfigMock.mockResolvedValue(createConfig({
+      serviceMode: "balanced",
       customActions: [{
         id: "deep-read",
         label: "Deep Read",
@@ -2232,6 +2766,7 @@ describe("popup App", () => {
 
     expect(translateTextsMock).toHaveBeenCalledWith(expect.objectContaining({
       targetLang: "zh-CN",
+      serviceMode: "balanced",
       task: "custom",
       texts: ["First article sentence. Second article sentence with more detail."],
       context: expect.objectContaining({
@@ -2307,6 +2842,7 @@ describe("popup App", () => {
     expect(translateTextsMock).toHaveBeenCalledWith(expect.objectContaining({
       task: "explain",
       targetLang: "zh-CN",
+      serviceMode: "automatic",
       texts: ["First article sentence."],
       context: expect.objectContaining({
         pageTitle: "Example article",
@@ -2368,7 +2904,8 @@ describe("popup App", () => {
       await Promise.resolve()
     })
 
-    expect(container.textContent).toContain("Warning: Temporary relay outage")
+    expect(container.textContent).toContain("Warning: Your membership is active. Astra is reconnecting.")
+    expect(container.textContent).not.toContain("Warning: Temporary relay outage")
 
     const retryButtons = getButtons().filter((button) => button.textContent === t("popup_studyExplainSentence"))
     await act(async () => {

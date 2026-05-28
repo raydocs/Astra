@@ -79,6 +79,7 @@ Paid launch remains blocked until all items below are complete, tested, and revi
 - Do not use `plan: "pro"` test fixtures or local plan drills as launch evidence.
 - Do not rely on frontend labels to enforce paid access; enforcement must live in the authoritative backend/provider-control path.
 - Keep free-beta quota/spend controls conservative and externally budgeted before launch.
+- Treat `evaluateAstraReleaseStageGate("paid_launch", ...)` in `src/utils/release-stage-gate.ts` as the executable paid-launch blocker check; it must stay false until this runbook's blockers and legal/trust evidence are complete.
 
 ## External dependencies
 

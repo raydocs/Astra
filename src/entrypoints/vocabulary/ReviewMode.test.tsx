@@ -15,6 +15,7 @@ const {
   openVocabularyEntryInDeepReadMock,
   commitLearningContinuitySyncMock,
   recordLearningLoopEventMock,
+  readLearningProfileMock,
 } = vi.hoisted(() => ({
   getVocabularyEntriesMock: vi.fn(),
   updateVocabularyEntryMock: vi.fn(),
@@ -28,6 +29,7 @@ const {
   openVocabularyEntryInDeepReadMock: vi.fn(),
   commitLearningContinuitySyncMock: vi.fn(),
   recordLearningLoopEventMock: vi.fn(),
+  readLearningProfileMock: vi.fn(),
 }))
 
 vi.mock("@/utils/storage/vocabulary", () => ({
@@ -46,6 +48,10 @@ vi.mock("@/utils/storage/vocabulary", () => ({
       return trimmed
     }
   },
+}))
+
+vi.mock("@/utils/storage/learning-profile", () => ({
+  readLearningProfile: readLearningProfileMock,
 }))
 
 vi.mock("@/utils/storage/study-progress", () => ({
@@ -134,6 +140,7 @@ vi.mock("@/utils/i18n", () => ({
     if (key === "review_focusedFallbackMissingCard") return "Saved card was not found; showing due review instead."
     if (key === "review_pageLoopNoCards") return "No saved cards were found for this page."
     if (key === "review_returnToDeepReadSentence") return "Return to this sentence in Deep Read"
+    if (key === "review_returnToVideoTimestamp") return "Return to video timestamp"
     if (key === "review_resumeReadingThisPage") return "Resume reading this page"
     if (key === "review_focusedCompleteTitle") return "Sentence review complete"
     if (key === "review_focusedCompleteHint") return "Close the loop by reopening the original sentence context."
@@ -170,8 +177,8 @@ vi.mock("@/utils/i18n", () => ({
     if (key === "review_gradeGoodHint") return "Advance one box · normal interval"
     if (key === "review_gradeEasy") return "Easy"
     if (key === "review_gradeEasyHint") return "Advance two boxes · longer interval"
-    if (key === "review_gradeScheduleDisclosure") return "Four-grade scheduling is active: Again, Hard, Good, and Easy each set a different next review."
-    if (key === "review_keyboardHintBackFour") return "1–4 = Again / Hard / Good / Easy · ← Again · → Good"
+    if (key === "review_gradeScheduleDisclosure") return "Default Review uses Again, Good, and Easy. Shortcut 4 keeps legacy Hard scheduling available without making it the default choice."
+    if (key === "review_keyboardHintBackThree") return "1 = Again · 2 = Good · 3 = Easy · ← Again · → Good"
     if (key === "review_contextLabel") return "Context"
     if (key === "review_loading") return "Loading..."
     return key
@@ -281,6 +288,18 @@ describe("ReviewMode", () => {
       step: "vocab_review",
     })
     recordStudyEventMock.mockResolvedValue(undefined)
+    readLearningProfileMock.mockResolvedValue({
+      version: 1,
+      targetLang: "zh-CN",
+      languageLevel: "intermediate",
+      explainMode: "deep",
+      primaryGoal: "read_articles_docs",
+      dailyGoalMinutes: 5,
+      personalizationEnabled: true,
+      excludedHostnames: [],
+      rememberedTerms: [],
+      updatedAt: "2026-04-13T12:00:00.000Z",
+    })
     getStudyProgressMock.mockResolvedValue({
       pages: [],
       dailyStats: {
@@ -379,7 +398,7 @@ describe("ReviewMode", () => {
     expect(container.textContent).toContain("next in 4 days")
     expect(container.textContent).toContain("next in 12 days")
     expect(container.textContent).toContain("Press space to reveal · 1–4 to grade")
-    expect(container.textContent).not.toContain("Four-grade scheduling is active: Again, Hard, Good, and Easy each set a different next review.")
+    expect(container.textContent).not.toContain("Default Review uses Again, Good, and Easy. Shortcut 4 keeps legacy Hard scheduling available without making it the default choice.")
     expect(container.textContent).not.toContain("Reset to Box 1 · due in 10 minutes")
     expect(container.textContent).not.toContain("This build uses two SRS outcomes")
     expect(container.textContent).not.toContain("Open in deep read")
@@ -423,6 +442,225 @@ describe("ReviewMode", () => {
     expect(container.textContent).toContain("Tmrw")
     expect(container.textContent).toContain("effervescent")
     expect(container.textContent).toContain("taciturn")
+  })
+
+  it("sizes the default review queue from the local daily goal", async () => {
+    await act(async () => {
+      root.unmount()
+      await Promise.resolve()
+    })
+    root = ReactDOM.createRoot(container)
+    vi.clearAllMocks()
+    window.history.pushState({}, "", "/vocabulary.html?tab=review")
+
+    const entries = Array.from({ length: 4 }, (_, index) => ({
+      id: `daily-goal-${index + 1}`,
+      text: `daily-goal-word-${index + 1}`,
+      explanation: `Daily goal explanation ${index + 1}`,
+      context: `Daily goal context ${index + 1}`,
+      url: "https://example.com/daily-goal",
+      hostname: "example.com",
+      savedAt: 1000 + index,
+      srsBox: 1,
+      nextReviewAt: 0,
+      reviewCount: 0,
+      lastReviewedAt: null,
+      sourceContext: {
+        surface: "popup_deep_read" as const,
+        pageTitle: "Daily goal article",
+        pageUrl: "https://example.com/daily-goal",
+        hostname: "example.com",
+        sentenceText: `Daily goal sentence ${index + 1}`,
+        sentenceIndex: index,
+        studyProgressRecordId: "https://example.com/daily-goal",
+      },
+    }))
+
+    getVocabularyEntriesMock.mockResolvedValue(entries)
+    listOwnedReadingItemsMock.mockResolvedValue([])
+    readLearningProfileMock.mockResolvedValue({
+      version: 1,
+      targetLang: "zh-CN",
+      languageLevel: "intermediate",
+      explainMode: "deep",
+      primaryGoal: "read_articles_docs",
+      dailyGoalMinutes: 2,
+      personalizationEnabled: true,
+      excludedHostnames: [],
+      rememberedTerms: [],
+      updatedAt: "2026-04-13T12:00:00.000Z",
+    })
+    getStudyProgressMock.mockResolvedValue({
+      pages: [],
+      dailyStats: { date: "2026-04-13", pagesStudied: 0, sentencesExplained: 0, vocabSaved: 0, vocabReviewed: 0 },
+    })
+    deriveStudyLoopViewModelMock.mockReturnValue(null)
+
+    await act(async () => {
+      root.render(<ReviewMode />)
+      await Promise.resolve()
+      await Promise.resolve()
+      await Promise.resolve()
+    })
+
+    expect(readLearningProfileMock).toHaveBeenCalled()
+    expect(container.querySelector('[data-testid="review-progress-status"]')?.textContent).toContain("Card 1 of 2")
+    expect(container.textContent).toContain("daily-goal-word-1")
+    expect(container.textContent).not.toContain("daily-goal-word-3")
+  })
+
+  it("surfaces the learner profile as a visible Review plan and prioritizes matching sources", async () => {
+    await act(async () => {
+      root.unmount()
+      await Promise.resolve()
+    })
+    root = ReactDOM.createRoot(container)
+    vi.clearAllMocks()
+    window.history.pushState({}, "", "/vocabulary.html?tab=review")
+
+    getVocabularyEntriesMock.mockResolvedValue([
+      {
+        id: "article-first",
+        text: "article-word",
+        explanation: "Article explanation",
+        context: "Article context",
+        url: "https://example.com/article",
+        hostname: "example.com",
+        savedAt: 1000,
+        srsBox: 1,
+        nextReviewAt: 0,
+        reviewCount: 0,
+        lastReviewedAt: null,
+        sourceContext: {
+          surface: "popup_deep_read" as const,
+          pageTitle: "Article",
+          pageUrl: "https://example.com/article",
+          hostname: "example.com",
+          sentenceText: "Article sentence",
+        },
+      },
+      {
+        id: "subtitle-priority",
+        text: "subtitle-priority-word",
+        explanation: "Subtitle explanation",
+        context: "Subtitle context",
+        url: "astra-local://subtitle/lesson.srt",
+        hostname: "subtitle-reader",
+        savedAt: 900,
+        srsBox: 1,
+        nextReviewAt: 0,
+        reviewCount: 0,
+        lastReviewedAt: null,
+        sourceContext: {
+          surface: "subtitle_reader" as const,
+          pageTitle: "lesson.srt",
+          pageUrl: "astra-local://subtitle/lesson.srt",
+          hostname: "subtitle-reader",
+          sentenceText: "Subtitle sentence",
+          ownedReadingSourceType: "subtitle-file" as const,
+        },
+      },
+    ])
+    listOwnedReadingItemsMock.mockResolvedValue([])
+    readLearningProfileMock.mockResolvedValue({
+      version: 1,
+      targetLang: "zh-CN",
+      languageLevel: "advanced",
+      explainMode: "exam",
+      primaryGoal: "watch_tutorials",
+      dailyGoalMinutes: 1,
+      personalizationEnabled: true,
+      excludedHostnames: [],
+      rememberedTerms: [],
+      updatedAt: "2026-04-13T12:00:00.000Z",
+    })
+    getStudyProgressMock.mockResolvedValue({
+      pages: [],
+      dailyStats: { date: "2026-04-13", pagesStudied: 0, sentencesExplained: 0, vocabSaved: 0, vocabReviewed: 0 },
+    })
+    deriveStudyLoopViewModelMock.mockReturnValue(null)
+
+    await act(async () => {
+      root.render(<ReviewMode />)
+      await Promise.resolve()
+      await Promise.resolve()
+      await Promise.resolve()
+    })
+
+    const plan = container.querySelector('[data-testid="review-personalized-profile-card"]') as HTMLElement
+    expect(plan).toBeTruthy()
+    expect(plan.textContent).toContain("Personalized review: Watch videos")
+    expect(plan.textContent).toContain("1-card session shaped by 1 min/day")
+    expect(plan.textContent).toContain("advanced level")
+    expect(plan.textContent).toContain("exam-style explanations")
+    expect(plan.textContent).toContain("2 due cards → 1 queued")
+    expect(plan.textContent).toContain("turn personalization off")
+    expect(container.querySelector('[data-testid="review-progress-status"]')?.textContent).toContain("Card 1 of 1")
+    expect(container.textContent).toContain("subtitle-priority-word")
+    expect(container.textContent).not.toContain("article-word")
+  })
+
+  it("does not daily-goal cap an explicitly focused review card", async () => {
+    await act(async () => {
+      root.unmount()
+      await Promise.resolve()
+    })
+    root = ReactDOM.createRoot(container)
+    vi.clearAllMocks()
+    window.history.pushState({}, "", "/vocabulary.html?tab=review&entryId=focused-3")
+
+    const entries = Array.from({ length: 4 }, (_, index) => ({
+      id: `focused-${index + 1}`,
+      text: `focused-word-${index + 1}`,
+      explanation: `Focused explanation ${index + 1}`,
+      context: `Focused context ${index + 1}`,
+      url: "https://example.com/focused",
+      hostname: "example.com",
+      savedAt: 1000 + index,
+      srsBox: 1,
+      nextReviewAt: 0,
+      reviewCount: 0,
+      lastReviewedAt: null,
+      sourceContext: {
+        surface: "popup_deep_read" as const,
+        pageTitle: "Focused article",
+        pageUrl: "https://example.com/focused",
+        hostname: "example.com",
+        sentenceText: `Focused sentence ${index + 1}`,
+        sentenceIndex: index,
+      },
+    }))
+
+    getVocabularyEntriesMock.mockResolvedValue(entries)
+    listOwnedReadingItemsMock.mockResolvedValue([])
+    readLearningProfileMock.mockResolvedValue({
+      version: 1,
+      targetLang: "zh-CN",
+      languageLevel: "intermediate",
+      explainMode: "deep",
+      primaryGoal: "read_articles_docs",
+      dailyGoalMinutes: 1,
+      personalizationEnabled: true,
+      excludedHostnames: [],
+      rememberedTerms: [],
+      updatedAt: "2026-04-13T12:00:00.000Z",
+    })
+    getStudyProgressMock.mockResolvedValue({
+      pages: [],
+      dailyStats: { date: "2026-04-13", pagesStudied: 0, sentencesExplained: 0, vocabSaved: 0, vocabReviewed: 0 },
+    })
+    deriveStudyLoopViewModelMock.mockReturnValue(null)
+
+    await act(async () => {
+      root.render(<ReviewMode />)
+      await Promise.resolve()
+      await Promise.resolve()
+      await Promise.resolve()
+    })
+
+    expect(container.querySelector('[data-testid="review-progress-status"]')?.textContent).toContain("Card 1 of 1")
+    expect(container.textContent).toContain("focused-word-3")
+    expect(container.textContent).not.toContain("focused-word-1")
   })
 
   it("shows popup deep-read source context on the back of the card and records vocab review progress", async () => {
@@ -482,8 +720,21 @@ describe("ReviewMode", () => {
     expect(markOwnedReadingOpenedMock).toHaveBeenCalledWith("or_article_example")
     expect(browser.tabs.create).toHaveBeenCalledWith({ url: "https://example.com/article" })
 
+    const progressStatus = container.querySelector('[data-testid="review-progress-status"]') as HTMLElement
+    expect(progressStatus).toBeTruthy()
+    expect(progressStatus.getAttribute("role")).toBe("status")
+    expect(progressStatus.getAttribute("aria-live")).toBe("polite")
+
+    const revealedCard = container.querySelector('[data-testid="review-card"]') as HTMLElement
+    expect(revealedCard.getAttribute("aria-describedby")).toBe("review-keyboard-hint")
+
+    const gradeGroup = container.querySelector('.astra-review-grade-row') as HTMLElement
+    expect(gradeGroup.getAttribute("role")).toBe("group")
+    expect(gradeGroup.getAttribute("aria-describedby")).toBe("review-grade-schedule-disclosure")
+
     const knowItButton = container.querySelector('[data-review-grade="good"]') as HTMLButtonElement
     expect(knowItButton).toBeTruthy()
+    expect(knowItButton.getAttribute("aria-label")).toContain("Shortcut 2")
 
     await act(async () => {
       knowItButton.click()
@@ -688,6 +939,79 @@ describe("ReviewMode", () => {
     expect(browser.tabs.create).toHaveBeenCalledWith({ url: "https://example.com/article" })
   })
 
+  it("returns a completed focused video review to the saved timestamp", async () => {
+    await act(async () => {
+      root.unmount()
+      await Promise.resolve()
+    })
+    root = ReactDOM.createRoot(container)
+    vi.clearAllMocks()
+
+    const videoEntry = {
+      id: "video-entry",
+      text: "Hello world",
+      translation: "你好，世界",
+      explanation: "A greeting from the transcript.",
+      context: "YouTube transcript · 1:15",
+      url: "https://www.youtube.com/watch?v=abc123&t=75s",
+      hostname: "www.youtube.com",
+      savedAt: 1000,
+      srsBox: 1,
+      nextReviewAt: 0,
+      reviewCount: 0,
+      lastReviewedAt: null,
+      sourceContext: {
+        surface: "video_transcript" as const,
+        pageTitle: "Demo video",
+        pageUrl: "https://www.youtube.com/watch?v=abc123",
+        hostname: "www.youtube.com",
+        sentenceText: "Hello world",
+        sentenceIndex: 0,
+        videoTimestampMs: 75_000,
+        contentSummary: "Video transcript timestamp 1:15",
+      },
+    }
+
+    window.history.pushState({}, "", "/vocabulary.html?tab=review&entryId=video-entry")
+    getVocabularyEntriesMock.mockResolvedValue([videoEntry])
+    updateVocabularyEntryMock.mockResolvedValue(videoEntry)
+    listOwnedReadingItemsMock.mockResolvedValue([])
+
+    await act(async () => {
+      root.render(<ReviewMode />)
+      await Promise.resolve()
+      await Promise.resolve()
+      await Promise.resolve()
+    })
+
+    const flashcard = container.querySelector('[role="button"]') as HTMLDivElement
+    await act(async () => {
+      flashcard.click()
+      await Promise.resolve()
+    })
+
+    const knowItButton = container.querySelector('[data-review-grade="good"]') as HTMLButtonElement
+    await act(async () => {
+      knowItButton.click()
+      await Promise.resolve()
+      await Promise.resolve()
+    })
+
+    const returnToVideoButton = container.querySelector('[data-testid="review-return-video-timestamp"]') as HTMLButtonElement
+    expect(returnToVideoButton).toBeTruthy()
+    expect(returnToVideoButton.textContent).toBe("Return to video timestamp")
+    expect(container.querySelector('[data-testid="review-return-deep-read"]')).toBeNull()
+
+    await act(async () => {
+      returnToVideoButton.click()
+      await Promise.resolve()
+    })
+
+    expect(browser.tabs.create).toHaveBeenCalledWith({
+      url: "https://www.youtube.com/watch?v=abc123&t=75s",
+    })
+  })
+
   it("shows subtitle-reader continuity on the second review card and reopens the linked subtitle-file asset", async () => {
     const flashcard = container.querySelector('[role="button"]') as HTMLDivElement
     expect(flashcard).toBeTruthy()
@@ -736,32 +1060,31 @@ describe("ReviewMode", () => {
     })
   })
 
-  it("supports Space reveal and 1–4 keyboard grading with distinct semantic grade actions", async () => {
+  it("supports Space reveal and three default learner-facing grade actions while keeping Hard off the button row", async () => {
     await act(async () => {
       window.dispatchEvent(new KeyboardEvent("keydown", { code: "Space" }))
       await Promise.resolve()
     })
 
     const gradeOne = container.querySelector('[data-review-grade="again"]') as HTMLButtonElement | null
-    const gradeTwo = container.querySelector('[data-review-grade="hard"]') as HTMLButtonElement | null
-    const gradeThree = container.querySelector('[data-review-grade="good"]') as HTMLButtonElement | null
-    const gradeFour = container.querySelector('[data-review-grade="easy"]') as HTMLButtonElement | null
+    const gradeTwo = container.querySelector('[data-review-grade="good"]') as HTMLButtonElement | null
+    const gradeThree = container.querySelector('[data-review-grade="easy"]') as HTMLButtonElement | null
+    const hardButton = container.querySelector('[data-review-grade="hard"]') as HTMLButtonElement | null
 
     expect(gradeOne?.dataset.reviewKey).toBe("1")
     expect(gradeTwo?.dataset.reviewKey).toBe("2")
     expect(gradeThree?.dataset.reviewKey).toBe("3")
-    expect(gradeFour?.dataset.reviewKey).toBe("4")
+    expect(hardButton).toBeNull()
     expect(gradeOne?.dataset.reviewOutcome).toBeUndefined()
     expect(gradeOne?.textContent).toContain("Reset to Box 1 · due in 10 minutes")
-    expect(gradeTwo?.textContent).toContain("Keep current box · shorter interval")
-    expect(gradeThree?.textContent).toContain("Advance one box · normal interval")
-    expect(gradeFour?.textContent).toContain("Advance two boxes · longer interval")
-    expect(container.textContent).toContain("Four-grade scheduling is active: Again, Hard, Good, and Easy each set a different next review.")
-    expect(container.textContent).toContain("1–4 = Again / Hard / Good / Easy · ← Again · → Good")
+    expect(gradeTwo?.textContent).toContain("Advance one box · normal interval")
+    expect(gradeThree?.textContent).toContain("Advance two boxes · longer interval")
+    expect(container.textContent).toContain("Default Review uses Again, Good, and Easy. Shortcut 4 keeps legacy Hard scheduling available without making it the default choice.")
+    expect(container.textContent).toContain("1 = Again · 2 = Good · 3 = Easy · ← Again · → Good")
     expect(container.textContent).not.toContain("This build uses two SRS outcomes")
 
     await act(async () => {
-      window.dispatchEvent(new KeyboardEvent("keydown", { code: "Digit4" }))
+      window.dispatchEvent(new KeyboardEvent("keydown", { code: "Digit3" }))
       await Promise.resolve()
       await Promise.resolve()
     })
@@ -776,14 +1099,14 @@ describe("ReviewMode", () => {
     }))
   })
 
-  it("schedules grade 2 as Hard by keeping the current box with a shorter interval", async () => {
+  it("keeps legacy shortcut 4 as Hard by keeping the current box with a shorter interval", async () => {
     await act(async () => {
       window.dispatchEvent(new KeyboardEvent("keydown", { code: "Space" }))
       await Promise.resolve()
     })
 
     await act(async () => {
-      window.dispatchEvent(new KeyboardEvent("keydown", { code: "Digit2" }))
+      window.dispatchEvent(new KeyboardEvent("keydown", { code: "Digit4" }))
       await Promise.resolve()
       await Promise.resolve()
     })

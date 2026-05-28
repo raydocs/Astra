@@ -386,9 +386,22 @@ export async function recordVocabularyReviewSchedule(params: {
   return record
 }
 
+export async function removeVocabularyEntries(ids: readonly string[]): Promise<void> {
+  const idSet = new Set(ids)
+  if (idSet.size === 0) return
+
+  const [entries, records] = await Promise.all([
+    readEntries(),
+    readReviewScheduleRecords(),
+  ])
+  await Promise.all([
+    writeEntries(entries.filter((entry) => !idSet.has(entry.id))),
+    writeReviewScheduleRecords(records.filter((record) => !idSet.has(record.vocabularyEntryId))),
+  ])
+}
+
 export async function removeVocabularyEntry(id: string): Promise<void> {
-  const entries = await readEntries()
-  await writeEntries(entries.filter((e) => e.id !== id))
+  await removeVocabularyEntries([id])
 }
 
 export async function getVocabularyCount(): Promise<number> {

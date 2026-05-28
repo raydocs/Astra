@@ -1,5 +1,6 @@
 import type {
   VideoNotePlatform,
+  VideoNoteLearningContext,
   VideoNoteTranscriptSource,
   VideoTranscriptSegment,
 } from "../types/video-notes"
@@ -68,6 +69,7 @@ interface VideoNoteMarkdownInput {
   transcriptSegments: VideoTranscriptSegment[]
   deepLinkTemplate: string | null
   durationSec: number | null
+  learningContext?: VideoNoteLearningContext
 }
 
 interface TranscriptSection {
@@ -115,7 +117,57 @@ export function renderTranscriptBackedVideoNote(input: VideoNoteMarkdownInput): 
     "",
     "## Key moments",
     ...keyMoments.map((segment) => `- ${renderTimestampLink(segment.startMs, input.deepLinkTemplate)} — ${truncateText(segment.text, 20)}`),
+    "",
+    "## Video metadata",
+    `- Title: ${input.learningContext?.videoMetadata?.title ?? headline}`,
+    `- Watch progress: ${formatWatchProgress(input.learningContext)}`,
+    "",
+    "## Transcript",
+    ...input.transcriptSegments.slice(0, 12).map((segment) => `- ${renderTimestampLink(segment.startMs, input.deepLinkTemplate)} — ${truncateText(segment.text, 24)}`),
+    "",
+    "## Bilingual transcript",
+    ...renderBilingualTranscript(input.learningContext, input.deepLinkTemplate),
+    "",
+    "## Saved sentences",
+    ...renderLearningItems(input.learningContext?.savedSentences),
+    "",
+    "## Saved words",
+    ...renderLearningItems(input.learningContext?.savedWords),
+    "",
+    "## Watch progress",
+    `- ${formatWatchProgress(input.learningContext)}`,
+    "",
+    "## Review status",
+    `- Saved sentences: ${input.learningContext?.reviewStatus?.savedSentenceCount ?? 0}`,
+    `- Saved words: ${input.learningContext?.reviewStatus?.savedWordCount ?? 0}`,
+    `- Review ready: ${input.learningContext?.reviewStatus?.reviewReady ? "yes" : "no"}`,
   ].filter((line): line is string => line !== null).join("\n")
+}
+
+function formatWatchProgress(context?: VideoNoteLearningContext): string {
+  const progress = context?.watchProgress
+  if (!progress) return "not captured"
+  const duration = progress.durationSec != null ? ` / ${Math.round(progress.durationSec)}s` : ""
+  const percent = progress.percent != null ? ` (${progress.percent}%)` : ""
+  return `${Math.round(progress.currentTimeSec)}s${duration}${percent}`
+}
+
+function renderBilingualTranscript(context: VideoNoteLearningContext | undefined, deepLinkTemplate: string | null): string[] {
+  const segments = context?.bilingualTranscriptSegments ?? []
+  if (segments.length === 0) return ["- Not captured yet."]
+  return segments.slice(0, 12).map((segment) => {
+    const translation = segment.translation ? ` → ${segment.translation}` : ""
+    return `- ${renderTimestampLink(segment.startMs, deepLinkTemplate)} — ${truncateText(segment.text, 18)}${translation}`
+  })
+}
+
+function renderLearningItems(items: VideoNoteLearningContext["savedSentences"] | undefined): string[] {
+  if (!items || items.length === 0) return ["- None captured yet."]
+  return items.map((item) => {
+    const timestamp = item.timestampMs != null ? `${renderTimestampLabel(item.timestampMs)} ` : ""
+    const extra = item.translation ?? item.explanation ?? item.sourceSentence ?? ""
+    return `- ${timestamp}${truncateText(item.text, 16)}${extra ? ` — ${truncateText(extra, 18)}` : ""}`
+  })
 }
 
 function buildTranscriptSections(segments: VideoTranscriptSegment[]): TranscriptSection[] {

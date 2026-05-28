@@ -6,11 +6,13 @@ export const ProviderIdSchema = z.enum(["google_translate", "openai", "gemini"])
 export const TranslationModeSchema = z.enum(["bilingual", "translation-only"])
 export const TranslationThemeSchema = z.enum(["default", "underline", "highlight", "mask"])
 export const HoverTriggerSchema = z.enum(["alt", "always", "disabled"])
-export const ContentScopeSchema = z.enum(["page", "article"])
+export const ContentScopeSchema = z.enum(["page", "immersive", "full_page", "article"])
+export const TranslationSurfaceModeSchema = z.enum(["immersive", "full_page", "article"])
 export const InputTranslationSchema = z.enum(["enabled", "disabled"])
 export const InputTranslationModeSchema = z.enum(["replace", "bilingual"])
 export const LanguageLevelSchema = z.enum(["beginner", "intermediate", "advanced"])
 export const ExplainModeSchema = z.enum(["beginner", "exam", "deep"])
+export const ServiceModeSchema = z.enum(["automatic", "fast", "balanced", "best_quality"])
 export const TTSEngineSchema = z.enum(["browser", "edge"])
 export const AstraSyncCollectionSchema = z.enum(["config", "vocabulary", "review_schedule", "reading_history", "study_progress"])
 
@@ -176,6 +178,7 @@ export const AstraConfigSchema = z.object({
   inputTranslationMode: InputTranslationModeSchema.default("replace"),
   languageLevel: LanguageLevelSchema.default("intermediate"),
   explainMode: ExplainModeSchema.default("deep"),
+  serviceMode: ServiceModeSchema.default("automatic"),
   explanationGlossary: z.array(ExplanationGlossaryTermSchema).default([]),
   privacyMode: z.boolean().default(false),
   provider: ProviderConfigSchema.default({
@@ -211,6 +214,7 @@ export const AstraConfigInputSchema = z.object({
   inputTranslationMode: InputTranslationModeSchema.optional(),
   languageLevel: LanguageLevelSchema.optional(),
   explainMode: ExplainModeSchema.optional(),
+  serviceMode: ServiceModeSchema.optional(),
   explanationGlossary: z.array(ExplanationGlossaryTermSchema).optional(),
   privacyMode: z.boolean().optional(),
   provider: z.object({
@@ -247,6 +251,7 @@ export const AstraSyncedConfigSchema = z.object({
   inputTranslationMode: InputTranslationModeSchema.default("replace"),
   languageLevel: LanguageLevelSchema.default("intermediate"),
   explainMode: ExplainModeSchema.default("deep"),
+  serviceMode: ServiceModeSchema.default("automatic"),
   explanationGlossary: z.array(ExplanationGlossaryTermSchema).default([]),
   privacyMode: z.boolean().default(false),
   provider: AstraSyncedProviderConfigSchema.default({
@@ -280,6 +285,7 @@ export const AstraSyncedConfigGlobalSchema = z.object({
   inputTranslationMode: InputTranslationModeSchema.default("replace"),
   languageLevel: LanguageLevelSchema.default("intermediate"),
   explainMode: ExplainModeSchema.default("deep"),
+  serviceMode: ServiceModeSchema.default("automatic"),
   explanationGlossary: z.array(ExplanationGlossaryTermSchema).default([]),
   privacyMode: z.boolean().default(false),
   provider: AstraSyncedProviderConfigSchema.default({
@@ -329,10 +335,12 @@ export type TranslationMode = z.infer<typeof TranslationModeSchema>
 export type TranslationTheme = z.infer<typeof TranslationThemeSchema>
 export type HoverTrigger = z.infer<typeof HoverTriggerSchema>
 export type ContentScope = z.infer<typeof ContentScopeSchema>
+export type TranslationSurfaceMode = z.infer<typeof TranslationSurfaceModeSchema>
 export type InputTranslation = z.infer<typeof InputTranslationSchema>
 export type InputTranslationMode = z.infer<typeof InputTranslationModeSchema>
 export type LanguageLevel = z.infer<typeof LanguageLevelSchema>
 export type ExplainMode = z.infer<typeof ExplainModeSchema>
+export type ServiceMode = z.infer<typeof ServiceModeSchema>
 export type TTSEngine = z.infer<typeof TTSEngineSchema>
 export type ExplanationGlossaryTerm = z.infer<typeof ExplanationGlossaryTermSchema>
 export type PresentationSettings = z.infer<typeof PresentationSettingsSchema>
@@ -397,10 +405,10 @@ export interface AstraConfigSyncMutationLike {
   payload?: unknown | null
 }
 
-export interface AstraConfigSyncMutationLike {
-  recordId: string
-  operation: "upsert" | "delete"
-  payload?: unknown | null
+export function resolveTranslationSurfaceMode(scope?: ContentScope | null): TranslationSurfaceMode {
+  if (scope === "full_page") return "full_page"
+  if (scope === "article") return "article"
+  return "immersive"
 }
 
 export const DEFAULT_ASTRA_CONFIG: AstraConfig = {
@@ -413,6 +421,7 @@ export const DEFAULT_ASTRA_CONFIG: AstraConfig = {
   inputTranslationMode: "replace" as const,
   languageLevel: "intermediate" as const,
   explainMode: "deep" as const,
+  serviceMode: "automatic" as const,
   explanationGlossary: [],
   privacyMode: false,
   provider: {
@@ -836,6 +845,7 @@ export function normalizeConfig(config: AstraConfig): AstraConfig {
     inputTranslationMode: config.inputTranslationMode ?? DEFAULT_ASTRA_CONFIG.inputTranslationMode,
     languageLevel: config.languageLevel ?? DEFAULT_ASTRA_CONFIG.languageLevel,
     explainMode: config.explainMode ?? DEFAULT_ASTRA_CONFIG.explainMode,
+    serviceMode: config.serviceMode ?? DEFAULT_ASTRA_CONFIG.serviceMode,
     explanationGlossary: normalizeExplanationGlossary(config.explanationGlossary),
     privacyMode: config.privacyMode ?? DEFAULT_ASTRA_CONFIG.privacyMode,
     provider: normalizeProviderConfig(config.provider),
@@ -866,6 +876,7 @@ export function buildSyncSafeConfig(
     inputTranslationMode: normalized.inputTranslationMode,
     languageLevel: normalized.languageLevel,
     explainMode: normalized.explainMode,
+    serviceMode: normalized.serviceMode,
     explanationGlossary: normalized.explanationGlossary,
     privacyMode: normalized.privacyMode,
     provider: {
@@ -905,6 +916,7 @@ export function buildSyncSafeConfigGlobal(
     inputTranslationMode: normalized.inputTranslationMode,
     languageLevel: normalized.languageLevel,
     explainMode: normalized.explainMode,
+    serviceMode: normalized.serviceMode,
     explanationGlossary: normalized.explanationGlossary,
     privacyMode: normalized.privacyMode,
     provider: {
@@ -1103,10 +1115,12 @@ export function applyConfigSyncMutations(
 
 export function summarizeConfigContinuity(config: AstraConfig): AstraConfigContinuitySummary {
   const normalized = normalizeConfig(config)
+  const hasCustomRelayBaseURL = normalized.connectionMode !== "astra"
+    && Boolean(normalized.provider.relayBaseURL?.trim().length)
   const localOnlyFields = [
     ...(normalized.provider.apiKey.trim().length > 0 ? ["provider.apiKey"] : []),
     ...(normalized.provider.accessToken.trim().length > 0 ? ["provider.accessToken"] : []),
-    ...(normalized.provider.relayBaseURL?.trim().length ? ["provider.relayBaseURL"] : []),
+    ...(hasCustomRelayBaseURL ? ["provider.relayBaseURL"] : []),
     ...(normalized.tts.voiceName?.trim().length ? ["tts.voiceName"] : []),
   ]
 
@@ -1114,7 +1128,7 @@ export function summarizeConfigContinuity(config: AstraConfig): AstraConfigConti
     localOnlyFields,
     hasProviderSecrets: localOnlyFields.includes("provider.apiKey")
       || localOnlyFields.includes("provider.accessToken"),
-    hasCustomRelayBaseURL: localOnlyFields.includes("provider.relayBaseURL"),
+    hasCustomRelayBaseURL,
     hasDeviceVoiceName: localOnlyFields.includes("tts.voiceName"),
   }
 }

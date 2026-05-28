@@ -61,6 +61,14 @@ export {
   popupDeepReadSmokeScenario,
   vocabularySrsSmokeScenario,
   learningLoopRevisitSmokeScenario,
+  youtubeSubtitlePlayerButtonScenario,
+  youtubeSubtitleInPlayerSettingsScenario,
+  youtubeSubtitleBasicBilingualScenario,
+  youtubeSubtitleSeekRecoveryScenario,
+  youtubeSubtitleTrackSwitchScenario,
+  youtubeTranscriptPanelScenario,
+  youtubeSaveSentenceReviewLoopScenario,
+  youtubeVideoNoteCreateScenario,
 } from "./scenarios/index"
 export { holdoutScenarios } from "./scenarios/holdout/index"
 

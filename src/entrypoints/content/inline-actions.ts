@@ -1,9 +1,10 @@
 import { translateExplanationWithQualityRetry, translateTexts } from "@/utils/translate/translate"
 import { getMatchedExplanationGlossaryTerms, type MatchedExplanationGlossaryTerm } from "@/utils/translate/explanation-quality"
 import type { TranslationTask } from "@/types/messages"
-import { serializeExplanationGlossary, type CustomAction, type ExplainMode, type ExplanationGlossaryTerm, type LanguageLevel } from "@/types/config"
+import { serializeExplanationGlossary, type CustomAction, type ExplainMode, type ExplanationGlossaryTerm, type LanguageLevel, type ServiceMode } from "@/types/config"
 import { getActionById } from "@/types/actions"
 import { buildInlineTranslationContext } from "./translation-context"
+import { getSafeAiUnavailableCopy } from "@/utils/copy-dictionary"
 
 export interface InlineActionRequest {
   text: string
@@ -12,6 +13,7 @@ export interface InlineActionRequest {
   customSystemPrompt?: string
   languageLevel?: LanguageLevel
   explainMode?: ExplainMode
+  serviceMode?: ServiceMode
   explanationGlossary?: ExplanationGlossaryTerm[]
   selectionContext?: string
   contextElement?: HTMLElement | null
@@ -36,6 +38,7 @@ export interface RunActionByIdRequest {
   targetLang: string
   languageLevel?: LanguageLevel
   explainMode?: ExplainMode
+  serviceMode?: ServiceMode
   explanationGlossary?: ExplanationGlossaryTerm[]
   selectionContext?: string
   contextElement?: HTMLElement | null
@@ -55,13 +58,13 @@ function renderCustomSystemPrompt(
 export async function runActionById(request: RunActionByIdRequest): Promise<InlineActionResult> {
   const action = getActionById(request.actionId, { customActions: request.customActions })
   if (!action) {
-    return { ok: false, message: `Unknown action: ${request.actionId}` }
+    return { ok: false, message: getSafeAiUnavailableCopy({ code: "UNKNOWN", message: `Unknown action: ${request.actionId}` }) }
   }
 
   if (action.task === "custom") {
     const template = action.systemPrompt?.trim()
     if (!template) {
-      return { ok: false, message: `Action ${request.actionId} is missing a prompt.` }
+      return { ok: false, message: getSafeAiUnavailableCopy({ code: "UNKNOWN", message: `Action ${request.actionId} is missing a prompt.` }) }
     }
 
     return runInlineAction({
@@ -69,6 +72,7 @@ export async function runActionById(request: RunActionByIdRequest): Promise<Inli
       targetLang: request.targetLang,
       task: "custom",
       customSystemPrompt: renderCustomSystemPrompt(template, request),
+      serviceMode: request.serviceMode,
       explanationGlossary: request.explanationGlossary,
       selectionContext: request.selectionContext,
       contextElement: request.contextElement,
@@ -81,6 +85,7 @@ export async function runActionById(request: RunActionByIdRequest): Promise<Inli
     task: action.task,
     languageLevel: request.languageLevel,
     explainMode: request.explainMode,
+    serviceMode: request.serviceMode,
     explanationGlossary: request.explanationGlossary,
     selectionContext: request.selectionContext,
     contextElement: request.contextElement,
@@ -109,13 +114,17 @@ export async function runInlineAction(request: InlineActionRequest): Promise<Inl
         source: request.text,
         targetLang: request.targetLang,
         context: requestContext,
+        ...(request.serviceMode ? { serviceMode: request.serviceMode } : {}),
         ...(request.languageLevel ? { languageLevel: request.languageLevel } : {}),
         ...(request.explainMode ? { explainMode: request.explainMode } : {}),
         requiredGlossaryTerms: matchedGlossaryTerms,
       })
 
       if (!result.ok) {
-        return { ok: false, message: result.message }
+        return { ok: false, message: getSafeAiUnavailableCopy(
+          { code: "UNKNOWN", message: result.message },
+          { fallbackCopy: result.message },
+        ) }
       }
 
       return {
@@ -128,25 +137,29 @@ export async function runInlineAction(request: InlineActionRequest): Promise<Inl
     const result = await translateTexts({
       texts: [request.text],
       targetLang: request.targetLang,
+      ...(request.serviceMode ? { serviceMode: request.serviceMode } : {}),
       context: requestContext,
       ...(request.task !== "translate" ? { task: request.task } : {}),
       ...(request.customSystemPrompt ? { customSystemPrompt: request.customSystemPrompt } : {}),
     })
 
     if (!result.ok) {
-      return { ok: false, message: result.error.message }
+      return { ok: false, message: getSafeAiUnavailableCopy(result.error) }
     }
 
     const text = result.translations[0] ?? ""
     if (!text) {
-      return { ok: false, message: "Empty response from provider." }
+      return { ok: false, message: getSafeAiUnavailableCopy({ code: "INVALID_RESPONSE", message: "Astra returned an empty response." }) }
     }
 
     return { ok: true, text }
   } catch (error) {
     return {
       ok: false,
-      message: error instanceof Error ? error.message : "Request failed.",
+      message: getSafeAiUnavailableCopy({
+        code: "UNKNOWN",
+        message: error instanceof Error ? error.message : "Request failed.",
+      }),
     }
   }
 }

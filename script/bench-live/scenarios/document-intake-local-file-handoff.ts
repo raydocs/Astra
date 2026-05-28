@@ -62,7 +62,7 @@ export const documentIntakeLocalFileHandoffScenario: LiveScenarioDefinition<Docu
         timeout: 20_000,
       })
       await extCtx.page.waitForSelector('[data-testid="document-intake-page"]', { timeout: 12_000 })
-      const pageLoaded = await extCtx.page.locator("text=Unified Document Intake Hub v1").isVisible()
+      const pageLoaded = await extCtx.page.locator("text=Open a reading file").isVisible()
       const boundaryCopyVisible = await extCtx.page.locator("text=File bytes stay local and are not synced").isVisible()
 
       await extCtx.page.setInputFiles('[data-testid="document-intake-file-input"]', vttPath)

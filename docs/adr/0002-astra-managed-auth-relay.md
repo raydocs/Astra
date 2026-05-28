@@ -23,9 +23,10 @@ Astra uses an **Astra-managed relay** architecture.
 ### Extension-side responsibilities
 
 - Store product configuration:
-  - provider id (`openai` or `gemini`)
-  - selected model
-  - Astra relay base URL
+  - target language
+  - presentation preferences
+  - service mode (`automatic`, `fast`, `balanced`, or `best_quality`)
+  - Astra relay base URL for development/staging/self-hosted operator setups
 - Store Astra session state separately from product config:
   - session token
   - user email
@@ -243,20 +244,21 @@ Authorization: Bearer astra_session_token
 Content-Type: application/json
 ```
 
-Request:
+Request (ordinary managed-service path):
 
 ```json
 {
-  "provider": "openai",
-  "model": "gpt-5.4-nano",
   "texts": ["Hello world"],
   "targetLang": "zh-CN",
   "task": "translate",
+  "serviceMode": "fast",
   "context": {
     "pageTitle": "Example"
   }
 }
 ```
+
+The relay resolves provider/model server-side from session entitlements and `serviceMode`. Legacy/advanced compatibility callers may still send provider/model explicitly, but ordinary product clients should not expose or require those fields.
 
 Response:
 
@@ -286,7 +288,7 @@ Response:
 
 - Session storage key: `astra.auth.v1`
 - Product config storage key: `astra.config.v1`
-- Runtime translation reads both config and session, then resolves a managed provider object before dispatch
+- Runtime translation reads session entitlements and service mode, then resolves a managed provider/model server-side before dispatch
 - Popup account UI reads session, then hydrates `/account` and `/account/usage` for fresher billing and quota state
 - Popup account UI can switch plans via `/account/plan`, then refresh session/account/usage snapshots
 - Popup account UI can open checkout and billing portal flows via `/billing/checkout` and `/billing/portal`

@@ -1,0 +1,19 @@
+{
+  "version": 1,
+  "proposals": [
+    {
+      "id": "baseline-managed-learning-default",
+      "title": "Baseline managed learning default surface",
+      "source": "docs/plans/astra-zero-config-saas-operating-model-2026-05-27.md#section-19-strategic-non-goals",
+      "input": {
+        "supportsZeroConfig": true,
+        "controlsCost": true,
+        "ordinaryLanguage": true,
+        "protectsPrivacyByDefault": true,
+        "advancesLearningLoopOrPaidValue": true,
+        "observableBySupportAndAnalytics": true,
+        "surfaceBoundary": "default"
+      }
+    }
+  ]
+}

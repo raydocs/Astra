@@ -9,6 +9,8 @@ import {
   type AstraAppKind,
   type AstraBrowserFamily,
   type AstraCloudDataDeleteJob,
+  type AstraCloudLearningMemoryDeletionReceipt,
+  type AstraCloudLearningMemoryInventory,
   type AstraContinuityDeleteCollection,
   type AstraContinuityExportCollection,
   type AstraDeviceIdentity,
@@ -16,6 +18,9 @@ import {
   type AstraDevicePlatform,
   type AstraPlan,
   type AstraSession,
+  type AstraTrialLifecycleContract,
+  type AstraWeeklyDigestPreferenceResponse,
+  type AstraWeeklyDigestSnapshot,
   type AstraSyncBootstrap,
   type AstraUsageSnapshot,
   type AstraSyncRepairRequest,
@@ -54,14 +59,20 @@ import {
   buildAstraAccountExportDownloadUrl,
   createAstraAccountExportJob,
   createAstraCheckoutLink,
+  createAstraTrialIntent,
   createAstraCloudDataDeleteJob,
   createAstraPortalLink,
+  deleteAstraCloudLearningMemory,
   fetchAstraAccount,
   fetchAstraAccountExportJob,
   fetchAstraAccountSummary,
   fetchAstraCloudDataDeleteJob,
+  fetchAstraCloudLearningMemoryInventory,
   fetchAstraContinuitySnapshot,
+  fetchAstraTrialIntent,
+  fetchAstraWeeklyDigest,
   repairAstraSyncState,
+  updateAstraWeeklyDigestPreference,
   fetchAstraDevices,
   fetchAstraUsageSnapshot,
   pushAstraSyncMutations,
@@ -126,6 +137,10 @@ const PendingWebSignInSchema = z.object({
 })
 
 export type WebDeviceEntry = AstraDeviceListEntry
+export type WebCloudLearningMemoryInventory = AstraCloudLearningMemoryInventory
+export type WebCloudLearningMemoryDeletionReceipt = AstraCloudLearningMemoryDeletionReceipt
+export type WebWeeklyDigestSnapshot = AstraWeeklyDigestSnapshot
+export type WebWeeklyDigestPreferenceResponse = AstraWeeklyDigestPreferenceResponse
 export type TextTransferDraft = z.infer<typeof TextTransferDraftSchema>
 
 interface WebCloudCollectionHealth {
@@ -222,6 +237,547 @@ export interface WebImportReplayResult {
   }
 }
 
+export type WebFeatureFlagStatus = "on" | "off" | "gradual" | "kill"
+export type WebFeatureFlagKey =
+  | "ui.onboarding_goal_question"
+  | "ui.library_home"
+  | "ai.deep_explanation"
+  | "ai.card_generation"
+  | "source.video_learning"
+  | "source.file_learning"
+  | "safety.memory_writes"
+  | "sync.learning_assets"
+  | "emergency.disable_managed_ai"
+  | "emergency.disable_long_content"
+  | "emergency.disable_feature_for_site"
+  | "emergency.disable_task_class"
+  | "emergency.force_fast_mode"
+  | "emergency.disable_provider_route"
+  | "emergency.limit_free_high_cost"
+  | "emergency.disable_digest"
+  | "emergency.disable_share"
+  | "emergency.privacy_lockdown"
+export type WebKillSwitchCategory = "feature" | "site" | "task" | "tier" | "provider" | "privacy"
+
+export interface WebFeatureFlagOverride {
+  key: WebFeatureFlagKey
+  status?: WebFeatureFlagStatus
+  rolloutPercent?: number
+  reason?: string
+  changedBy?: string
+  changedAt?: string
+}
+
+export interface WebKillSwitchRule {
+  id: string
+  category: WebKillSwitchCategory
+  enabled: boolean
+  reason: string
+  safeMode: boolean
+  fallbackMessage: string
+  featureKey?: WebFeatureFlagKey
+  hostname?: string
+  taskClass?: string
+  tier?: string
+  providerId?: ProviderId
+  privacyMode?: boolean
+  surface?: string
+}
+
+export interface WebFeatureFlagChangeLogEntry {
+  id: string
+  changedAt: string
+  changedBy: string
+  reason: string
+  overrideCount: number
+  killSwitchCount: number
+  previousGeneratedAt: string | null
+}
+
+export interface WebFeatureFlagRuntime {
+  schema: "astra-feature-flag-runtime.v1"
+  generatedAt: string
+  overrides: WebFeatureFlagOverride[]
+  killSwitches: WebKillSwitchRule[]
+  changeLog: WebFeatureFlagChangeLogEntry[]
+}
+
+export interface WebCostUsageSummaryBucket {
+  tier: string
+  taskClass: string
+  costBucket: string
+  eventCount: number
+  requestCount: number
+  characterCount: number
+  successCount: number
+  failureCount: number
+  fallbackCount: number
+  estimatedSpendUsd: number
+}
+
+export interface WebCostUsageServiceModeSummary {
+  serviceMode: string
+  eventCount: number
+  requestCount: number
+  characterCount: number
+  successCount: number
+  failureCount: number
+  fallbackCount: number
+  latencySampleCount: number
+  latencyP50Ms: number | null
+  latencyP95Ms: number | null
+  estimatedSpendUsd: number
+}
+
+export interface WebCostUsageCacheStatusSummary {
+  cacheStatus: string
+  eventCount: number
+  requestCount: number
+  characterCount: number
+  share: number
+  estimatedSpendUsd: number
+}
+
+export type WebCostUsageSpikeStatus = "none" | "watch" | "spike"
+export type WebCostUsageRiskLevel = "low" | "watch" | "high"
+
+export interface WebCostUsageDailyEstimateSummary {
+  date: string | null
+  estimatedSpendUsd: number
+  previousDate: string | null
+  previousEstimatedSpendUsd: number
+  spikeRatio: number | null
+  spikeStatus: WebCostUsageSpikeStatus
+  riskLevel: WebCostUsageRiskLevel
+}
+
+export interface WebCostUsageSummary {
+  schema: "astra-cost-usage-summary.v1"
+  generatedAt: string
+  source: "recent_user_usage_events"
+  recentEventsPerUserLimit: number
+  totalEvents: number
+  totalRequests: number
+  totalCharacters: number
+  totalEstimatedSpendUsd: number
+  estimateRegistry: "internal_deterministic_v1"
+  cacheHitRate: number | null
+  dailyEstimate: WebCostUsageDailyEstimateSummary
+  buckets: WebCostUsageSummaryBucket[]
+  byServiceMode: WebCostUsageServiceModeSummary[]
+  byCacheStatus: WebCostUsageCacheStatusSummary[]
+}
+
+export interface WebOpsCockpitSummary {
+  schema: "astra-ops-cockpit-summary.v1"
+  generatedAt: string
+  privacy: {
+    metadataOnly: boolean
+    aggregateOnly: boolean
+    readOnly: boolean
+    contentIncluded: boolean
+    perUserRows: boolean
+    identifiersIncluded: boolean
+    providerBillingIncluded: boolean
+    crmRepliesIncluded: boolean
+  }
+  sources: {
+    costUsageSummary: boolean
+    supportReportSummary: boolean
+    cancellationReasonSummary: boolean
+    analyticsCohortSummary: boolean
+    mobileRetentionSummary: boolean
+    weeklyDigestDeliverySummary: boolean
+    providerHealthSummary: boolean
+    operatingReviewHelpers: boolean
+  }
+  metrics: {
+    cost: {
+      retainedEvents: number
+      requests: number
+      estimatedSpendUsd: number
+      dailyEstimatedSpendUsd: number
+      dailyRiskLevel: string
+      dailySpikeStatus: string
+      cacheHitRate: number | null
+      topCostTaskClass: string | null
+    }
+    support: {
+      totalReports: number
+      weeklyTopIssueCount: number
+      unresolvedCount: number
+      urgentUnresolvedCount: number
+      staleTriageCount: number
+      followUpOverdueCount: number
+      oldestUnresolvedAgeDays: number | null
+      macroCoverageRate: number | null
+    }
+    retentionGrowth: {
+      analyticsGrain: string
+      analyticsEvents: number
+      mobileRetentionGrain: string
+      mobileRetentionEvents: number
+      weeklyDigestDeliveryRuns: number
+      cancellationSubmissions: number
+      cancellationReasonCoverageRate: number | null
+      topCancellationReason: string | null
+    }
+    providerHealth: {
+      available: boolean
+      retainedEvents: number
+      incidentBucketCount: number
+      watchBucketCount: number
+    }
+  }
+  reviewCadence: Array<{
+    cadence: string
+    label: string
+    focus: string
+    requiredEvidence: string[]
+    availableEvidence: string[]
+    missingEvidence: string[]
+  }>
+  experimentGuardrails: Array<{
+    area: string
+    successMetric: string
+    guardrailMetrics: string[]
+    privacyRule: string
+  }>
+  riskFlags: Array<{ code: string; severity: "watch" | "pause_growth"; message: string }>
+}
+
+export type WebProviderHealthStatus = "healthy" | "watch" | "incident"
+
+export interface WebProviderHealthSummaryBucket {
+  provider: string
+  model: string
+  serviceMode: string
+  taskClass: string
+  eventCount: number
+  requestCount: number
+  characterCount: number
+  successCount: number
+  failureCount: number
+  fallbackCount: number
+  successRate: number | null
+  fallbackRate: number | null
+  latencySampleCount: number
+  latencyP50Ms: number | null
+  latencyP95Ms: number | null
+  healthStatus: WebProviderHealthStatus
+}
+
+export interface WebProviderHealthSummary {
+  schema: "astra-provider-health-summary.v1"
+  generatedAt: string
+  source: "recent_user_usage_events"
+  recentEventsPerUserLimit: number
+  totalEvents: number
+  totalRequests: number
+  totalCharacters: number
+  buckets: WebProviderHealthSummaryBucket[]
+}
+
+export type WebOpsUserUsageCategory = "light" | "normal" | "heavy" | "extreme"
+
+export interface WebOpsUserLookupTaskSummary {
+  taskClass: string
+  eventCount: number
+  successCount: number
+  failureCount: number
+  fallbackCount: number
+  latencySampleCount: number
+  latencyP95Ms: number | null
+}
+
+export interface WebOpsUserLookupResultWindow {
+  mode: "exact_lookup"
+  limit: number
+  cursor: string | null
+  nextCursor: string | null
+  returnedCount: number
+  totalMatched: number
+  hasMore: boolean
+}
+
+export interface WebOpsUserLookupSnapshotBoundary {
+  metadataOnly: boolean
+  contentIncluded: boolean
+  rawQueryIncluded: boolean
+  exportAvailable: boolean
+  recentTaskSummaryLimit: number
+  excludedFields: string[]
+}
+
+export interface WebOpsUserLookupSummary {
+  schema: "astra-ops-user-lookup.v1"
+  generatedAt: string
+  queryType: "email" | "email_hash" | "user_id"
+  resultWindow: WebOpsUserLookupResultWindow
+  snapshotBoundary: WebOpsUserLookupSnapshotBoundary
+  user: {
+    userId: string
+    emailHash: string
+    createdAt: string
+    plan: string
+    subscriptionStatus: string
+    identityMode: string
+    providerEntitlementCount: number
+    limits: {
+      dailyRequests: number
+      dailyCharacters: number
+      requestsPerMinute: number
+    }
+    usage: {
+      usageDay: string
+      requestsToday: number
+      charactersToday: number
+      totalRequests: number
+      totalCharacters: number
+      lastRequestAt: string | null
+      recentEventCount: number
+      usageCategory: WebOpsUserUsageCategory
+    }
+    devices: {
+      activeCount: number
+      revokedCount: number
+    }
+    sessions: {
+      activeCount: number
+      revokedCount: number
+    }
+    recentTaskSummary: WebOpsUserLookupTaskSummary[]
+  }
+}
+
+export interface WebOpsAuditLogEntry {
+  id: string
+  timestamp: string
+  actor: "operator" | "user" | "system"
+  action: string
+  outcome: "success" | "denied" | "failure"
+  operatorTokenHash: string | null
+  subjectUserId: string | null
+  subjectEmailHash: string | null
+  supportReportId: string | null
+  metadata: Record<string, string | number | boolean | null>
+  privacy: {
+    userConsent: boolean | null
+    contentIncluded: boolean
+    contentAccess: "none" | "metadata_only" | "user_consented_content"
+  }
+}
+
+export interface WebOpsAuditSummary {
+  schema: "astra-ops-audit-summary.v1"
+  generatedAt: string
+  totalEvents: number
+  retainedEventLimit: number
+  byAction: Array<{ action: string; count: number }>
+  byActor: Array<{ actor: string; count: number }>
+  privacy: {
+    userConsentTrueCount: number
+    metadataOnlyCount: number
+    contentIncludedCount: number
+  }
+  recent: WebOpsAuditLogEntry[]
+}
+
+export interface WebCancellationReasonSummary {
+  schema: "astra-cancellation-reason-summary.v1"
+  generatedAt: string
+  totalSubmissions: number
+  retainedEventLimit: number
+  reasonCoverage: {
+    submittedCount: number
+    unknownReasonCount: number
+    coverageRate: number | null
+  }
+  byReason: Array<{
+    reason: string
+    label: string
+    productMeaning: string
+    count: number
+    share: number
+  }>
+  byPlan: Array<{ plan: string; count: number }>
+  bySource: Array<{ source: string; count: number }>
+}
+
+export type WebSupportReportTriageStatus = "new" | "investigating" | "waiting_for_user" | "linked_known_issue" | "resolved" | "wont_fix"
+export type WebSupportReportTriagePriority = "low" | "normal" | "high" | "urgent"
+export type WebSupportReportFollowUpPath = "not_selected" | "known_issue" | "email_follow_up" | "support_queue" | "no_follow_up_needed"
+export type WebSupportReportFollowUpStatus = "not_started" | "selected" | "handed_off" | "completed"
+export type WebSupportReportFollowUpReason = "matched_known_issue" | "needs_manual_email" | "needs_support_queue_review" | "macro_ready" | "no_follow_up_needed" | "other_metadata_reason"
+
+export interface WebSupportReportFollowUp {
+  path: WebSupportReportFollowUpPath
+  status: WebSupportReportFollowUpStatus
+  macroId: string | null
+  reason: WebSupportReportFollowUpReason | null
+  updatedAt: string | null
+  updatedBy: string | null
+}
+
+export interface WebSupportFirstResponseMacro {
+  id: string
+  issueCategory: string
+  title: string
+  firstResponse: string
+  nextStep: string
+  privacyNote: string
+  surfaces: string[]
+}
+
+export interface WebSupportReportTriage {
+  status: WebSupportReportTriageStatus
+  assignedTo: string | null
+  priority: WebSupportReportTriagePriority
+  resolution: string | null
+  updatedAt: string | null
+  updatedBy: string | null
+  followUp: WebSupportReportFollowUp
+}
+
+export interface WebSupportReportSummaryBucket {
+  key: string
+  count: number
+  latestSubmittedAt: string
+  hostname: string | null
+  featureSurface: string
+  issueCategory: string | null
+  extensionVersion: string
+  browser: string
+  membershipState: string
+  privacyMode: boolean
+  knownIssueId: string | null
+  knownIssueStatus: string | null
+  triageStatus: WebSupportReportTriageStatus
+}
+
+export interface WebSupportFirstResponseMacroSummary {
+  schema: "astra-support-first-response-macros.v1" | string
+  generatedAt: string
+  threshold: number
+  catalogCoverage: {
+    coveredIssueCategories: number
+    totalIssueCategories: number
+    coverageRate: number
+    ready: boolean
+  }
+  reportedCoverage: {
+    coveredReports: number
+    totalReports: number
+    unknownIssueReports: number
+    coverageRate: number | null
+    ready: boolean | null
+  }
+  byIssueCategory: Array<{
+    issueCategory: string
+    count: number
+    macroId: string | null
+    title: string | null
+    covered: boolean
+  }>
+  macros: Array<{
+    id: string
+    issueCategory: string
+    title: string
+    firstResponse: string
+    nextStep: string
+    privacyNote: string
+    surfaces: string[]
+  }>
+}
+
+export interface WebSupportReportWeeklyTopIssue {
+  weekStart: string
+  key: string
+  reportCount: number
+  latestSubmittedAt: string
+  hostname: string | null
+  featureSurface: string
+  issueCategory: string | null
+  knownIssueId: string | null
+  knownIssueStatus: string | null
+}
+
+export interface WebSupportReportHandoffSummary {
+  byPath: Array<{ path: WebSupportReportFollowUpPath; count: number }>
+  byStatus: Array<{ status: WebSupportReportFollowUpStatus; count: number }>
+}
+
+export interface WebSupportReportSlaRiskSummary {
+  generatedAt: string
+  currentNow: string
+  unresolvedCount: number
+  urgentUnresolvedCount: number
+  staleTriageByAgeBucket: {
+    under24h: number
+    from24hTo72h: number
+    from72hTo168h: number
+    over168h: number
+  }
+  followUpOverdueCount: number
+  oldestUnresolvedAgeHours: number | null
+  oldestUnresolvedAgeDays: number | null
+}
+
+export interface WebSupportReportSummary {
+  totalReports: number
+  generatedAt: string
+  buckets: WebSupportReportSummaryBucket[]
+  weeklyTopIssues: WebSupportReportWeeklyTopIssue[]
+  macroCoverage: WebSupportFirstResponseMacroSummary | null
+  handoffSummary: WebSupportReportHandoffSummary
+  slaRisk: WebSupportReportSlaRiskSummary
+}
+
+export interface WebSupportReportListEntry {
+  reportId: string
+  status: string
+  createdAt: string
+  updatedAt: string
+  submittedAt: string
+  ownerEmail: string
+  deviceId: string
+  sessionId: string
+  featureSurface: string
+  action: string
+  issueCategory: string | null
+  errorCategory: string | null
+  lastErrorCategory: string | null
+  runtimeSurface: string | null
+  hostname: string | null
+  extensionVersion: string
+  browser: string
+  os: string
+  locale: string
+  membershipState: string
+  privacyMode: boolean
+  userMessageIncluded: boolean
+  contactIncluded: boolean
+  defaultContentIncluded: boolean
+  knownIssue: { issueId: string; status: string; severity: string; workaroundKey: string | null } | null
+  triage: WebSupportReportTriage
+  recommendedMacro: WebSupportFirstResponseMacro | null
+}
+
+export interface WebSupportReportList {
+  schema: "astra-support-report-inbox.v1" | string
+  reports: WebSupportReportListEntry[]
+}
+
+export interface WebSupportReportTriageUpdate {
+  status?: WebSupportReportTriageStatus
+  assignedTo?: string | null
+  priority?: WebSupportReportTriagePriority
+  resolution?: string | null
+  updatedBy?: string | null
+  followUp?: Partial<WebSupportReportFollowUp>
+}
+
+export type WebTrialLifecycleContract = AstraTrialLifecycleContract
 export type WebContinuityExportJob = AstraAccountExportJob
 export type WebCloudDataDeleteJob = AstraCloudDataDeleteJob
 export type WebSyncRepairResult = AstraSyncRepairResponse
@@ -1142,6 +1698,52 @@ export async function fetchWebCloudDataDeleteJob(params: {
   })
 }
 
+export async function fetchWebCloudLearningMemoryInventory(params: {
+  session: AstraSession
+  device: AstraDeviceIdentity
+}): Promise<WebCloudLearningMemoryInventory> {
+  return fetchAstraCloudLearningMemoryInventory({
+    baseURL: params.session.relayBaseURL,
+    sessionToken: params.session.sessionToken,
+    deviceId: params.device.deviceId,
+  })
+}
+
+export async function deleteWebCloudLearningMemory(params: {
+  session: AstraSession
+  device: AstraDeviceIdentity
+}): Promise<WebCloudLearningMemoryDeletionReceipt> {
+  return deleteAstraCloudLearningMemory({
+    baseURL: params.session.relayBaseURL,
+    sessionToken: params.session.sessionToken,
+    deviceId: params.device.deviceId,
+  })
+}
+
+export async function fetchWebWeeklyDigest(params: {
+  session: AstraSession
+  device: AstraDeviceIdentity
+}): Promise<WebWeeklyDigestSnapshot> {
+  return fetchAstraWeeklyDigest({
+    baseURL: params.session.relayBaseURL,
+    sessionToken: params.session.sessionToken,
+    deviceId: params.device.deviceId,
+  })
+}
+
+export async function updateWebWeeklyDigestPreference(params: {
+  session: AstraSession
+  device: AstraDeviceIdentity
+  enabled: boolean
+}): Promise<WebWeeklyDigestPreferenceResponse> {
+  return updateAstraWeeklyDigestPreference({
+    baseURL: params.session.relayBaseURL,
+    sessionToken: params.session.sessionToken,
+    deviceId: params.device.deviceId,
+    enabled: params.enabled,
+  })
+}
+
 export async function fetchWebAccountWorkspace(params: {
   session: AstraSession
   device: AstraDeviceIdentity
@@ -1336,6 +1938,685 @@ function buildPlatformReplayUrl(baseURL: string): string {
   return new URL("/__platform/article-import/replay", normalizeApiBaseUrl(baseURL)).toString()
 }
 
+function buildOpsSupportReportsUrl(baseURL: string, suffix = ""): string {
+  return `${normalizeApiBaseUrl(baseURL)}/ops/support/reports${suffix}`
+}
+
+function buildOpsFeatureFlagsUrl(baseURL: string): string {
+  return `${normalizeApiBaseUrl(baseURL)}/ops/feature-flags`
+}
+
+function buildOpsCostUsageSummaryUrl(baseURL: string): string {
+  return `${normalizeApiBaseUrl(baseURL)}/ops/cost/usage-summary`
+}
+
+function buildOpsCockpitSummaryUrl(baseURL: string): string {
+  return `${normalizeApiBaseUrl(baseURL)}/ops/cockpit/summary`
+}
+
+function buildOpsProviderHealthSummaryUrl(baseURL: string): string {
+  return `${normalizeApiBaseUrl(baseURL)}/ops/provider-health/summary`
+}
+
+function buildOpsAuditSummaryUrl(baseURL: string): string {
+  return `${normalizeApiBaseUrl(baseURL)}/ops/audit/summary`
+}
+
+function buildOpsCancellationReasonSummaryUrl(baseURL: string): string {
+  return `${normalizeApiBaseUrl(baseURL)}/ops/cancellations/reasons/summary`
+}
+
+function buildOpsUserLookupUrl(baseURL: string, query: string): string {
+  const url = new URL(`${normalizeApiBaseUrl(baseURL)}/ops/users/lookup`)
+  url.searchParams.set("query", query.trim())
+  return url.toString()
+}
+
+function buildOperatorHeaders(operatorToken: string, contentType = false): Record<string, string> {
+  return {
+    ...(contentType ? { "Content-Type": "application/json" } : {}),
+    "x-astra-operator-token": operatorToken.trim(),
+  }
+}
+
+export async function fetchWebCostUsageSummary(params: {
+  baseURL: string
+  operatorToken: string
+}): Promise<WebCostUsageSummary> {
+  const response = await fetch(buildOpsCostUsageSummaryUrl(params.baseURL), {
+    method: "GET",
+    headers: buildOperatorHeaders(params.operatorToken),
+  })
+
+  if (!response.ok) {
+    throw new Error(await readErrorMessage(response, "Astra cost usage summary request failed"))
+  }
+
+  const payload = await response.json() as WebCostUsageSummary
+  return {
+    schema: payload.schema ?? "astra-cost-usage-summary.v1",
+    generatedAt: payload.generatedAt ?? "",
+    source: "recent_user_usage_events",
+    recentEventsPerUserLimit: Number(payload.recentEventsPerUserLimit ?? 0),
+    totalEvents: Number(payload.totalEvents ?? 0),
+    totalRequests: Number(payload.totalRequests ?? 0),
+    totalCharacters: Number(payload.totalCharacters ?? 0),
+    totalEstimatedSpendUsd: Number(payload.totalEstimatedSpendUsd ?? 0),
+    estimateRegistry: payload.estimateRegistry ?? "internal_deterministic_v1",
+    cacheHitRate: payload.cacheHitRate == null ? null : Number(payload.cacheHitRate),
+    dailyEstimate: {
+      date: payload.dailyEstimate?.date ?? null,
+      estimatedSpendUsd: Number(payload.dailyEstimate?.estimatedSpendUsd ?? 0),
+      previousDate: payload.dailyEstimate?.previousDate ?? null,
+      previousEstimatedSpendUsd: Number(payload.dailyEstimate?.previousEstimatedSpendUsd ?? 0),
+      spikeRatio: payload.dailyEstimate?.spikeRatio == null ? null : Number(payload.dailyEstimate.spikeRatio),
+      spikeStatus: payload.dailyEstimate?.spikeStatus ?? "none",
+      riskLevel: payload.dailyEstimate?.riskLevel ?? "low",
+    },
+    buckets: (payload.buckets ?? []).map((bucket) => ({
+      tier: bucket.tier ?? "unknown",
+      taskClass: bucket.taskClass ?? "unknown",
+      costBucket: bucket.costBucket ?? "unknown",
+      eventCount: Number(bucket.eventCount ?? 0),
+      requestCount: Number(bucket.requestCount ?? 0),
+      characterCount: Number(bucket.characterCount ?? 0),
+      successCount: Number(bucket.successCount ?? 0),
+      failureCount: Number(bucket.failureCount ?? 0),
+      fallbackCount: Number(bucket.fallbackCount ?? 0),
+      estimatedSpendUsd: Number(bucket.estimatedSpendUsd ?? 0),
+    })),
+    byServiceMode: (payload.byServiceMode ?? []).map((bucket) => ({
+      serviceMode: bucket.serviceMode ?? "automatic",
+      eventCount: Number(bucket.eventCount ?? 0),
+      requestCount: Number(bucket.requestCount ?? 0),
+      characterCount: Number(bucket.characterCount ?? 0),
+      successCount: Number(bucket.successCount ?? 0),
+      failureCount: Number(bucket.failureCount ?? 0),
+      fallbackCount: Number(bucket.fallbackCount ?? 0),
+      latencySampleCount: Number(bucket.latencySampleCount ?? 0),
+      latencyP50Ms: bucket.latencyP50Ms == null ? null : Number(bucket.latencyP50Ms),
+      latencyP95Ms: bucket.latencyP95Ms == null ? null : Number(bucket.latencyP95Ms),
+      estimatedSpendUsd: Number(bucket.estimatedSpendUsd ?? 0),
+    })),
+    byCacheStatus: (payload.byCacheStatus ?? []).map((bucket) => ({
+      cacheStatus: bucket.cacheStatus ?? "unknown",
+      eventCount: Number(bucket.eventCount ?? 0),
+      requestCount: Number(bucket.requestCount ?? 0),
+      characterCount: Number(bucket.characterCount ?? 0),
+      share: Number(bucket.share ?? 0),
+      estimatedSpendUsd: Number(bucket.estimatedSpendUsd ?? 0),
+    })),
+  }
+}
+
+export async function fetchWebOpsCockpitSummary(params: {
+  baseURL: string
+  operatorToken: string
+}): Promise<WebOpsCockpitSummary> {
+  const response = await fetch(buildOpsCockpitSummaryUrl(params.baseURL), {
+    method: "GET",
+    headers: buildOperatorHeaders(params.operatorToken),
+  })
+
+  if (!response.ok) {
+    throw new Error(await readErrorMessage(response, "Astra ops cockpit summary request failed"))
+  }
+
+  const payload = await response.json() as WebOpsCockpitSummary
+  return {
+    schema: payload.schema ?? "astra-ops-cockpit-summary.v1",
+    generatedAt: payload.generatedAt ?? "",
+    privacy: {
+      metadataOnly: Boolean(payload.privacy?.metadataOnly ?? false),
+      aggregateOnly: Boolean(payload.privacy?.aggregateOnly ?? false),
+      readOnly: Boolean(payload.privacy?.readOnly ?? false),
+      contentIncluded: Boolean(payload.privacy?.contentIncluded ?? false),
+      perUserRows: Boolean(payload.privacy?.perUserRows ?? false),
+      identifiersIncluded: Boolean(payload.privacy?.identifiersIncluded ?? false),
+      providerBillingIncluded: Boolean(payload.privacy?.providerBillingIncluded ?? false),
+      crmRepliesIncluded: Boolean(payload.privacy?.crmRepliesIncluded ?? false),
+    },
+    sources: {
+      costUsageSummary: Boolean(payload.sources?.costUsageSummary ?? false),
+      supportReportSummary: Boolean(payload.sources?.supportReportSummary ?? false),
+      cancellationReasonSummary: Boolean(payload.sources?.cancellationReasonSummary ?? false),
+      analyticsCohortSummary: Boolean(payload.sources?.analyticsCohortSummary ?? false),
+      mobileRetentionSummary: Boolean(payload.sources?.mobileRetentionSummary ?? false),
+      weeklyDigestDeliverySummary: Boolean(payload.sources?.weeklyDigestDeliverySummary ?? false),
+      providerHealthSummary: Boolean(payload.sources?.providerHealthSummary ?? false),
+      operatingReviewHelpers: Boolean(payload.sources?.operatingReviewHelpers ?? false),
+    },
+    metrics: {
+      cost: {
+        retainedEvents: Number(payload.metrics?.cost?.retainedEvents ?? 0),
+        requests: Number(payload.metrics?.cost?.requests ?? 0),
+        estimatedSpendUsd: Number(payload.metrics?.cost?.estimatedSpendUsd ?? 0),
+        dailyEstimatedSpendUsd: Number(payload.metrics?.cost?.dailyEstimatedSpendUsd ?? 0),
+        dailyRiskLevel: payload.metrics?.cost?.dailyRiskLevel ?? "low",
+        dailySpikeStatus: payload.metrics?.cost?.dailySpikeStatus ?? "none",
+        cacheHitRate: payload.metrics?.cost?.cacheHitRate == null ? null : Number(payload.metrics.cost.cacheHitRate),
+        topCostTaskClass: payload.metrics?.cost?.topCostTaskClass ?? null,
+      },
+      support: {
+        totalReports: Number(payload.metrics?.support?.totalReports ?? 0),
+        weeklyTopIssueCount: Number(payload.metrics?.support?.weeklyTopIssueCount ?? 0),
+        unresolvedCount: Number(payload.metrics?.support?.unresolvedCount ?? 0),
+        urgentUnresolvedCount: Number(payload.metrics?.support?.urgentUnresolvedCount ?? 0),
+        staleTriageCount: Number(payload.metrics?.support?.staleTriageCount ?? 0),
+        followUpOverdueCount: Number(payload.metrics?.support?.followUpOverdueCount ?? 0),
+        oldestUnresolvedAgeDays: payload.metrics?.support?.oldestUnresolvedAgeDays == null ? null : Number(payload.metrics.support.oldestUnresolvedAgeDays),
+        macroCoverageRate: payload.metrics?.support?.macroCoverageRate == null ? null : Number(payload.metrics.support.macroCoverageRate),
+      },
+      retentionGrowth: {
+        analyticsGrain: payload.metrics?.retentionGrowth?.analyticsGrain ?? "week",
+        analyticsEvents: Number(payload.metrics?.retentionGrowth?.analyticsEvents ?? 0),
+        mobileRetentionGrain: payload.metrics?.retentionGrowth?.mobileRetentionGrain ?? "week",
+        mobileRetentionEvents: Number(payload.metrics?.retentionGrowth?.mobileRetentionEvents ?? 0),
+        weeklyDigestDeliveryRuns: Number(payload.metrics?.retentionGrowth?.weeklyDigestDeliveryRuns ?? 0),
+        cancellationSubmissions: Number(payload.metrics?.retentionGrowth?.cancellationSubmissions ?? 0),
+        cancellationReasonCoverageRate: payload.metrics?.retentionGrowth?.cancellationReasonCoverageRate == null ? null : Number(payload.metrics.retentionGrowth.cancellationReasonCoverageRate),
+        topCancellationReason: payload.metrics?.retentionGrowth?.topCancellationReason ?? null,
+      },
+      providerHealth: {
+        available: Boolean(payload.metrics?.providerHealth?.available ?? false),
+        retainedEvents: Number(payload.metrics?.providerHealth?.retainedEvents ?? 0),
+        incidentBucketCount: Number(payload.metrics?.providerHealth?.incidentBucketCount ?? 0),
+        watchBucketCount: Number(payload.metrics?.providerHealth?.watchBucketCount ?? 0),
+      },
+    },
+    reviewCadence: (payload.reviewCadence ?? []).map((item) => ({
+      cadence: item.cadence ?? "weekly",
+      label: item.label ?? "Operating review",
+      focus: item.focus ?? "Review aggregate operating signals.",
+      requiredEvidence: Array.isArray(item.requiredEvidence) ? item.requiredEvidence : [],
+      availableEvidence: Array.isArray(item.availableEvidence) ? item.availableEvidence : [],
+      missingEvidence: Array.isArray(item.missingEvidence) ? item.missingEvidence : [],
+    })),
+    experimentGuardrails: (payload.experimentGuardrails ?? []).map((guardrail) => ({
+      area: guardrail.area ?? "unknown",
+      successMetric: guardrail.successMetric ?? "conversion_event",
+      guardrailMetrics: Array.isArray(guardrail.guardrailMetrics) ? guardrail.guardrailMetrics : [],
+      privacyRule: guardrail.privacyRule ?? "Metadata only.",
+    })),
+    riskFlags: (payload.riskFlags ?? []).map((flag) => ({
+      code: flag.code ?? "unknown",
+      severity: flag.severity === "pause_growth" ? "pause_growth" : "watch",
+      message: flag.message ?? "Review operating risk.",
+    })),
+  }
+}
+
+export async function fetchWebProviderHealthSummary(params: {
+  baseURL: string
+  operatorToken: string
+}): Promise<WebProviderHealthSummary> {
+  const response = await fetch(buildOpsProviderHealthSummaryUrl(params.baseURL), {
+    method: "GET",
+    headers: buildOperatorHeaders(params.operatorToken),
+  })
+
+  if (!response.ok) {
+    throw new Error(await readErrorMessage(response, "Astra provider health summary request failed"))
+  }
+
+  const payload = await response.json() as WebProviderHealthSummary
+  return {
+    schema: payload.schema ?? "astra-provider-health-summary.v1",
+    generatedAt: payload.generatedAt ?? "",
+    source: "recent_user_usage_events",
+    recentEventsPerUserLimit: Number(payload.recentEventsPerUserLimit ?? 0),
+    totalEvents: Number(payload.totalEvents ?? 0),
+    totalRequests: Number(payload.totalRequests ?? 0),
+    totalCharacters: Number(payload.totalCharacters ?? 0),
+    buckets: (payload.buckets ?? []).map((bucket) => ({
+      provider: bucket.provider ?? "unknown",
+      model: bucket.model ?? "unknown",
+      serviceMode: bucket.serviceMode ?? "automatic",
+      taskClass: bucket.taskClass ?? "unknown",
+      eventCount: Number(bucket.eventCount ?? 0),
+      requestCount: Number(bucket.requestCount ?? 0),
+      characterCount: Number(bucket.characterCount ?? 0),
+      successCount: Number(bucket.successCount ?? 0),
+      failureCount: Number(bucket.failureCount ?? 0),
+      fallbackCount: Number(bucket.fallbackCount ?? 0),
+      successRate: bucket.successRate == null ? null : Number(bucket.successRate),
+      fallbackRate: bucket.fallbackRate == null ? null : Number(bucket.fallbackRate),
+      latencySampleCount: Number(bucket.latencySampleCount ?? 0),
+      latencyP50Ms: bucket.latencyP50Ms == null ? null : Number(bucket.latencyP50Ms),
+      latencyP95Ms: bucket.latencyP95Ms == null ? null : Number(bucket.latencyP95Ms),
+      healthStatus: bucket.healthStatus ?? "healthy",
+    })),
+  }
+}
+
+export async function fetchWebOpsAuditSummary(params: {
+  baseURL: string
+  operatorToken: string
+}): Promise<WebOpsAuditSummary> {
+  const response = await fetch(buildOpsAuditSummaryUrl(params.baseURL), {
+    method: "GET",
+    headers: buildOperatorHeaders(params.operatorToken),
+  })
+
+  if (!response.ok) {
+    throw new Error(await readErrorMessage(response, "Astra ops audit summary request failed"))
+  }
+
+  const payload = await response.json() as WebOpsAuditSummary
+  return {
+    schema: payload.schema ?? "astra-ops-audit-summary.v1",
+    generatedAt: payload.generatedAt ?? "",
+    totalEvents: Number(payload.totalEvents ?? 0),
+    retainedEventLimit: Number(payload.retainedEventLimit ?? 0),
+    byAction: (payload.byAction ?? []).map((bucket) => ({
+      action: bucket.action ?? "unknown",
+      count: Number(bucket.count ?? 0),
+    })),
+    byActor: (payload.byActor ?? []).map((bucket) => ({
+      actor: bucket.actor ?? "system",
+      count: Number(bucket.count ?? 0),
+    })),
+    privacy: {
+      userConsentTrueCount: Number(payload.privacy?.userConsentTrueCount ?? 0),
+      metadataOnlyCount: Number(payload.privacy?.metadataOnlyCount ?? 0),
+      contentIncludedCount: Number(payload.privacy?.contentIncludedCount ?? 0),
+    },
+    recent: (payload.recent ?? []).map((entry) => ({
+      id: entry.id ?? "",
+      timestamp: entry.timestamp ?? "",
+      actor: entry.actor ?? "system",
+      action: entry.action ?? "unknown",
+      outcome: entry.outcome ?? "success",
+      operatorTokenHash: entry.operatorTokenHash ?? null,
+      subjectUserId: entry.subjectUserId ?? null,
+      subjectEmailHash: entry.subjectEmailHash ?? null,
+      supportReportId: entry.supportReportId ?? null,
+      metadata: entry.metadata ?? {},
+      privacy: {
+        userConsent: entry.privacy?.userConsent ?? null,
+        contentIncluded: Boolean(entry.privacy?.contentIncluded ?? false),
+        contentAccess: entry.privacy?.contentAccess ?? "none",
+      },
+    })),
+  }
+}
+
+export async function fetchWebCancellationReasonSummary(params: {
+  baseURL: string
+  operatorToken: string
+}): Promise<WebCancellationReasonSummary> {
+  const response = await fetch(buildOpsCancellationReasonSummaryUrl(params.baseURL), {
+    method: "GET",
+    headers: buildOperatorHeaders(params.operatorToken),
+  })
+
+  if (!response.ok) {
+    throw new Error(await readErrorMessage(response, "Astra cancellation reason summary request failed"))
+  }
+
+  const payload = await response.json() as WebCancellationReasonSummary
+  return {
+    schema: payload.schema ?? "astra-cancellation-reason-summary.v1",
+    generatedAt: payload.generatedAt ?? "",
+    totalSubmissions: Number(payload.totalSubmissions ?? 0),
+    retainedEventLimit: Number(payload.retainedEventLimit ?? 0),
+    reasonCoverage: {
+      submittedCount: Number(payload.reasonCoverage?.submittedCount ?? 0),
+      unknownReasonCount: Number(payload.reasonCoverage?.unknownReasonCount ?? 0),
+      coverageRate: payload.reasonCoverage?.coverageRate == null ? null : Number(payload.reasonCoverage.coverageRate),
+    },
+    byReason: (payload.byReason ?? []).map((bucket) => ({
+      reason: bucket.reason ?? "other",
+      label: bucket.label ?? bucket.reason ?? "Other",
+      productMeaning: bucket.productMeaning ?? "Needs manual review.",
+      count: Number(bucket.count ?? 0),
+      share: Number(bucket.share ?? 0),
+    })),
+    byPlan: (payload.byPlan ?? []).map((bucket) => ({
+      plan: bucket.plan ?? "unknown",
+      count: Number(bucket.count ?? 0),
+    })),
+    bySource: (payload.bySource ?? []).map((bucket) => ({
+      source: bucket.source ?? "unknown",
+      count: Number(bucket.count ?? 0),
+    })),
+  }
+}
+
+export async function fetchWebOpsUserLookup(params: {
+  baseURL: string
+  operatorToken: string
+  query: string
+}): Promise<WebOpsUserLookupSummary> {
+  const response = await fetch(buildOpsUserLookupUrl(params.baseURL, params.query), {
+    method: "GET",
+    headers: buildOperatorHeaders(params.operatorToken),
+  })
+
+  if (!response.ok) {
+    throw new Error(await readErrorMessage(response, "Astra user lookup request failed"))
+  }
+
+  const payload = await response.json() as WebOpsUserLookupSummary
+  return {
+    schema: payload.schema ?? "astra-ops-user-lookup.v1",
+    generatedAt: payload.generatedAt ?? "",
+    queryType: payload.queryType ?? "email",
+    resultWindow: {
+      mode: payload.resultWindow?.mode ?? "exact_lookup",
+      limit: Number(payload.resultWindow?.limit ?? 1),
+      cursor: payload.resultWindow?.cursor ?? null,
+      nextCursor: payload.resultWindow?.nextCursor ?? null,
+      returnedCount: Number(payload.resultWindow?.returnedCount ?? (payload.user ? 1 : 0)),
+      totalMatched: Number(payload.resultWindow?.totalMatched ?? (payload.user ? 1 : 0)),
+      hasMore: Boolean(payload.resultWindow?.hasMore ?? false),
+    },
+    snapshotBoundary: {
+      metadataOnly: Boolean(payload.snapshotBoundary?.metadataOnly ?? true),
+      contentIncluded: Boolean(payload.snapshotBoundary?.contentIncluded ?? false),
+      rawQueryIncluded: Boolean(payload.snapshotBoundary?.rawQueryIncluded ?? false),
+      exportAvailable: Boolean(payload.snapshotBoundary?.exportAvailable ?? false),
+      recentTaskSummaryLimit: Number(payload.snapshotBoundary?.recentTaskSummaryLimit ?? 6),
+      excludedFields: Array.isArray(payload.snapshotBoundary?.excludedFields) ? payload.snapshotBoundary.excludedFields : [],
+    },
+    user: {
+      userId: payload.user?.userId ?? "",
+      emailHash: payload.user?.emailHash ?? "",
+      createdAt: payload.user?.createdAt ?? "",
+      plan: payload.user?.plan ?? "unknown",
+      subscriptionStatus: payload.user?.subscriptionStatus ?? "unknown",
+      identityMode: payload.user?.identityMode ?? "authenticated",
+      providerEntitlementCount: Number(payload.user?.providerEntitlementCount ?? 0),
+      limits: {
+        dailyRequests: Number(payload.user?.limits?.dailyRequests ?? 0),
+        dailyCharacters: Number(payload.user?.limits?.dailyCharacters ?? 0),
+        requestsPerMinute: Number(payload.user?.limits?.requestsPerMinute ?? 0),
+      },
+      usage: {
+        usageDay: payload.user?.usage?.usageDay ?? "",
+        requestsToday: Number(payload.user?.usage?.requestsToday ?? 0),
+        charactersToday: Number(payload.user?.usage?.charactersToday ?? 0),
+        totalRequests: Number(payload.user?.usage?.totalRequests ?? 0),
+        totalCharacters: Number(payload.user?.usage?.totalCharacters ?? 0),
+        lastRequestAt: payload.user?.usage?.lastRequestAt ?? null,
+        recentEventCount: Number(payload.user?.usage?.recentEventCount ?? 0),
+        usageCategory: payload.user?.usage?.usageCategory ?? "light",
+      },
+      devices: {
+        activeCount: Number(payload.user?.devices?.activeCount ?? 0),
+        revokedCount: Number(payload.user?.devices?.revokedCount ?? 0),
+      },
+      sessions: {
+        activeCount: Number(payload.user?.sessions?.activeCount ?? 0),
+        revokedCount: Number(payload.user?.sessions?.revokedCount ?? 0),
+      },
+      recentTaskSummary: (payload.user?.recentTaskSummary ?? []).map((bucket) => ({
+        taskClass: bucket.taskClass ?? "unknown",
+        eventCount: Number(bucket.eventCount ?? 0),
+        successCount: Number(bucket.successCount ?? 0),
+        failureCount: Number(bucket.failureCount ?? 0),
+        fallbackCount: Number(bucket.fallbackCount ?? 0),
+        latencySampleCount: Number(bucket.latencySampleCount ?? 0),
+        latencyP95Ms: bucket.latencyP95Ms == null ? null : Number(bucket.latencyP95Ms),
+      })),
+    },
+  }
+}
+
+const DEFAULT_WEB_SUPPORT_FOLLOW_UP: WebSupportReportFollowUp = {
+  path: "not_selected",
+  status: "not_started",
+  macroId: null,
+  reason: null,
+  updatedAt: null,
+  updatedBy: null,
+}
+
+function parseWebSupportMacro(payload: WebSupportFirstResponseMacro | null | undefined): WebSupportFirstResponseMacro | null {
+  if (!payload) return null
+  return {
+    id: payload.id ?? "",
+    issueCategory: payload.issueCategory ?? "unknown",
+    title: payload.title ?? "",
+    firstResponse: payload.firstResponse ?? "",
+    nextStep: payload.nextStep ?? "",
+    privacyNote: payload.privacyNote ?? "",
+    surfaces: payload.surfaces ?? [],
+  }
+}
+
+function parseWebSupportFollowUp(payload: Partial<WebSupportReportFollowUp> | null | undefined): WebSupportReportFollowUp {
+  return {
+    ...DEFAULT_WEB_SUPPORT_FOLLOW_UP,
+    ...(payload ?? {}),
+    macroId: payload?.macroId ?? null,
+    reason: payload?.reason ?? null,
+    updatedAt: payload?.updatedAt ?? null,
+    updatedBy: payload?.updatedBy ?? null,
+  }
+}
+
+function parseWebSupportTriage(payload: Partial<WebSupportReportTriage> | null | undefined): WebSupportReportTriage {
+  return {
+    status: payload?.status ?? "new",
+    assignedTo: payload?.assignedTo ?? null,
+    priority: payload?.priority ?? "normal",
+    resolution: payload?.resolution ?? null,
+    updatedAt: payload?.updatedAt ?? null,
+    updatedBy: payload?.updatedBy ?? null,
+    followUp: parseWebSupportFollowUp(payload?.followUp),
+  }
+}
+
+function parseWebSupportHandoffSummary(payload: WebSupportReportHandoffSummary | null | undefined): WebSupportReportHandoffSummary {
+  return {
+    byPath: (payload?.byPath ?? []).map((bucket) => ({ path: bucket.path ?? "not_selected", count: Number(bucket.count ?? 0) })),
+    byStatus: (payload?.byStatus ?? []).map((bucket) => ({ status: bucket.status ?? "not_started", count: Number(bucket.count ?? 0) })),
+  }
+}
+
+function parseWebSupportSlaRiskSummary(payload: WebSupportReportSlaRiskSummary | null | undefined, fallbackGeneratedAt: string): WebSupportReportSlaRiskSummary {
+  return {
+    generatedAt: payload?.generatedAt ?? fallbackGeneratedAt,
+    currentNow: payload?.currentNow ?? payload?.generatedAt ?? fallbackGeneratedAt,
+    unresolvedCount: Number(payload?.unresolvedCount ?? 0),
+    urgentUnresolvedCount: Number(payload?.urgentUnresolvedCount ?? 0),
+    staleTriageByAgeBucket: {
+      under24h: Number(payload?.staleTriageByAgeBucket?.under24h ?? 0),
+      from24hTo72h: Number(payload?.staleTriageByAgeBucket?.from24hTo72h ?? 0),
+      from72hTo168h: Number(payload?.staleTriageByAgeBucket?.from72hTo168h ?? 0),
+      over168h: Number(payload?.staleTriageByAgeBucket?.over168h ?? 0),
+    },
+    followUpOverdueCount: Number(payload?.followUpOverdueCount ?? 0),
+    oldestUnresolvedAgeHours: payload?.oldestUnresolvedAgeHours == null ? null : Number(payload.oldestUnresolvedAgeHours),
+    oldestUnresolvedAgeDays: payload?.oldestUnresolvedAgeDays == null ? null : Number(payload.oldestUnresolvedAgeDays),
+  }
+}
+
+function parseWebSupportFirstResponseMacroSummary(payload: WebSupportFirstResponseMacroSummary | null | undefined): WebSupportFirstResponseMacroSummary | null {
+  if (!payload) return null
+  return {
+    schema: payload.schema ?? "astra-support-first-response-macros.v1",
+    generatedAt: payload.generatedAt ?? "",
+    threshold: Number(payload.threshold ?? 0.8),
+    catalogCoverage: {
+      coveredIssueCategories: Number(payload.catalogCoverage?.coveredIssueCategories ?? 0),
+      totalIssueCategories: Number(payload.catalogCoverage?.totalIssueCategories ?? 0),
+      coverageRate: Number(payload.catalogCoverage?.coverageRate ?? 0),
+      ready: Boolean(payload.catalogCoverage?.ready ?? false),
+    },
+    reportedCoverage: {
+      coveredReports: Number(payload.reportedCoverage?.coveredReports ?? 0),
+      totalReports: Number(payload.reportedCoverage?.totalReports ?? 0),
+      unknownIssueReports: Number(payload.reportedCoverage?.unknownIssueReports ?? 0),
+      coverageRate: payload.reportedCoverage?.coverageRate == null ? null : Number(payload.reportedCoverage.coverageRate),
+      ready: payload.reportedCoverage?.ready == null ? null : Boolean(payload.reportedCoverage.ready),
+    },
+    byIssueCategory: (payload.byIssueCategory ?? []).map((bucket) => ({
+      issueCategory: bucket.issueCategory ?? "unknown",
+      count: Number(bucket.count ?? 0),
+      macroId: bucket.macroId ?? null,
+      title: bucket.title ?? null,
+      covered: Boolean(bucket.covered ?? false),
+    })),
+    macros: (payload.macros ?? []).map((macro) => parseWebSupportMacro(macro)).filter((macro): macro is WebSupportFirstResponseMacro => Boolean(macro)),
+  }
+}
+
+export async function fetchWebSupportReportSummary(params: {
+  baseURL: string
+  operatorToken: string
+}): Promise<WebSupportReportSummary> {
+  const response = await fetch(buildOpsSupportReportsUrl(params.baseURL, "/summary"), {
+    method: "GET",
+    headers: buildOperatorHeaders(params.operatorToken),
+  })
+
+  if (!response.ok) {
+    throw new Error(await readErrorMessage(response, "Astra support report summary request failed"))
+  }
+
+  const payload = await response.json() as WebSupportReportSummary
+  const generatedAt = payload.generatedAt ?? ""
+  return {
+    totalReports: Number(payload.totalReports ?? 0),
+    generatedAt,
+    buckets: (payload.buckets ?? []).map((bucket) => ({
+      ...bucket,
+      count: Number(bucket.count ?? 0),
+      hostname: bucket.hostname ?? null,
+      issueCategory: bucket.issueCategory ?? null,
+      knownIssueId: bucket.knownIssueId ?? null,
+      knownIssueStatus: bucket.knownIssueStatus ?? null,
+    })),
+    weeklyTopIssues: (payload.weeklyTopIssues ?? []).map((issue) => ({
+      ...issue,
+      reportCount: Number(issue.reportCount ?? 0),
+      hostname: issue.hostname ?? null,
+      issueCategory: issue.issueCategory ?? null,
+      knownIssueId: issue.knownIssueId ?? null,
+      knownIssueStatus: issue.knownIssueStatus ?? null,
+    })),
+    macroCoverage: parseWebSupportFirstResponseMacroSummary(payload.macroCoverage),
+    handoffSummary: parseWebSupportHandoffSummary(payload.handoffSummary),
+    slaRisk: parseWebSupportSlaRiskSummary(payload.slaRisk, generatedAt),
+  }
+}
+
+export async function fetchWebSupportReports(params: {
+  baseURL: string
+  operatorToken: string
+}): Promise<WebSupportReportList> {
+  const response = await fetch(buildOpsSupportReportsUrl(params.baseURL), {
+    method: "GET",
+    headers: buildOperatorHeaders(params.operatorToken),
+  })
+
+  if (!response.ok) {
+    throw new Error(await readErrorMessage(response, "Astra support report list request failed"))
+  }
+
+  const payload = await response.json() as WebSupportReportList
+  return {
+    schema: payload.schema ?? "astra-support-report-inbox.v1",
+    reports: (payload.reports ?? []).map((report) => ({
+      ...report,
+      ownerEmail: report.ownerEmail ?? "",
+      deviceId: report.deviceId ?? "",
+      sessionId: report.sessionId ?? "",
+      issueCategory: report.issueCategory ?? null,
+      errorCategory: report.errorCategory ?? null,
+      lastErrorCategory: report.lastErrorCategory ?? null,
+      runtimeSurface: report.runtimeSurface ?? null,
+      hostname: report.hostname ?? null,
+      knownIssue: report.knownIssue ?? null,
+      triage: parseWebSupportTriage(report.triage),
+      recommendedMacro: parseWebSupportMacro(report.recommendedMacro),
+    })),
+  }
+}
+
+export async function updateWebSupportReportTriage(params: {
+  baseURL: string
+  operatorToken: string
+  reportId: string
+  patch: WebSupportReportTriageUpdate
+}): Promise<WebSupportReportListEntry> {
+  const response = await fetch(buildOpsSupportReportsUrl(params.baseURL, `/${encodeURIComponent(params.reportId)}/triage`), {
+    method: "PATCH",
+    headers: buildOperatorHeaders(params.operatorToken, true),
+    body: JSON.stringify(params.patch),
+  })
+
+  if (!response.ok) {
+    throw new Error(await readErrorMessage(response, "Astra support report triage update failed"))
+  }
+
+  const payload = await response.json() as { report?: WebSupportReportListEntry }
+  if (!payload.report) {
+    throw new Error("Astra support report triage response was missing the report.")
+  }
+  return {
+    ...payload.report,
+    triage: parseWebSupportTriage(payload.report.triage),
+    recommendedMacro: parseWebSupportMacro(payload.report.recommendedMacro),
+  }
+}
+
+export async function fetchWebFeatureFlagRuntime(params: {
+  baseURL: string
+}): Promise<WebFeatureFlagRuntime> {
+  const response = await fetch(buildOpsFeatureFlagsUrl(params.baseURL), {
+    method: "GET",
+  })
+
+  if (!response.ok) {
+    throw new Error(await readErrorMessage(response, "Astra feature-flag runtime request failed"))
+  }
+
+  const payload = await response.json() as WebFeatureFlagRuntime
+  return {
+    schema: "astra-feature-flag-runtime.v1",
+    generatedAt: payload.generatedAt ?? "",
+    overrides: payload.overrides ?? [],
+    killSwitches: (payload.killSwitches ?? []).map((rule) => ({
+      ...rule,
+      enabled: Boolean(rule.enabled),
+      safeMode: rule.safeMode ?? true,
+    })),
+    changeLog: payload.changeLog ?? [],
+  }
+}
+
+export async function updateWebFeatureFlagRuntime(params: {
+  baseURL: string
+  operatorToken: string
+  runtime: WebFeatureFlagRuntime
+}): Promise<WebFeatureFlagRuntime> {
+  const response = await fetch(buildOpsFeatureFlagsUrl(params.baseURL), {
+    method: "PUT",
+    headers: buildOperatorHeaders(params.operatorToken, true),
+    body: JSON.stringify(params.runtime),
+  })
+
+  if (!response.ok) {
+    throw new Error(await readErrorMessage(response, "Astra feature-flag runtime update failed"))
+  }
+
+  const payload = await response.json() as WebFeatureFlagRuntime
+  return {
+    schema: "astra-feature-flag-runtime.v1",
+    generatedAt: payload.generatedAt ?? "",
+    overrides: payload.overrides ?? [],
+    killSwitches: (payload.killSwitches ?? []).map((rule) => ({
+      ...rule,
+      enabled: Boolean(rule.enabled),
+      safeMode: rule.safeMode ?? true,
+    })),
+    changeLog: payload.changeLog ?? [],
+  }
+}
+
 export async function fetchWebImportQueueObservability(params: {
   baseURL: string
   operatorToken?: string | null
@@ -1482,6 +2763,28 @@ export async function revokeWebDevice(params: {
   })
 }
 
+export async function createWebTrialIntent(params: {
+  session: AstraSession
+  device: AstraDeviceIdentity
+}): Promise<WebTrialLifecycleContract> {
+  return createAstraTrialIntent({
+    baseURL: params.session.relayBaseURL,
+    sessionToken: params.session.sessionToken,
+    deviceId: params.device.deviceId,
+  })
+}
+
+export async function fetchWebTrialIntent(params: {
+  session: AstraSession
+  device: AstraDeviceIdentity
+}): Promise<WebTrialLifecycleContract> {
+  return fetchAstraTrialIntent({
+    baseURL: params.session.relayBaseURL,
+    sessionToken: params.session.sessionToken,
+    deviceId: params.device.deviceId,
+  })
+}
+
 export async function openBillingCheckout(params: {
   session: AstraSession
   plan: AstraPlan
@@ -1583,6 +2886,7 @@ function buildTranslationCacheContext(
     providerId: config.provider.id,
     model: config.provider.model,
     connectionMode: config.connectionMode,
+    serviceMode: config.serviceMode,
     routingKey: "astra",
     languageLevel: config.languageLevel,
     sourceLang: request.sourceLang,
@@ -1764,6 +3068,7 @@ export async function translateWithWebRelay(params: {
     ...(task ? { task } : {}),
     ...(customSystemPrompt ? { customSystemPrompt } : {}),
     ...(config.languageLevel ? { languageLevel: config.languageLevel } : {}),
+    serviceMode: config.serviceMode,
     ...(placeholderFormat ? { placeholderFormat } : {}),
   }))
 

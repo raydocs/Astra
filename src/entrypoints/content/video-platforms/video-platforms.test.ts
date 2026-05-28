@@ -2,11 +2,22 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 
 import { createMockBrowser, setMockBrowser } from "../../../../test/utils/mockBrowser"
 
-const { runInlineActionMock, readConfigMock, translateTextsMock, fetchMock } = vi.hoisted(() => ({
+const {
+  runInlineActionMock,
+  readConfigMock,
+  saveConfigMock,
+  translateTextsMock,
+  fetchMock,
+  copyTextToClipboardMock,
+  saveVocabularyEntryMock,
+} = vi.hoisted(() => ({
   runInlineActionMock: vi.fn(),
   readConfigMock: vi.fn(),
+  saveConfigMock: vi.fn(),
   translateTextsMock: vi.fn(),
   fetchMock: vi.fn(),
+  copyTextToClipboardMock: vi.fn(),
+  saveVocabularyEntryMock: vi.fn(),
 }))
 
 vi.mock("../inline-actions", () => ({
@@ -15,23 +26,41 @@ vi.mock("../inline-actions", () => ({
 
 vi.mock("@/utils/storage/config", () => ({
   readConfig: readConfigMock,
+  saveConfig: saveConfigMock,
 }))
 
 vi.mock("@/utils/translate/translate", () => ({
   translateTexts: translateTextsMock,
 }))
 
+vi.mock("@/utils/dom/clipboard", () => ({
+  copyTextToClipboard: copyTextToClipboardMock,
+}))
+
+vi.mock("@/utils/storage/vocabulary", () => ({
+  saveVocabularyEntry: saveVocabularyEntryMock,
+}))
+
 import { DEFAULT_ASTRA_CONFIG } from "@/types/config"
 import {
+  captureCurrentVideoNoteSource,
   clearVideoSubtitleCache,
+  ensureVideoPlayerControlButton,
   getSupportedPlatformIds,
   getSupportedPlatformRenderingRules,
   isVideoPage,
+  isVideoSubtitleTranslationActive,
+  setupVideoNavigationHandler,
   startVideoSubtitleTranslation,
   stopVideoSubtitleTranslation,
 } from "./index"
 import { createTextTrackDomPlatform } from "./onboarding-template"
 import { courseOverlayRenderingRule, playerCaptionWindowRenderingRule } from "./rendering-rules"
+
+function getMockBrowser(): ReturnType<typeof createMockBrowser> {
+  return (globalThis as unknown as { __ASTRA_TEST_BROWSER__: ReturnType<typeof createMockBrowser> })
+    .__ASTRA_TEST_BROWSER__
+}
 
 const originalFetch = globalThis.fetch
 
@@ -126,7 +155,14 @@ function setLocation(hostname: string, pathname: string) {
 function setYouTubePlayerResponse(
   trackOrBaseUrl:
     | string
-    | Array<{ baseUrl: string; languageCode?: string; kind?: string; isTranslatable?: boolean }>
+    | Array<{
+      baseUrl: string
+      languageCode?: string
+      kind?: string
+      isTranslatable?: boolean
+      vssId?: string
+      name?: { simpleText?: string; runs?: Array<{ text?: string }> }
+    }>
     = "https://www.youtube.com/api/timedtext?v=abc123&lang=en",
 ) {
   const captionTracks = Array.isArray(trackOrBaseUrl)
@@ -245,12 +281,36 @@ describe("video platform subtitle translation", () => {
     vi.useFakeTimers()
     setMockBrowser(createMockBrowser())
     readConfigMock.mockResolvedValue(DEFAULT_ASTRA_CONFIG)
+    saveConfigMock.mockResolvedValue(DEFAULT_ASTRA_CONFIG)
     runInlineActionMock.mockResolvedValue({ ok: true, text: "翻译结果" })
     translateTextsMock.mockImplementation(async (req: { texts: string[] }) => ({
       ok: true,
       translations: req.texts.map((text: string) => `[translated] ${text}`),
     }))
     fetchMock.mockReset()
+    copyTextToClipboardMock.mockResolvedValue(undefined)
+    saveVocabularyEntryMock.mockResolvedValue(undefined)
+    Object.defineProperty(window, "speechSynthesis", {
+      configurable: true,
+      value: { cancel: vi.fn(), speak: vi.fn() },
+    })
+    Object.defineProperty(globalThis, "SpeechSynthesisUtterance", {
+      configurable: true,
+      value: class MockSpeechSynthesisUtterance {
+        text: string
+        constructor(text: string) {
+          this.text = text
+        }
+      },
+    })
+    Object.defineProperty(URL, "createObjectURL", {
+      configurable: true,
+      value: vi.fn(() => "blob:astra-transcript-export"),
+    })
+    Object.defineProperty(URL, "revokeObjectURL", {
+      configurable: true,
+      value: vi.fn(),
+    })
     globalThis.fetch = fetchMock as typeof fetch
     document.body.innerHTML = ""
     clearYouTubePlayerResponse()
@@ -268,6 +328,212 @@ describe("video platform subtitle translation", () => {
   it("detects YouTube video pages", () => {
     setLocation("www.youtube.com", "/watch")
     expect(isVideoPage()).toBe(true)
+
+    setLocation("www.youtube.com", "/embed/abc123")
+    expect(isVideoPage()).toBe(true)
+
+    setLocation("www.youtube-nocookie.com", "/embed/abc123")
+    expect(isVideoPage()).toBe(true)
+  })
+
+  it("mounts one YouTube player Astra control with Off status", () => {
+    setLocation("www.youtube.com", "/watch")
+    document.body.innerHTML = `
+      <div class="html5-video-player">
+        <div class="ytp-right-controls"></div>
+      </div>
+    `
+
+    ensureVideoPlayerControlButton()
+    ensureVideoPlayerControlButton()
+
+    const buttons = document.querySelectorAll("#astra-youtube-player-button")
+    expect(buttons).toHaveLength(1)
+    expect(document.querySelector(".ytp-right-controls #astra-youtube-player-button")?.textContent).toContain("Off")
+  })
+
+  it("mounts the YouTube player Astra control on embed players", () => {
+    setLocation("www.youtube-nocookie.com", "/embed/abc123")
+    document.body.innerHTML = `
+      <div id="movie_player" class="html5-video-player">
+        <div class="ytp-right-controls"></div>
+      </div>
+    `
+
+    ensureVideoPlayerControlButton()
+
+    expect(document.querySelector("#movie_player #astra-youtube-player-button")?.textContent).toContain("Off")
+  })
+
+  it("keeps the YouTube player Astra control inside fullscreen and theater controls", () => {
+    setLocation("www.youtube.com", "/watch")
+    document.body.innerHTML = `
+      <div id="movie_player" class="html5-video-player ytp-fullscreen ytp-big-mode">
+        <div class="ytp-chrome-controls">
+          <div class="ytp-right-controls"></div>
+        </div>
+      </div>
+    `
+
+    ensureVideoPlayerControlButton()
+
+    expect(document.querySelector(".ytp-fullscreen.ytp-big-mode .ytp-right-controls #astra-youtube-player-button")?.textContent)
+      .toContain("Off")
+  })
+
+  it("moves the YouTube player Astra control into miniplayer controls when the chrome is rebuilt", () => {
+    setLocation("www.youtube.com", "/watch")
+    document.body.innerHTML = `
+      <div id="movie_player" class="html5-video-player">
+        <div class="ytp-right-controls"></div>
+      </div>
+    `
+
+    ensureVideoPlayerControlButton()
+    expect(document.querySelector(".ytp-right-controls #astra-youtube-player-button")).not.toBeNull()
+
+    document.body.innerHTML = `
+      <div id="movie_player" class="html5-video-player ytp-miniplayer-active">
+        <div class="ytp-miniplayer-controls"></div>
+      </div>
+    `
+    ensureVideoPlayerControlButton()
+
+    expect(document.querySelector(".ytp-miniplayer-controls #astra-youtube-player-button")?.textContent).toContain("Off")
+    expect(document.querySelectorAll("#astra-youtube-player-button")).toHaveLength(1)
+  })
+
+  it("toggles YouTube subtitle translation from the player Astra control", async () => {
+    setLocation("www.youtube.com", "/watch")
+    setYouTubePlayerResponse()
+    document.body.innerHTML = `
+      <div class="html5-video-player">
+        <div class="ytp-right-controls"></div>
+        <video id="astra-video"></video>
+        <div class="ytp-caption-window-container">
+          <div class="ytp-caption-window-bottom"><span class="ytp-caption-segment">Hello world</span></div>
+        </div>
+      </div>
+    `
+    fetchMock.mockResolvedValue({
+      ok: true,
+      text: async () => timedTextJson([{ startMs: 0, durationMs: 1_000, text: "Hello world" }]),
+    } as Response)
+
+    ensureVideoPlayerControlButton()
+    const button = document.getElementById("astra-youtube-player-button") as HTMLButtonElement
+    button.click()
+    await flushPromises(8)
+
+    expect(isVideoSubtitleTranslationActive()).toBe(true)
+    expect(button.textContent).toMatch(/Astra(Translating|On)/)
+
+    button.click()
+    await flushPromises(2)
+
+    expect(isVideoSubtitleTranslationActive()).toBe(false)
+    expect(button.textContent).toContain("Off")
+  })
+
+  it("opens YouTube in-player subtitle settings and persists mode/background/size controls", async () => {
+    setLocation("www.youtube.com", "/watch")
+    document.body.innerHTML = `
+      <div class="html5-video-player">
+        <div class="ytp-right-controls"></div>
+        <div class="ytp-caption-window-container">
+          <div class="ytp-caption-window-bottom">
+            <span class="ytp-caption-segment">Hello world</span>
+            <span class="astra-video-subtitle">你好世界</span>
+          </div>
+        </div>
+      </div>
+    `
+
+    ensureVideoPlayerControlButton()
+    const settingsButton = document.getElementById("astra-youtube-player-settings-button") as HTMLButtonElement
+    expect(settingsButton).not.toBeNull()
+
+    settingsButton.click()
+    const popover = document.getElementById("astra-youtube-player-settings-popover") as HTMLElement
+    expect(popover).not.toBeNull()
+    expect(popover.hasAttribute("hidden")).toBe(false)
+
+    popover.querySelector<HTMLButtonElement>('[data-astra-video-setting-mode="translation-only"]')?.click()
+    await flushPromises(4)
+    expect(saveConfigMock).toHaveBeenCalledWith(expect.objectContaining({
+      presentation: expect.objectContaining({ mode: "translation-only" }),
+    }))
+
+    settingsButton.click()
+    popover.querySelector<HTMLButtonElement>('[data-astra-video-setting-theme="mask"]')?.click()
+    await flushPromises(4)
+    expect(saveConfigMock).toHaveBeenCalledWith(expect.objectContaining({
+      presentation: expect.objectContaining({ theme: "mask" }),
+    }))
+
+    popover.querySelector<HTMLButtonElement>('[data-astra-video-setting-size="larger"]')?.click()
+    await flushPromises(4)
+    expect(saveConfigMock).toHaveBeenCalledWith(expect.objectContaining({
+      presentation: expect.objectContaining({ fontSize: 1.02 }),
+    }))
+  })
+
+  it("supports in-player position and native-caption restore actions", async () => {
+    setLocation("www.youtube.com", "/watch")
+    const nativeCaptionClick = vi.fn()
+    document.body.innerHTML = `
+      <div class="html5-video-player">
+        <div class="ytp-right-controls"></div>
+        <button class="ytp-subtitles-button" aria-pressed="false">CC</button>
+        <div class="ytp-caption-window-container">
+          <div class="ytp-caption-window-bottom">
+            <span class="ytp-caption-segment">Hello world</span>
+            <span class="astra-video-subtitle">你好世界</span>
+          </div>
+        </div>
+      </div>
+    `
+    document.querySelector<HTMLButtonElement>(".ytp-subtitles-button")?.addEventListener("click", nativeCaptionClick)
+
+    ensureVideoPlayerControlButton()
+    const settingsButton = document.getElementById("astra-youtube-player-settings-button") as HTMLButtonElement
+    settingsButton.click()
+    const popover = document.getElementById("astra-youtube-player-settings-popover") as HTMLElement
+
+    popover.querySelector<HTMLButtonElement>('[data-astra-video-setting-position="top"]')?.click()
+    expect(document.querySelector<HTMLElement>(".astra-video-subtitle")?.dataset.astraVideoCaptionPosition).toBe("top")
+
+    popover.querySelector<HTMLButtonElement>('[data-astra-video-setting-mode="original-only"]')?.click()
+    await flushPromises(2)
+
+    expect(document.querySelector(".astra-video-subtitle")).toBeNull()
+    expect(nativeCaptionClick).toHaveBeenCalledTimes(1)
+    expect(popover.hasAttribute("hidden")).toBe(true)
+  })
+
+  it("remounts the YouTube player Astra control across SPA navigation without duplicates", () => {
+    setLocation("www.youtube.com", "/watch")
+    document.body.innerHTML = `
+      <div class="html5-video-player">
+        <div class="ytp-right-controls"></div>
+      </div>
+    `
+
+    setupVideoNavigationHandler()
+    expect(document.querySelectorAll("#astra-youtube-player-button")).toHaveLength(1)
+
+    Object.defineProperty(window, "location", {
+      value: {
+        hostname: "www.youtube.com",
+        pathname: "/watch",
+        href: "https://www.youtube.com/watch?v=next",
+      },
+      writable: true,
+      configurable: true,
+    })
+    window.dispatchEvent(new Event("yt-navigate-finish"))
+
+    expect(document.querySelectorAll("#astra-youtube-player-button")).toHaveLength(1)
   })
 
   it("detects Bilibili video pages", () => {
@@ -436,6 +702,258 @@ describe("video platform subtitle translation", () => {
     expect(subtitle?.style.getPropertyValue("--astra-caption-color")).toBe("")
   })
 
+  it("mounts a searchable bilingual YouTube transcript panel with click-to-seek", async () => {
+    setLocation("www.youtube.com", "/watch")
+    const { video } = appendYouTubeFixture("", 0.2)
+    setYouTubePlayerResponse()
+    fetchMock.mockResolvedValue({
+      ok: true,
+      text: async () => timedTextJson([
+        { startMs: 0, durationMs: 1000, text: "Hello world" },
+        { startMs: 1200, durationMs: 1000, text: "Second cue" },
+      ]),
+    } as Response)
+
+    await startVideoSubtitleTranslation()
+    await flushPromises(8)
+
+    const panel = document.getElementById("astra-video-transcript-panel")
+    expect(panel).not.toBeNull()
+    expect(panel?.getAttribute("role")).toBe("complementary")
+    expect(panel?.getAttribute("aria-label")).toBe("Astra Transcript Panel")
+    expect(panel?.textContent).toContain("Summary")
+    const panelStyles = document.getElementById("astra-video-transcript-panel-styles")
+    expect(panelStyles?.textContent).toContain("background: rgba(255, 255, 255, 0.96)")
+    expect(panelStyles?.textContent).toContain("color: #0f172a")
+
+    const tabs = panel?.querySelector("[data-astra-transcript-tabs]") as HTMLElement | null
+    expect(tabs?.getAttribute("role")).toBe("group")
+    expect(tabs?.getAttribute("aria-label")).toBe("Transcript panel sections")
+    const transcriptTab = Array.from(panel?.querySelectorAll("[data-astra-transcript-tabs] button") ?? [])
+      .find((button) => button.textContent === "Transcript") as HTMLButtonElement
+    expect(transcriptTab.getAttribute("aria-label")).toBe("Transcript section")
+    transcriptTab.click()
+
+    const activeTranscriptTab = Array.from(panel?.querySelectorAll("[data-astra-transcript-tabs] button") ?? [])
+      .find((button) => button.textContent === "Transcript") as HTMLButtonElement
+    expect(activeTranscriptTab.getAttribute("aria-pressed")).toBe("true")
+
+    const status = panel?.querySelector("[data-astra-transcript-status]") as HTMLElement | null
+    expect(status?.getAttribute("role")).toBe("status")
+    expect(status?.getAttribute("aria-live")).toBe("polite")
+    expect(status?.getAttribute("aria-atomic")).toBe("true")
+
+    expect(panel?.textContent).toContain("[translated] Hello world")
+    expect(panel?.querySelectorAll("[data-astra-transcript-row]")).toHaveLength(2)
+    expect(panel?.querySelector("[data-astra-transcript-row]")?.getAttribute("data-active")).toBe("true")
+
+    const search = panel?.querySelector("input[type='search']") as HTMLInputElement
+    expect(search.getAttribute("aria-label")).toBe("Search transcript cues")
+    search.value = "Second"
+    search.dispatchEvent(new Event("input"))
+
+    const filteredStatus = panel?.querySelector("[data-astra-transcript-status]") as HTMLElement | null
+    expect(filteredStatus?.textContent).toBe("Search active for “Second”: 1 transcript row.")
+    const filteredRows = panel?.querySelectorAll("[data-astra-transcript-row]")
+    expect(filteredRows).toHaveLength(1)
+    expect(filteredRows?.[0]?.textContent).toContain("Second cue")
+    ;(filteredRows?.[0] as HTMLButtonElement).click()
+    expect(video.currentTime).toBe(1.2)
+  })
+
+  it("generates video summary, chapters, words, notes, and review cards from the transcript", async () => {
+    setLocation("www.youtube.com", "/watch")
+    appendYouTubeFixture("", 0.2)
+    setYouTubePlayerResponse()
+    getMockBrowser().runtime.sendMessage.mockResolvedValue({
+      type: "runtime/video-note:create-from-current-tab:success",
+      payload: { jobId: "job-1", status: "queued" },
+    })
+    fetchMock.mockResolvedValue({
+      ok: true,
+      text: async () => timedTextJson([
+        { startMs: 0, durationMs: 1000, text: "Learning phrases through daily practice" },
+        { startMs: 60_000, durationMs: 1000, text: "Shadow native speakers and repeat useful chunks" },
+        { startMs: 120_000, durationMs: 1000, text: "Review saved expressions before watching again" },
+        { startMs: 180_000, durationMs: 1000, text: "Build confidence with short quizzes" },
+      ]),
+    } as Response)
+
+    await startVideoSubtitleTranslation()
+    await flushPromises(12)
+
+    const panel = document.getElementById("astra-video-transcript-panel") as HTMLElement
+    expect(runInlineActionMock).toHaveBeenCalledWith(expect.objectContaining({
+      task: "custom",
+      customSystemPrompt: expect.stringContaining("video summary"),
+      text: expect.stringContaining("Learning phrases"),
+    }))
+    expect(panel.textContent).toContain("翻译结果")
+    expect(panel.textContent).toContain("Chapters")
+    expect(panel.textContent).toContain("Quiz")
+
+    const wordsTab = Array.from(panel.querySelectorAll("[data-astra-transcript-tabs] button"))
+      .find((button) => button.textContent === "Words") as HTMLButtonElement
+    wordsTab.click()
+    expect(panel.textContent).toContain("10 expressions worth mastering")
+    const saveExpressions = Array.from(panel.querySelectorAll("button"))
+      .find((button) => button.textContent === "Save 3 expressions to Review") as HTMLButtonElement
+    saveExpressions.click()
+    await flushPromises(4)
+    expect(saveVocabularyEntryMock).toHaveBeenCalledWith(expect.objectContaining({
+      text: expect.stringContaining("Learning phrases"),
+      tags: ["video", "expression"],
+    }))
+
+    const notesTab = Array.from(panel.querySelectorAll("[data-astra-transcript-tabs] button"))
+      .find((button) => button.textContent === "Notes") as HTMLButtonElement
+    notesTab.click()
+    const saveSummary = Array.from(panel.querySelectorAll("button"))
+      .find((button) => button.textContent === "Save summary to Review") as HTMLButtonElement
+    saveSummary.click()
+    await flushPromises(4)
+    expect(saveVocabularyEntryMock).toHaveBeenCalledWith(expect.objectContaining({
+      text: expect.any(String),
+      explanation: "翻译结果",
+      tags: ["video", "summary"],
+    }))
+
+    const source = await captureCurrentVideoNoteSource()
+    expect(source?.capture?.learningContext).toEqual(expect.objectContaining({
+      summary: "翻译结果",
+      bilingualTranscriptSegments: expect.arrayContaining([
+        expect.objectContaining({ text: "Learning phrases through daily practice", translation: "[translated] Learning phrases through daily practice" }),
+      ]),
+      savedWords: expect.arrayContaining([
+        expect.objectContaining({ text: expect.stringContaining("Learning phrases") }),
+      ]),
+      savedSentences: expect.arrayContaining([
+        expect.objectContaining({ explanation: "翻译结果" }),
+      ]),
+      watchProgress: expect.objectContaining({ currentTimeSec: 0.2 }),
+      reviewStatus: expect.objectContaining({ reviewReady: true }),
+    }))
+
+    const saveVideoNote = Array.from(panel.querySelectorAll("button"))
+      .find((button) => button.textContent === "Create video note") as HTMLButtonElement
+    saveVideoNote.click()
+    await flushPromises(4)
+    expect(getMockBrowser().runtime.sendMessage).toHaveBeenCalledWith({
+      type: "runtime/video-note:create-from-current-tab",
+      payload: { forceRegenerate: false },
+    })
+  })
+
+  it("supports transcript copy, explain, save sentence, add word, and export actions", async () => {
+    setLocation("www.youtube.com", "/watch")
+    appendYouTubeFixture("", 0.2)
+    setYouTubePlayerResponse()
+    fetchMock.mockResolvedValue({
+      ok: true,
+      text: async () => timedTextJson([
+        { startMs: 0, durationMs: 1000, text: "Hello world" },
+      ]),
+    } as Response)
+
+    await startVideoSubtitleTranslation()
+    await flushPromises(8)
+
+    const panel = document.getElementById("astra-video-transcript-panel") as HTMLElement
+    const transcriptTab = Array.from(panel.querySelectorAll("[data-astra-transcript-tabs] button"))
+      .find((button) => button.textContent === "Transcript") as HTMLButtonElement
+    transcriptTab.click()
+    const row = panel.querySelector("[data-astra-transcript-row]") as HTMLElement
+    const getRowButton = (label: string) => Array.from(row.querySelectorAll("button"))
+      .find((button) => button.textContent === label) as HTMLButtonElement
+
+    getRowButton("Copy").click()
+    await flushPromises(2)
+    expect(copyTextToClipboardMock).toHaveBeenCalledWith(expect.stringContaining("Hello world"))
+
+    getRowButton("Explain").click()
+    await flushPromises(4)
+    expect(runInlineActionMock).toHaveBeenCalledWith(expect.objectContaining({
+      text: "Hello world",
+      task: "explain",
+      selectionContext: "YouTube transcript at 0:00",
+    }))
+    expect(panel.textContent).toContain("翻译结果")
+
+    getRowButton("Save sentence").click()
+    await flushPromises(4)
+    expect(saveVocabularyEntryMock).toHaveBeenCalledWith(expect.objectContaining({
+      text: "Hello world",
+      translation: "[translated] Hello world",
+      url: "https://www.youtube.com/watch?t=0s",
+      sourceContext: expect.objectContaining({
+        surface: "video_transcript",
+        sentenceText: "Hello world",
+        pageUrl: "https://www.youtube.com/watch?t=0s",
+        videoTimestampMs: 0,
+      }),
+    }))
+
+    getRowButton("Add word").click()
+    await flushPromises(4)
+    expect(saveVocabularyEntryMock).toHaveBeenCalledWith(expect.objectContaining({
+      text: "Hello",
+      url: "https://www.youtube.com/watch?t=0s",
+      sourceContext: expect.objectContaining({
+        surface: "video_transcript",
+        videoTimestampMs: 0,
+      }),
+    }))
+
+    getRowButton("Speak").click()
+    expect(window.speechSynthesis.speak).toHaveBeenCalledWith(expect.objectContaining({ text: "Hello world" }))
+
+    const wordButton = row.querySelector('[data-astra-transcript-word="Hello"]') as HTMLButtonElement
+    wordButton.click()
+    await flushPromises(4)
+    expect(runInlineActionMock).toHaveBeenCalledWith(expect.objectContaining({
+      text: "Hello",
+      task: "explain",
+      selectionContext: "YouTube subtitle word in sentence: Hello world",
+    }))
+    expect(panel.textContent).toContain("English · pronunciation")
+    const saveWord = Array.from(panel.querySelectorAll("button"))
+      .find((button) => button.textContent === "Save word to Review") as HTMLButtonElement
+    saveWord.click()
+    await flushPromises(4)
+    expect(saveVocabularyEntryMock).toHaveBeenCalledWith(expect.objectContaining({
+      text: "Hello",
+      explanation: "翻译结果",
+      tags: ["video", "word"],
+      url: "https://www.youtube.com/watch?t=0s",
+      sourceContext: expect.objectContaining({
+        contentSummary: expect.stringContaining("English"),
+        videoTimestampMs: 0,
+      }),
+    }))
+
+    copyTextToClipboardMock.mockClear()
+    const clickSpy = vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(() => {})
+    const exportButton = Array.from(panel.querySelectorAll("button"))
+      .find((button) => button.textContent === "Export bilingual transcript") as HTMLButtonElement
+    exportButton.click()
+    await flushPromises(2)
+    expect(copyTextToClipboardMock).toHaveBeenCalledWith(expect.stringContaining("[translated] Hello world"))
+    expect(URL.createObjectURL).toHaveBeenCalledWith(expect.any(Blob))
+    expect(clickSpy).toHaveBeenCalledTimes(1)
+    expect(panel.textContent).toContain("bilingual transcript downloaded and copied")
+
+    copyTextToClipboardMock.mockClear()
+    const exportSrtButton = Array.from(panel.querySelectorAll("button"))
+      .find((button) => button.textContent === "Export SRT") as HTMLButtonElement
+    exportSrtButton.click()
+    await flushPromises(2)
+    expect(copyTextToClipboardMock).toHaveBeenCalledWith(expect.stringContaining("00:00:00,000 --> 00:00:01,000"))
+    expect(copyTextToClipboardMock).toHaveBeenCalledWith(expect.stringContaining("Hello world\n[translated] Hello world"))
+    const srtBlob = vi.mocked(URL.createObjectURL).mock.calls.at(-1)?.[0] as Blob
+    await expect(srtBlob.text()).resolves.toContain("00:00:00,000 --> 00:00:01,000")
+    expect(panel.textContent).toContain("SRT transcript downloaded and copied")
+  })
+
   it("applies global presentation overrides to video subtitle spans", async () => {
     readConfigMock.mockResolvedValue({
       ...DEFAULT_ASTRA_CONFIG,
@@ -522,6 +1040,44 @@ describe("video platform subtitle translation", () => {
     expect(document.querySelector(".astra-video-subtitle")?.textContent).toBe("[translated] Manual caption")
   })
 
+  it("honors the currently selected YouTube caption track when the player menu exposes one", async () => {
+    setLocation("www.youtube.com", "/watch")
+    appendYouTubeFixture("", 0.2)
+    document.body.insertAdjacentHTML("beforeend", `
+      <div class="ytp-caption-menuitem" aria-checked="true">
+        <span class="ytp-menuitem-label">English (auto-generated)</span>
+      </div>
+    `)
+    setYouTubePlayerResponse([
+      {
+        baseUrl: "https://www.youtube.com/api/timedtext?v=abc123&lang=en-manual",
+        languageCode: "en",
+        kind: "standard",
+        isTranslatable: true,
+        name: { simpleText: "English" },
+      },
+      {
+        baseUrl: "https://www.youtube.com/api/timedtext?v=abc123&lang=en-asr",
+        languageCode: "en",
+        kind: "asr",
+        isTranslatable: true,
+        name: { simpleText: "English (auto-generated)" },
+      },
+    ])
+    fetchMock.mockImplementation(async (input: RequestInfo | URL) => ({
+      ok: true,
+      text: async () => String(input).includes("en-asr")
+        ? timedTextJson([{ startMs: 0, durationMs: 900, text: "Selected ASR caption" }])
+        : timedTextJson([{ startMs: 0, durationMs: 900, text: "Manual caption" }]),
+    } as Response))
+
+    await startVideoSubtitleTranslation()
+    await flushPromises(8)
+
+    expect(String(fetchMock.mock.calls[0]?.[0] ?? "")).toContain("en-asr")
+    expect(document.querySelector(".astra-video-subtitle")?.textContent).toBe("[translated] Selected ASR caption")
+  })
+
   it("refreshes YouTube timedtext cues when the active caption track changes", async () => {
     setLocation("www.youtube.com", "/watch")
     const { container } = appendYouTubeFixture("", 0.2)
@@ -547,6 +1103,260 @@ describe("video platform subtitle translation", () => {
 
     expect(String(fetchMock.mock.calls.at(-1)?.[0] ?? "")).toContain("lang=ja")
     expect(document.querySelector(".astra-video-subtitle")?.textContent).toBe("[translated] 切换后的字幕")
+  })
+
+  it("keys YouTube timedtext cache by caption track fingerprint", async () => {
+    setLocation("www.youtube.com", "/watch")
+    const { container } = appendYouTubeFixture("", 0.2)
+    setYouTubePlayerResponse("https://www.youtube.com/api/timedtext?v=abc123&lang=en-manual")
+    fetchMock.mockImplementation(async (input: RequestInfo | URL) => ({
+      ok: true,
+      text: async () => timedTextJson([
+        {
+          startMs: 0,
+          durationMs: 900,
+          text: "Shared caption",
+        },
+      ]),
+    } as Response))
+
+    await startVideoSubtitleTranslation()
+    await flushPromises(8)
+    expect(document.querySelector(".astra-video-subtitle")?.textContent).toBe("[translated] Shared caption")
+
+    translateTextsMock.mockClear()
+    setYouTubePlayerResponse("https://www.youtube.com/api/timedtext?v=abc123&lang=ja")
+    container.innerHTML = '<div class="ytp-caption-window-bottom"><span class="ytp-caption-segment">Shared caption</span></div>'
+    await flushPromises(10)
+
+    expect(String(fetchMock.mock.calls.at(-1)?.[0] ?? "")).toContain("lang=ja")
+    expect(translateTextsMock).toHaveBeenCalledWith(expect.objectContaining({
+      texts: ["Shared caption"],
+      targetLang: DEFAULT_ASTRA_CONFIG.targetLang,
+      task: "translate",
+    }))
+  })
+
+  it("uses larger cue batches in fast subtitle mode", async () => {
+    readConfigMock.mockResolvedValue({
+      ...DEFAULT_ASTRA_CONFIG,
+      serviceMode: "fast",
+    })
+    setLocation("www.youtube.com", "/watch")
+    appendYouTubeFixture("", 0.2)
+    setYouTubePlayerResponse()
+    fetchMock.mockResolvedValue({
+      ok: true,
+      text: async () => timedTextJson(Array.from({ length: 25 }, (_, index) => ({
+        startMs: index * 1_000,
+        durationMs: 900,
+        text: `Cue ${index + 1}`,
+      }))),
+    } as Response)
+
+    await startVideoSubtitleTranslation()
+    await flushPromises(8)
+
+    expect(translateTextsMock).toHaveBeenCalledTimes(1)
+    expect(translateTextsMock).toHaveBeenCalledWith(expect.objectContaining({
+      texts: Array.from({ length: 25 }, (_, index) => `Cue ${index + 1}`),
+      serviceMode: "fast",
+    }))
+  })
+
+  it("groups fragmented cues into sentence windows in best quality subtitle mode", async () => {
+    readConfigMock.mockResolvedValue({
+      ...DEFAULT_ASTRA_CONFIG,
+      serviceMode: "best_quality",
+    })
+    setLocation("www.youtube.com", "/watch")
+    appendYouTubeFixture("", 0.2)
+    setYouTubePlayerResponse()
+    fetchMock.mockResolvedValue({
+      ok: true,
+      text: async () => timedTextJson([
+        { startMs: 0, durationMs: 600, text: "This is" },
+        { startMs: 650, durationMs: 700, text: "a fragmented caption." },
+        { startMs: 2_500, durationMs: 800, text: "Next sentence." },
+      ]),
+    } as Response)
+
+    await startVideoSubtitleTranslation()
+    await flushPromises(8)
+
+    expect(translateTextsMock).toHaveBeenCalledTimes(1)
+    expect(translateTextsMock).toHaveBeenCalledWith(expect.objectContaining({
+      texts: ["This is a fragmented caption.", "Next sentence."],
+      serviceMode: "best_quality",
+      customSystemPrompt: expect.stringContaining("Reconstruct fragmented captions"),
+    }))
+    expect(document.querySelector(".astra-video-subtitle")?.textContent).toBe("[translated] This is a fragmented caption.")
+  })
+
+  it("translates long YouTube transcripts by adaptive time windows and reuses cached windows", async () => {
+    setLocation("www.youtube.com", "/watch")
+    const { video, container } = appendYouTubeFixture("", 0.2)
+    Object.defineProperty(video, "playbackRate", {
+      configurable: true,
+      writable: true,
+      value: 2,
+    })
+    setYouTubePlayerResponse()
+    fetchMock.mockResolvedValue({
+      ok: true,
+      text: async () => timedTextJson([
+        { startMs: 0, durationMs: 900, text: "Window zero active" },
+        { startMs: 60_000, durationMs: 900, text: "Window zero lookahead" },
+        { startMs: 290_000, durationMs: 900, text: "Window zero tail" },
+        { startMs: 360_000, durationMs: 900, text: "Window one first" },
+        { startMs: 420_000, durationMs: 900, text: "Window one active" },
+      ]),
+    } as Response)
+
+    await startVideoSubtitleTranslation()
+    await flushPromises(8)
+
+    expect(Number(container.dataset.astraCaptionLookaheadSeconds)).toBeGreaterThan(60)
+    expect(container.dataset.astraCaptionWindowSeconds).toBe("300")
+    expect(container.dataset.astraCaptionCachedWindows).toBe("1")
+    expect(translateTextsMock).toHaveBeenCalledTimes(1)
+    expect(translateTextsMock).toHaveBeenCalledWith(expect.objectContaining({
+      texts: ["Window zero active", "Window zero lookahead", "Window zero tail"],
+    }))
+
+    translateTextsMock.mockClear()
+    video.currentTime = 420
+    video.dispatchEvent(new Event("seeked"))
+    await flushPromises(8)
+
+    expect(container.dataset.astraCaptionCachedWindows).toBe("2")
+    expect(translateTextsMock).toHaveBeenCalledTimes(1)
+    expect(translateTextsMock).toHaveBeenCalledWith(expect.objectContaining({
+      texts: ["Window one first", "Window one active"],
+    }))
+    expect(document.querySelector(".astra-video-subtitle")?.textContent).toBe("[translated] Window one active")
+
+    translateTextsMock.mockClear()
+    video.currentTime = 0.2
+    video.dispatchEvent(new Event("seeked"))
+    await flushPromises(4)
+
+    expect(translateTextsMock).not.toHaveBeenCalled()
+    expect(document.querySelector(".astra-video-subtitle")?.textContent).toBe("[translated] Window zero active")
+  })
+
+  it("downgrades YouTube subtitle batch translation to fast mode after a quality-mode failure", async () => {
+    readConfigMock.mockResolvedValue({
+      ...DEFAULT_ASTRA_CONFIG,
+      serviceMode: "best_quality",
+    })
+    setLocation("www.youtube.com", "/watch")
+    const { container } = appendYouTubeFixture("", 0.2)
+    setYouTubePlayerResponse()
+    fetchMock.mockResolvedValue({
+      ok: true,
+      text: async () => timedTextJson([
+        { startMs: 0, durationMs: 900, text: "Quality fallback caption" },
+      ]),
+    } as Response)
+    translateTextsMock
+      .mockResolvedValueOnce({ ok: false, error: "provider temporarily unavailable" })
+      .mockResolvedValueOnce({ ok: true, translations: ["快速降级翻译"] })
+
+    await startVideoSubtitleTranslation()
+    await flushPromises(8)
+
+    expect(translateTextsMock).toHaveBeenNthCalledWith(1, expect.objectContaining({
+      serviceMode: "best_quality",
+      context: expect.objectContaining({
+        pageTitle: expect.any(String),
+        pageUrl: expect.stringContaining("youtube.com"),
+        contentSummary: expect.stringContaining("Quality fallback caption"),
+      }),
+      customSystemPrompt: expect.stringContaining("Reconstruct fragmented captions"),
+    }))
+    expect(translateTextsMock).toHaveBeenNthCalledWith(2, expect.objectContaining({ serviceMode: "fast" }))
+    expect(container.dataset.astraCaptionAnomalies).toContain("translation-downgraded")
+    expect(document.querySelector(".astra-video-subtitle")?.textContent).toBe("快速降级翻译")
+  })
+
+  it("retries YouTube subtitle translations per cue when a batch response is incomplete", async () => {
+    readConfigMock.mockResolvedValue({
+      ...DEFAULT_ASTRA_CONFIG,
+      serviceMode: "fast",
+    })
+    setLocation("www.youtube.com", "/watch")
+    const { video } = appendYouTubeFixture("", 0.2)
+    setYouTubePlayerResponse()
+    fetchMock.mockResolvedValue({
+      ok: true,
+      text: async () => timedTextJson([
+        { startMs: 0, durationMs: 900, text: "First retry cue" },
+        { startMs: 1200, durationMs: 900, text: "Second retry cue" },
+      ]),
+    } as Response)
+    translateTextsMock
+      .mockResolvedValueOnce({ ok: true, translations: ["batch only returned one"] })
+      .mockResolvedValueOnce({ ok: true, translations: ["逐句一"] })
+      .mockResolvedValueOnce({ ok: true, translations: ["逐句二"] })
+
+    await startVideoSubtitleTranslation()
+    await flushPromises(10)
+
+    expect(translateTextsMock).toHaveBeenCalledTimes(3)
+    expect(translateTextsMock).toHaveBeenNthCalledWith(2, expect.objectContaining({
+      texts: ["First retry cue"],
+      serviceMode: "fast",
+    }))
+    expect(translateTextsMock).toHaveBeenNthCalledWith(3, expect.objectContaining({
+      texts: ["Second retry cue"],
+      serviceMode: "fast",
+    }))
+    expect(document.querySelector(".astra-video-subtitle")?.textContent).toBe("逐句一")
+
+    video.currentTime = 1.4
+    video.dispatchEvent(new Event("seeked"))
+    await flushPromises(4)
+    expect(document.querySelector(".astra-video-subtitle")?.textContent).toBe("逐句二")
+  })
+
+  it("shows Retry in the YouTube player control when subtitle batch translation fails", async () => {
+    readConfigMock.mockResolvedValue({
+      ...DEFAULT_ASTRA_CONFIG,
+      serviceMode: "fast",
+    })
+    setLocation("www.youtube.com", "/watch")
+    document.body.innerHTML = `
+      <div class="html5-video-player">
+        <div class="ytp-right-controls"></div>
+      </div>
+      <video id="astra-video"></video>
+      <div class="ytp-caption-window-container">
+        <div class="ytp-caption-window-bottom"></div>
+      </div>
+    `
+    const video = document.querySelector("video") as HTMLVideoElement
+    Object.defineProperty(video, "currentTime", {
+      configurable: true,
+      writable: true,
+      value: 0.2,
+    })
+    setYouTubePlayerResponse()
+    fetchMock.mockResolvedValue({
+      ok: true,
+      text: async () => timedTextJson([
+        { startMs: 0, durationMs: 900, text: "Retry caption" },
+      ]),
+    } as Response)
+    translateTextsMock.mockResolvedValue({ ok: false, error: "provider unavailable" })
+
+    await startVideoSubtitleTranslation()
+    await flushPromises(8)
+
+    const container = document.querySelector(".ytp-caption-window-container") as HTMLElement
+    expect(container.dataset.astraCaptionStatus).toBe("translation-failed")
+    expect(container.dataset.astraCaptionAnomalies).toContain("translation-failed")
+    expect(document.querySelector("#astra-youtube-player-button")?.textContent).toContain("Retry")
   })
 
   it("reuses prefetched YouTube cues across seek/backtrack without retranslation", async () => {
@@ -639,6 +1449,7 @@ describe("video platform subtitle translation", () => {
   it("clears stale YouTube timedtext overlays when caption tracks disappear", async () => {
     setLocation("www.youtube.com", "/watch")
     const { container } = appendYouTubeFixture("", 0.2)
+    document.body.insertAdjacentHTML("afterbegin", '<div class="html5-video-player"><div class="ytp-right-controls"></div></div>')
     setYouTubePlayerResponse()
     fetchMock.mockResolvedValue({
       ok: true,
@@ -658,7 +1469,10 @@ describe("video platform subtitle translation", () => {
 
     expect(document.querySelector(".astra-video-subtitle")).toBeNull()
     expect(container.dataset.astraCaptionAnomalies).toContain("missing-track")
-    expect(container.dataset.astraCaptionStatus).toBe("dom-fallback")
+    expect(container.dataset.astraCaptionStatus).toBe("no-captions")
+    const control = document.querySelector("#astra-youtube-player-button") as HTMLButtonElement | null
+    expect(control?.textContent).toContain("No captions")
+    expect(control?.title).toBe("No captions available for this video.")
   })
 
   it("binds the YouTube hybrid pipeline to the video in the same player subtree", async () => {

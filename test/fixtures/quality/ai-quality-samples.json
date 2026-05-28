@@ -1,0 +1,1364 @@
+{
+  "schema": "astra-ai-quality-samples.v1",
+  "description": "Fixed P0 release-regression sample inventory for judging learning usefulness, not provider success alone. The text payloads are stored separately or generated from stable fixtures; this manifest is the release coverage contract.",
+  "rubricVersion": "2026-05-27",
+  "minimumP0Samples": 100,
+  "minimumAbilityCategories": 5,
+  "scoreScale": "1-5 manual rubric",
+  "weeklyCadence": "Run the fixed P0 set before each release and at least weekly while beta is active.",
+  "samples": [
+    {
+      "id": "translation_p0_001",
+      "priority": "P0",
+      "capability": "translation",
+      "sourceType": "page",
+      "sourceLang": "en",
+      "targetLang": "zh-CN",
+      "rubricFocus": [
+        "content_quality",
+        "learning_usefulness"
+      ],
+      "expectedRisk": "meaning_shift"
+    },
+    {
+      "id": "explanation_p0_002",
+      "priority": "P0",
+      "capability": "explanation",
+      "sourceType": "selection",
+      "sourceLang": "en",
+      "targetLang": "ja",
+      "rubricFocus": [
+        "content_quality",
+        "learning_usefulness"
+      ],
+      "expectedRisk": "too_verbose"
+    },
+    {
+      "id": "summary_p0_003",
+      "priority": "P0",
+      "capability": "summary",
+      "sourceType": "video",
+      "sourceLang": "zh-CN",
+      "targetLang": "en",
+      "rubricFocus": [
+        "content_quality",
+        "technical_success"
+      ],
+      "expectedRisk": "hallucination"
+    },
+    {
+      "id": "review_card_p0_004",
+      "priority": "P0",
+      "capability": "review_card",
+      "sourceType": "file",
+      "sourceLang": "ja",
+      "targetLang": "en",
+      "rubricFocus": [
+        "learning_usefulness",
+        "technical_success"
+      ],
+      "expectedRisk": "bad_card",
+      "requiresReusableCard": true
+    },
+    {
+      "id": "personalized_terms_p0_005",
+      "priority": "P0",
+      "capability": "personalized_terms",
+      "sourceType": "review",
+      "sourceLang": "es",
+      "targetLang": "en",
+      "rubricFocus": [
+        "content_quality",
+        "learning_usefulness"
+      ],
+      "expectedRisk": "term_inconsistency"
+    },
+    {
+      "id": "writing_correction_p0_006",
+      "priority": "P0",
+      "capability": "writing_correction",
+      "sourceType": "memory",
+      "sourceLang": "en",
+      "targetLang": "zh-CN",
+      "rubricFocus": [
+        "content_quality",
+        "learning_usefulness"
+      ],
+      "expectedRisk": "over_literal"
+    },
+    {
+      "id": "translation_p0_007",
+      "priority": "P0",
+      "capability": "translation",
+      "sourceType": "page",
+      "sourceLang": "en",
+      "targetLang": "ja",
+      "rubricFocus": [
+        "content_quality",
+        "learning_usefulness"
+      ],
+      "expectedRisk": "meaning_shift"
+    },
+    {
+      "id": "explanation_p0_008",
+      "priority": "P0",
+      "capability": "explanation",
+      "sourceType": "selection",
+      "sourceLang": "zh-CN",
+      "targetLang": "en",
+      "rubricFocus": [
+        "content_quality",
+        "learning_usefulness"
+      ],
+      "expectedRisk": "too_verbose"
+    },
+    {
+      "id": "summary_p0_009",
+      "priority": "P0",
+      "capability": "summary",
+      "sourceType": "video",
+      "sourceLang": "ja",
+      "targetLang": "en",
+      "rubricFocus": [
+        "content_quality",
+        "technical_success"
+      ],
+      "expectedRisk": "hallucination"
+    },
+    {
+      "id": "review_card_p0_010",
+      "priority": "P0",
+      "capability": "review_card",
+      "sourceType": "file",
+      "sourceLang": "es",
+      "targetLang": "en",
+      "rubricFocus": [
+        "learning_usefulness",
+        "technical_success"
+      ],
+      "expectedRisk": "unsafe_instruction_following",
+      "safetyProbe": true,
+      "requiresReusableCard": true
+    },
+    {
+      "id": "personalized_terms_p0_011",
+      "priority": "P0",
+      "capability": "personalized_terms",
+      "sourceType": "review",
+      "sourceLang": "en",
+      "targetLang": "zh-CN",
+      "rubricFocus": [
+        "content_quality",
+        "learning_usefulness"
+      ],
+      "expectedRisk": "term_inconsistency"
+    },
+    {
+      "id": "writing_correction_p0_012",
+      "priority": "P0",
+      "capability": "writing_correction",
+      "sourceType": "memory",
+      "sourceLang": "en",
+      "targetLang": "ja",
+      "rubricFocus": [
+        "content_quality",
+        "learning_usefulness"
+      ],
+      "expectedRisk": "over_literal"
+    },
+    {
+      "id": "translation_p0_013",
+      "priority": "P0",
+      "capability": "translation",
+      "sourceType": "page",
+      "sourceLang": "zh-CN",
+      "targetLang": "en",
+      "rubricFocus": [
+        "content_quality",
+        "learning_usefulness"
+      ],
+      "expectedRisk": "meaning_shift"
+    },
+    {
+      "id": "explanation_p0_014",
+      "priority": "P0",
+      "capability": "explanation",
+      "sourceType": "selection",
+      "sourceLang": "ja",
+      "targetLang": "en",
+      "rubricFocus": [
+        "content_quality",
+        "learning_usefulness"
+      ],
+      "expectedRisk": "too_verbose"
+    },
+    {
+      "id": "summary_p0_015",
+      "priority": "P0",
+      "capability": "summary",
+      "sourceType": "video",
+      "sourceLang": "es",
+      "targetLang": "en",
+      "rubricFocus": [
+        "content_quality",
+        "technical_success"
+      ],
+      "expectedRisk": "hallucination"
+    },
+    {
+      "id": "review_card_p0_016",
+      "priority": "P0",
+      "capability": "review_card",
+      "sourceType": "file",
+      "sourceLang": "en",
+      "targetLang": "zh-CN",
+      "rubricFocus": [
+        "learning_usefulness",
+        "technical_success"
+      ],
+      "expectedRisk": "bad_card",
+      "requiresReusableCard": true
+    },
+    {
+      "id": "personalized_terms_p0_017",
+      "priority": "P0",
+      "capability": "personalized_terms",
+      "sourceType": "review",
+      "sourceLang": "en",
+      "targetLang": "ja",
+      "rubricFocus": [
+        "content_quality",
+        "learning_usefulness"
+      ],
+      "expectedRisk": "term_inconsistency"
+    },
+    {
+      "id": "writing_correction_p0_018",
+      "priority": "P0",
+      "capability": "writing_correction",
+      "sourceType": "memory",
+      "sourceLang": "zh-CN",
+      "targetLang": "en",
+      "rubricFocus": [
+        "content_quality",
+        "learning_usefulness"
+      ],
+      "expectedRisk": "over_literal"
+    },
+    {
+      "id": "translation_p0_019",
+      "priority": "P0",
+      "capability": "translation",
+      "sourceType": "page",
+      "sourceLang": "ja",
+      "targetLang": "en",
+      "rubricFocus": [
+        "content_quality",
+        "learning_usefulness"
+      ],
+      "expectedRisk": "meaning_shift"
+    },
+    {
+      "id": "explanation_p0_020",
+      "priority": "P0",
+      "capability": "explanation",
+      "sourceType": "selection",
+      "sourceLang": "es",
+      "targetLang": "en",
+      "rubricFocus": [
+        "content_quality",
+        "learning_usefulness"
+      ],
+      "expectedRisk": "unsafe_instruction_following",
+      "safetyProbe": true
+    },
+    {
+      "id": "summary_p0_021",
+      "priority": "P0",
+      "capability": "summary",
+      "sourceType": "video",
+      "sourceLang": "en",
+      "targetLang": "zh-CN",
+      "rubricFocus": [
+        "content_quality",
+        "technical_success"
+      ],
+      "expectedRisk": "hallucination"
+    },
+    {
+      "id": "review_card_p0_022",
+      "priority": "P0",
+      "capability": "review_card",
+      "sourceType": "file",
+      "sourceLang": "en",
+      "targetLang": "ja",
+      "rubricFocus": [
+        "learning_usefulness",
+        "technical_success"
+      ],
+      "expectedRisk": "bad_card",
+      "requiresReusableCard": true
+    },
+    {
+      "id": "personalized_terms_p0_023",
+      "priority": "P0",
+      "capability": "personalized_terms",
+      "sourceType": "review",
+      "sourceLang": "zh-CN",
+      "targetLang": "en",
+      "rubricFocus": [
+        "content_quality",
+        "learning_usefulness"
+      ],
+      "expectedRisk": "term_inconsistency"
+    },
+    {
+      "id": "writing_correction_p0_024",
+      "priority": "P0",
+      "capability": "writing_correction",
+      "sourceType": "memory",
+      "sourceLang": "ja",
+      "targetLang": "en",
+      "rubricFocus": [
+        "content_quality",
+        "learning_usefulness"
+      ],
+      "expectedRisk": "over_literal"
+    },
+    {
+      "id": "translation_p0_025",
+      "priority": "P0",
+      "capability": "translation",
+      "sourceType": "page",
+      "sourceLang": "es",
+      "targetLang": "en",
+      "rubricFocus": [
+        "content_quality",
+        "learning_usefulness"
+      ],
+      "expectedRisk": "meaning_shift"
+    },
+    {
+      "id": "explanation_p0_026",
+      "priority": "P0",
+      "capability": "explanation",
+      "sourceType": "selection",
+      "sourceLang": "en",
+      "targetLang": "zh-CN",
+      "rubricFocus": [
+        "content_quality",
+        "learning_usefulness"
+      ],
+      "expectedRisk": "too_verbose"
+    },
+    {
+      "id": "summary_p0_027",
+      "priority": "P0",
+      "capability": "summary",
+      "sourceType": "video",
+      "sourceLang": "en",
+      "targetLang": "ja",
+      "rubricFocus": [
+        "content_quality",
+        "technical_success"
+      ],
+      "expectedRisk": "hallucination"
+    },
+    {
+      "id": "review_card_p0_028",
+      "priority": "P0",
+      "capability": "review_card",
+      "sourceType": "file",
+      "sourceLang": "zh-CN",
+      "targetLang": "en",
+      "rubricFocus": [
+        "learning_usefulness",
+        "technical_success"
+      ],
+      "expectedRisk": "bad_card",
+      "requiresReusableCard": true
+    },
+    {
+      "id": "personalized_terms_p0_029",
+      "priority": "P0",
+      "capability": "personalized_terms",
+      "sourceType": "review",
+      "sourceLang": "ja",
+      "targetLang": "en",
+      "rubricFocus": [
+        "content_quality",
+        "learning_usefulness"
+      ],
+      "expectedRisk": "term_inconsistency"
+    },
+    {
+      "id": "writing_correction_p0_030",
+      "priority": "P0",
+      "capability": "writing_correction",
+      "sourceType": "memory",
+      "sourceLang": "es",
+      "targetLang": "en",
+      "rubricFocus": [
+        "content_quality",
+        "learning_usefulness"
+      ],
+      "expectedRisk": "unsafe_instruction_following",
+      "safetyProbe": true
+    },
+    {
+      "id": "translation_p0_031",
+      "priority": "P0",
+      "capability": "translation",
+      "sourceType": "page",
+      "sourceLang": "en",
+      "targetLang": "zh-CN",
+      "rubricFocus": [
+        "content_quality",
+        "learning_usefulness"
+      ],
+      "expectedRisk": "meaning_shift"
+    },
+    {
+      "id": "explanation_p0_032",
+      "priority": "P0",
+      "capability": "explanation",
+      "sourceType": "selection",
+      "sourceLang": "en",
+      "targetLang": "ja",
+      "rubricFocus": [
+        "content_quality",
+        "learning_usefulness"
+      ],
+      "expectedRisk": "too_verbose"
+    },
+    {
+      "id": "summary_p0_033",
+      "priority": "P0",
+      "capability": "summary",
+      "sourceType": "video",
+      "sourceLang": "zh-CN",
+      "targetLang": "en",
+      "rubricFocus": [
+        "content_quality",
+        "technical_success"
+      ],
+      "expectedRisk": "hallucination"
+    },
+    {
+      "id": "review_card_p0_034",
+      "priority": "P0",
+      "capability": "review_card",
+      "sourceType": "file",
+      "sourceLang": "ja",
+      "targetLang": "en",
+      "rubricFocus": [
+        "learning_usefulness",
+        "technical_success"
+      ],
+      "expectedRisk": "bad_card",
+      "requiresReusableCard": true
+    },
+    {
+      "id": "personalized_terms_p0_035",
+      "priority": "P0",
+      "capability": "personalized_terms",
+      "sourceType": "review",
+      "sourceLang": "es",
+      "targetLang": "en",
+      "rubricFocus": [
+        "content_quality",
+        "learning_usefulness"
+      ],
+      "expectedRisk": "term_inconsistency"
+    },
+    {
+      "id": "writing_correction_p0_036",
+      "priority": "P0",
+      "capability": "writing_correction",
+      "sourceType": "memory",
+      "sourceLang": "en",
+      "targetLang": "zh-CN",
+      "rubricFocus": [
+        "content_quality",
+        "learning_usefulness"
+      ],
+      "expectedRisk": "over_literal"
+    },
+    {
+      "id": "translation_p0_037",
+      "priority": "P0",
+      "capability": "translation",
+      "sourceType": "page",
+      "sourceLang": "en",
+      "targetLang": "ja",
+      "rubricFocus": [
+        "content_quality",
+        "learning_usefulness"
+      ],
+      "expectedRisk": "meaning_shift"
+    },
+    {
+      "id": "explanation_p0_038",
+      "priority": "P0",
+      "capability": "explanation",
+      "sourceType": "selection",
+      "sourceLang": "zh-CN",
+      "targetLang": "en",
+      "rubricFocus": [
+        "content_quality",
+        "learning_usefulness"
+      ],
+      "expectedRisk": "too_verbose"
+    },
+    {
+      "id": "summary_p0_039",
+      "priority": "P0",
+      "capability": "summary",
+      "sourceType": "video",
+      "sourceLang": "ja",
+      "targetLang": "en",
+      "rubricFocus": [
+        "content_quality",
+        "technical_success"
+      ],
+      "expectedRisk": "hallucination"
+    },
+    {
+      "id": "review_card_p0_040",
+      "priority": "P0",
+      "capability": "review_card",
+      "sourceType": "file",
+      "sourceLang": "es",
+      "targetLang": "en",
+      "rubricFocus": [
+        "learning_usefulness",
+        "technical_success"
+      ],
+      "expectedRisk": "unsafe_instruction_following",
+      "safetyProbe": true,
+      "requiresReusableCard": true
+    },
+    {
+      "id": "personalized_terms_p0_041",
+      "priority": "P0",
+      "capability": "personalized_terms",
+      "sourceType": "review",
+      "sourceLang": "en",
+      "targetLang": "zh-CN",
+      "rubricFocus": [
+        "content_quality",
+        "learning_usefulness"
+      ],
+      "expectedRisk": "term_inconsistency"
+    },
+    {
+      "id": "writing_correction_p0_042",
+      "priority": "P0",
+      "capability": "writing_correction",
+      "sourceType": "memory",
+      "sourceLang": "en",
+      "targetLang": "ja",
+      "rubricFocus": [
+        "content_quality",
+        "learning_usefulness"
+      ],
+      "expectedRisk": "over_literal"
+    },
+    {
+      "id": "translation_p0_043",
+      "priority": "P0",
+      "capability": "translation",
+      "sourceType": "page",
+      "sourceLang": "zh-CN",
+      "targetLang": "en",
+      "rubricFocus": [
+        "content_quality",
+        "learning_usefulness"
+      ],
+      "expectedRisk": "meaning_shift"
+    },
+    {
+      "id": "explanation_p0_044",
+      "priority": "P0",
+      "capability": "explanation",
+      "sourceType": "selection",
+      "sourceLang": "ja",
+      "targetLang": "en",
+      "rubricFocus": [
+        "content_quality",
+        "learning_usefulness"
+      ],
+      "expectedRisk": "too_verbose"
+    },
+    {
+      "id": "summary_p0_045",
+      "priority": "P0",
+      "capability": "summary",
+      "sourceType": "video",
+      "sourceLang": "es",
+      "targetLang": "en",
+      "rubricFocus": [
+        "content_quality",
+        "technical_success"
+      ],
+      "expectedRisk": "hallucination"
+    },
+    {
+      "id": "review_card_p0_046",
+      "priority": "P0",
+      "capability": "review_card",
+      "sourceType": "file",
+      "sourceLang": "en",
+      "targetLang": "zh-CN",
+      "rubricFocus": [
+        "learning_usefulness",
+        "technical_success"
+      ],
+      "expectedRisk": "bad_card",
+      "requiresReusableCard": true
+    },
+    {
+      "id": "personalized_terms_p0_047",
+      "priority": "P0",
+      "capability": "personalized_terms",
+      "sourceType": "review",
+      "sourceLang": "en",
+      "targetLang": "ja",
+      "rubricFocus": [
+        "content_quality",
+        "learning_usefulness"
+      ],
+      "expectedRisk": "term_inconsistency"
+    },
+    {
+      "id": "writing_correction_p0_048",
+      "priority": "P0",
+      "capability": "writing_correction",
+      "sourceType": "memory",
+      "sourceLang": "zh-CN",
+      "targetLang": "en",
+      "rubricFocus": [
+        "content_quality",
+        "learning_usefulness"
+      ],
+      "expectedRisk": "over_literal"
+    },
+    {
+      "id": "translation_p0_049",
+      "priority": "P0",
+      "capability": "translation",
+      "sourceType": "page",
+      "sourceLang": "ja",
+      "targetLang": "en",
+      "rubricFocus": [
+        "content_quality",
+        "learning_usefulness"
+      ],
+      "expectedRisk": "meaning_shift"
+    },
+    {
+      "id": "explanation_p0_050",
+      "priority": "P0",
+      "capability": "explanation",
+      "sourceType": "selection",
+      "sourceLang": "es",
+      "targetLang": "en",
+      "rubricFocus": [
+        "content_quality",
+        "learning_usefulness"
+      ],
+      "expectedRisk": "unsafe_instruction_following",
+      "safetyProbe": true
+    },
+    {
+      "id": "summary_p0_051",
+      "priority": "P0",
+      "capability": "summary",
+      "sourceType": "video",
+      "sourceLang": "en",
+      "targetLang": "zh-CN",
+      "rubricFocus": [
+        "content_quality",
+        "technical_success"
+      ],
+      "expectedRisk": "hallucination"
+    },
+    {
+      "id": "review_card_p0_052",
+      "priority": "P0",
+      "capability": "review_card",
+      "sourceType": "file",
+      "sourceLang": "en",
+      "targetLang": "ja",
+      "rubricFocus": [
+        "learning_usefulness",
+        "technical_success"
+      ],
+      "expectedRisk": "bad_card",
+      "requiresReusableCard": true
+    },
+    {
+      "id": "personalized_terms_p0_053",
+      "priority": "P0",
+      "capability": "personalized_terms",
+      "sourceType": "review",
+      "sourceLang": "zh-CN",
+      "targetLang": "en",
+      "rubricFocus": [
+        "content_quality",
+        "learning_usefulness"
+      ],
+      "expectedRisk": "term_inconsistency"
+    },
+    {
+      "id": "writing_correction_p0_054",
+      "priority": "P0",
+      "capability": "writing_correction",
+      "sourceType": "memory",
+      "sourceLang": "ja",
+      "targetLang": "en",
+      "rubricFocus": [
+        "content_quality",
+        "learning_usefulness"
+      ],
+      "expectedRisk": "over_literal"
+    },
+    {
+      "id": "translation_p0_055",
+      "priority": "P0",
+      "capability": "translation",
+      "sourceType": "page",
+      "sourceLang": "es",
+      "targetLang": "en",
+      "rubricFocus": [
+        "content_quality",
+        "learning_usefulness"
+      ],
+      "expectedRisk": "meaning_shift"
+    },
+    {
+      "id": "explanation_p0_056",
+      "priority": "P0",
+      "capability": "explanation",
+      "sourceType": "selection",
+      "sourceLang": "en",
+      "targetLang": "zh-CN",
+      "rubricFocus": [
+        "content_quality",
+        "learning_usefulness"
+      ],
+      "expectedRisk": "too_verbose"
+    },
+    {
+      "id": "summary_p0_057",
+      "priority": "P0",
+      "capability": "summary",
+      "sourceType": "video",
+      "sourceLang": "en",
+      "targetLang": "ja",
+      "rubricFocus": [
+        "content_quality",
+        "technical_success"
+      ],
+      "expectedRisk": "hallucination"
+    },
+    {
+      "id": "review_card_p0_058",
+      "priority": "P0",
+      "capability": "review_card",
+      "sourceType": "file",
+      "sourceLang": "zh-CN",
+      "targetLang": "en",
+      "rubricFocus": [
+        "learning_usefulness",
+        "technical_success"
+      ],
+      "expectedRisk": "bad_card",
+      "requiresReusableCard": true
+    },
+    {
+      "id": "personalized_terms_p0_059",
+      "priority": "P0",
+      "capability": "personalized_terms",
+      "sourceType": "review",
+      "sourceLang": "ja",
+      "targetLang": "en",
+      "rubricFocus": [
+        "content_quality",
+        "learning_usefulness"
+      ],
+      "expectedRisk": "term_inconsistency"
+    },
+    {
+      "id": "writing_correction_p0_060",
+      "priority": "P0",
+      "capability": "writing_correction",
+      "sourceType": "memory",
+      "sourceLang": "es",
+      "targetLang": "en",
+      "rubricFocus": [
+        "content_quality",
+        "learning_usefulness"
+      ],
+      "expectedRisk": "unsafe_instruction_following",
+      "safetyProbe": true
+    },
+    {
+      "id": "translation_p0_061",
+      "priority": "P0",
+      "capability": "translation",
+      "sourceType": "page",
+      "sourceLang": "en",
+      "targetLang": "zh-CN",
+      "rubricFocus": [
+        "content_quality",
+        "learning_usefulness"
+      ],
+      "expectedRisk": "meaning_shift"
+    },
+    {
+      "id": "explanation_p0_062",
+      "priority": "P0",
+      "capability": "explanation",
+      "sourceType": "selection",
+      "sourceLang": "en",
+      "targetLang": "ja",
+      "rubricFocus": [
+        "content_quality",
+        "learning_usefulness"
+      ],
+      "expectedRisk": "too_verbose"
+    },
+    {
+      "id": "summary_p0_063",
+      "priority": "P0",
+      "capability": "summary",
+      "sourceType": "video",
+      "sourceLang": "zh-CN",
+      "targetLang": "en",
+      "rubricFocus": [
+        "content_quality",
+        "technical_success"
+      ],
+      "expectedRisk": "hallucination"
+    },
+    {
+      "id": "review_card_p0_064",
+      "priority": "P0",
+      "capability": "review_card",
+      "sourceType": "file",
+      "sourceLang": "ja",
+      "targetLang": "en",
+      "rubricFocus": [
+        "learning_usefulness",
+        "technical_success"
+      ],
+      "expectedRisk": "bad_card",
+      "requiresReusableCard": true
+    },
+    {
+      "id": "personalized_terms_p0_065",
+      "priority": "P0",
+      "capability": "personalized_terms",
+      "sourceType": "review",
+      "sourceLang": "es",
+      "targetLang": "en",
+      "rubricFocus": [
+        "content_quality",
+        "learning_usefulness"
+      ],
+      "expectedRisk": "term_inconsistency"
+    },
+    {
+      "id": "writing_correction_p0_066",
+      "priority": "P0",
+      "capability": "writing_correction",
+      "sourceType": "memory",
+      "sourceLang": "en",
+      "targetLang": "zh-CN",
+      "rubricFocus": [
+        "content_quality",
+        "learning_usefulness"
+      ],
+      "expectedRisk": "over_literal"
+    },
+    {
+      "id": "translation_p0_067",
+      "priority": "P0",
+      "capability": "translation",
+      "sourceType": "page",
+      "sourceLang": "en",
+      "targetLang": "ja",
+      "rubricFocus": [
+        "content_quality",
+        "learning_usefulness"
+      ],
+      "expectedRisk": "meaning_shift"
+    },
+    {
+      "id": "explanation_p0_068",
+      "priority": "P0",
+      "capability": "explanation",
+      "sourceType": "selection",
+      "sourceLang": "zh-CN",
+      "targetLang": "en",
+      "rubricFocus": [
+        "content_quality",
+        "learning_usefulness"
+      ],
+      "expectedRisk": "too_verbose"
+    },
+    {
+      "id": "summary_p0_069",
+      "priority": "P0",
+      "capability": "summary",
+      "sourceType": "video",
+      "sourceLang": "ja",
+      "targetLang": "en",
+      "rubricFocus": [
+        "content_quality",
+        "technical_success"
+      ],
+      "expectedRisk": "hallucination"
+    },
+    {
+      "id": "review_card_p0_070",
+      "priority": "P0",
+      "capability": "review_card",
+      "sourceType": "file",
+      "sourceLang": "es",
+      "targetLang": "en",
+      "rubricFocus": [
+        "learning_usefulness",
+        "technical_success"
+      ],
+      "expectedRisk": "unsafe_instruction_following",
+      "safetyProbe": true,
+      "requiresReusableCard": true
+    },
+    {
+      "id": "personalized_terms_p0_071",
+      "priority": "P0",
+      "capability": "personalized_terms",
+      "sourceType": "review",
+      "sourceLang": "en",
+      "targetLang": "zh-CN",
+      "rubricFocus": [
+        "content_quality",
+        "learning_usefulness"
+      ],
+      "expectedRisk": "term_inconsistency"
+    },
+    {
+      "id": "writing_correction_p0_072",
+      "priority": "P0",
+      "capability": "writing_correction",
+      "sourceType": "memory",
+      "sourceLang": "en",
+      "targetLang": "ja",
+      "rubricFocus": [
+        "content_quality",
+        "learning_usefulness"
+      ],
+      "expectedRisk": "over_literal"
+    },
+    {
+      "id": "translation_p0_073",
+      "priority": "P0",
+      "capability": "translation",
+      "sourceType": "page",
+      "sourceLang": "zh-CN",
+      "targetLang": "en",
+      "rubricFocus": [
+        "content_quality",
+        "learning_usefulness"
+      ],
+      "expectedRisk": "meaning_shift"
+    },
+    {
+      "id": "explanation_p0_074",
+      "priority": "P0",
+      "capability": "explanation",
+      "sourceType": "selection",
+      "sourceLang": "ja",
+      "targetLang": "en",
+      "rubricFocus": [
+        "content_quality",
+        "learning_usefulness"
+      ],
+      "expectedRisk": "too_verbose"
+    },
+    {
+      "id": "summary_p0_075",
+      "priority": "P0",
+      "capability": "summary",
+      "sourceType": "video",
+      "sourceLang": "es",
+      "targetLang": "en",
+      "rubricFocus": [
+        "content_quality",
+        "technical_success"
+      ],
+      "expectedRisk": "hallucination"
+    },
+    {
+      "id": "review_card_p0_076",
+      "priority": "P0",
+      "capability": "review_card",
+      "sourceType": "file",
+      "sourceLang": "en",
+      "targetLang": "zh-CN",
+      "rubricFocus": [
+        "learning_usefulness",
+        "technical_success"
+      ],
+      "expectedRisk": "bad_card",
+      "requiresReusableCard": true
+    },
+    {
+      "id": "personalized_terms_p0_077",
+      "priority": "P0",
+      "capability": "personalized_terms",
+      "sourceType": "review",
+      "sourceLang": "en",
+      "targetLang": "ja",
+      "rubricFocus": [
+        "content_quality",
+        "learning_usefulness"
+      ],
+      "expectedRisk": "term_inconsistency"
+    },
+    {
+      "id": "writing_correction_p0_078",
+      "priority": "P0",
+      "capability": "writing_correction",
+      "sourceType": "memory",
+      "sourceLang": "zh-CN",
+      "targetLang": "en",
+      "rubricFocus": [
+        "content_quality",
+        "learning_usefulness"
+      ],
+      "expectedRisk": "over_literal"
+    },
+    {
+      "id": "translation_p0_079",
+      "priority": "P0",
+      "capability": "translation",
+      "sourceType": "page",
+      "sourceLang": "ja",
+      "targetLang": "en",
+      "rubricFocus": [
+        "content_quality",
+        "learning_usefulness"
+      ],
+      "expectedRisk": "meaning_shift"
+    },
+    {
+      "id": "explanation_p0_080",
+      "priority": "P0",
+      "capability": "explanation",
+      "sourceType": "selection",
+      "sourceLang": "es",
+      "targetLang": "en",
+      "rubricFocus": [
+        "content_quality",
+        "learning_usefulness"
+      ],
+      "expectedRisk": "unsafe_instruction_following",
+      "safetyProbe": true
+    },
+    {
+      "id": "summary_p0_081",
+      "priority": "P0",
+      "capability": "summary",
+      "sourceType": "video",
+      "sourceLang": "en",
+      "targetLang": "zh-CN",
+      "rubricFocus": [
+        "content_quality",
+        "technical_success"
+      ],
+      "expectedRisk": "hallucination"
+    },
+    {
+      "id": "review_card_p0_082",
+      "priority": "P0",
+      "capability": "review_card",
+      "sourceType": "file",
+      "sourceLang": "en",
+      "targetLang": "ja",
+      "rubricFocus": [
+        "learning_usefulness",
+        "technical_success"
+      ],
+      "expectedRisk": "bad_card",
+      "requiresReusableCard": true
+    },
+    {
+      "id": "personalized_terms_p0_083",
+      "priority": "P0",
+      "capability": "personalized_terms",
+      "sourceType": "review",
+      "sourceLang": "zh-CN",
+      "targetLang": "en",
+      "rubricFocus": [
+        "content_quality",
+        "learning_usefulness"
+      ],
+      "expectedRisk": "term_inconsistency"
+    },
+    {
+      "id": "writing_correction_p0_084",
+      "priority": "P0",
+      "capability": "writing_correction",
+      "sourceType": "memory",
+      "sourceLang": "ja",
+      "targetLang": "en",
+      "rubricFocus": [
+        "content_quality",
+        "learning_usefulness"
+      ],
+      "expectedRisk": "over_literal"
+    },
+    {
+      "id": "translation_p0_085",
+      "priority": "P0",
+      "capability": "translation",
+      "sourceType": "page",
+      "sourceLang": "es",
+      "targetLang": "en",
+      "rubricFocus": [
+        "content_quality",
+        "learning_usefulness"
+      ],
+      "expectedRisk": "meaning_shift"
+    },
+    {
+      "id": "explanation_p0_086",
+      "priority": "P0",
+      "capability": "explanation",
+      "sourceType": "selection",
+      "sourceLang": "en",
+      "targetLang": "zh-CN",
+      "rubricFocus": [
+        "content_quality",
+        "learning_usefulness"
+      ],
+      "expectedRisk": "too_verbose"
+    },
+    {
+      "id": "summary_p0_087",
+      "priority": "P0",
+      "capability": "summary",
+      "sourceType": "video",
+      "sourceLang": "en",
+      "targetLang": "ja",
+      "rubricFocus": [
+        "content_quality",
+        "technical_success"
+      ],
+      "expectedRisk": "hallucination"
+    },
+    {
+      "id": "review_card_p0_088",
+      "priority": "P0",
+      "capability": "review_card",
+      "sourceType": "file",
+      "sourceLang": "zh-CN",
+      "targetLang": "en",
+      "rubricFocus": [
+        "learning_usefulness",
+        "technical_success"
+      ],
+      "expectedRisk": "bad_card",
+      "requiresReusableCard": true
+    },
+    {
+      "id": "personalized_terms_p0_089",
+      "priority": "P0",
+      "capability": "personalized_terms",
+      "sourceType": "review",
+      "sourceLang": "ja",
+      "targetLang": "en",
+      "rubricFocus": [
+        "content_quality",
+        "learning_usefulness"
+      ],
+      "expectedRisk": "term_inconsistency"
+    },
+    {
+      "id": "writing_correction_p0_090",
+      "priority": "P0",
+      "capability": "writing_correction",
+      "sourceType": "memory",
+      "sourceLang": "es",
+      "targetLang": "en",
+      "rubricFocus": [
+        "content_quality",
+        "learning_usefulness"
+      ],
+      "expectedRisk": "unsafe_instruction_following",
+      "safetyProbe": true
+    },
+    {
+      "id": "translation_p0_091",
+      "priority": "P0",
+      "capability": "translation",
+      "sourceType": "page",
+      "sourceLang": "en",
+      "targetLang": "zh-CN",
+      "rubricFocus": [
+        "content_quality",
+        "learning_usefulness"
+      ],
+      "expectedRisk": "meaning_shift"
+    },
+    {
+      "id": "explanation_p0_092",
+      "priority": "P0",
+      "capability": "explanation",
+      "sourceType": "selection",
+      "sourceLang": "en",
+      "targetLang": "ja",
+      "rubricFocus": [
+        "content_quality",
+        "learning_usefulness"
+      ],
+      "expectedRisk": "too_verbose"
+    },
+    {
+      "id": "summary_p0_093",
+      "priority": "P0",
+      "capability": "summary",
+      "sourceType": "video",
+      "sourceLang": "zh-CN",
+      "targetLang": "en",
+      "rubricFocus": [
+        "content_quality",
+        "technical_success"
+      ],
+      "expectedRisk": "hallucination"
+    },
+    {
+      "id": "review_card_p0_094",
+      "priority": "P0",
+      "capability": "review_card",
+      "sourceType": "file",
+      "sourceLang": "ja",
+      "targetLang": "en",
+      "rubricFocus": [
+        "learning_usefulness",
+        "technical_success"
+      ],
+      "expectedRisk": "bad_card",
+      "requiresReusableCard": true
+    },
+    {
+      "id": "personalized_terms_p0_095",
+      "priority": "P0",
+      "capability": "personalized_terms",
+      "sourceType": "review",
+      "sourceLang": "es",
+      "targetLang": "en",
+      "rubricFocus": [
+        "content_quality",
+        "learning_usefulness"
+      ],
+      "expectedRisk": "term_inconsistency"
+    },
+    {
+      "id": "writing_correction_p0_096",
+      "priority": "P0",
+      "capability": "writing_correction",
+      "sourceType": "memory",
+      "sourceLang": "en",
+      "targetLang": "zh-CN",
+      "rubricFocus": [
+        "content_quality",
+        "learning_usefulness"
+      ],
+      "expectedRisk": "over_literal"
+    },
+    {
+      "id": "translation_p0_097",
+      "priority": "P0",
+      "capability": "translation",
+      "sourceType": "page",
+      "sourceLang": "en",
+      "targetLang": "ja",
+      "rubricFocus": [
+        "content_quality",
+        "learning_usefulness"
+      ],
+      "expectedRisk": "meaning_shift"
+    },
+    {
+      "id": "explanation_p0_098",
+      "priority": "P0",
+      "capability": "explanation",
+      "sourceType": "selection",
+      "sourceLang": "zh-CN",
+      "targetLang": "en",
+      "rubricFocus": [
+        "content_quality",
+        "learning_usefulness"
+      ],
+      "expectedRisk": "too_verbose"
+    },
+    {
+      "id": "summary_p0_099",
+      "priority": "P0",
+      "capability": "summary",
+      "sourceType": "video",
+      "sourceLang": "ja",
+      "targetLang": "en",
+      "rubricFocus": [
+        "content_quality",
+        "technical_success"
+      ],
+      "expectedRisk": "hallucination"
+    },
+    {
+      "id": "review_card_p0_100",
+      "priority": "P0",
+      "capability": "review_card",
+      "sourceType": "file",
+      "sourceLang": "es",
+      "targetLang": "en",
+      "rubricFocus": [
+        "learning_usefulness",
+        "technical_success"
+      ],
+      "expectedRisk": "unsafe_instruction_following",
+      "safetyProbe": true,
+      "requiresReusableCard": true
+    },
+    {
+      "id": "personalized_terms_p0_101",
+      "priority": "P0",
+      "capability": "personalized_terms",
+      "sourceType": "review",
+      "sourceLang": "en",
+      "targetLang": "zh-CN",
+      "rubricFocus": [
+        "content_quality",
+        "learning_usefulness"
+      ],
+      "expectedRisk": "term_inconsistency"
+    },
+    {
+      "id": "writing_correction_p0_102",
+      "priority": "P0",
+      "capability": "writing_correction",
+      "sourceType": "memory",
+      "sourceLang": "en",
+      "targetLang": "ja",
+      "rubricFocus": [
+        "content_quality",
+        "learning_usefulness"
+      ],
+      "expectedRisk": "over_literal"
+    }
+  ]
+}

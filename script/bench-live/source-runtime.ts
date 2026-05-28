@@ -3,7 +3,7 @@ import { writeFile } from "node:fs/promises"
 
 import { JSDOM } from "jsdom"
 
-import { DEFAULT_ASTRA_CONFIG, type AstraConfig } from "@/types/config"
+import { DEFAULT_ASTRA_CONFIG, type AstraConfig, type ContentScope } from "@/types/config"
 import type { RuntimeResponse } from "@/types/messages"
 import type { PageTranslationExecution } from "../bench/evaluators/page-translation"
 import {
@@ -74,7 +74,7 @@ interface PageTranslateModule {
     targetLang?: string
     translationMode?: "bilingual" | "translation-only"
     translationTheme?: "default" | "underline" | "highlight"
-    contentScope?: "page" | "article"
+    contentScope?: ContentScope
     privacyMode?: boolean
     selectors?: string[]
     excludeSelectors?: string[]
@@ -117,6 +117,7 @@ interface SourceBackedPageTranslationResult {
   html: string
   pageTranslation: PageTranslationExecution
   requestCount: number
+  proof?: Record<string, unknown>
   translateCalls: SourceTranslateCallRecord[]
 }
 
@@ -678,6 +679,7 @@ function installDomGlobals(window: {
   navigator: Navigator
   HTMLElement: typeof HTMLElement
   Node: typeof Node
+  ShadowRoot: typeof ShadowRoot
   MutationObserver: typeof MutationObserver
   getComputedStyle: typeof getComputedStyle
   history: History
@@ -689,6 +691,7 @@ function installDomGlobals(window: {
     setGlobalValue("navigator", window.navigator),
     setGlobalValue("HTMLElement", window.HTMLElement),
     setGlobalValue("Node", window.Node),
+    setGlobalValue("ShadowRoot", window.ShadowRoot),
     setGlobalValue("MutationObserver", window.MutationObserver),
     setGlobalValue("getComputedStyle", window.getComputedStyle.bind(window)),
     setGlobalValue("history", window.history),
@@ -705,13 +708,15 @@ export async function runSourceBackedPageTranslation(params: {
   url: string
   title: string
   targetLang?: string
-  contentScope?: "page" | "article"
+  contentScope?: ContentScope
   translationMode?: "bilingual" | "translation-only"
   privacyMode?: boolean
   browserConfig?: Partial<AstraConfig>
   snapshotHtmlPath?: string
   timeoutMs?: number
   translateBatch?: (payload: SourceTranslateCallRecord["payload"]) => string[] | RuntimeResponse
+  mutateDocument?: (doc: Document) => void
+  inspectDocument?: (doc: Document) => Record<string, unknown>
 }) {
   const fakeIndexedDb = await import("fake-indexeddb")
   Object.assign(globalThis, {
@@ -737,6 +742,7 @@ export async function runSourceBackedPageTranslation(params: {
 
   try {
     injectLiveTranslationStyles(dom.window.document)
+    params.mutateDocument?.(dom.window.document)
 
     const expected = buildExpectedPageTranslationTexts(dom.window.document, contentScope)
     const defaultConfig: AstraConfig = {
@@ -749,6 +755,7 @@ export async function runSourceBackedPageTranslation(params: {
       inputTranslationMode: "replace",
       languageLevel: "intermediate",
       explainMode: "deep",
+      serviceMode: "automatic",
       explanationGlossary: [],
       privacyMode: params.privacyMode ?? false,
       provider: {
@@ -808,6 +815,7 @@ export async function runSourceBackedPageTranslation(params: {
           params.timeoutMs ?? 4_000,
         )
 
+        const proof = params.inspectDocument?.(dom.window.document)
         const html = dom.serialize()
         if (params.snapshotHtmlPath) {
           await writeFile(params.snapshotHtmlPath, html, "utf8")
@@ -829,6 +837,7 @@ export async function runSourceBackedPageTranslation(params: {
             ],
           }),
           requestCount: browserController.getTranslateCalls().length,
+          ...(proof ? { proof } : {}),
           translateCalls: browserController.getTranslateCalls().map((call) => ({
             payload: {
               texts: call.payload.texts,
@@ -896,6 +905,7 @@ export async function runSourceBackedSiteRuleUpdateAutomation(params: {
       inputTranslationMode: "replace",
       languageLevel: "intermediate",
       explainMode: "deep",
+      serviceMode: "automatic",
       explanationGlossary: [],
       privacyMode: false,
       provider: {
@@ -1095,6 +1105,7 @@ export async function runSourceBackedProviderSwitchAutomation(params: {
       inputTranslationMode: "replace",
       languageLevel: "intermediate",
       explainMode: "deep",
+      serviceMode: "automatic",
       explanationGlossary: [],
       privacyMode: false,
       provider: {
@@ -1320,6 +1331,7 @@ export async function runSourceBackedBackgroundRelayOnlyPageTranslation(params: 
       inputTranslationMode: "replace",
       languageLevel: "intermediate",
       explainMode: "deep",
+      serviceMode: "automatic",
       explanationGlossary: [],
       privacyMode: false,
       provider: {
@@ -1485,6 +1497,7 @@ export async function runSourceBackedBackgroundDirectSuccessPageTranslation(para
       inputTranslationMode: "replace",
       languageLevel: "intermediate",
       explainMode: "deep",
+      serviceMode: "automatic",
       explanationGlossary: [],
       privacyMode: false,
       provider: {
@@ -1656,6 +1669,7 @@ export async function runSourceBackedBackgroundDirectRelayFallbackPageTranslatio
       inputTranslationMode: "replace",
       languageLevel: "intermediate",
       explainMode: "deep",
+      serviceMode: "automatic",
       explanationGlossary: [],
       privacyMode: false,
       provider: {
@@ -1827,6 +1841,7 @@ export async function runSourceBackedProviderAndSiteRuleUpdateAutomation(params:
       inputTranslationMode: "replace",
       languageLevel: "intermediate",
       explainMode: "deep",
+      serviceMode: "automatic",
       explanationGlossary: [],
       privacyMode: false,
       provider: {
@@ -2070,6 +2085,7 @@ export async function runSourceBackedSpaNavigationAutomation(params: {
       inputTranslationMode: "replace",
       languageLevel: "intermediate",
       explainMode: "deep",
+      serviceMode: "automatic",
       explanationGlossary: [],
       privacyMode: false,
       provider: {
@@ -2256,6 +2272,7 @@ export async function runSourceBackedRapidSpaNavigationAutomation(params: {
       inputTranslationMode: "replace",
       languageLevel: "intermediate",
       explainMode: "deep",
+      serviceMode: "automatic",
       explanationGlossary: [],
       privacyMode: false,
       provider: {

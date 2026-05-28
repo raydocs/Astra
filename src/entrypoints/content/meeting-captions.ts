@@ -12,6 +12,7 @@ import {
   resolveSiteTranslationSettings,
   type AstraConfig,
   type ResolvedSiteTranslationSettings,
+  type ServiceMode,
 } from "@/types/config"
 import type { SubtitleQualitySnapshot } from "@/types/translation"
 
@@ -39,6 +40,7 @@ interface MeetingCaptionSession {
   containerObserver: MutationObserver
   container: Element
   targetLang: string
+  serviceMode: ServiceMode
   presentation: CaptionPresentationStyle
   debounceTimer: number | null
   lastProcessedText: WeakMap<HTMLElement, string>
@@ -119,14 +121,20 @@ function resolveCaptionPresentationStyle(
 
 async function getResolvedCaptionSettings(): Promise<{
   targetLang: string
+  serviceMode: ServiceMode
   presentation: CaptionPresentationStyle
 }> {
   const config = await readConfig()
   const resolved = resolveSiteTranslationSettings(config, window.location.hostname)
   return {
     targetLang: resolved.targetLang,
+    serviceMode: config.serviceMode,
     presentation: resolveCaptionPresentationStyle(config, resolved),
   }
+}
+
+function makeCaptionCacheKey(sourceText: string, targetLang: string, serviceMode: ServiceMode): string {
+  return `${sourceText}|${targetLang}|${serviceMode}`
 }
 
 function injectStyles(): void {
@@ -215,7 +223,7 @@ function resolveCaptionSynchronouslyFromCache(
     return { kind: "resolved" }
   }
 
-  const cacheKey = `${sourceText}|${session.targetLang}`
+  const cacheKey = makeCaptionCacheKey(sourceText, session.targetLang, session.serviceMode)
   const cached = cacheGet(cacheKey)
   if (cached) {
     session.lastProcessedText.set(captionElement, sourceText)
@@ -248,6 +256,7 @@ async function translateAndAppend(
     const result = await runInlineAction({
       text: sourceText,
       targetLang: session.targetLang,
+      serviceMode: session.serviceMode,
       task: "translate",
     })
 
@@ -408,7 +417,7 @@ export async function startMeetingCaptionTranslation(): Promise<boolean> {
   const platform = detectMeetingPlatform()
   if (!platform) return false
 
-  const { targetLang, presentation } = await getResolvedCaptionSettings()
+  const { targetLang, serviceMode, presentation } = await getResolvedCaptionSettings()
   if (generation !== sessionGeneration || activeSession) return false
   injectStyles()
 
@@ -434,6 +443,7 @@ export async function startMeetingCaptionTranslation(): Promise<boolean> {
     containerObserver,
     container,
     targetLang,
+    serviceMode,
     presentation,
     debounceTimer: null,
     lastProcessedText: new WeakMap(),

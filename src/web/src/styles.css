@@ -252,6 +252,180 @@ button {
   min-height: 2.75rem;
 }
 
+/* Mobile Review Companion — PWA validation surface for "web capture, mobile habit". */
+.mobile-review-shell {
+  width: min(100%, 720px);
+  margin: 0 auto;
+  display: grid;
+  gap: 1rem;
+}
+
+.mobile-review-hero,
+.mobile-review-card,
+.mobile-review-complete {
+  background:
+    linear-gradient(145deg, color-mix(in srgb, var(--bg-secondary) 92%, #fff7e5 8%), var(--bg-secondary)),
+    radial-gradient(circle at 12% 8%, color-mix(in srgb, var(--accent-warm) 12%, transparent), transparent 34%);
+  border-color: color-mix(in srgb, var(--separator-strong) 70%, var(--accent-warm));
+  box-shadow: 0 18px 60px color-mix(in srgb, var(--label-primary) 10%, transparent);
+}
+
+.mobile-review-date,
+.mobile-card-kind,
+.mobile-answer-label {
+  color: var(--label-secondary);
+  font-size: 0.78rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.mobile-review-hero h2,
+.mobile-review-complete h2 {
+  max-width: 14em;
+  margin-bottom: 0.75rem;
+  font-size: clamp(2rem, 6vw, 3.4rem);
+  line-height: 0.98;
+}
+
+.mobile-review-summary,
+.mobile-source-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  align-items: center;
+  color: var(--label-secondary);
+  font-size: 0.9rem;
+}
+
+.mobile-review-summary span,
+.source-badge {
+  display: inline-flex;
+  align-items: center;
+  border: 1px solid color-mix(in srgb, var(--accent-warm) 36%, var(--separator));
+  border-radius: var(--border-radius-pill);
+  background: color-mix(in srgb, var(--accent-warm) 10%, transparent);
+  color: var(--label-primary);
+  padding: 0.34rem 0.65rem;
+}
+
+.mobile-review-progress {
+  display: flex;
+  gap: 0.4rem;
+  margin-top: 1.25rem;
+}
+
+.mobile-review-progress span {
+  flex: 1 1 0;
+  height: 0.4rem;
+  border-radius: var(--border-radius-pill);
+  background: color-mix(in srgb, var(--label-primary) 12%, transparent);
+}
+
+.mobile-review-progress span.is-complete {
+  background: color-mix(in srgb, var(--accent-red) 72%, var(--accent-warm));
+}
+
+.mobile-source-row {
+  justify-content: space-between;
+  margin-bottom: 1.25rem;
+}
+
+.mobile-card-face {
+  min-height: 13rem;
+  display: grid;
+  align-content: center;
+  gap: 1rem;
+  padding: clamp(1rem, 4vw, 2rem) 0;
+}
+
+.mobile-card-face h3 {
+  margin: 0;
+  font-size: clamp(2.4rem, 10vw, 4.75rem);
+  line-height: 1;
+}
+
+.mobile-card-context {
+  max-width: 36rem;
+  margin: 0;
+  color: var(--label-secondary);
+  font-family: var(--astra-font-serif);
+  font-size: clamp(1.05rem, 3vw, 1.45rem);
+  line-height: 1.5;
+}
+
+.mobile-show-answer {
+  width: 100%;
+  min-height: 3.25rem;
+}
+
+.mobile-card-answer {
+  display: grid;
+  gap: 0.7rem;
+  border-top: 1px solid var(--separator);
+  padding-top: 1rem;
+}
+
+.mobile-card-answer p {
+  margin: 0 0 0.5rem;
+  color: var(--label-primary);
+  font-size: 1.02rem;
+  line-height: 1.6;
+}
+
+.mobile-rating-row {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.6rem;
+  margin-top: 0.6rem;
+}
+
+.mobile-review-complete {
+  position: relative;
+  overflow: hidden;
+}
+
+.completion-stamp {
+  position: absolute;
+  top: 1.25rem;
+  right: 1.25rem;
+  transform: rotate(-8deg);
+  border: 2px solid color-mix(in srgb, var(--accent-red) 75%, var(--label-primary));
+  border-radius: 999px;
+  color: color-mix(in srgb, var(--accent-red) 84%, var(--label-primary));
+  font-family: var(--astra-font-serif);
+  font-size: 1.4rem;
+  padding: 0.35rem 0.75rem;
+}
+
+.mobile-library-row {
+  display: grid;
+  gap: 0.25rem;
+  border: 1px solid var(--separator);
+  border-radius: var(--border-radius-lg);
+  background: color-mix(in srgb, var(--bg-secondary) 72%, transparent);
+  padding: 0.9rem 1rem;
+}
+
+.mobile-library-row small {
+  color: var(--label-secondary);
+}
+
+@media (max-width: 760px) {
+  .mobile-review-shell {
+    width: 100%;
+  }
+
+  .mobile-rating-row {
+    grid-template-columns: 1fr;
+  }
+
+  .mobile-source-row {
+    align-items: flex-start;
+    justify-content: flex-start;
+  }
+}
+
 .public-message {
   max-width: 1180px;
   margin: 1rem auto 0;

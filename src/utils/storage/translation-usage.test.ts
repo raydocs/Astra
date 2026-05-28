@@ -36,6 +36,9 @@ describe("translation usage storage", () => {
       attemptedTransports: ["direct", "relay"],
       finalTransport: "relay",
       fallbackUsed: true,
+      cacheStatus: "partial",
+      fallbackReason: "timeout",
+      tier: "trial",
       success: false,
       errorCode: "PROVIDER_REQUEST_FAILED",
     })
@@ -51,6 +54,11 @@ describe("translation usage storage", () => {
     expect(summary.session.relayRequests).toBe(1)
     expect(summary.session.fallbackRequests).toBe(1)
     expect(summary.session.failedRequests).toBe(1)
+    expect(summary.session.byTaskClass).toMatchObject({ paragraph_understanding: 1, context_explanation: 1 })
+    expect(summary.session.byCostBucket).toMatchObject({ medium: 2 })
+    expect(summary.session.byCacheStatus).toMatchObject({ unknown: 1, partial: 1 })
+    expect(summary.session.byFallbackReason).toMatchObject({ none: 1, timeout: 1 })
+    expect(summary.session.byTier).toMatchObject({ unknown: 1, trial: 1 })
     expect(summary.session.chars).toBe("hello".length + "world".length + "explain this sentence".length)
     expect(summary.session.estimatedInputTokens).toBeGreaterThan(0)
     expect(summary.today.requests).toBe(2)
@@ -59,9 +67,15 @@ describe("translation usage storage", () => {
       finalTransport: "relay",
       fallbackUsed: true,
       route: "fallback",
+      cacheStatus: "partial",
+      fallbackReason: "timeout",
+      tier: "trial",
       success: false,
       errorCode: "PROVIDER_REQUEST_FAILED",
     })
+
+    const browser = (globalThis as unknown as { __ASTRA_TEST_BROWSER__: ReturnType<typeof createMockBrowser> }).__ASTRA_TEST_BROWSER__
+    expect(JSON.stringify(browser.__storage[TRANSLATION_USAGE_STORAGE_KEY])).not.toContain("explain this sentence")
   })
 
   it("keeps today totals but resets session totals after a new session starts", async () => {

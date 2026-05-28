@@ -1,4 +1,5 @@
 import type { AstraAccount, AstraPlan, AstraSession, AstraUsageSnapshot } from "@/types/auth"
+import { formatAstraPlanLabel, formatAstraSubscriptionStatusLabel } from "@/utils/astra/account-surface"
 import { t } from "@/utils/i18n"
 import { labelStyle } from "./styles"
 
@@ -28,9 +29,6 @@ export default function AuthSection({
   onEmailChange,
   onPasswordChange,
   onSignIn,
-  onChangePlan,
-  onOpenCheckout,
-  onOpenPortal,
   onSignOut,
 }: AuthSectionProps) {
   const isAuthenticatedSession = session?.identityMode === "authenticated"
@@ -60,16 +58,12 @@ export default function AuthSection({
           <div className="astra-site-sheet__card">
             <div style={{ fontSize: 13, color: "var(--astra-text-primary)", fontWeight: 600 }}>{resolvedAccount?.email ?? session.email}</div>
             <div style={{ fontSize: 12, color: "var(--astra-text-secondary)", marginTop: 4 }}>
-              {t("popup_currentPlan")}：{resolvedAccount?.plan ?? session.plan}
+              {t("popup_currentPlan")}：{formatAstraPlanLabel(resolvedAccount?.plan ?? session.plan)}
               {" · "}
-              {t("popup_planStatus")}：{resolvedAccount?.subscriptionStatus ?? session.subscriptionStatus}
-              {" · "}
-              Providers：{resolvedAccount?.providerEntitlements.join(", ") ?? session.providerEntitlements.join(", ")}
+              {t("popup_planStatus")}：{formatAstraSubscriptionStatusLabel(resolvedAccount?.subscriptionStatus ?? session.subscriptionStatus)}
             </div>
             <div style={{ fontSize: 12, color: "var(--astra-text-muted)", marginTop: 4 }}>
               Account：{resolvedAccount?.id ?? "loading"}
-              {" · "}
-              Relay：{resolvedAccount?.relayBaseURL ?? session.relayBaseURL}
             </div>
             <div style={{ fontSize: 12, color: "var(--astra-text-muted)", marginTop: 4 }}>
               Billing：{resolvedAccount?.billingEmail ?? session.email}
@@ -83,8 +77,6 @@ export default function AuthSection({
               {t("popup_remainingRequests")}：{resolvedUsage?.quota.remainingDailyRequests ?? session.quota.remainingDailyRequests}
               {" · "}
               {t("popup_remainingCharacters")}：{resolvedUsage?.quota.remainingDailyCharacters ?? session.quota.remainingDailyCharacters}
-              {" · "}
-              {t("popup_perMinuteLimit")}：{resolvedUsage?.quota.requestsPerMinuteLimit ?? session.quota.requestsPerMinuteLimit}
             </div>
             {resolvedUsage?.usage.lastRequestAt && (
               <div style={{ fontSize: 12, color: "var(--astra-text-muted)", marginTop: 4 }}>
@@ -101,17 +93,11 @@ export default function AuthSection({
                 {t("popup_recentUsage")}：
                 {resolvedUsage.usage.recentEvents.slice(0, 3).map((event) => (
                   <div key={`${event.timestamp}-${event.provider}`} style={{ marginTop: 2 }}>
-                    {event.provider} · {event.characterCount} chars · {event.timestamp}
+                    {event.characterCount} characters · {event.timestamp}
                   </div>
                 ))}
               </div>
             ) : null}
-            {session.sessionId && (
-              <div style={{ fontSize: 12, color: "var(--astra-text-muted)", marginTop: 4 }}>
-                Session：{session.sessionId}
-                {session.deviceId ? ` · Device ${session.deviceId}` : ""}
-              </div>
-            )}
             {session.expiresAt && (
               <div style={{ fontSize: 12, color: "var(--astra-text-muted)", marginTop: 4 }}>
                 {t("popup_expiresAt")}：{session.expiresAt}
@@ -150,40 +136,11 @@ export default function AuthSection({
         <div style={{ display: "flex", gap: 8, marginTop: 10, flexWrap: "wrap" }}>
           {isAuthenticatedSession && session ? (
             <>
-              {resolvedAccount?.plan !== "pro" && (
-                <button
-                  onClick={() => onOpenCheckout("pro")}
-                  className="astra-btn-primary"
-                  style={{ flex: 1 }}
-                  disabled={busy}
-                >
-                  {t("popup_upgradeToPro")}
-                </button>
-              )}
-              <button
-                onClick={onOpenPortal}
-                className="astra-btn-secondary"
-                style={{ flex: 1 }}
-                disabled={busy}
-              >
-                {t("popup_manageSubscription")}
-              </button>
-              <button
-                onClick={() => onChangePlan("free")}
-                className="astra-btn-secondary"
-                style={{ flex: 1 }}
-                disabled={busy || resolvedAccount?.plan === "free"}
-              >
-                {t("popup_switchToFree")}
-              </button>
-              <button
-                onClick={() => onChangePlan("pro")}
-                className="astra-btn-primary"
-                style={{ flex: 1 }}
-                disabled={busy || resolvedAccount?.plan === "pro"}
-              >
-                {t("popup_switchToPro")}
-              </button>
+              <div className="astra-site-sheet__card" data-testid="popup-free-beta-billing-boundary" style={{ flexBasis: "100%", fontSize: 12, color: "var(--astra-text-secondary)", lineHeight: 1.45 }}>
+                <strong style={{ color: "var(--astra-text-primary)" }}>Free public beta.</strong>
+                {" "}
+                Paid upgrades, Pro checkout, and billing portal access are not available during beta. The free beta includes a daily use limit.
+              </div>
               <button
                 onClick={onSignOut}
                 className="astra-btn-secondary"

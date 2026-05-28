@@ -122,6 +122,8 @@ describe("EpubReaderApp", () => {
     expect(container.textContent).toContain("Opened handoff.epub from Document Intake local handoff")
     expect(container.textContent).toContain("Mock Book")
     expect(container.textContent).toContain("Hello Astra chapter")
+    expect(container.querySelector('[data-testid="epub-reader-confidence-card"]')?.textContent).toContain("Quality Tier v1 · EPUB controlled reader")
+    expect(container.querySelector('[data-testid="epub-reader-confidence-card"]')?.textContent).toContain("High confidence")
     expect(container.textContent).not.toContain("Drop an ePub file here or click to select")
   })
 

@@ -1,5 +1,8 @@
+import type { AstraFallbackReason } from "@/types/operating-model"
+
 export type ProviderTransport = "direct" | "relay"
 export type ProviderRoute = "direct" | "relay" | "fallback"
+export type ProviderFallbackReason = AstraFallbackReason
 
 export type TranslationPathMarkerKind = "basic_direct" | "enhanced_relay" | "fallback" | "unreported"
 
@@ -8,6 +11,7 @@ export interface ProviderRoutingMetadata {
   attemptedTransports?: readonly ProviderTransport[]
   finalTransport?: ProviderTransport | null
   fallbackUsed?: boolean
+  fallbackReason?: ProviderFallbackReason
 }
 
 export interface TranslationPathMarker {
@@ -18,6 +22,7 @@ export interface TranslationPathMarker {
   attemptedTransports: ProviderTransport[]
   finalTransport: ProviderTransport | null
   fallbackUsed: boolean
+  fallbackReason: ProviderFallbackReason
   detail: string
 }
 
@@ -87,6 +92,7 @@ export function createTranslationPathMarker(metadata?: ProviderRoutingMetadata |
   const attemptedTransports = [...(metadata?.attemptedTransports ?? [])]
   const finalTransport = metadata?.finalTransport ?? null
   const fallbackUsed = Boolean(metadata?.fallbackUsed || route === "fallback")
+  const fallbackReason = metadata?.fallbackReason ?? (fallbackUsed ? "unknown" : "none")
   const kind: TranslationPathMarkerKind = fallbackUsed || route === "fallback"
     ? "fallback"
     : route === "direct" || finalTransport === "direct"
@@ -103,6 +109,7 @@ export function createTranslationPathMarker(metadata?: ProviderRoutingMetadata |
     attemptedTransports,
     finalTransport,
     fallbackUsed,
+    fallbackReason,
     detail: detailForPathMarker(metadata ?? undefined, kind),
   }
 }

@@ -283,6 +283,7 @@ export class VideoNoteService {
       if (!job) return
 
       const artifactTimestamp = new Date().toISOString()
+      const learningContext = job.request.capture?.learningContext
       const artifact: VideoNoteArtifactRecord = {
         ownerEmail: job.ownerEmail,
         id: randomUUID(),
@@ -299,12 +300,14 @@ export class VideoNoteService {
           transcriptLanguage,
           deepLinkTemplate,
           durationSec,
+          learningContext,
         }),
         transcriptSource,
         transcriptLanguage,
         transcriptSegments: normalizedSegments,
         deepLinkTemplate,
         durationSec,
+        ...(learningContext ? { learningContext } : {}),
         generatedAt: artifactTimestamp,
         updatedAt: artifactTimestamp,
       }

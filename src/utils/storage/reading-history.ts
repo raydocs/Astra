@@ -54,6 +54,25 @@ function normalizeReadingHistoryEntry(entry: ReadingHistoryEntry): ReadingHistor
   })
 }
 
+function buildReducedReadingHistoryUrl(url: string, hostname: string): string {
+  try {
+    const parsed = new URL(url)
+    return `${parsed.protocol}//${parsed.hostname}/`
+  } catch {
+    return hostname.trim() ? `https://${hostname.trim().toLowerCase()}/` : "astra-private://source/"
+  }
+}
+
+function reduceReadingHistoryEntry(entry: Omit<ReadingHistoryEntry, "id">): Omit<ReadingHistoryEntry, "id"> {
+  const hostname = entry.hostname.trim().toLowerCase()
+  return {
+    ...entry,
+    url: buildReducedReadingHistoryUrl(entry.url, hostname),
+    hostname,
+    title: "Private page",
+  }
+}
+
 function normalizeReadingHistoryEntries(entries: ReadingHistoryEntry[]): ReadingHistoryEntry[] {
   const byRecordId = new Map<string, ReadingHistoryEntry>()
 
@@ -91,10 +110,19 @@ async function writeReadingHistory(entries: ReadingHistoryEntry[]): Promise<void
 export async function recordPageTranslation(
   entry: Omit<ReadingHistoryEntry, "id">,
 ): Promise<void> {
+  const { resolveLearningMemoryWritePolicy } = await import("./learning-memory")
+  const policy = await resolveLearningMemoryWritePolicy({
+    surface: "source_history",
+    hostname: entry.hostname,
+    url: entry.url,
+  })
+  if (policy.decision === "suppress") return
+
+  const writableEntry = policy.decision === "reduce" ? reduceReadingHistoryEntry(entry) : entry
   const history = await getReadingHistory()
   const newEntry = normalizeReadingHistoryEntry({
-    id: buildReadingHistoryRecordId(entry.url),
-    ...entry,
+    id: buildReadingHistoryRecordId(writableEntry.url),
+    ...writableEntry,
   })
 
   await writeReadingHistory([

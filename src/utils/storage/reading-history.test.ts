@@ -8,6 +8,8 @@ import {
   buildReadingHistoryRecordId,
 } from "./reading-history"
 import { createMockBrowser, setMockBrowser } from "../../../test/utils/mockBrowser"
+import { saveConfig } from "./config"
+import { excludeHostnameFromPersonalization } from "./learning-profile"
 
 describe("reading-history storage", () => {
   beforeEach(() => {
@@ -33,6 +35,43 @@ describe("reading-history storage", () => {
       visitedAt: 1000,
     })
     expect(history[0].id).toBe(buildReadingHistoryRecordId("https://example.com/article"))
+  })
+
+  it("reduces automatic page translation metadata under Privacy Mode", async () => {
+    await saveConfig({ privacyMode: true })
+
+    await recordPageTranslation({
+      url: "https://private.example/sensitive/path?token=secret#section",
+      hostname: "private.example",
+      title: "Sensitive Full Title",
+      wordsTranslated: 120,
+      visitedAt: 1000,
+    })
+
+    const history = await getReadingHistory()
+    expect(history).toHaveLength(1)
+    expect(history[0]).toMatchObject({
+      id: "https://private.example/",
+      url: "https://private.example/",
+      hostname: "private.example",
+      title: "Private page",
+      wordsTranslated: 120,
+      visitedAt: 1000,
+    })
+  })
+
+  it("suppresses automatic page translation history for excluded hosts", async () => {
+    await excludeHostnameFromPersonalization("private.example")
+
+    await recordPageTranslation({
+      url: "https://private.example/sensitive/path",
+      hostname: "private.example",
+      title: "Sensitive Full Title",
+      wordsTranslated: 120,
+      visitedAt: 1000,
+    })
+
+    expect(await getReadingHistory()).toEqual([])
   })
 
   it("deduplicates by sanitized URL and updates existing entry", async () => {

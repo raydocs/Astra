@@ -16,6 +16,7 @@ import {
   formatAstraPlanLabel,
   formatAstraSubscriptionStatusLabel,
 } from "@/utils/astra/account-surface"
+import { buildAstraStorePermissionTrustViewModel } from "@/utils/trust/compliance"
 import { summarizeConfigContinuity, type AstraConfig } from "@/types/config"
 import type { PdfPage } from "@/entrypoints/pdf-reader/pdf-extractor"
 import {
@@ -35,17 +36,30 @@ import {
   clearWebSession,
   createWebCloudDataDelete,
   createWebAnonymousSession,
+  deleteWebCloudLearningMemory,
   createWebContinuityExport,
   createWebSession,
+  createWebTrialIntent,
   createWebVideoNoteJob,
+  fetchWebWeeklyDigest,
   repairWebCloudSync,
   downloadWebContinuityExport,
   ensureWebDeviceIdentity,
   fetchWebAccountWorkspace,
   fetchWebCloudDataDeleteJob,
   fetchWebCloudAssets,
+  fetchWebCloudLearningMemoryInventory,
   fetchWebContinuityExportJob,
+  fetchWebFeatureFlagRuntime,
   fetchWebImportQueueObservability,
+  fetchWebCostUsageSummary,
+  fetchWebCancellationReasonSummary,
+  fetchWebOpsAuditSummary,
+  fetchWebOpsCockpitSummary,
+  fetchWebOpsUserLookup,
+  fetchWebProviderHealthSummary,
+  fetchWebSupportReportSummary,
+  fetchWebSupportReports,
   fetchWebVideoNoteArtifact,
   fetchWebVideoNoteJob,
   importWebLibraryMetadataToAccount,
@@ -65,15 +79,38 @@ import {
   saveTextTransferDraft,
   saveWebSession,
   translateWithWebRelay,
+  updateWebFeatureFlagRuntime,
+  updateWebSupportReportTriage,
   updateWebSyncCollectionPreference,
+  updateWebWeeklyDigestPreference,
   replayWebImportJobs,
   type TextTransferDraft,
   type WebCloudAssetsWorkspace,
   type WebCloudDataDeleteJob,
+  type WebCloudLearningMemoryDeletionReceipt,
+  type WebCloudLearningMemoryInventory,
   type WebContinuityExportJob,
+  type WebCancellationReasonSummary,
+  type WebCostUsageSummary,
   type WebDeviceEntry,
+  type WebOpsAuditSummary,
+  type WebOpsCockpitSummary,
+  type WebOpsUserLookupSummary,
+  type WebProviderHealthSummary,
+  type WebFeatureFlagRuntime,
   type WebImportQueueObservability,
+  type WebKillSwitchCategory,
+  type WebSupportReportFollowUpPath,
+  type WebSupportReportFollowUpReason,
+  type WebSupportReportFollowUpStatus,
+  type WebSupportReportList,
+  type WebSupportReportListEntry,
+  type WebSupportReportSummary,
+  type WebSupportReportTriagePriority,
+  type WebSupportReportTriageStatus,
   type WebSyncRepairResult,
+  type WebTrialLifecycleContract,
+  type WebWeeklyDigestSnapshot,
   type WebVideoNoteArtifact,
 } from "./lib/astra-web"
 import { importReadableArticleFromUrl } from "./lib/article-import"
@@ -125,7 +162,7 @@ import {
   type VideoNoteWorkspaceSnapshot,
 } from "./lib/workspace-store"
 
-type AppRoute = "/" | "/sign-in" | "/text" | "/articles" | "/files/pdf" | "/files/epub" | "/files/subtitles" | "/video-notes" | "/assets" | "/account"
+type AppRoute = "/" | "/sign-in" | "/sample" | "/learn/read-english-webpages" | "/learn/youtube-bilingual-subtitles" | "/learn/save-english-sentences" | "/learn/ai-reading-assistant-chinese" | "/today" | "/text" | "/articles" | "/files/pdf" | "/files/epub" | "/files/subtitles" | "/video-notes" | "/assets" | "/account"
 type AuthState = "idle" | "refreshing" | "signing-in" | "signing-out"
 
 const CONTINUITY_EXPORT_COLLECTION_OPTIONS: AstraContinuityExportCollection[] = [
@@ -141,6 +178,10 @@ const CONTINUITY_DELETE_COLLECTION_OPTIONS: AstraContinuityDeleteCollection[] = 
   "reading_history",
   "study_progress",
 ]
+
+const SUPPORT_FOLLOW_UP_PATH_OPTIONS: WebSupportReportFollowUpPath[] = ["not_selected", "known_issue", "email_follow_up", "support_queue", "no_follow_up_needed"]
+const SUPPORT_FOLLOW_UP_STATUS_OPTIONS: WebSupportReportFollowUpStatus[] = ["not_started", "selected", "handed_off", "completed"]
+const SUPPORT_FOLLOW_UP_REASON_OPTIONS: WebSupportReportFollowUpReason[] = ["matched_known_issue", "needs_manual_email", "needs_support_queue_review", "macro_ready", "no_follow_up_needed", "other_metadata_reason"]
 
 interface NavigationItem {
   route: AppRoute
@@ -407,6 +448,7 @@ interface SubtitleWorkspaceState {
 
 const NAV_ITEMS: NavigationItem[] = [
   { route: "/", label: "Overview", detail: "usable MVP" },
+  { route: "/today", label: "Today", detail: "mobile review" },
   { route: "/text", label: "Text", detail: "translate / explain" },
   { route: "/articles", label: "Articles", detail: "URL import + read-only" },
   { route: "/files/pdf", label: "PDF", detail: "reader + resume" },
@@ -417,7 +459,14 @@ const NAV_ITEMS: NavigationItem[] = [
   { route: "/account", label: "Account", detail: "session / usage / beta limits" },
 ]
 
-const PUBLIC_ONLY_ROUTES = ["/sign-in"] as const satisfies readonly AppRoute[]
+const PUBLIC_ONLY_ROUTES = [
+  "/sign-in",
+  "/sample",
+  "/learn/read-english-webpages",
+  "/learn/youtube-bilingual-subtitles",
+  "/learn/save-english-sentences",
+  "/learn/ai-reading-assistant-chinese",
+] as const satisfies readonly AppRoute[]
 
 const PORTABLE_SURFACES = [
   "text translation, explain, and custom prompts",
@@ -433,6 +482,64 @@ const EXTENSION_ONLY_SURFACES = [
   "tab-aware page controls and browser commands",
   "live site subtitle overlays and frame coordination",
 ]
+
+const PUBLIC_INTENT_ROUTES = [
+  "/sample",
+  "/learn/read-english-webpages",
+  "/learn/youtube-bilingual-subtitles",
+  "/learn/save-english-sentences",
+  "/learn/ai-reading-assistant-chinese",
+] as const satisfies readonly AppRoute[]
+
+type PublicIntentRoute = typeof PUBLIC_INTENT_ROUTES[number]
+
+const PUBLIC_INTENT_PAGES: Record<PublicIntentRoute, {
+  intent: string
+  eyebrow: string
+  title: string
+  copy: string
+  bullets: string[]
+}> = {
+  "/sample": {
+    intent: "public_sample",
+    eyebrow: "Public sample · zero-config preview",
+    title: "Try Astra on a static sample before you install.",
+    copy: "See the core loop with safe demo text: understand a paragraph, save one expression, then start a private review workspace. No account, API key, or personal page content is needed for this preview.",
+    bullets: ["Static demo text only", "Margin translation and saved expression preview", "Start free to continue in your own private workspace"],
+  },
+  "/learn/read-english-webpages": {
+    intent: "read_english_webpages",
+    eyebrow: "SEO intent · AI bilingual reading extension",
+    title: "Read English webpages with bilingual context.",
+    copy: "Astra keeps the original article visible and adds plain-language translation beside it, so learners can read real web content without switching tools.",
+    bullets: ["Best for articles, essays, and documentation", "Use the extension for live pages", "Save short expressions for later review"],
+  },
+  "/learn/youtube-bilingual-subtitles": {
+    intent: "youtube_bilingual_subtitles",
+    eyebrow: "SEO intent · video language learning",
+    title: "Study videos with bilingual subtitle workflows.",
+    copy: "Use Astra for subtitle files and video-note workflows that turn timestamps, captions, and useful phrases into reviewable learning material.",
+    bullets: ["Bring subtitle files into Astra Web", "Keep notes tied to learning context", "Install the extension for browser video overlays"],
+  },
+  "/learn/save-english-sentences": {
+    intent: "save_english_sentences",
+    eyebrow: "SEO intent · sentence review",
+    title: "Save English sentences for lightweight review.",
+    copy: "Astra is designed around short, user-selected snippets: save the sentence that taught you something, then review it without publishing your reading history.",
+    bullets: ["User-selected short snippets only", "Review from real context", "No public hosting of saved sentences"],
+  },
+  "/learn/ai-reading-assistant-chinese": {
+    intent: "ai_reading_assistant_chinese",
+    eyebrow: "SEO intent · 中文用户读英文",
+    title: "An AI reading assistant for Chinese speakers reading English.",
+    copy: "Astra helps Chinese-speaking learners keep English source text in view while reading clear Chinese explanations, vocabulary, and review cards.",
+    bullets: ["English source stays visible", "Chinese explanations beside the text", "Zero-config Astra AI handles the setup"],
+  },
+}
+
+function isPublicIntentRoute(route: AppRoute): route is PublicIntentRoute {
+  return PUBLIC_INTENT_ROUTES.some((candidate) => candidate === route)
+}
 
 function isRoute(value: string): value is AppRoute {
   return NAV_ITEMS.some((item) => item.route === value) || PUBLIC_ONLY_ROUTES.some((route) => route === value)
@@ -453,6 +560,74 @@ function parseHashLocation(): { route: AppRoute; searchParams: URLSearchParams }
   return {
     route,
     searchParams: new URLSearchParams(rawQuery),
+  }
+}
+
+interface GrowthLandingContext {
+  kind: "sentence_card" | "referral" | "public_sample" | "seo_intent" | null
+  campaign: string | null
+  intent?: string | null
+}
+
+const WEB_GROWTH_EVENT_STORAGE_KEY = "astra.web.growth-events.v1"
+const ASTRA_WEB_PERMISSION_TRUST = buildAstraStorePermissionTrustViewModel()
+
+function readCombinedLocationParams(): URLSearchParams {
+  const combined = new URLSearchParams()
+  new URLSearchParams(window.location.search).forEach((value, key) => combined.set(key, value))
+  parseHashLocation().searchParams.forEach((value, key) => combined.set(key, value))
+  return combined
+}
+
+function sanitizeGrowthCampaign(value: string | null | undefined): string | null {
+  const trimmed = value?.trim() ?? ""
+  return /^[a-z0-9_-]{1,64}$/i.test(trimmed) ? trimmed : null
+}
+
+function readGrowthLandingContext(): GrowthLandingContext {
+  try {
+    const params = readCombinedLocationParams()
+    const source = params.get("utm_source")?.trim() ?? ""
+    const share = params.get("share")?.trim() ?? ""
+    const referral = params.get("referral")?.trim() ?? ""
+    const kind = share === "sentence" || source === "sentence_card"
+      ? "sentence_card"
+      : referral === "non_rewarding" || source === "referral"
+        ? "referral"
+        : null
+    return { kind, campaign: sanitizeGrowthCampaign(params.get("utm_campaign")) }
+  } catch {
+    return { kind: null, campaign: null }
+  }
+}
+
+function recordWebGrowthLandingEvent(event: "landing_visited" | "landing_install_clicked", context: GrowthLandingContext): void {
+  if (!context.kind) return
+  try {
+    const existing = JSON.parse(window.localStorage.getItem(WEB_GROWTH_EVENT_STORAGE_KEY) ?? "[]") as unknown[]
+    const landingDetails = context.kind === "sentence_card"
+      ? { shareType: "sentence_card" }
+      : context.kind === "referral"
+        ? { referralType: "non_rewarding", rewardAvailable: false }
+        : context.kind === "public_sample"
+          ? { sampleType: "zero_config_static", intent: context.intent ?? "public_sample" }
+          : { intent: context.intent ?? "seo_intent" }
+    const next = [{
+      id: `web_growth_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`,
+      timestamp: Date.now(),
+      type: "feature_usage",
+      data: {
+        feature: "learning_loop",
+        event,
+        source: "web_landing",
+        landingSource: context.kind,
+        ...landingDetails,
+        ...(context.campaign ? { campaign: context.campaign } : {}),
+      },
+    }, ...existing].slice(0, 100)
+    window.localStorage.setItem(WEB_GROWTH_EVENT_STORAGE_KEY, JSON.stringify(next))
+  } catch {
+    // Ignore local analytics failures; growth landing tracking must never block the public page.
   }
 }
 
@@ -498,6 +673,201 @@ function formatRelativeDate(value: string | null | undefined): string {
 
 function formatNumber(value: number | null | undefined): string {
   return new Intl.NumberFormat().format(value ?? 0)
+}
+
+function formatEstimatedUsd(value: number | null | undefined): string {
+  return `$${(value ?? 0).toFixed(4)}`
+}
+
+function formatCloudMemoryCollectionLabel(collection: string): string {
+  switch (collection) {
+    case "config":
+      return "Preferences"
+    case "vocabulary":
+      return "Saved words & sentences"
+    case "review_schedule":
+      return "Review plan"
+    case "reading_history":
+      return "Reading history"
+    case "study_progress":
+      return "Study progress"
+    case "weekly_digest_archive":
+      return "Weekly digest archive"
+    default:
+      return collection.replace(/_/g, " ")
+  }
+}
+
+function summarizeCloudMemoryActiveCount(inventory: WebCloudLearningMemoryInventory | null): number {
+  return inventory?.collections.reduce((sum, collection) => sum + collection.activeCount, 0) ?? 0
+}
+
+function sanitizeWeeklyDigestForAccount(digest: WebWeeklyDigestSnapshot): WebWeeklyDigestSnapshot {
+  return {
+    ...digest,
+    highlightedWords: [],
+    highlightedSentences: [],
+  }
+}
+
+type MobileReviewRating = "again" | "good" | "easy"
+
+interface MobileReviewCard {
+  id: string
+  type: "word" | "sentence"
+  front: string
+  translation: string
+  explanation: string
+  context: string
+  sourceTitle: string
+  sourceKind: "Page" | "Video" | "PDF" | "Doc" | "Saved"
+  savedAt: number
+  sample: boolean
+}
+
+interface MobileQueuedReviewEvent {
+  eventId: string
+  cardId: string
+  rating: MobileReviewRating
+  reviewedAt: string
+  source: "web-pwa-today"
+  queued: true
+}
+
+const MOBILE_REVIEW_EVENT_STORAGE_KEY = "astra.web.mobile-review-events.v1"
+const MOBILE_REVIEW_SESSION_SIZE = 5
+
+const SAMPLE_MOBILE_REVIEW_CARDS: MobileReviewCard[] = [
+  {
+    id: "sample-resilient",
+    type: "word",
+    front: "resilient",
+    translation: "能恢复的；有韧性的",
+    explanation: "In this sentence, resilient describes a system that keeps working after failures.",
+    context: "The system remained resilient after multiple node failures.",
+    sourceTitle: "The Future of Distributed Systems",
+    sourceKind: "Page",
+    savedAt: Date.UTC(2026, 4, 27),
+    sample: true,
+  },
+  {
+    id: "sample-moving-target",
+    type: "sentence",
+    front: "The catch is that consistency becomes a moving target.",
+    translation: "问题在于，一致性会变成一个不断变化的目标。",
+    explanation: "“The catch is…” introduces the hidden problem; “a moving target” means the goal keeps changing.",
+    context: "The catch is that consistency becomes a moving target.",
+    sourceTitle: "Designing Data-Intensive Applications notes",
+    sourceKind: "Doc",
+    savedAt: Date.UTC(2026, 4, 27),
+    sample: true,
+  },
+  {
+    id: "sample-trade-off",
+    type: "word",
+    front: "trade-off",
+    translation: "权衡；取舍",
+    explanation: "A trade-off is a choice where gaining one thing means giving up part of another.",
+    context: "Every distributed design makes a trade-off between latency and consistency.",
+    sourceTitle: "Architecture review video",
+    sourceKind: "Video",
+    savedAt: Date.UTC(2026, 4, 27),
+    sample: true,
+  },
+]
+
+function readQueuedMobileReviewEvents(): MobileQueuedReviewEvent[] {
+  try {
+    const parsed = JSON.parse(window.localStorage.getItem(MOBILE_REVIEW_EVENT_STORAGE_KEY) ?? "[]") as MobileQueuedReviewEvent[]
+    return Array.isArray(parsed) ? parsed.filter((event) => event?.queued && event.cardId) : []
+  } catch {
+    return []
+  }
+}
+
+function isMobileReviewEventFromToday(event: Pick<MobileQueuedReviewEvent, "reviewedAt">): boolean {
+  const reviewedAt = new Date(event.reviewedAt)
+  if (Number.isNaN(reviewedAt.getTime())) return false
+  const today = new Date()
+  return reviewedAt.getFullYear() === today.getFullYear()
+    && reviewedAt.getMonth() === today.getMonth()
+    && reviewedAt.getDate() === today.getDate()
+}
+
+function readTodayMobileReviewCardIds(): Set<string> {
+  return new Set(readQueuedMobileReviewEvents()
+    .filter(isMobileReviewEventFromToday)
+    .map((event) => event.cardId))
+}
+
+function appendQueuedMobileReviewEvent(cardId: string, rating: MobileReviewRating): MobileQueuedReviewEvent[] {
+  const next: MobileQueuedReviewEvent = {
+    eventId: `mobile_review_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`,
+    cardId,
+    rating,
+    reviewedAt: new Date().toISOString(),
+    source: "web-pwa-today",
+    queued: true,
+  }
+  const events = [next, ...readQueuedMobileReviewEvents()].slice(0, 500)
+  try {
+    window.localStorage.setItem(MOBILE_REVIEW_EVENT_STORAGE_KEY, JSON.stringify(events))
+  } catch {
+    // Local review feedback must not block the session if storage is unavailable.
+  }
+  return events
+}
+
+function getMobileReviewSourceKind(entry: WebCloudAssetsWorkspace["vocabulary"]["entries"][number]): MobileReviewCard["sourceKind"] {
+  const surface = entry.sourceContext?.surface
+  const ownedType = entry.sourceContext?.ownedReadingSourceType
+  if (surface === "subtitle_reader" || surface === "video_transcript") return "Video"
+  if (ownedType === "pdf") return "PDF"
+  if (ownedType === "epub" || ownedType === "subtitle-file") return "Doc"
+  if (entry.sourceContext?.pageUrl || entry.url || entry.hostname || entry.sourceContext?.hostname) return "Page"
+  return "Saved"
+}
+
+function getMobileReviewSourceTitle(entry: WebCloudAssetsWorkspace["vocabulary"]["entries"][number]): string {
+  return entry.sourceContext?.ownedReadingTitle
+    ?? entry.sourceContext?.pageTitle
+    ?? entry.sourceContext?.hostname
+    ?? entry.hostname
+    ?? "your reading"
+}
+
+function buildMobileReviewCards(cloudAssets: WebCloudAssetsWorkspace | null): MobileReviewCard[] {
+  const entries = cloudAssets?.vocabulary.entries ?? []
+  if (entries.length === 0) return SAMPLE_MOBILE_REVIEW_CARDS
+
+  return entries
+    .map((entry): MobileReviewCard => {
+      const sentence = entry.sourceContext?.sentenceText ?? entry.context ?? ""
+      const looksLikeSentence = entry.text.trim().includes(" ") || entry.text.length > 48
+      return {
+        id: entry.id,
+        type: looksLikeSentence ? "sentence" : "word",
+        front: entry.text,
+        translation: entry.translation?.trim() || "Saved for review.",
+        explanation: entry.explanation?.trim() || (looksLikeSentence ? "Review the meaning, then rate how well you remember it." : "Review this expression in the context where you saved it."),
+        context: sentence,
+        sourceTitle: getMobileReviewSourceTitle(entry),
+        sourceKind: getMobileReviewSourceKind(entry),
+        savedAt: entry.savedAt,
+        sample: false,
+      }
+    })
+    .sort((a, b) => b.savedAt - a.savedAt)
+    .slice(0, MOBILE_REVIEW_SESSION_SIZE)
+}
+
+function summarizeMobileReviewSources(cards: MobileReviewCard[]): string {
+  const realCards = cards.filter((card) => !card.sample)
+  const sourceCards = realCards.length > 0 ? realCards : cards
+  const sourceCount = new Set(sourceCards.map((card) => `${card.sourceKind}:${card.sourceTitle}`)).size
+  const kinds = new Set(sourceCards.map((card) => card.sourceKind.toLowerCase()))
+  const sourceLabel = sourceCount === 1 ? "1 source" : `${sourceCount} sources`
+  return `${sourceLabel} · ${Array.from(kinds).join(", ") || "saved"}`
 }
 
 function formatDeviceHost(device: Pick<WebDeviceEntry, "browserFamily" | "platform" | "appKind" | "appVersion">): string {
@@ -1075,6 +1445,17 @@ export function AstraWebApp() {
   const [usage, setUsage] = useState<AstraUsageSnapshot | null>(null)
   const [devices, setDevices] = useState<WebDeviceEntry[]>([])
   const [deviceActionBusyId, setDeviceActionBusyId] = useState<string | null>(null)
+  const [trialLifecycle, setTrialLifecycle] = useState<WebTrialLifecycleContract | null>(null)
+  const [trialIntentState, setTrialIntentState] = useState<"idle" | "recording">("idle")
+  const [cloudLearningMemoryInventory, setCloudLearningMemoryInventory] = useState<WebCloudLearningMemoryInventory | null>(null)
+  const [cloudLearningMemoryState, setCloudLearningMemoryState] = useState<"idle" | "loading" | "ready" | "error">("idle")
+  const [cloudLearningMemoryError, setCloudLearningMemoryError] = useState("")
+  const [cloudLearningMemoryDeleteState, setCloudLearningMemoryDeleteState] = useState<"idle" | "deleting">("idle")
+  const [cloudLearningMemoryReceipt, setCloudLearningMemoryReceipt] = useState<WebCloudLearningMemoryDeletionReceipt | null>(null)
+  const [weeklyDigest, setWeeklyDigest] = useState<WebWeeklyDigestSnapshot | null>(null)
+  const [weeklyDigestState, setWeeklyDigestState] = useState<"idle" | "loading" | "ready" | "error">("idle")
+  const [weeklyDigestError, setWeeklyDigestError] = useState("")
+  const [weeklyDigestPreferenceState, setWeeklyDigestPreferenceState] = useState<"idle" | "saving">("idle")
   const [recentImports, setRecentImports] = useState<RecentWebImport[]>(() => readRecentImports())
   const [cloudAssets, setCloudAssets] = useState<WebCloudAssetsWorkspace | null>(null)
   const [cloudState, setCloudState] = useState<"idle" | "loading" | "ready" | "error">("idle")
@@ -1082,6 +1463,39 @@ export function AstraWebApp() {
   const [importOps, setImportOps] = useState<WebImportQueueObservability | null>(null)
   const [importOpsState, setImportOpsState] = useState<"idle" | "loading" | "ready" | "error">("idle")
   const [importOpsError, setImportOpsError] = useState("")
+  const [costUsageSummary, setCostUsageSummary] = useState<WebCostUsageSummary | null>(null)
+  const [costUsageLoadedForToken, setCostUsageLoadedForToken] = useState("")
+  const [costUsageState, setCostUsageState] = useState<"idle" | "loading" | "ready" | "error">("idle")
+  const [costUsageError, setCostUsageError] = useState("")
+  const [opsCockpitSummary, setOpsCockpitSummary] = useState<WebOpsCockpitSummary | null>(null)
+  const [opsCockpitLoadedForToken, setOpsCockpitLoadedForToken] = useState("")
+  const [opsCockpitState, setOpsCockpitState] = useState<"idle" | "loading" | "ready" | "error">("idle")
+  const [opsCockpitError, setOpsCockpitError] = useState("")
+  const [providerHealthSummary, setProviderHealthSummary] = useState<WebProviderHealthSummary | null>(null)
+  const [providerHealthLoadedForToken, setProviderHealthLoadedForToken] = useState("")
+  const [providerHealthState, setProviderHealthState] = useState<"idle" | "loading" | "ready" | "error">("idle")
+  const [providerHealthError, setProviderHealthError] = useState("")
+  const [opsUserLookup, setOpsUserLookup] = useState<WebOpsUserLookupSummary | null>(null)
+  const [opsUserLookupLoadedForToken, setOpsUserLookupLoadedForToken] = useState("")
+  const [opsUserLookupLoadedForQuery, setOpsUserLookupLoadedForQuery] = useState("")
+  const [opsUserLookupState, setOpsUserLookupState] = useState<"idle" | "loading" | "ready" | "error">("idle")
+  const [opsUserLookupError, setOpsUserLookupError] = useState("")
+  const [opsAuditSummary, setOpsAuditSummary] = useState<WebOpsAuditSummary | null>(null)
+  const [opsAuditLoadedForToken, setOpsAuditLoadedForToken] = useState("")
+  const [opsAuditState, setOpsAuditState] = useState<"idle" | "loading" | "ready" | "error">("idle")
+  const [opsAuditError, setOpsAuditError] = useState("")
+  const [cancellationReasonSummary, setCancellationReasonSummary] = useState<WebCancellationReasonSummary | null>(null)
+  const [cancellationReasonLoadedForToken, setCancellationReasonLoadedForToken] = useState("")
+  const [cancellationReasonState, setCancellationReasonState] = useState<"idle" | "loading" | "ready" | "error">("idle")
+  const [cancellationReasonError, setCancellationReasonError] = useState("")
+  const [supportReportSummary, setSupportReportSummary] = useState<WebSupportReportSummary | null>(null)
+  const [supportReports, setSupportReports] = useState<WebSupportReportList | null>(null)
+  const [supportReportsLoadedForToken, setSupportReportsLoadedForToken] = useState("")
+  const [supportReportsState, setSupportReportsState] = useState<"idle" | "loading" | "ready" | "error">("idle")
+  const [supportReportsError, setSupportReportsError] = useState("")
+  const [featureFlagRuntime, setFeatureFlagRuntime] = useState<WebFeatureFlagRuntime | null>(null)
+  const [featureFlagsState, setFeatureFlagsState] = useState<"idle" | "loading" | "ready" | "error">("idle")
+  const [featureFlagsError, setFeatureFlagsError] = useState("")
   const [operatorToken, setOperatorToken] = useState("")
   const [storageHealth, setStorageHealth] = useState<WorkspaceStorageHealthSnapshot | null>(null)
   const [storageHealthState, setStorageHealthState] = useState<"idle" | "loading" | "ready" | "error">("idle")
@@ -1093,8 +1507,11 @@ export function AstraWebApp() {
   const [lastWorkspaceRefreshAt, setLastWorkspaceRefreshAt] = useState<string | null>(null)
   const visibilityRefreshAtRef = useRef<number>(0)
   const cloudRequestIdRef = useRef(0)
+  const operatorTokenRef = useRef("")
+  const learningMemoryRequestIdRef = useRef(0)
 
   const installPrompt = useInstallPrompt()
+  const growthLanding = useMemo(() => readGrowthLandingContext(), [])
 
   useEffect(() => {
     const onHashChange = () => {
@@ -1115,8 +1532,29 @@ export function AstraWebApp() {
       return
     }
 
-    const routeLabel = route === "/sign-in" ? "Sign in" : NAV_ITEMS.find((item) => item.route === route)?.label ?? "Overview"
+    const routeLabel = route === "/sign-in"
+      ? "Sign in"
+      : isPublicIntentRoute(route)
+        ? PUBLIC_INTENT_PAGES[route].title
+        : NAV_ITEMS.find((item) => item.route === route)?.label ?? "Overview"
     document.title = `${routeLabel} · Astra Web`
+  }, [route, session])
+
+  useEffect(() => {
+    if (!session && route === "/" && growthLanding.kind) {
+      recordWebGrowthLandingEvent("landing_visited", growthLanding)
+    }
+  }, [growthLanding, route, session])
+
+  useEffect(() => {
+    if (!session && isPublicIntentRoute(route)) {
+      const page = PUBLIC_INTENT_PAGES[route]
+      recordWebGrowthLandingEvent("landing_visited", {
+        kind: route === "/sample" ? "public_sample" : "seo_intent",
+        campaign: null,
+        intent: page.intent,
+      })
+    }
   }, [route, session])
 
   const saveRoute = useCallback((nextRoute: AppRoute) => {
@@ -1184,6 +1622,48 @@ export function AstraWebApp() {
     }
   }, [clearCloudAssets, device])
 
+  const refreshCloudLearningMemoryControls = useCallback(async (activeSession: AstraSession | null) => {
+    if (!activeSession || activeSession.identityMode !== "authenticated") {
+      learningMemoryRequestIdRef.current += 1
+      setCloudLearningMemoryInventory(null)
+      setCloudLearningMemoryReceipt(null)
+      setCloudLearningMemoryState("idle")
+      setCloudLearningMemoryError("")
+      setWeeklyDigest(null)
+      setWeeklyDigestState("idle")
+      setWeeklyDigestError("")
+      return
+    }
+
+    const requestId = ++learningMemoryRequestIdRef.current
+    setCloudLearningMemoryState("loading")
+    setWeeklyDigestState("loading")
+    setCloudLearningMemoryError("")
+    setWeeklyDigestError("")
+
+    const [inventoryResult, digestResult] = await Promise.allSettled([
+      fetchWebCloudLearningMemoryInventory({ session: activeSession, device }),
+      fetchWebWeeklyDigest({ session: activeSession, device }),
+    ])
+    if (learningMemoryRequestIdRef.current !== requestId) return
+
+    if (inventoryResult.status === "fulfilled") {
+      setCloudLearningMemoryInventory(inventoryResult.value)
+      setCloudLearningMemoryState("ready")
+    } else {
+      setCloudLearningMemoryState("error")
+      setCloudLearningMemoryError(inventoryResult.reason instanceof Error ? inventoryResult.reason.message : "Cloud learning-memory inventory failed.")
+    }
+
+    if (digestResult.status === "fulfilled") {
+      setWeeklyDigest(sanitizeWeeklyDigestForAccount(digestResult.value))
+      setWeeklyDigestState("ready")
+    } else {
+      setWeeklyDigestState("error")
+      setWeeklyDigestError(digestResult.reason instanceof Error ? digestResult.reason.message : "Weekly digest status failed.")
+    }
+  }, [device])
+
   const refreshImportOps = useCallback(async (activeSession: AstraSession | null, nextOperatorToken?: string) => {
     if (!activeSession) {
       setImportOps(null)
@@ -1207,6 +1687,281 @@ export function AstraWebApp() {
     }
   }, [operatorToken])
 
+  const refreshCostUsageSummary = useCallback(async (activeSession: AstraSession | null, nextOperatorToken?: string) => {
+    if (!activeSession) {
+      setCostUsageSummary(null)
+      setCostUsageLoadedForToken("")
+      setCostUsageState("idle")
+      setCostUsageError("")
+      return
+    }
+
+    const token = (nextOperatorToken ?? operatorToken).trim()
+    if (!token) {
+      setCostUsageSummary(null)
+      setCostUsageLoadedForToken("")
+      setCostUsageState("idle")
+      setCostUsageError("")
+      return
+    }
+
+    setCostUsageState("loading")
+    setCostUsageError("")
+    try {
+      const summary = await fetchWebCostUsageSummary({
+        baseURL: activeSession.relayBaseURL,
+        operatorToken: token,
+      })
+      setCostUsageSummary(summary)
+      setCostUsageLoadedForToken(token)
+      setCostUsageState("ready")
+    } catch (error) {
+      setCostUsageState("error")
+      setCostUsageError(error instanceof Error ? error.message : "Cost usage summary request failed.")
+    }
+  }, [operatorToken])
+
+  const refreshOpsCockpitSummary = useCallback(async (activeSession: AstraSession | null, nextOperatorToken?: string) => {
+    if (!activeSession) {
+      setOpsCockpitSummary(null)
+      setOpsCockpitLoadedForToken("")
+      setOpsCockpitState("idle")
+      setOpsCockpitError("")
+      return
+    }
+
+    const token = (nextOperatorToken ?? operatorToken).trim()
+    if (!token) {
+      setOpsCockpitSummary(null)
+      setOpsCockpitLoadedForToken("")
+      setOpsCockpitState("idle")
+      setOpsCockpitError("")
+      return
+    }
+
+    setOpsCockpitState("loading")
+    setOpsCockpitError("")
+    try {
+      const summary = await fetchWebOpsCockpitSummary({
+        baseURL: activeSession.relayBaseURL,
+        operatorToken: token,
+      })
+      setOpsCockpitSummary(summary)
+      setOpsCockpitLoadedForToken(token)
+      setOpsCockpitState("ready")
+    } catch (error) {
+      setOpsCockpitState("error")
+      setOpsCockpitError(error instanceof Error ? error.message : "Ops cockpit summary request failed.")
+    }
+  }, [operatorToken])
+
+  const refreshProviderHealthSummary = useCallback(async (activeSession: AstraSession | null, nextOperatorToken?: string) => {
+    if (!activeSession) {
+      setProviderHealthSummary(null)
+      setProviderHealthLoadedForToken("")
+      setProviderHealthState("idle")
+      setProviderHealthError("")
+      return
+    }
+
+    const token = (nextOperatorToken ?? operatorToken).trim()
+    if (!token) {
+      setProviderHealthSummary(null)
+      setProviderHealthLoadedForToken("")
+      setProviderHealthState("idle")
+      setProviderHealthError("")
+      return
+    }
+
+    setProviderHealthState("loading")
+    setProviderHealthError("")
+    try {
+      const summary = await fetchWebProviderHealthSummary({
+        baseURL: activeSession.relayBaseURL,
+        operatorToken: token,
+      })
+      setProviderHealthSummary(summary)
+      setProviderHealthLoadedForToken(token)
+      setProviderHealthState("ready")
+    } catch {
+      setProviderHealthState("error")
+      setProviderHealthError("Route-health summary request failed.")
+    }
+  }, [operatorToken])
+
+  const refreshOpsAuditSummary = useCallback(async (activeSession: AstraSession | null, nextOperatorToken?: string) => {
+    if (!activeSession) {
+      setOpsAuditSummary(null)
+      setOpsAuditLoadedForToken("")
+      setOpsAuditState("idle")
+      setOpsAuditError("")
+      return
+    }
+
+    const token = (nextOperatorToken ?? operatorToken).trim()
+    if (!token) {
+      setOpsAuditSummary(null)
+      setOpsAuditLoadedForToken("")
+      setOpsAuditState("idle")
+      setOpsAuditError("")
+      return
+    }
+
+    setOpsAuditState("loading")
+    setOpsAuditError("")
+    try {
+      const summary = await fetchWebOpsAuditSummary({
+        baseURL: activeSession.relayBaseURL,
+        operatorToken: token,
+      })
+      setOpsAuditSummary(summary)
+      setOpsAuditLoadedForToken(token)
+      setOpsAuditState("ready")
+    } catch (error) {
+      setOpsAuditState("error")
+      setOpsAuditError(error instanceof Error ? error.message : "Operator audit summary request failed.")
+    }
+  }, [operatorToken])
+
+  const refreshCancellationReasonSummary = useCallback(async (activeSession: AstraSession | null, nextOperatorToken?: string) => {
+    if (!activeSession) {
+      setCancellationReasonSummary(null)
+      setCancellationReasonLoadedForToken("")
+      setCancellationReasonState("idle")
+      setCancellationReasonError("")
+      return
+    }
+
+    const token = (nextOperatorToken ?? operatorToken).trim()
+    if (!token) {
+      setCancellationReasonSummary(null)
+      setCancellationReasonLoadedForToken("")
+      setCancellationReasonState("idle")
+      setCancellationReasonError("")
+      return
+    }
+
+    setCancellationReasonState("loading")
+    setCancellationReasonError("")
+    try {
+      const summary = await fetchWebCancellationReasonSummary({
+        baseURL: activeSession.relayBaseURL,
+        operatorToken: token,
+      })
+      setCancellationReasonSummary(summary)
+      setCancellationReasonLoadedForToken(token)
+      setCancellationReasonState("ready")
+    } catch (error) {
+      setCancellationReasonState("error")
+      setCancellationReasonError(error instanceof Error ? error.message : "Cancellation reason summary request failed.")
+    }
+  }, [operatorToken])
+
+  const lookupOpsUser = useCallback(async (activeSession: AstraSession | null, query: string, nextOperatorToken?: string) => {
+    if (!activeSession) {
+      setOpsUserLookup(null)
+      setOpsUserLookupLoadedForToken("")
+      setOpsUserLookupLoadedForQuery("")
+      setOpsUserLookupState("idle")
+      setOpsUserLookupError("")
+      return
+    }
+
+    const token = (nextOperatorToken ?? operatorToken).trim()
+    const lookupQuery = query.trim()
+    if (!token || !lookupQuery) {
+      setOpsUserLookup(null)
+      setOpsUserLookupLoadedForToken("")
+      setOpsUserLookupLoadedForQuery("")
+      setOpsUserLookupState("idle")
+      setOpsUserLookupError("")
+      return
+    }
+
+    setOpsUserLookupState("loading")
+    setOpsUserLookupError("")
+    try {
+      const summary = await fetchWebOpsUserLookup({
+        baseURL: activeSession.relayBaseURL,
+        operatorToken: token,
+        query: lookupQuery,
+      })
+      setOpsUserLookup(summary)
+      setOpsUserLookupLoadedForToken(token)
+      setOpsUserLookupLoadedForQuery(lookupQuery)
+      setOpsUserLookupState("ready")
+    } catch (error) {
+      setOpsUserLookupState("error")
+      setOpsUserLookupError(error instanceof Error ? error.message : "User lookup request failed.")
+    }
+  }, [operatorToken])
+
+  const refreshSupportReports = useCallback(async (activeSession: AstraSession | null, nextOperatorToken?: string) => {
+    if (!activeSession) {
+      setSupportReportSummary(null)
+      setSupportReports(null)
+      setSupportReportsLoadedForToken("")
+      setSupportReportsState("idle")
+      setSupportReportsError("")
+      return
+    }
+
+    const token = (nextOperatorToken ?? operatorToken).trim()
+    if (!token) {
+      setSupportReportSummary(null)
+      setSupportReports(null)
+      setSupportReportsLoadedForToken("")
+      setSupportReportsState("idle")
+      setSupportReportsError("")
+      return
+    }
+
+    setSupportReportsState("loading")
+    setSupportReportsError("")
+    try {
+      const baseURL = activeSession.relayBaseURL
+      const [summary, list] = await Promise.all([
+        fetchWebSupportReportSummary({ baseURL, operatorToken: token }),
+        fetchWebSupportReports({ baseURL, operatorToken: token }),
+      ])
+      if (operatorTokenRef.current.trim() !== token) {
+        setSupportReportsState("idle")
+        return
+      }
+      setSupportReportSummary(summary)
+      setSupportReports(list)
+      setSupportReportsLoadedForToken(token)
+      setSupportReportsState("ready")
+    } catch (error) {
+      setSupportReportsState("error")
+      setSupportReportsError(error instanceof Error ? error.message : "Support report triage request failed.")
+    }
+  }, [operatorToken])
+
+  useEffect(() => {
+    operatorTokenRef.current = operatorToken
+  }, [operatorToken])
+
+  const refreshFeatureFlags = useCallback(async (activeSession: AstraSession | null) => {
+    if (!activeSession) {
+      setFeatureFlagRuntime(null)
+      setFeatureFlagsState("idle")
+      setFeatureFlagsError("")
+      return
+    }
+
+    setFeatureFlagsState("loading")
+    setFeatureFlagsError("")
+    try {
+      const runtime = await fetchWebFeatureFlagRuntime({ baseURL: activeSession.relayBaseURL })
+      setFeatureFlagRuntime(runtime)
+      setFeatureFlagsState("ready")
+    } catch (error) {
+      setFeatureFlagsState("error")
+      setFeatureFlagsError(error instanceof Error ? error.message : "Feature-flag runtime request failed.")
+    }
+  }, [])
+
   const refreshStorageHealth = useCallback(async () => {
     setStorageHealthState("loading")
     setStorageHealthError("")
@@ -1221,15 +1976,58 @@ export function AstraWebApp() {
   }, [])
 
   const clearAuthenticatedWorkspace = useCallback(() => {
+    learningMemoryRequestIdRef.current += 1
     setSession(null)
     clearWebSession()
     setAccount(null)
     setUsage(null)
     setDevices([])
     clearCloudAssets()
+    setCloudLearningMemoryInventory(null)
+    setCloudLearningMemoryState("idle")
+    setCloudLearningMemoryError("")
+    setCloudLearningMemoryDeleteState("idle")
+    setCloudLearningMemoryReceipt(null)
+    setWeeklyDigest(null)
+    setWeeklyDigestState("idle")
+    setWeeklyDigestError("")
+    setWeeklyDigestPreferenceState("idle")
     setImportOps(null)
     setImportOpsState("idle")
     setImportOpsError("")
+    setCostUsageSummary(null)
+    setCostUsageLoadedForToken("")
+    setCostUsageState("idle")
+    setCostUsageError("")
+    setOpsCockpitSummary(null)
+    setOpsCockpitLoadedForToken("")
+    setOpsCockpitState("idle")
+    setOpsCockpitError("")
+    setProviderHealthSummary(null)
+    setProviderHealthLoadedForToken("")
+    setProviderHealthState("idle")
+    setProviderHealthError("")
+    setOpsUserLookup(null)
+    setOpsUserLookupLoadedForToken("")
+    setOpsUserLookupLoadedForQuery("")
+    setOpsUserLookupState("idle")
+    setOpsUserLookupError("")
+    setOpsAuditSummary(null)
+    setOpsAuditLoadedForToken("")
+    setOpsAuditState("idle")
+    setOpsAuditError("")
+    setCancellationReasonSummary(null)
+    setCancellationReasonLoadedForToken("")
+    setCancellationReasonState("idle")
+    setCancellationReasonError("")
+    setSupportReportSummary(null)
+    setSupportReports(null)
+    setSupportReportsLoadedForToken("")
+    setSupportReportsState("idle")
+    setSupportReportsError("")
+    setFeatureFlagRuntime(null)
+    setFeatureFlagsState("idle")
+    setFeatureFlagsError("")
   }, [clearCloudAssets])
 
   const refreshSessionState = useCallback(async (existingSession?: AstraSession, options: { silent?: boolean } = {}) => {
@@ -1237,7 +2035,14 @@ export function AstraWebApp() {
     const storedSession = existingSession ?? readWebSession()
     if (!storedSession) {
       clearCloudAssets()
+      void refreshCloudLearningMemoryControls(null)
       void refreshImportOps(null)
+      void refreshCostUsageSummary(null)
+      void refreshOpsCockpitSummary(null)
+      void refreshProviderHealthSummary(null)
+      void refreshOpsAuditSummary(null)
+      void refreshCancellationReasonSummary(null)
+      void refreshFeatureFlags(null)
       setBootState("ready")
       setAuthState("idle")
       return null
@@ -1259,7 +2064,15 @@ export function AstraWebApp() {
       saveLastAccountEmail(saved.email)
       await refreshAuthenticatedWorkspace(saved, activeDevice)
       void refreshCloudAssets(saved)
+      void refreshCloudLearningMemoryControls(saved)
       void refreshImportOps(saved)
+        void refreshCostUsageSummary(saved)
+        void refreshOpsCockpitSummary(saved)
+        void refreshProviderHealthSummary(saved)
+        void refreshOpsAuditSummary(saved)
+        void refreshCancellationReasonSummary(saved)
+        void refreshSupportReports(saved)
+      void refreshFeatureFlags(saved)
       setBootState("ready")
       setAuthState("idle")
       return saved
@@ -1270,7 +2083,7 @@ export function AstraWebApp() {
       setMessage(error instanceof Error ? error.message : "Stored Astra session could not be refreshed.")
       return null
     }
-  }, [clearAuthenticatedWorkspace, clearCloudAssets, device, refreshAuthenticatedWorkspace, refreshCloudAssets, refreshImportOps])
+  }, [clearAuthenticatedWorkspace, clearCloudAssets, device, refreshAuthenticatedWorkspace, refreshCancellationReasonSummary, refreshCloudAssets, refreshCloudLearningMemoryControls, refreshCostUsageSummary, refreshFeatureFlags, refreshImportOps, refreshOpsAuditSummary, refreshOpsCockpitSummary, refreshProviderHealthSummary, refreshSupportReports])
 
   useEffect(() => {
     const storedSession = readWebSession()
@@ -1299,6 +2112,41 @@ export function AstraWebApp() {
     setApiBaseUrl(normalized)
   }, [])
 
+  const handleOperatorTokenChange = useCallback((value: string) => {
+    operatorTokenRef.current = value
+    setOperatorToken(value)
+    setCostUsageSummary(null)
+    setCostUsageLoadedForToken("")
+    setCostUsageState("idle")
+    setCostUsageError("")
+    setOpsCockpitSummary(null)
+    setOpsCockpitLoadedForToken("")
+    setOpsCockpitState("idle")
+    setOpsCockpitError("")
+    setProviderHealthSummary(null)
+    setProviderHealthLoadedForToken("")
+    setProviderHealthState("idle")
+    setProviderHealthError("")
+    setOpsUserLookup(null)
+    setOpsUserLookupLoadedForToken("")
+    setOpsUserLookupLoadedForQuery("")
+    setOpsUserLookupState("idle")
+    setOpsUserLookupError("")
+    setOpsAuditSummary(null)
+    setOpsAuditLoadedForToken("")
+    setOpsAuditState("idle")
+    setOpsAuditError("")
+    setCancellationReasonSummary(null)
+    setCancellationReasonLoadedForToken("")
+    setCancellationReasonState("idle")
+    setCancellationReasonError("")
+    setSupportReportSummary(null)
+    setSupportReports(null)
+    setSupportReportsLoadedForToken("")
+    setSupportReportsState("idle")
+    setSupportReportsError("")
+  }, [])
+
   const signIn = useCallback(async (credentials: { email: string; password: string }, baseURLOverride?: string) => {
     const activeDevice = device
     const baseURL = baseURLOverride ?? apiBaseUrl
@@ -1318,8 +2166,16 @@ export function AstraWebApp() {
       saveLastAccountEmail(saved.email)
       await refreshAuthenticatedWorkspace(saved, activeDevice)
       void refreshCloudAssets(saved)
+      void refreshCloudLearningMemoryControls(saved)
       void refreshImportOps(saved)
-      saveRoute("/text")
+      void refreshCostUsageSummary(saved)
+      void refreshOpsCockpitSummary(saved)
+      void refreshProviderHealthSummary(saved)
+      void refreshOpsAuditSummary(saved)
+      void refreshCancellationReasonSummary(saved)
+      void refreshSupportReports(saved)
+      void refreshFeatureFlags(saved)
+      saveRoute("/today")
       setMessage("Signed in to Astra Web Companion.")
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Sign-in failed.")
@@ -1328,7 +2184,7 @@ export function AstraWebApp() {
       setAuthState("idle")
       setBootState("ready")
     }
-  }, [apiBaseUrl, device, refreshAuthenticatedWorkspace, refreshCloudAssets, refreshImportOps, saveRoute])
+  }, [apiBaseUrl, device, refreshAuthenticatedWorkspace, refreshCancellationReasonSummary, refreshCloudAssets, refreshCloudLearningMemoryControls, refreshCostUsageSummary, refreshFeatureFlags, refreshImportOps, refreshOpsAuditSummary, refreshOpsCockpitSummary, refreshProviderHealthSummary, refreshSupportReports, saveRoute]);
 
   const startFreeSession = useCallback(async (baseURLOverride?: string) => {
     const activeDevice = device
@@ -1346,8 +2202,16 @@ export function AstraWebApp() {
       setSession(saved)
       await refreshAuthenticatedWorkspace(saved, activeDevice)
       void refreshCloudAssets(saved)
+      void refreshCloudLearningMemoryControls(saved)
       void refreshImportOps(saved)
-      saveRoute("/text")
+      void refreshCostUsageSummary(saved)
+      void refreshOpsCockpitSummary(saved)
+      void refreshSupportReports(saved)
+      void refreshProviderHealthSummary(saved)
+      void refreshOpsAuditSummary(saved)
+      void refreshCancellationReasonSummary(saved)
+      void refreshFeatureFlags(saved)
+      saveRoute("/today")
       setMessage("Free Astra session is ready. Translation uses the managed Astra relay.")
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Free start failed.")
@@ -1356,7 +2220,7 @@ export function AstraWebApp() {
       setAuthState("idle")
       setBootState("ready")
     }
-  }, [apiBaseUrl, device, refreshAuthenticatedWorkspace, refreshCloudAssets, refreshImportOps, saveRoute])
+  }, [apiBaseUrl, device, refreshAuthenticatedWorkspace, refreshCancellationReasonSummary, refreshCloudAssets, refreshCloudLearningMemoryControls, refreshCostUsageSummary, refreshFeatureFlags, refreshImportOps, refreshOpsAuditSummary, refreshOpsCockpitSummary, refreshProviderHealthSummary, refreshSupportReports, saveRoute]);
 
   const signOut = useCallback(async () => {
     const activeDevice = device
@@ -1398,13 +2262,52 @@ export function AstraWebApp() {
         enabled,
       })
       await refreshCloudAssets(session)
+      await refreshCloudLearningMemoryControls(session)
       setMessage(enabled
         ? `Enabled ${collection.replace(/_/g, " ")} cloud sync.`
         : `Disabled ${collection.replace(/_/g, " ")} cloud sync.`)
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Cloud collection preference update failed.")
     }
-  }, [device, refreshCloudAssets, session])
+  }, [device, refreshCloudAssets, refreshCloudLearningMemoryControls, session])
+
+  const handleUpdateWeeklyDigestPreference = useCallback(async (enabled: boolean) => {
+    if (!session || session.identityMode !== "authenticated") return
+    setWeeklyDigestPreferenceState("saving")
+    setMessage("")
+    try {
+      await updateWebWeeklyDigestPreference({ session, device, enabled })
+      await refreshCloudLearningMemoryControls(session)
+      setMessage(enabled ? "Weekly digest is on." : "Weekly digest is off. You can turn it back on anytime.")
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Weekly digest preference update failed.")
+    } finally {
+      setWeeklyDigestPreferenceState("idle")
+    }
+  }, [device, refreshCloudLearningMemoryControls, session])
+
+  const handleDeleteCloudLearningMemory = useCallback(async () => {
+    if (!session || session.identityMode !== "authenticated") return
+    const confirmed = typeof window !== "undefined" && typeof window.confirm === "function"
+      ? window.confirm("Delete Astra cloud learning memory now? This clears cloud sync rows and digest archives for this account. It does not delete local browser data or create third-party service deletion receipts.")
+      : true
+    if (!confirmed) return
+
+    setCloudLearningMemoryDeleteState("deleting")
+    setCloudLearningMemoryError("")
+    setMessage("")
+    try {
+      const receipt = await deleteWebCloudLearningMemory({ session, device })
+      setCloudLearningMemoryReceipt(receipt)
+      await refreshCloudLearningMemoryControls(session)
+      await refreshCloudAssets(session)
+      setMessage(`Cloud learning memory deleted: ${formatNumber(receipt.totals.clearedActiveCount)} active record${receipt.totals.clearedActiveCount === 1 ? "" : "s"} cleared. Local browser data was not changed.`)
+    } catch (error) {
+      setCloudLearningMemoryError(error instanceof Error ? error.message : "Cloud learning-memory deletion failed.")
+    } finally {
+      setCloudLearningMemoryDeleteState("idle")
+    }
+  }, [device, refreshCloudAssets, refreshCloudLearningMemoryControls, session])
 
   const handleReplayImportFailures = useCallback(async (dryRun: boolean) => {
     if (!session || !operatorToken.trim()) {
@@ -1426,6 +2329,105 @@ export function AstraWebApp() {
       setMessage(error instanceof Error ? error.message : "Queue replay failed.")
     }
   }, [operatorToken, refreshImportOps, session])
+
+  const handleUpdateSupportReportTriage = useCallback(async (reportId: string, patch: {
+    status?: WebSupportReportTriageStatus
+    priority?: WebSupportReportTriagePriority
+    assignedTo?: string | null
+    resolution?: string | null
+    updatedBy?: string | null
+    followUp?: {
+      path?: WebSupportReportFollowUpPath
+      status?: WebSupportReportFollowUpStatus
+      macroId?: string | null
+      reason?: WebSupportReportFollowUpReason | null
+      updatedBy?: string | null
+    }
+  }) => {
+    if (!session || !operatorToken.trim()) {
+      setMessage("Enter an operator token before updating support report triage.")
+      return
+    }
+
+    try {
+      await updateWebSupportReportTriage({
+        baseURL: session.relayBaseURL,
+        operatorToken: operatorToken.trim(),
+        reportId,
+        patch,
+      })
+      await refreshSupportReports(session, operatorToken.trim())
+      setMessage(`Updated support report ${reportId} triage.`)
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Support report triage update failed.")
+    }
+  }, [operatorToken, refreshSupportReports, session])
+
+  const handleUpdateFeatureFlagKillSwitch = useCallback(async (rule: {
+    id: string
+    category: WebKillSwitchCategory
+    enabled: boolean
+    reason: string
+    fallbackMessage: string
+    safeMode: boolean
+    changedBy: string
+  }) => {
+    if (!session || !operatorToken.trim()) {
+      setMessage("Enter an operator token before updating feature flags.")
+      return
+    }
+    const id = rule.id.trim()
+    const reason = rule.reason.trim()
+    const fallbackMessage = rule.fallbackMessage.trim()
+    if (!id || !reason || !fallbackMessage) {
+      setMessage("Kill-switch id, reason, and fallback message are required.")
+      return
+    }
+
+    const current = featureFlagRuntime ?? await fetchWebFeatureFlagRuntime({ baseURL: session.relayBaseURL })
+    const generatedAt = new Date().toISOString()
+    const nextRule = {
+      id,
+      category: rule.category,
+      enabled: rule.enabled,
+      reason,
+      fallbackMessage,
+      safeMode: rule.safeMode,
+    }
+    const replaced = current.killSwitches.some((candidate) => candidate.id === id)
+    const nextKillSwitches = replaced
+      ? current.killSwitches.map((candidate) => candidate.id === id ? nextRule : candidate)
+      : [nextRule, ...current.killSwitches]
+    const nextRuntime: WebFeatureFlagRuntime = {
+      schema: "astra-feature-flag-runtime.v1",
+      generatedAt,
+      overrides: current.overrides,
+      killSwitches: nextKillSwitches,
+      changeLog: [{
+        id: `ffdraft_${Date.now()}`,
+        changedAt: generatedAt,
+        changedBy: rule.changedBy.trim() || "operator",
+        reason,
+        overrideCount: current.overrides.length,
+        killSwitchCount: nextKillSwitches.length,
+        previousGeneratedAt: current.generatedAt,
+      }, ...current.changeLog].slice(0, 50),
+    }
+
+    try {
+      const updated = await updateWebFeatureFlagRuntime({
+        baseURL: session.relayBaseURL,
+        operatorToken: operatorToken.trim(),
+        runtime: nextRuntime,
+      })
+      setFeatureFlagRuntime(updated)
+      setFeatureFlagsState("ready")
+      setFeatureFlagsError("")
+      setMessage(`Updated kill switch ${id}${rule.changedBy.trim() ? ` by ${rule.changedBy.trim()}` : ""}.`)
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Feature-flag runtime update failed.")
+    }
+  }, [featureFlagRuntime, operatorToken, session])
 
   const handleRepairStorage = useCallback(async () => {
     setRecoveryState("running")
@@ -1547,6 +2549,20 @@ export function AstraWebApp() {
     }
   }, [session])
 
+  const recordTrialIntent = useCallback(async () => {
+    if (!session) return
+    setTrialIntentState("recording")
+    try {
+      const lifecycle = await createWebTrialIntent({ session, device })
+      setTrialLifecycle(lifecycle)
+      setMessage("Trial interest recorded. Checkout and payment remain unavailable during beta.")
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Trial interest could not be recorded.")
+    } finally {
+      setTrialIntentState("idle")
+    }
+  }, [device, session])
+
   const accountSummary = account ?? (session ? {
     id: "session",
     relayBaseURL: session.relayBaseURL,
@@ -1593,8 +2609,37 @@ export function AstraWebApp() {
         bootState={bootState}
         message={message}
         canInstall={installPrompt.canInstall}
+        growthLanding={growthLanding}
         onDismissMessage={() => setMessage("")}
-        onInstall={() => installPrompt.promptInstall()}
+        onInstall={async () => {
+          recordWebGrowthLandingEvent("landing_install_clicked", growthLanding)
+          await installPrompt.promptInstall()
+        }}
+        onNavigate={saveRoute}
+        onStartFree={startFreeSession}
+      />
+    )
+  }
+
+  if (isPublicIntentRoute(route)) {
+    const page = PUBLIC_INTENT_PAGES[route]
+    return (
+      <PublicIntentPage
+        page={page}
+        route={route}
+        authState={authState}
+        bootState={bootState}
+        message={message}
+        canInstall={installPrompt.canInstall}
+        onDismissMessage={() => setMessage("")}
+        onInstall={async () => {
+          recordWebGrowthLandingEvent("landing_install_clicked", {
+            kind: route === "/sample" ? "public_sample" : "seo_intent",
+            campaign: null,
+            intent: page.intent,
+          })
+          await installPrompt.promptInstall()
+        }}
         onNavigate={saveRoute}
         onStartFree={startFreeSession}
       />
@@ -1719,6 +2764,17 @@ export function AstraWebApp() {
               />
             )}
 
+            {route === "/today" && (
+              <TodayReviewPage
+                session={session}
+                cloudAssets={cloudAssets}
+                cloudState={cloudState}
+                cloudError={cloudError}
+                onNavigate={saveRoute}
+                onRefreshCloudAssets={() => refreshCloudAssets(session)}
+              />
+            )}
+
             {route === "/text" && (
               <TextWorkspacePage
                 session={session}
@@ -1795,8 +2851,49 @@ export function AstraWebApp() {
                 importOps={importOps}
                 importOpsState={importOpsState}
                 importOpsError={importOpsError}
+                cloudLearningMemoryInventory={cloudLearningMemoryInventory}
+                cloudLearningMemoryState={cloudLearningMemoryState}
+                cloudLearningMemoryError={cloudLearningMemoryError}
+                cloudLearningMemoryDeleteState={cloudLearningMemoryDeleteState}
+                cloudLearningMemoryReceipt={cloudLearningMemoryReceipt}
+                weeklyDigest={weeklyDigest}
+                weeklyDigestState={weeklyDigestState}
+                weeklyDigestError={weeklyDigestError}
+                weeklyDigestPreferenceState={weeklyDigestPreferenceState}
+                costUsageSummary={costUsageLoadedForToken === operatorToken.trim() ? costUsageSummary : null}
+                costUsageLoadedForToken={costUsageLoadedForToken}
+                costUsageState={costUsageState}
+                costUsageError={costUsageError}
+                opsCockpitSummary={opsCockpitLoadedForToken === operatorToken.trim() ? opsCockpitSummary : null}
+                opsCockpitLoadedForToken={opsCockpitLoadedForToken}
+                opsCockpitState={opsCockpitState}
+                opsCockpitError={opsCockpitError}
+                providerHealthSummary={providerHealthLoadedForToken === operatorToken.trim() ? providerHealthSummary : null}
+                providerHealthLoadedForToken={providerHealthLoadedForToken}
+                providerHealthState={providerHealthState}
+                providerHealthError={providerHealthError}
+                opsAuditSummary={opsAuditLoadedForToken === operatorToken.trim() ? opsAuditSummary : null}
+                opsAuditLoadedForToken={opsAuditLoadedForToken}
+                opsAuditState={opsAuditState}
+                opsAuditError={opsAuditError}
+                cancellationReasonSummary={cancellationReasonLoadedForToken === operatorToken.trim() ? cancellationReasonSummary : null}
+                cancellationReasonLoadedForToken={cancellationReasonLoadedForToken}
+                cancellationReasonState={cancellationReasonState}
+                cancellationReasonError={cancellationReasonError}
+                opsUserLookup={opsUserLookupLoadedForToken === operatorToken.trim() ? opsUserLookup : null}
+                opsUserLookupLoadedForToken={opsUserLookupLoadedForToken}
+                opsUserLookupLoadedForQuery={opsUserLookupLoadedForQuery}
+                opsUserLookupState={opsUserLookupState}
+                opsUserLookupError={opsUserLookupError}
+                supportReportSummary={supportReportsLoadedForToken === operatorToken.trim() ? supportReportSummary : null}
+                supportReports={supportReportsLoadedForToken === operatorToken.trim() ? supportReports : null}
+                supportReportsState={supportReportsState}
+                supportReportsError={supportReportsError}
+                featureFlagRuntime={featureFlagRuntime}
+                featureFlagsState={featureFlagsState}
+                featureFlagsError={featureFlagsError}
                 operatorToken={operatorToken}
-                onOperatorTokenChange={setOperatorToken}
+                onOperatorTokenChange={handleOperatorTokenChange}
                 storageHealth={storageHealth}
                 storageHealthState={storageHealthState}
                 storageHealthError={storageHealthError}
@@ -1805,8 +2902,21 @@ export function AstraWebApp() {
                 onRefresh={refreshAll}
                 onRefreshCloudAssets={() => refreshCloudAssets(session)}
                 onRefreshImportOps={() => refreshImportOps(session)}
+                onRefreshCloudLearningMemory={() => refreshCloudLearningMemoryControls(session)}
+                onDeleteCloudLearningMemory={handleDeleteCloudLearningMemory}
+                onUpdateWeeklyDigestPreference={handleUpdateWeeklyDigestPreference}
+                onRefreshCostUsage={() => refreshCostUsageSummary(session)}
+                onRefreshOpsCockpit={() => refreshOpsCockpitSummary(session)}
+                onRefreshProviderHealth={() => refreshProviderHealthSummary(session)}
+                onRefreshOpsAudit={() => refreshOpsAuditSummary(session)}
+                onRefreshCancellationReasons={() => refreshCancellationReasonSummary(session)}
+                onLookupOpsUser={(query) => lookupOpsUser(session, query)}
+                onRefreshSupportReports={() => refreshSupportReports(session)}
+                onRefreshFeatureFlags={() => refreshFeatureFlags(session)}
                 onImportLocalLibraryMetadata={handleImportLocalLibraryMetadata}
                 onReplayImportFailures={handleReplayImportFailures}
+                onUpdateSupportReportTriage={handleUpdateSupportReportTriage}
+                onUpdateFeatureFlagKillSwitch={handleUpdateFeatureFlagKillSwitch}
                 onToggleCloudCollection={handleToggleCloudCollection}
                 onRefreshStorageHealth={refreshStorageHealth}
                 onRepairStorage={handleRepairStorage}
@@ -1814,6 +2924,9 @@ export function AstraWebApp() {
                 onRevokeDevice={handleRevokeDevice}
                 onSignIn={signIn}
                 onBilling={launchBilling}
+                trialLifecycle={trialLifecycle}
+                trialIntentState={trialIntentState}
+                onTrialIntent={recordTrialIntent}
               />
             )}
 
@@ -1903,11 +3016,132 @@ function PublicLandingCertificationPage() {
   )
 }
 
+function PublicIntentPage(props: {
+  page: (typeof PUBLIC_INTENT_PAGES)[PublicIntentRoute]
+  route: PublicIntentRoute
+  authState: AuthState
+  bootState: "loading" | "ready"
+  message: string
+  canInstall: boolean
+  onDismissMessage: () => void
+  onInstall: () => Promise<void>
+  onNavigate: (route: AppRoute) => void
+  onStartFree: () => Promise<void>
+}) {
+  const [error, setError] = useState("")
+  const isBusy = props.bootState === "loading" || props.authState !== "idle"
+
+  const startFree = useCallback(async () => {
+    setError("")
+    try {
+      await props.onStartFree()
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : "Free start failed.")
+    }
+  }, [props])
+
+  return (
+    <div className="public-site public-site--intent">
+      <header className="public-nav">
+        <button type="button" className="public-brand" onClick={() => props.onNavigate("/")}>
+          <span className="brand-mark">A</span>
+          <span>
+            <strong>Astra</strong>
+            <small>AI language companion</small>
+          </span>
+        </button>
+        <nav className="public-nav-actions" aria-label="Astra public intent navigation">
+          <button type="button" className="button ghost" onClick={() => props.onNavigate("/sample")}>Sample</button>
+          <button type="button" className="button ghost" onClick={() => props.onNavigate("/learn/read-english-webpages")}>Read English</button>
+          <button type="button" className="button secondary" onClick={() => props.onNavigate("/sign-in")}>Sign in</button>
+        </nav>
+      </header>
+
+      {props.message && (
+        <div className="public-message">
+          <span>{props.message}</span>
+          <button type="button" className="banner-dismiss" onClick={props.onDismissMessage}>Dismiss</button>
+        </div>
+      )}
+
+      <main>
+        <section className="public-hero">
+          <div className="public-hero-copy">
+            <div className="eyebrow">{props.page.eyebrow}</div>
+            <h1>{props.page.title}</h1>
+            <p>{props.page.copy}</p>
+            <div className="hero-actions">
+              <button type="button" className="button primary large-button" onClick={() => void startFree()} disabled={isBusy}>
+                {props.authState === "signing-in" ? "Starting..." : "Start free sample"}
+              </button>
+              <button type="button" className="button secondary large-button" onClick={() => void props.onInstall()} disabled={isBusy}>
+                Install / open Astra
+              </button>
+              <button type="button" className="button ghost large-button" onClick={() => props.onNavigate("/sign-in")} disabled={isBusy}>
+                Sign in to sync
+              </button>
+            </div>
+            {(error || props.bootState === "loading") && (
+              <div className={error ? "error-note" : "helper-copy"} role={error ? "alert" : "status"} aria-live={error ? "assertive" : "polite"}>
+                {error || "Checking for an existing Astra session..."}
+              </div>
+            )}
+            <div className="public-proof-strip" aria-label="Safe public route proof">
+              <span>{props.route}</span>
+              <span>public without auth</span>
+              <span>static demo copy only</span>
+            </div>
+          </div>
+
+          <div className="public-marginalia-card" aria-label="Zero-config static Astra sample">
+            <div className="sample-status-pill"><span /> Zero-config static sample</div>
+            <div className="sample-meta">
+              <span>Demo article</span>
+              <span>No private content</span>
+              <span>EN → 中文</span>
+            </div>
+            <h2>A safe sample reading card</h2>
+            <div className="bilingual-paragraph">
+              <p className="source-copy">
+                A quiet learner can read a real paragraph, keep the original words visible, and save one useful expression for review.
+              </p>
+              <p className="translation-margin">
+                学习者可以阅读一段真实感的示例文字，保留原文可见，并保存一个有用表达用于复习。
+              </p>
+            </div>
+            <div className="saved-word-row" aria-label="Static saved expression sample">
+              <span className="saved-word-chip">quiet learner · 安静的学习者</span>
+              <span className="sample-footnote">Demo-only snippet · not user content · no query text</span>
+            </div>
+          </div>
+        </section>
+
+        <section className="public-section" aria-label="Intent route details">
+          <div className="section-kicker">
+            <div className="eyebrow">What this page proves</div>
+            <h2>Public copy for high-intent learners, not public user pages.</h2>
+            <p>These pages explain Astra use cases with static product copy. They do not collect, display, host, or index saved user sentences, reading history, private URLs, or query text.</p>
+          </div>
+          <div className="public-feature-grid">
+            {props.page.bullets.map((item) => (
+              <article key={item} className="public-feature">
+                <h3>{item}</h3>
+                <p>Start from this public page, then continue inside Astra with your own private workspace.</p>
+              </article>
+            ))}
+          </div>
+        </section>
+      </main>
+    </div>
+  )
+}
+
 function PublicLandingPage(props: {
   authState: AuthState
   bootState: "loading" | "ready"
   message: string
   canInstall: boolean
+  growthLanding: GrowthLandingContext
   onDismissMessage: () => void
   onInstall: () => Promise<void>
   onNavigate: (route: AppRoute) => void
@@ -1925,6 +3159,23 @@ function PublicLandingPage(props: {
   }, [props])
 
   const isBusy = props.bootState === "loading" || props.authState !== "idle"
+  const isSentenceShareLanding = props.growthLanding.kind === "sentence_card"
+  const isReferralLanding = props.growthLanding.kind === "referral"
+  const heroEyebrow = isSentenceShareLanding
+    ? "Shared sentence card · zero-config sample"
+    : isReferralLanding
+      ? "Friend invite · zero-config sample"
+      : "Free preview · managed Astra relay"
+  const heroTitle = isSentenceShareLanding
+    ? "Someone shared an Astra sentence card. Try the learning loop behind it."
+    : isReferralLanding
+      ? "A friend invited you to try Astra on a sample page."
+      : "A bilingual reading room for the pages you already saved."
+  const heroCopy = isSentenceShareLanding
+    ? "Astra turns a sentence into context you can understand, save, and review. This landing page does not host the shared text; it just lets you try the same private learning flow."
+    : isReferralLanding
+      ? "Start with a guided sample: understand one sentence, save it, and complete a one-card review without configuring AI. Referral rewards are not active in this MVP."
+      : "Articles, PDFs, EPUBs, and subtitle files — translated in the margin. Use the browser extension for live page translation; Astra Web is for imported content, files, and portable reading workspaces."
 
   return (
     <div className="public-site">
@@ -1961,12 +3212,9 @@ function PublicLandingPage(props: {
       <main>
         <section className="public-hero">
           <div className="public-hero-copy">
-            <div className="eyebrow">Free preview · managed Astra relay</div>
-            <h1>A bilingual reading room for the pages <em>you already saved.</em></h1>
-            <p>
-              Articles, PDFs, EPUBs, and subtitle files — translated in the margin. Use the browser extension for
-              live page translation; Astra Web is for imported content, files, and portable reading workspaces.
-            </p>
+            <div className="eyebrow">{heroEyebrow}</div>
+            <h1>{heroTitle}</h1>
+            <p>{heroCopy}</p>
             <div className="hero-actions">
               <button type="button" className="button primary large-button" onClick={() => void startFree()} disabled={isBusy}>
                 {props.authState === "signing-in" ? "Starting..." : "Use instantly"}
@@ -2041,6 +3289,31 @@ function PublicLandingPage(props: {
                 <p>{copy}</p>
               </article>
             ))}
+          </div>
+        </section>
+
+        <section className="public-section" aria-labelledby="permission-trust-title">
+          <div className="section-kicker">
+            <div className="eyebrow">{ASTRA_WEB_PERMISSION_TRUST.eyebrow}</div>
+            <h2 id="permission-trust-title">{ASTRA_WEB_PERMISSION_TRUST.title}</h2>
+            <p>{ASTRA_WEB_PERMISSION_TRUST.copy}</p>
+          </div>
+          <div className="public-feature-grid">
+            {ASTRA_WEB_PERMISSION_TRUST.rows.map((row) => (
+              <article key={row.permission} className="public-feature">
+                <h3>{row.label}</h3>
+                <p>{row.userFacingCopy}</p>
+                <p className="helper-copy">{row.boundary}</p>
+              </article>
+            ))}
+          </div>
+          <div className="hero-actions" aria-label="Astra trust links">
+            <a className="button secondary" href="https://github.com/nicepkg/astra/blob/main/store/privacy-policy.md" target="_blank" rel="noreferrer">
+              {ASTRA_WEB_PERMISSION_TRUST.privacyLinkLabel}
+            </a>
+            <a className="button ghost" href="https://github.com/nicepkg/astra/issues" target="_blank" rel="noreferrer">
+              {ASTRA_WEB_PERMISSION_TRUST.supportLinkLabel}
+            </a>
           </div>
         </section>
       </main>
@@ -2165,8 +3438,8 @@ function PublicSignInPage(props: {
                 <span className="status-pill success">Connected</span>
               </div>
               <p className="helper-copy">You’re already signed in as {displayedSession.email}. Open your workspace to continue reading.</p>
-              <button type="button" className="button primary full-width" onClick={() => props.onNavigate("/text")}>
-                Open workspace
+              <button type="button" className="button primary full-width" onClick={() => props.onNavigate("/today")}>
+                Open Today Review
               </button>
             </div>
           ) : (
@@ -2259,6 +3532,198 @@ function PublicSignInPage(props: {
           )}
         </section>
       </main>
+    </div>
+  )
+}
+
+function TodayReviewPage(props: {
+  session: AstraSession | null
+  cloudAssets: WebCloudAssetsWorkspace | null
+  cloudState: "idle" | "loading" | "ready" | "error"
+  cloudError: string
+  onNavigate: (route: AppRoute) => void
+  onRefreshCloudAssets: () => Promise<void>
+}) {
+  const cards = useMemo(() => (
+    props.cloudState === "loading" && !props.cloudAssets ? [] : buildMobileReviewCards(props.cloudAssets)
+  ), [props.cloudAssets, props.cloudState])
+  const [answered, setAnswered] = useState(false)
+  const [completedIds, setCompletedIds] = useState<Set<string>>(() => readTodayMobileReviewCardIds())
+  const [queuedEvents, setQueuedEvents] = useState<MobileQueuedReviewEvent[]>(() => readQueuedMobileReviewEvents())
+  const [refreshing, setRefreshing] = useState(false)
+
+  useEffect(() => {
+    setAnswered(false)
+    setCompletedIds(readTodayMobileReviewCardIds())
+    setQueuedEvents(readQueuedMobileReviewEvents())
+  }, [cards])
+
+  const activeCards = cards.filter((card) => !completedIds.has(card.id))
+  const currentCard = activeCards[0]
+  const completedCount = Math.max(0, cards.length - activeCards.length)
+  const isSampleDeck = cards.every((card) => card.sample)
+  const isInitialCloudLoading = props.cloudState === "loading" && !props.cloudAssets
+  const sourceSummary = summarizeMobileReviewSources(cards)
+
+  const reviewCard = useCallback((rating: MobileReviewRating) => {
+    if (!currentCard) return
+    if (!currentCard.sample) {
+      const nextEvents = appendQueuedMobileReviewEvent(currentCard.id, rating)
+      setQueuedEvents(nextEvents)
+    }
+    setCompletedIds((current) => {
+      const next = new Set(current)
+      next.add(currentCard.id)
+      return next
+    })
+    setAnswered(false)
+  }, [currentCard])
+
+  const refresh = useCallback(async () => {
+    setRefreshing(true)
+    try {
+      await props.onRefreshCloudAssets()
+    } finally {
+      setRefreshing(false)
+    }
+  }, [props])
+
+  if (!props.session) {
+    return (
+      <section className="card mobile-review-card mobile-review-gate">
+        <div className="eyebrow">Astra Mobile Review Companion</div>
+        <h2>Sign in to review the words and sentences you saved on the web.</h2>
+        <p className="card-copy">Mobile is for habit: a short, source-backed review when you have a few quiet minutes.</p>
+        <button type="button" className="button primary" onClick={() => props.onNavigate("/sign-in")}>
+          Sign in
+        </button>
+      </section>
+    )
+  }
+
+  return (
+    <div className="mobile-review-shell">
+      <section className="mobile-review-hero card" aria-labelledby="today-review-title">
+        <div className="mobile-review-date">{new Intl.DateTimeFormat(undefined, { weekday: "long", month: "short", day: "numeric" }).format(new Date())}</div>
+        <div className="eyebrow">Today Review</div>
+        <h2 id="today-review-title">
+          {isInitialCloudLoading
+            ? "Bringing in your saved words."
+            : currentCard
+            ? isSampleDeck
+              ? `${activeCards.length} sample ${activeCards.length === 1 ? "card is" : "cards are"} ready.`
+              : `${activeCards.length} ${activeCards.length === 1 ? "card is" : "cards are"} ready from your web reading.`
+            : "Done for today."}
+        </h2>
+        <p className="card-copy">
+          {isInitialCloudLoading
+            ? "Astra is syncing your source-backed review cards."
+            : currentCard
+            ? isSampleDeck
+              ? "Try a short sample review while your saved web words are syncing."
+              : "Review in about 3 minutes. No setup, no pressure — just keep useful expressions fresh. Saved cards are ready from your web reading."
+            : "Come back tomorrow for a quick refresh, or browse your saved learning library."}
+        </p>
+        <div className="visually-hidden" aria-live="polite">
+          {currentCard ? `${currentCard.type} card: ${currentCard.front}` : "Today Review complete"}
+        </div>
+        <div className="mobile-review-summary" aria-label="Review source summary">
+          <span>{sourceSummary}</span>
+          <span>{isSampleDeck ? "sample deck" : "synced from Astra"}</span>
+          <span>{queuedEvents.length} offline-ready actions</span>
+        </div>
+        <div className="mobile-review-progress" aria-label={`${completedCount} of ${cards.length} cards completed`}>
+          {cards.map((card, index) => (
+            <span key={card.id} className={index < completedCount ? "is-complete" : ""} />
+          ))}
+        </div>
+      </section>
+
+      {props.cloudState === "loading" && !props.cloudAssets && (
+        <section className="card subtle" role="status" aria-live="polite">
+          Bringing in your saved words…
+        </section>
+      )}
+
+      {props.cloudState === "error" && (
+        <section className="card callout warning">
+          <div className="card-title">Review is using what is available on this device.</div>
+          <div className="card-copy">{props.cloudError || "Cloud cards could not refresh right now."}</div>
+          <button type="button" className="button secondary" onClick={() => void refresh()} disabled={refreshing}>
+            {refreshing ? "Refreshing…" : "Retry sync"}
+          </button>
+        </section>
+      )}
+
+      {currentCard ? (
+        <section className={`mobile-review-card card${answered ? " is-answer-visible" : ""}`} aria-label={`${currentCard.type} review card`}>
+          <div className="mobile-source-row">
+            <span className="source-badge">{currentCard.sourceKind}</span>
+            <span>From: {currentCard.sourceTitle}</span>
+          </div>
+
+          <div className="mobile-card-face">
+            <div className="mobile-card-kind">{currentCard.type === "sentence" ? "Sentence Card" : "Word Card"}</div>
+            <h3>{currentCard.front}</h3>
+            {currentCard.context && currentCard.context !== currentCard.front && (
+              <p className="mobile-card-context">“{currentCard.context}”</p>
+            )}
+          </div>
+
+          {answered ? (
+            <div className="mobile-card-answer">
+              <div className="mobile-answer-label">Meaning</div>
+              <p>{currentCard.translation}</p>
+              <div className="mobile-answer-label">Why it matters</div>
+              <p>{currentCard.explanation}</p>
+              <div className="mobile-rating-row" aria-label="Rate this review card">
+                <button type="button" className="button secondary" onClick={() => reviewCard("again")}>Again</button>
+                <button type="button" className="button primary" onClick={() => reviewCard("good")}>Good</button>
+                <button type="button" className="button secondary" onClick={() => reviewCard("easy")}>Easy</button>
+              </div>
+            </div>
+          ) : (
+            <button type="button" className="button primary mobile-show-answer" onClick={() => setAnswered(true)}>
+              Show answer
+            </button>
+          )}
+        </section>
+      ) : (
+        <section className="mobile-review-complete card">
+          <div className="completion-stamp" aria-hidden="true">Done</div>
+          <h2>Done for today.</h2>
+          <p className="card-copy">Your review choices are saved on this device and ready to sync when the review-event spine lands.</p>
+          <div className="row gap wrap">
+            <button type="button" className="button primary" onClick={() => props.onNavigate("/assets")}>
+              View Library
+            </button>
+            <button type="button" className="button secondary" onClick={() => void refresh()} disabled={refreshing}>
+              {refreshing ? "Refreshing…" : "Refresh cards"}
+            </button>
+          </div>
+        </section>
+      )}
+
+      <section className="mobile-review-library card subtle">
+        <div className="section-heading">
+          <div>
+            <div className="card-title">Learning Library preview</div>
+            <div className="card-copy">Words and sentences stay source-backed, not random flashcards.</div>
+          </div>
+          <button type="button" className="button ghost compact-button" onClick={() => props.onNavigate("/assets")}>
+            Open Library
+          </button>
+        </div>
+        <div className="stack list">
+          {cards.slice(0, 3).map((card) => (
+            <div key={`library-${card.id}`} className="mobile-library-row">
+              <strong>{card.front}</strong>
+              <small>{card.translation}</small>
+              <small>{card.sourceTitle} · {card.sourceKind}</small>
+            </div>
+          ))}
+        </div>
+      </section>
     </div>
   )
 }
@@ -2361,8 +3826,8 @@ function OverviewPage(props: {
             while staying explicit about where live-page extension capabilities still begin and end.
           </p>
           <div className="hero-actions">
-            <button type="button" className="button primary" onClick={() => props.onNavigate("/text")}>
-              Open text workspace
+            <button type="button" className="button primary" onClick={() => props.onNavigate("/today")}>
+              Open Today Review
             </button>
             <button type="button" className="button secondary" onClick={() => props.onNavigate("/files/pdf")}>
               Resume file workflows
@@ -4490,6 +5955,296 @@ function AssetLibraryPage(props: {
   )
 }
 
+const SUPPORT_TRIAGE_STATUS_OPTIONS: WebSupportReportTriageStatus[] = [
+  "new",
+  "investigating",
+  "waiting_for_user",
+  "linked_known_issue",
+  "resolved",
+  "wont_fix",
+]
+
+const SUPPORT_TRIAGE_PRIORITY_OPTIONS: WebSupportReportTriagePriority[] = ["low", "normal", "high", "urgent"]
+const KILL_SWITCH_CATEGORY_OPTIONS: WebKillSwitchCategory[] = ["feature", "site", "task", "tier", "provider", "privacy"]
+
+function sanitizeNullableText(value: string): string | null {
+  const trimmed = value.trim()
+  return trimmed ? trimmed : null
+}
+
+function SupportReportTriageRow(props: {
+  report: WebSupportReportListEntry
+  operatorToken: string
+  onUpdate: (reportId: string, patch: {
+    status?: WebSupportReportTriageStatus
+    priority?: WebSupportReportTriagePriority
+    assignedTo?: string | null
+    resolution?: string | null
+    updatedBy?: string | null
+    followUp?: {
+      path?: WebSupportReportFollowUpPath
+      status?: WebSupportReportFollowUpStatus
+      macroId?: string | null
+      reason?: WebSupportReportFollowUpReason | null
+      updatedBy?: string | null
+    }
+  }) => Promise<void>
+}) {
+  const reportFollowUp = useMemo(() => props.report.triage.followUp ?? {
+    path: "not_selected" as const,
+    status: "not_started" as const,
+    macroId: null,
+    reason: null,
+    updatedAt: null,
+    updatedBy: null,
+  }, [props.report.triage.followUp])
+  const [status, setStatus] = useState<WebSupportReportTriageStatus>(props.report.triage.status)
+  const [priority, setPriority] = useState<WebSupportReportTriagePriority>(props.report.triage.priority)
+  const [assignedTo, setAssignedTo] = useState(props.report.triage.assignedTo ?? "")
+  const [resolution, setResolution] = useState(props.report.triage.resolution ?? "")
+  const [updatedBy, setUpdatedBy] = useState(props.report.triage.updatedBy ?? "")
+  const [followUpPath, setFollowUpPath] = useState<WebSupportReportFollowUpPath>(reportFollowUp.path)
+  const [followUpStatus, setFollowUpStatus] = useState<WebSupportReportFollowUpStatus>(reportFollowUp.status)
+  const [followUpMacroId, setFollowUpMacroId] = useState(reportFollowUp.macroId ?? props.report.recommendedMacro?.id ?? "")
+  const [followUpReason, setFollowUpReason] = useState<WebSupportReportFollowUpReason | "">(reportFollowUp.reason ?? "")
+
+  useEffect(() => {
+    setStatus(props.report.triage.status)
+    setPriority(props.report.triage.priority)
+    setAssignedTo(props.report.triage.assignedTo ?? "")
+    setResolution(props.report.triage.resolution ?? "")
+    setUpdatedBy(props.report.triage.updatedBy ?? "")
+    const nextFollowUp = props.report.triage.followUp ?? reportFollowUp
+    setFollowUpPath(nextFollowUp.path)
+    setFollowUpStatus(nextFollowUp.status)
+    setFollowUpMacroId(nextFollowUp.macroId ?? props.report.recommendedMacro?.id ?? "")
+    setFollowUpReason(nextFollowUp.reason ?? "")
+  }, [props.report, reportFollowUp])
+
+  return (
+    <div className="card subtle">
+      <div className="section-heading compact-heading">
+        <div>
+          <div className="card-title">{props.report.reportId}</div>
+          <div className="card-copy">
+            {props.report.featureSurface} · {props.report.action} · {props.report.hostname ?? "hostname unavailable"}
+          </div>
+        </div>
+        <span className="status-pill">{props.report.triage.status}</span>
+      </div>
+      <div className="helper-copy">
+        Submitted {formatRelativeDate(props.report.submittedAt)} · {props.report.browser} · {props.report.os} · {props.report.locale} · privacy {props.report.privacyMode ? "on" : "off"}
+      </div>
+      <div className="helper-copy">
+        Issue {props.report.issueCategory ?? "uncategorized"} · error {props.report.errorCategory ?? props.report.lastErrorCategory ?? "none"} · known issue {props.report.knownIssue?.issueId ?? "none"}
+      </div>
+      <div className="helper-copy">
+        Follow-up {reportFollowUp.path} · {reportFollowUp.status} · macro {reportFollowUp.macroId ?? props.report.recommendedMacro?.id ?? "not selected"}
+      </div>
+      {props.report.recommendedMacro && (
+        <div className="helper-copy">Recommended macro: {props.report.recommendedMacro.title}</div>
+      )}
+
+      <div className="grid cards-2 compact" style={{ marginTop: "1rem" }}>
+        <label className="field">
+          <span>Triage status</span>
+          <select value={status} onChange={(event) => setStatus(event.target.value as WebSupportReportTriageStatus)}>
+            {SUPPORT_TRIAGE_STATUS_OPTIONS.map((option) => <option key={option} value={option}>{option}</option>)}
+          </select>
+        </label>
+        <label className="field">
+          <span>Triage priority</span>
+          <select value={priority} onChange={(event) => setPriority(event.target.value as WebSupportReportTriagePriority)}>
+            {SUPPORT_TRIAGE_PRIORITY_OPTIONS.map((option) => <option key={option} value={option}>{option}</option>)}
+          </select>
+        </label>
+        <label className="field">
+          <span>Assigned to</span>
+          <input value={assignedTo} onChange={(event) => setAssignedTo(event.target.value)} placeholder="support@astra.local" />
+        </label>
+        <label className="field">
+          <span>Updated by</span>
+          <input value={updatedBy} onChange={(event) => setUpdatedBy(event.target.value)} placeholder="ops name or email" />
+        </label>
+      </div>
+      <label className="field" style={{ marginTop: "0.75rem" }}>
+        <span>Resolution</span>
+        <textarea value={resolution} onChange={(event) => setResolution(event.target.value)} placeholder="Short internal resolution note; do not paste page text or user content." rows={2} />
+      </label>
+      <div className="grid cards-2 compact" style={{ marginTop: "0.75rem" }}>
+        <label className="field">
+          <span>Follow-up path</span>
+          <select value={followUpPath} onChange={(event) => setFollowUpPath(event.target.value as WebSupportReportFollowUpPath)}>
+            {SUPPORT_FOLLOW_UP_PATH_OPTIONS.map((option) => <option key={option} value={option}>{option}</option>)}
+          </select>
+        </label>
+        <label className="field">
+          <span>Follow-up status</span>
+          <select value={followUpStatus} onChange={(event) => setFollowUpStatus(event.target.value as WebSupportReportFollowUpStatus)}>
+            {SUPPORT_FOLLOW_UP_STATUS_OPTIONS.map((option) => <option key={option} value={option}>{option}</option>)}
+          </select>
+        </label>
+        <label className="field">
+          <span>Selected macro</span>
+          <input value={followUpMacroId} onChange={(event) => setFollowUpMacroId(event.target.value)} placeholder={props.report.recommendedMacro?.id ?? "macro id or blank"} />
+        </label>
+        <label className="field">
+          <span>Follow-up reason</span>
+          <select value={followUpReason} onChange={(event) => setFollowUpReason(event.target.value as WebSupportReportFollowUpReason | "")}>
+            <option value="">none</option>
+            {SUPPORT_FOLLOW_UP_REASON_OPTIONS.map((option) => <option key={option} value={option}>{option}</option>)}
+          </select>
+        </label>
+      </div>
+      <div className="row gap wrap">
+        <button
+          type="button"
+          className="button primary"
+          onClick={() => void props.onUpdate(props.report.reportId, {
+            status,
+            priority,
+            assignedTo: sanitizeNullableText(assignedTo),
+            resolution: sanitizeNullableText(resolution),
+            updatedBy: sanitizeNullableText(updatedBy),
+          })}
+          disabled={!props.operatorToken.trim()}
+        >
+          Save triage
+        </button>
+        <button
+          type="button"
+          className="button secondary"
+          onClick={() => void props.onUpdate(props.report.reportId, {
+            updatedBy: sanitizeNullableText(updatedBy),
+            followUp: {
+              path: followUpPath,
+              status: followUpStatus,
+              macroId: sanitizeNullableText(followUpMacroId),
+              reason: followUpReason || null,
+              updatedBy: sanitizeNullableText(updatedBy),
+            },
+          })}
+          disabled={!props.operatorToken.trim()}
+        >
+          Save handoff
+        </button>
+        <span className="helper-copy">Metadata only: no page text, transcript, screenshot, or user message content is shown here.</span>
+      </div>
+    </div>
+  )
+}
+
+function FeatureFlagOpsCard(props: {
+  runtime: WebFeatureFlagRuntime | null
+  state: "idle" | "loading" | "ready" | "error"
+  error: string
+  operatorToken: string
+  onRefresh: () => Promise<void>
+  onUpdateKillSwitch: (rule: {
+    id: string
+    category: WebKillSwitchCategory
+    enabled: boolean
+    reason: string
+    fallbackMessage: string
+    safeMode: boolean
+    changedBy: string
+  }) => Promise<void>
+}) {
+  const [enabled, setEnabled] = useState(true)
+  const [safeMode, setSafeMode] = useState(true)
+  const [category, setCategory] = useState<WebKillSwitchCategory>("feature")
+  const [id, setId] = useState("incident-fallback-copy")
+  const [reason, setReason] = useState("")
+  const [fallbackMessage, setFallbackMessage] = useState("Astra is temporarily using a simpler response for this feature. Please try again later.")
+  const [changedBy, setChangedBy] = useState("")
+
+  const recentChangeLog = props.runtime?.changeLog.slice(0, 3) ?? []
+
+  return (
+    <section className="card">
+      <div className="section-heading">
+        <div>
+          <div className="card-title">Feature flags / kill switches</div>
+          <div className="card-copy">Runtime manifest and compact incident update controls for safe fallback-copy kill switches.</div>
+        </div>
+        <button type="button" className="button ghost" onClick={() => void props.onRefresh()} disabled={props.state === "loading"}>
+          {props.state === "loading" ? "Refreshing…" : "Refresh runtime"}
+        </button>
+      </div>
+
+      {props.error && <div className="error-note">{props.error}</div>}
+      {!props.runtime ? (
+        <div className="helper-copy">No feature-flag runtime loaded yet. Refresh to fetch the public runtime manifest.</div>
+      ) : (
+        <>
+          <div className="metrics-grid">
+            <MetricCard label="Generated" value={formatRelativeDate(props.runtime.generatedAt)} hint="runtime revision" />
+            <MetricCard label="Overrides" value={formatNumber(props.runtime.overrides.length)} hint="remote flag entries" />
+            <MetricCard label="Kill switches" value={formatNumber(props.runtime.killSwitches.length)} hint="runtime rules" />
+            <MetricCard label="Change log" value={formatNumber(props.runtime.changeLog.length)} hint="recent operator updates" />
+          </div>
+
+          <div className="stack list" style={{ marginTop: "1rem" }}>
+            {recentChangeLog.length === 0 ? (
+              <div className="helper-copy">No change-log entries yet.</div>
+            ) : recentChangeLog.map((entry) => (
+              <div key={entry.id} className="preview-block">
+                <strong>{entry.reason}</strong>{"\n"}
+                {entry.changedBy} · {formatRelativeDate(entry.changedAt)} · overrides {formatNumber(entry.overrideCount)} · kill switches {formatNumber(entry.killSwitchCount)}
+              </div>
+            ))}
+          </div>
+        </>
+      )}
+
+      <div className="grid cards-2 compact" style={{ marginTop: "1rem" }}>
+        <label className="field">
+          <span>Kill-switch id</span>
+          <input value={id} onChange={(event) => setId(event.target.value)} placeholder="incident-fallback-copy" />
+        </label>
+        <label className="field">
+          <span>Category</span>
+          <select value={category} onChange={(event) => setCategory(event.target.value as WebKillSwitchCategory)}>
+            {KILL_SWITCH_CATEGORY_OPTIONS.map((option) => <option key={option} value={option}>{option}</option>)}
+          </select>
+        </label>
+        <label className="field">
+          <span>Reason</span>
+          <input value={reason} onChange={(event) => setReason(event.target.value)} placeholder="Short incident reason" />
+        </label>
+        <label className="field">
+          <span>Changed by</span>
+          <input value={changedBy} onChange={(event) => setChangedBy(event.target.value)} placeholder="ops name or email" />
+        </label>
+      </div>
+
+      <label className="field" style={{ marginTop: "0.75rem" }}>
+        <span>Fallback message</span>
+        <textarea value={fallbackMessage} onChange={(event) => setFallbackMessage(event.target.value)} rows={2} placeholder="Ordinary user-facing fallback copy." />
+      </label>
+      <div className="row gap wrap">
+        <label className="checkbox-line">
+          <input type="checkbox" checked={enabled} onChange={(event) => setEnabled(event.target.checked)} />
+          <span>Enabled</span>
+        </label>
+        <label className="checkbox-line">
+          <input type="checkbox" checked={safeMode} onChange={(event) => setSafeMode(event.target.checked)} />
+          <span>Safe mode</span>
+        </label>
+        <button
+          type="button"
+          className="button primary"
+          disabled={!props.operatorToken.trim()}
+          onClick={() => void props.onUpdateKillSwitch({ id, category, enabled, reason, fallbackMessage, safeMode, changedBy })}
+        >
+          Save kill switch
+        </button>
+      </div>
+      <div className="helper-copy">Fallback text must be ordinary user-facing copy. Do not include source text, prompts, model output, page content, transcripts, screenshots, or user messages; this update only sends runtime metadata.</div>
+    </section>
+  )
+}
+
 function AccountPage(props: {
   apiBaseUrl: string
   config: AstraConfig
@@ -4507,6 +6262,47 @@ function AccountPage(props: {
   importOps: WebImportQueueObservability | null
   importOpsState: "idle" | "loading" | "ready" | "error"
   importOpsError: string
+  cloudLearningMemoryInventory: WebCloudLearningMemoryInventory | null
+  cloudLearningMemoryState: "idle" | "loading" | "ready" | "error"
+  cloudLearningMemoryError: string
+  cloudLearningMemoryDeleteState: "idle" | "deleting"
+  cloudLearningMemoryReceipt: WebCloudLearningMemoryDeletionReceipt | null
+  weeklyDigest: WebWeeklyDigestSnapshot | null
+  weeklyDigestState: "idle" | "loading" | "ready" | "error"
+  weeklyDigestError: string
+  weeklyDigestPreferenceState: "idle" | "saving"
+  costUsageSummary: WebCostUsageSummary | null
+  costUsageLoadedForToken: string
+  costUsageState: "idle" | "loading" | "ready" | "error"
+  costUsageError: string
+  opsCockpitSummary: WebOpsCockpitSummary | null
+  opsCockpitLoadedForToken: string
+  opsCockpitState: "idle" | "loading" | "ready" | "error"
+  opsCockpitError: string
+  providerHealthSummary: WebProviderHealthSummary | null
+  providerHealthLoadedForToken: string
+  providerHealthState: "idle" | "loading" | "ready" | "error"
+  providerHealthError: string
+  opsAuditSummary: WebOpsAuditSummary | null
+  opsAuditLoadedForToken: string
+  opsAuditState: "idle" | "loading" | "ready" | "error"
+  opsAuditError: string
+  cancellationReasonSummary: WebCancellationReasonSummary | null
+  cancellationReasonLoadedForToken: string
+  cancellationReasonState: "idle" | "loading" | "ready" | "error"
+  cancellationReasonError: string
+  opsUserLookup: WebOpsUserLookupSummary | null
+  opsUserLookupLoadedForToken: string
+  opsUserLookupLoadedForQuery: string
+  opsUserLookupState: "idle" | "loading" | "ready" | "error"
+  opsUserLookupError: string
+  supportReportSummary: WebSupportReportSummary | null
+  supportReports: WebSupportReportList | null
+  supportReportsState: "idle" | "loading" | "ready" | "error"
+  supportReportsError: string
+  featureFlagRuntime: WebFeatureFlagRuntime | null
+  featureFlagsState: "idle" | "loading" | "ready" | "error"
+  featureFlagsError: string
   operatorToken: string
   onOperatorTokenChange: (value: string) => void
   storageHealth: WorkspaceStorageHealthSnapshot | null
@@ -4517,8 +6313,42 @@ function AccountPage(props: {
   onRefresh: () => Promise<void>
   onRefreshCloudAssets: () => Promise<void>
   onRefreshImportOps: () => Promise<void>
+  onRefreshCloudLearningMemory: () => Promise<void>
+  onDeleteCloudLearningMemory: () => Promise<void>
+  onUpdateWeeklyDigestPreference: (enabled: boolean) => Promise<void>
+  onRefreshCostUsage: () => Promise<void>
+  onRefreshOpsCockpit: () => Promise<void>
+  onRefreshProviderHealth: () => Promise<void>
+  onRefreshOpsAudit: () => Promise<void>
+  onRefreshCancellationReasons: () => Promise<void>
+  onLookupOpsUser: (query: string) => Promise<void>
+  onRefreshSupportReports: () => Promise<void>
+  onRefreshFeatureFlags: () => Promise<void>
   onImportLocalLibraryMetadata: () => Promise<void>
   onReplayImportFailures: (dryRun: boolean) => Promise<void>
+  onUpdateSupportReportTriage: (reportId: string, patch: {
+    status?: WebSupportReportTriageStatus
+    priority?: WebSupportReportTriagePriority
+    assignedTo?: string | null
+    resolution?: string | null
+    updatedBy?: string | null
+    followUp?: {
+      path?: WebSupportReportFollowUpPath
+      status?: WebSupportReportFollowUpStatus
+      macroId?: string | null
+      reason?: WebSupportReportFollowUpReason | null
+      updatedBy?: string | null
+    }
+  }) => Promise<void>
+  onUpdateFeatureFlagKillSwitch: (rule: {
+    id: string
+    category: WebKillSwitchCategory
+    enabled: boolean
+    reason: string
+    fallbackMessage: string
+    safeMode: boolean
+    changedBy: string
+  }) => Promise<void>
   onToggleCloudCollection: (collection: "reading_history" | "study_progress", enabled: boolean) => Promise<void>
   onRefreshStorageHealth: () => Promise<void>
   onRepairStorage: () => Promise<void>
@@ -4526,9 +6356,13 @@ function AccountPage(props: {
   onRevokeDevice: (deviceId: string) => Promise<void>
   onSignIn: (credentials: { email: string; password: string }) => Promise<void>
   onBilling: (kind: "checkout" | "portal", plan?: AstraPlan) => Promise<void>
+  trialLifecycle: WebTrialLifecycleContract | null
+  trialIntentState: "idle" | "recording"
+  onTrialIntent: () => Promise<void>
 }) {
   const [apiBaseUrl, setApiBaseUrl] = useState(props.apiBaseUrl)
   const [email, setEmail] = useState(() => readLastAccountEmail())
+  const [opsUserLookupQuery, setOpsUserLookupQuery] = useState("")
   const [password, setPassword] = useState("")
   const [showPassword, setShowPassword] = useState(false)
   const [error, setError] = useState("")
@@ -4740,6 +6574,10 @@ function AccountPage(props: {
   const localOnlySummary = summarizeConfigContinuity(props.config)
   const enabledCollections = props.cloudAssets?.syncHealth.collections.filter((collection) => collection.enabled).length ?? 0
   const readingHistoryWords = props.cloudAssets?.readingHistory.entries.reduce((sum, entry) => sum + entry.wordsTranslated, 0) ?? 0
+  const cloudLearningMemoryActiveCount = summarizeCloudMemoryActiveCount(props.cloudLearningMemoryInventory)
+  const cloudLearningMemoryMutationCount = props.cloudLearningMemoryInventory?.collections.reduce((sum, collection) => sum + collection.mutationCount, 0) ?? 0
+  const weeklyDigestEnabled = props.cloudLearningMemoryInventory?.preferences.weekly_digest ?? false
+  const weeklyDigestArchive = props.cloudLearningMemoryInventory?.collections.find((collection) => collection.collection === "weekly_digest_archive") ?? null
   const repairCollectionCount = syncRepairResult ? Object.values(syncRepairResult.collections).length : 0
   const repairRecordCount = syncRepairResult
     ? Object.values(syncRepairResult.collections).reduce((sum, collection) => sum + collection.records.length, 0)
@@ -4747,6 +6585,44 @@ function AccountPage(props: {
   const repairFloorCount = syncRepairResult
     ? Object.values(syncRepairResult.collections).filter((collection) => collection.compactionFloorCursor).length
     : 0
+  const visibleCostUsageSummary = props.costUsageLoadedForToken === props.operatorToken.trim()
+    ? props.costUsageSummary
+    : null
+  const visibleOpsCockpitSummary = props.opsCockpitLoadedForToken === props.operatorToken.trim()
+    ? props.opsCockpitSummary
+    : null
+  const visibleProviderHealthSummary = props.providerHealthLoadedForToken === props.operatorToken.trim()
+    ? props.providerHealthSummary
+    : null
+  const visibleOpsAuditSummary = props.opsAuditLoadedForToken === props.operatorToken.trim()
+    ? props.opsAuditSummary
+    : null
+  const visibleCancellationReasonSummary = props.cancellationReasonLoadedForToken === props.operatorToken.trim()
+    ? props.cancellationReasonSummary
+    : null
+  const visibleOpsUserLookup = props.opsUserLookupLoadedForToken === props.operatorToken.trim() && props.opsUserLookupLoadedForQuery === opsUserLookupQuery.trim()
+    ? props.opsUserLookup
+    : null
+  const supportMacroCoverage = props.supportReportSummary?.macroCoverage ?? null
+  const supportMacroCoverageRate = supportMacroCoverage?.reportedCoverage.coverageRate ?? null
+  const supportMacroTopBucket = supportMacroCoverage?.byIssueCategory.find((bucket) => bucket.count > 0 && bucket.covered) ?? null
+  const supportWeeklyTopIssue = props.supportReportSummary?.weeklyTopIssues?.[0] ?? null
+  const supportHandoffSummary = props.supportReportSummary?.handoffSummary ?? { byPath: [], byStatus: [] }
+  const supportSlaRisk = props.supportReportSummary?.slaRisk ?? null
+  const supportStaleTriageCount = supportSlaRisk
+    ? supportSlaRisk.staleTriageByAgeBucket.from24hTo72h + supportSlaRisk.staleTriageByAgeBucket.from72hTo168h + supportSlaRisk.staleTriageByAgeBucket.over168h
+    : 0
+  const supportOldestUnresolvedAge = supportSlaRisk?.oldestUnresolvedAgeDays == null
+    ? "—"
+    : `${supportSlaRisk.oldestUnresolvedAgeDays}d`
+  const supportHandedOffCount = supportHandoffSummary.byStatus.find((bucket) => bucket.status === "handed_off")?.count ?? 0
+  const supportCompletedHandoffCount = supportHandoffSummary.byStatus.find((bucket) => bucket.status === "completed")?.count ?? 0
+  const providerHealthIncidentCount = visibleProviderHealthSummary?.buckets.filter((bucket) => bucket.healthStatus === "incident").length ?? 0
+  const providerHealthWatchCount = visibleProviderHealthSummary?.buckets.filter((bucket) => bucket.healthStatus === "watch").length ?? 0
+  const opsCockpitPauseGrowthCount = visibleOpsCockpitSummary?.riskFlags.filter((flag) => flag.severity === "pause_growth").length ?? 0
+  const opsCockpitWatchCount = visibleOpsCockpitSummary?.riskFlags.filter((flag) => flag.severity === "watch").length ?? 0
+  const opsCockpitDailyReview = visibleOpsCockpitSummary?.reviewCadence.find((item) => item.cadence === "daily") ?? null
+  const opsCockpitWeeklyReview = visibleOpsCockpitSummary?.reviewCadence.find((item) => item.cadence === "weekly") ?? null
 
   return (
     <>
@@ -4854,19 +6730,140 @@ function AccountPage(props: {
             </div>
 
             <div className="card">
-              <div className="card-title">Billing unavailable during beta</div>
+              <div className="card-title">Beta trial interest</div>
               <div className="card-copy">
-                Astra is in a free public beta. Paid upgrades, checkout, and billing portal access are not available yet.
+                Record that you want a trial when billing opens. This does not collect payment, start checkout, change your subscription, or grant Pro access during beta.
               </div>
+              {props.trialLifecycle && (
+                <div className="helper-copy">
+                  Trial status: {props.trialLifecycle.trial.status.replace(/_/g, " ")} · Next step: {props.trialLifecycle.conversion.nextStep.replace(/_/g, " ")}.
+                </div>
+              )}
               <div className="row gap wrap">
-                <button type="button" className="button primary" disabled>
-                  Paid upgrades unavailable
+                <button type="button" className="button primary" onClick={() => void props.onTrialIntent()} disabled={props.trialIntentState === "recording"}>
+                  {props.trialIntentState === "recording" ? "Recording…" : "Record trial interest"}
                 </button>
                 <button type="button" className="button secondary" disabled>
+                  Checkout unavailable in beta
+                </button>
+                <button type="button" className="button ghost" disabled>
                   Billing portal unavailable
                 </button>
               </div>
+              <div className="helper-copy">Beta boundary: no payment collected, no subscription mutation, no trial or Pro entitlement granted.</div>
               <div className="helper-copy">Session expires: {formatRelativeDate(props.session.expiresAt)}</div>
+            </div>
+          </section>
+
+          <section className="grid cards-2">
+            <div className="card" data-testid="cloud-learning-memory-card">
+              <div className="section-heading">
+                <div>
+                  <div className="card-title">Cloud learning memory</div>
+                  <div className="card-copy">Review what Astra keeps in your account cloud memory and delete it anytime. This inventory uses counts only — no page text, prompts, full URLs, emails, or device/session ids.</div>
+                </div>
+                <button type="button" className="button ghost" onClick={() => void props.onRefreshCloudLearningMemory()} disabled={props.cloudLearningMemoryState === "loading"}>
+                  {props.cloudLearningMemoryState === "loading" ? "Refreshing…" : "Refresh memory"}
+                </button>
+              </div>
+
+              {props.session.identityMode !== "authenticated" ? (
+                <div className="helper-copy">Create or sign into an Astra account to manage cloud learning memory.</div>
+              ) : props.cloudLearningMemoryState === "loading" && !props.cloudLearningMemoryInventory ? (
+                <div className="helper-copy">Loading cloud memory inventory…</div>
+              ) : props.cloudLearningMemoryError ? (
+                <div className="error-note">{props.cloudLearningMemoryError}</div>
+              ) : props.cloudLearningMemoryInventory ? (
+                <>
+                  <div className="metrics-grid">
+                    <MetricCard label="Active cloud records" value={formatNumber(cloudLearningMemoryActiveCount)} hint="saved learning rows" />
+                    <MetricCard label="Retained changes" value={formatNumber(cloudLearningMemoryMutationCount)} hint={`Generated ${formatRelativeDate(props.cloudLearningMemoryInventory.generatedAt)}`} />
+                    <MetricCard label="Privacy boundary" value={props.cloudLearningMemoryInventory.privacy.metadataOnly ? "Metadata only" : "Review needed"} hint="no raw content" />
+                    <MetricCard label="Digest archive" value={formatNumber(weeklyDigestArchive?.activeCount)} hint={weeklyDigestArchive?.enabled ? "enabled" : "off"} />
+                  </div>
+
+                  <div className="table-wrap" style={{ marginTop: "1rem" }}>
+                    <table className="data-table">
+                      <thead>
+                        <tr>
+                          <th>Memory area</th>
+                          <th>Status</th>
+                          <th>Active</th>
+                          <th>Last updated</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {props.cloudLearningMemoryInventory.collections.map((collection) => (
+                          <tr key={collection.collection}>
+                            <td>{formatCloudMemoryCollectionLabel(collection.collection)}</td>
+                            <td>{collection.enabled ? "On" : "Off"}{collection.defaultEnabled ? " · default on" : ""}</td>
+                            <td>{formatNumber(collection.activeCount)}</td>
+                            <td>{formatRelativeDate(collection.lastUpdatedAt)}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+
+                  <div className="row gap wrap" style={{ marginTop: "1rem" }}>
+                    <button type="button" className="button secondary" onClick={() => void props.onDeleteCloudLearningMemory()} disabled={props.cloudLearningMemoryDeleteState === "deleting"}>
+                      {props.cloudLearningMemoryDeleteState === "deleting" ? "Deleting…" : "Delete cloud learning memory"}
+                    </button>
+                  </div>
+                  <div className="helper-copy" style={{ marginTop: "0.75rem" }}>
+                    Deletes Astra cloud learning rows and digest archives for this account only. It does not delete this browser’s local data and does not create third-party service deletion receipts.
+                  </div>
+                  {props.cloudLearningMemoryReceipt && (
+                    <div className="helper-copy" data-testid="cloud-learning-memory-receipt" style={{ marginTop: "0.75rem" }}>
+                      Deletion receipt: {formatNumber(props.cloudLearningMemoryReceipt.totals.clearedActiveCount)} active records cleared at {formatRelativeDate(props.cloudLearningMemoryReceipt.deletedAt)} · cloud-only · no third-party service deletion included.
+                    </div>
+                  )}
+                </>
+              ) : (
+                <div className="helper-copy">No cloud learning-memory inventory loaded yet.</div>
+              )}
+            </div>
+
+            <div className="card" data-testid="weekly-digest-account-card">
+              <div className="section-heading">
+                <div>
+                  <div className="card-title">Weekly digest</div>
+                  <div className="card-copy">A low-frequency learning summary you can turn off. This shows account status and aggregate counts, not delivery confirmation.</div>
+                </div>
+                <span className={`status-pill${weeklyDigestEnabled ? " success" : " muted"}`}>{weeklyDigestEnabled ? "on" : "off"}</span>
+              </div>
+
+              {props.session.identityMode !== "authenticated" ? (
+                <div className="helper-copy">Weekly digest is available after you sign into an Astra account.</div>
+              ) : (
+                <>
+                  <div className="metrics-grid">
+                    <MetricCard label="Saved this week" value={formatNumber(props.weeklyDigest?.savedCount)} hint={props.weeklyDigestState === "loading" ? "loading…" : `Generated ${formatRelativeDate(props.weeklyDigest?.generatedAt)}`} />
+                    <MetricCard label="Reviewed" value={formatNumber(props.weeklyDigest?.reviewedCount)} hint="this digest period" />
+                    <MetricCard label="Next review" value={formatNumber(props.weeklyDigest?.nextReviewCount)} hint="coming week" />
+                    <MetricCard label="Sources" value={formatNumber(props.weeklyDigest?.sourceBreakdown.reduce((sum, source) => sum + source.count, 0))} hint={props.weeklyDigest?.periodStart ? `${props.weeklyDigest.periodStart.slice(0, 10)} → ${props.weeklyDigest.periodEnd.slice(0, 10)}` : "no digest loaded"} />
+                  </div>
+
+                  {props.weeklyDigestError && <div className="error-note" style={{ marginTop: "0.75rem" }}>{props.weeklyDigestError}</div>}
+                  {props.weeklyDigest?.sourceBreakdown.length ? (
+                    <div className="helper-copy" style={{ marginTop: "0.75rem" }}>
+                      Source mix: {props.weeklyDigest.sourceBreakdown.map((source) => `${source.type} ${formatNumber(source.count)}`).join(" · ")}
+                    </div>
+                  ) : null}
+
+                  <div className="row gap wrap" style={{ marginTop: "1rem" }}>
+                    <button type="button" className="button primary" onClick={() => void props.onUpdateWeeklyDigestPreference(!weeklyDigestEnabled)} disabled={props.weeklyDigestPreferenceState === "saving" || props.cloudLearningMemoryState === "loading"}>
+                      {props.weeklyDigestPreferenceState === "saving" ? "Saving…" : weeklyDigestEnabled ? "Turn off weekly digest" : "Turn on weekly digest"}
+                    </button>
+                    <button type="button" className="button ghost" onClick={() => void props.onRefreshCloudLearningMemory()} disabled={props.weeklyDigestState === "loading"}>
+                      {props.weeklyDigestState === "loading" ? "Refreshing…" : "Refresh digest status"}
+                    </button>
+                  </div>
+                  <div className="helper-copy" style={{ marginTop: "0.75rem" }}>
+                    Preference status comes from your Astra account. This card does not promise email scheduling, push delivery, or external delivery confirmation.
+                  </div>
+                </>
+              )}
             </div>
           </section>
 
@@ -4892,6 +6889,9 @@ function AccountPage(props: {
                 placeholder="x-astra-operator-token"
               />
             </label>
+            <div className="helper-copy">
+              Scoped operator tokens unlock only their permitted panels; permission-denied errors are expected for panels outside that role.
+            </div>
 
             {!props.importOps ? (
               <div className="helper-copy">Queue observability is unavailable. Provide an operator token if this environment requires operator authorization.</div>
@@ -4945,6 +6945,538 @@ function AccountPage(props: {
             )}
 
             {props.importOpsError && <div className="error-note">{props.importOpsError}</div>}
+          </section>
+
+          <section className="card">
+            <div className="section-heading">
+              <div>
+                <div className="card-title">Staff account lookup</div>
+                <div className="card-copy">Operator-only membership and usage-category snapshot for support triage. Results use user id and email hash only; no emails, device ids, session ids, hostnames, prompts, text, or provider/model rows.</div>
+              </div>
+              <button type="button" className="button ghost" onClick={() => void props.onLookupOpsUser(opsUserLookupQuery)} disabled={props.opsUserLookupState === "loading" || !props.operatorToken.trim() || !opsUserLookupQuery.trim()}>
+                {props.opsUserLookupState === "loading" ? "Looking up…" : "Lookup account"}
+              </button>
+            </div>
+
+            <label className="field">
+              <span>Account lookup</span>
+              <input
+                value={opsUserLookupQuery}
+                onChange={(event) => setOpsUserLookupQuery(event.target.value)}
+                placeholder="email, email hash, or user id"
+              />
+            </label>
+
+            {!props.operatorToken.trim() ? (
+              <div className="helper-copy">Enter the operator token above to load staff account metadata.</div>
+            ) : props.opsUserLookupState === "loading" && !props.opsUserLookup ? (
+              <div className="helper-copy">Loading account metadata…</div>
+            ) : props.opsUserLookupError ? (
+              <div className="error-note">{props.opsUserLookupError}</div>
+            ) : !visibleOpsUserLookup ? (
+              <div className="helper-copy">No account lookup loaded yet. Search by email, email hash, or user id.</div>
+            ) : (
+              <>
+                <div className="metrics-grid">
+                  <MetricCard label="User" value={visibleOpsUserLookup.user.userId} hint={`email hash ${visibleOpsUserLookup.user.emailHash.slice(0, 12)}…`} />
+                  <MetricCard label="Membership" value={formatAstraPlanLabel(visibleOpsUserLookup.user.plan as AstraPlan)} hint={visibleOpsUserLookup.user.subscriptionStatus} />
+                  <MetricCard label="Usage category" value={visibleOpsUserLookup.user.usage.usageCategory} hint={`${formatNumber(visibleOpsUserLookup.user.usage.requestsToday)} requests today`} />
+                  <MetricCard label="Result window" value={`${formatNumber(visibleOpsUserLookup.resultWindow.returnedCount)} of ${formatNumber(visibleOpsUserLookup.resultWindow.totalMatched)}`} hint={`Limit ${formatNumber(visibleOpsUserLookup.resultWindow.limit)} · ${visibleOpsUserLookup.resultWindow.hasMore ? "more available" : "no next page"}`} />
+                  <MetricCard label="Devices" value={formatNumber(visibleOpsUserLookup.user.devices.activeCount)} hint={`${formatNumber(visibleOpsUserLookup.user.sessions.activeCount)} active sessions`} />
+                  <MetricCard label="Snapshot boundary" value={visibleOpsUserLookup.snapshotBoundary.metadataOnly && !visibleOpsUserLookup.snapshotBoundary.contentIncluded ? "Metadata only" : "Review needed"} hint="no export/download" />
+                </div>
+
+                <div className="helper-copy" style={{ marginTop: "0.75rem" }}>
+                  Bounded exact lookup only: no raw query, emails, device ids, session ids, provider/model rows, page text, email body, export, or download. Recent task rows are capped at {formatNumber(visibleOpsUserLookup.snapshotBoundary.recentTaskSummaryLimit)}.
+                </div>
+
+                {visibleOpsUserLookup.user.recentTaskSummary.length > 0 && (
+                  <div className="table-wrap" style={{ marginTop: "1rem" }}>
+                    <table className="data-table">
+                      <thead>
+                        <tr>
+                          <th>Task</th>
+                          <th>Events</th>
+                          <th>Success</th>
+                          <th>Failures</th>
+                          <th>Fallbacks</th>
+                          <th>P95</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {visibleOpsUserLookup.user.recentTaskSummary.slice(0, 6).map((bucket) => (
+                          <tr key={bucket.taskClass}>
+                            <td>{bucket.taskClass}</td>
+                            <td>{formatNumber(bucket.eventCount)}</td>
+                            <td>{formatNumber(bucket.successCount)}</td>
+                            <td>{formatNumber(bucket.failureCount)}</td>
+                            <td>{formatNumber(bucket.fallbackCount)}</td>
+                            <td>{bucket.latencyP95Ms == null ? "n/a" : `${formatNumber(bucket.latencyP95Ms)}ms`}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </>
+            )}
+          </section>
+
+          <section className="card">
+            <div className="section-heading">
+              <div>
+                <div className="card-title">Privacy / operator audit</div>
+                <div className="card-copy">Operator-only audit trail for staff actions and consented support submissions. Rows show action, actor, outcome, privacy class, and subject ids only; no emails, operator tokens, device ids, session ids, hostnames, prompts, or text.</div>
+              </div>
+              <button type="button" className="button ghost" onClick={() => void props.onRefreshOpsAudit()} disabled={props.opsAuditState === "loading" || !props.operatorToken.trim()}>
+                {props.opsAuditState === "loading" ? "Refreshing…" : "Refresh audit"}
+              </button>
+            </div>
+
+            {!props.operatorToken.trim() ? (
+              <div className="helper-copy">Enter the operator token above to load privacy-safe audit metadata.</div>
+            ) : props.opsAuditState === "loading" && !props.opsAuditSummary ? (
+              <div className="helper-copy">Loading privacy audit metadata…</div>
+            ) : props.opsAuditError ? (
+              <div className="error-note">{props.opsAuditError}</div>
+            ) : !visibleOpsAuditSummary ? (
+              <div className="helper-copy">No audit snapshot loaded yet. Refresh to fetch retained operator and privacy events.</div>
+            ) : (
+              <>
+                <div className="metrics-grid">
+                  <MetricCard label="Retained audit events" value={formatNumber(visibleOpsAuditSummary.totalEvents)} hint={`Limit ${formatNumber(visibleOpsAuditSummary.retainedEventLimit)}`} />
+                  <MetricCard label="Metadata-only" value={formatNumber(visibleOpsAuditSummary.privacy.metadataOnlyCount)} hint="content not stored" />
+                  <MetricCard label="Content included" value={formatNumber(visibleOpsAuditSummary.privacy.contentIncludedCount)} hint="should stay zero for remote support" />
+                  <MetricCard label="User consent" value={formatNumber(visibleOpsAuditSummary.privacy.userConsentTrueCount)} hint={`Generated ${formatRelativeDate(visibleOpsAuditSummary.generatedAt)}`} />
+                </div>
+
+                {visibleOpsAuditSummary.recent.length > 0 && (
+                  <div className="table-wrap" style={{ marginTop: "1rem" }}>
+                    <table className="data-table">
+                      <thead>
+                        <tr>
+                          <th>Action</th>
+                          <th>Actor</th>
+                          <th>Outcome</th>
+                          <th>Privacy</th>
+                          <th>Subject</th>
+                          <th>When</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {visibleOpsAuditSummary.recent.slice(0, 8).map((entry) => (
+                          <tr key={entry.id}>
+                            <td>{entry.action}</td>
+                            <td>{entry.actor}</td>
+                            <td>{entry.outcome}</td>
+                            <td>{entry.privacy.contentAccess}</td>
+                            <td>{entry.supportReportId ?? entry.subjectUserId ?? "—"}</td>
+                            <td>{formatRelativeDate(entry.timestamp)}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </>
+            )}
+          </section>
+
+          <section className="card">
+            <div className="section-heading">
+              <div>
+                <div className="card-title">Cancellation / refund reasons</div>
+                <div className="card-copy">Operator-only aggregate feedback from settings, billing, support, and refund flows. Shows normalized reason, plan, source, and hashed subject metadata only; no emails, device ids, session ids, notes, URLs, prompts, or text.</div>
+              </div>
+              <button type="button" className="button ghost" onClick={() => void props.onRefreshCancellationReasons()} disabled={props.cancellationReasonState === "loading" || !props.operatorToken.trim()}>
+                {props.cancellationReasonState === "loading" ? "Refreshing…" : "Refresh reasons"}
+              </button>
+            </div>
+
+            {!props.operatorToken.trim() ? (
+              <div className="helper-copy">Enter the operator token above to load cancellation/refund reason metadata.</div>
+            ) : props.cancellationReasonState === "loading" && !props.cancellationReasonSummary ? (
+              <div className="helper-copy">Loading cancellation/refund reason metadata…</div>
+            ) : props.cancellationReasonError ? (
+              <div className="error-note">{props.cancellationReasonError}</div>
+            ) : !visibleCancellationReasonSummary ? (
+              <div className="helper-copy">No cancellation reason snapshot loaded yet. Refresh to fetch retained metadata-only reason aggregates.</div>
+            ) : (
+              <>
+                <div className="metrics-grid">
+                  <MetricCard label="Reason submissions" value={formatNumber(visibleCancellationReasonSummary.totalSubmissions)} hint={`Limit ${formatNumber(visibleCancellationReasonSummary.retainedEventLimit)}`} />
+                  <MetricCard label="Coverage" value={visibleCancellationReasonSummary.reasonCoverage.coverageRate == null ? "n/a" : `${Math.round(visibleCancellationReasonSummary.reasonCoverage.coverageRate * 100)}%`} hint="non-other reasons" />
+                  <MetricCard label="Top reason" value={visibleCancellationReasonSummary.byReason.find((bucket) => bucket.count > 0)?.label ?? "—"} hint={visibleCancellationReasonSummary.byReason.find((bucket) => bucket.count > 0)?.productMeaning ?? "No submissions yet"} />
+                  <MetricCard label="Sources" value={formatNumber(visibleCancellationReasonSummary.bySource.length)} hint={`Generated ${formatRelativeDate(visibleCancellationReasonSummary.generatedAt)}`} />
+                </div>
+
+                {visibleCancellationReasonSummary.byReason.length > 0 && (
+                  <div className="table-wrap" style={{ marginTop: "1rem" }}>
+                    <table className="data-table">
+                      <thead>
+                        <tr>
+                          <th>Reason</th>
+                          <th>Meaning</th>
+                          <th>Count</th>
+                          <th>Share</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {visibleCancellationReasonSummary.byReason.filter((bucket) => bucket.count > 0).slice(0, 8).map((bucket) => (
+                          <tr key={bucket.reason}>
+                            <td>{bucket.label}</td>
+                            <td>{bucket.productMeaning}</td>
+                            <td>{formatNumber(bucket.count)}</td>
+                            <td>{Math.round(bucket.share * 100)}%</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+
+                <div className="helper-copy" style={{ marginTop: "0.75rem" }}>
+                  Plans: {visibleCancellationReasonSummary.byPlan.map((bucket) => `${bucket.plan} ${formatNumber(bucket.count)}`).join(" · ") || "none"} · Sources: {visibleCancellationReasonSummary.bySource.map((bucket) => `${bucket.source} ${formatNumber(bucket.count)}`).join(" · ") || "none"}
+                </div>
+              </>
+            )}
+          </section>
+
+          <section className="card" data-testid="ops-cockpit-card">
+            <div className="section-heading">
+              <div>
+                <div className="card-title">Ops cockpit / operating review</div>
+                <div className="card-copy">Read-only operator review surface that consolidates cost, support, cancellation, digest, retention, analytics cohort, and route-health signals. It is metadata-only and excludes user rows, content, CRM replies, payment truth, and exact provider billing reconciliation.</div>
+              </div>
+              <button type="button" className="button ghost" onClick={() => void props.onRefreshOpsCockpit()} disabled={props.opsCockpitState === "loading" || !props.operatorToken.trim()}>
+                {props.opsCockpitState === "loading" ? "Refreshing…" : "Refresh cockpit"}
+              </button>
+            </div>
+
+            {!props.operatorToken.trim() ? (
+              <div className="helper-copy">Enter the operator token above to load the read-only ops cockpit.</div>
+            ) : props.opsCockpitState === "loading" && !props.opsCockpitSummary ? (
+              <div className="helper-copy">Loading ops cockpit metadata…</div>
+            ) : props.opsCockpitError ? (
+              <div className="error-note">{props.opsCockpitError}</div>
+            ) : !visibleOpsCockpitSummary ? (
+              <div className="helper-copy">No ops cockpit snapshot loaded yet. Refresh to compose existing aggregate operating signals.</div>
+            ) : (
+              <>
+                <div className="metrics-grid">
+                  <MetricCard label="Risk flags" value={`${formatNumber(opsCockpitPauseGrowthCount)} pause / ${formatNumber(opsCockpitWatchCount)} watch`} hint={`Generated ${formatRelativeDate(visibleOpsCockpitSummary.generatedAt)}`} />
+                  <MetricCard label="Cost signal" value={formatEstimatedUsd(visibleOpsCockpitSummary.metrics.cost.dailyEstimatedSpendUsd)} hint={`${visibleOpsCockpitSummary.metrics.cost.dailyRiskLevel} · ${visibleOpsCockpitSummary.metrics.cost.dailySpikeStatus}`} />
+                  <MetricCard label="Support" value={formatNumber(visibleOpsCockpitSummary.metrics.support.unresolvedCount)} hint={`${formatNumber(visibleOpsCockpitSummary.metrics.support.urgentUnresolvedCount)} urgent · ${formatNumber(visibleOpsCockpitSummary.metrics.support.followUpOverdueCount)} overdue`} />
+                  <MetricCard label="Cohort events" value={formatNumber(visibleOpsCockpitSummary.metrics.retentionGrowth.analyticsEvents)} hint={`${visibleOpsCockpitSummary.metrics.retentionGrowth.analyticsGrain} grain · ${formatNumber(visibleOpsCockpitSummary.metrics.retentionGrowth.mobileRetentionEvents)} mobile`} />
+                  <MetricCard label="Cancellation feedback" value={formatNumber(visibleOpsCockpitSummary.metrics.retentionGrowth.cancellationSubmissions)} hint={visibleOpsCockpitSummary.metrics.retentionGrowth.topCancellationReason ?? "no top reason"} />
+                  <MetricCard label="Route health" value={visibleOpsCockpitSummary.metrics.providerHealth.available ? `${formatNumber(visibleOpsCockpitSummary.metrics.providerHealth.incidentBucketCount)} incident` : "not included"} hint={visibleOpsCockpitSummary.sources.providerHealthSummary ? `${formatNumber(visibleOpsCockpitSummary.metrics.providerHealth.watchBucketCount)} watch buckets` : "ops engineer/admin only"} />
+                </div>
+
+                <div className="helper-copy" style={{ marginTop: "0.75rem" }}>
+                  Privacy boundary: {visibleOpsCockpitSummary.privacy.metadataOnly && visibleOpsCockpitSummary.privacy.aggregateOnly && visibleOpsCockpitSummary.privacy.readOnly ? "metadata-only aggregate read-only" : "review needed"}; provider billing reconciliation {visibleOpsCockpitSummary.privacy.providerBillingIncluded ? "included" : "excluded"}; CRM replies {visibleOpsCockpitSummary.privacy.crmRepliesIncluded ? "included" : "excluded"}.
+                </div>
+
+                {visibleOpsCockpitSummary.riskFlags.length > 0 && (
+                  <div className="table-wrap" style={{ marginTop: "1rem" }}>
+                    <table className="data-table">
+                      <thead>
+                        <tr>
+                          <th>Risk</th>
+                          <th>Severity</th>
+                          <th>Message</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {visibleOpsCockpitSummary.riskFlags.slice(0, 6).map((flag) => (
+                          <tr key={`${flag.code}:${flag.severity}`}>
+                            <td>{flag.code.replace(/_/g, " ")}</td>
+                            <td>{flag.severity.replace(/_/g, " ")}</td>
+                            <td>{flag.message}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+
+                <div className="helper-copy" style={{ marginTop: "0.75rem" }}>
+                  Daily review: {opsCockpitDailyReview ? `${opsCockpitDailyReview.availableEvidence.length}/${opsCockpitDailyReview.requiredEvidence.length} evidence ready` : "n/a"}. Weekly review: {opsCockpitWeeklyReview ? `${opsCockpitWeeklyReview.availableEvidence.length}/${opsCockpitWeeklyReview.requiredEvidence.length} evidence ready` : "n/a"}. Guardrails loaded: {formatNumber(visibleOpsCockpitSummary.experimentGuardrails.length)}.
+                </div>
+              </>
+            )}
+          </section>
+
+          <section className="card">
+            <div className="section-heading">
+              <div>
+                <div className="card-title">Cost risk snapshot</div>
+                <div className="card-copy">Read-only aggregate view of recent retained usage events. This is directional usage risk, not exact spend, and it intentionally omits users, emails, providers, models, hostnames, prompts, and text.</div>
+              </div>
+              <button type="button" className="button ghost" onClick={() => void props.onRefreshCostUsage()} disabled={props.costUsageState === "loading" || !props.operatorToken.trim()}>
+                {props.costUsageState === "loading" ? "Refreshing…" : "Refresh cost snapshot"}
+              </button>
+            </div>
+
+            {!props.operatorToken.trim() ? (
+              <div className="helper-copy">Enter the operator token above to load aggregate cost-risk metadata.</div>
+            ) : props.costUsageState === "loading" && !props.costUsageSummary ? (
+              <div className="helper-copy">Loading aggregate cost-risk metadata…</div>
+            ) : props.costUsageError ? (
+              <div className="error-note">{props.costUsageError}</div>
+            ) : !visibleCostUsageSummary ? (
+              <div className="helper-copy">No cost snapshot loaded yet. Refresh to fetch retained aggregate usage events.</div>
+            ) : (
+              <>
+                <div className="metrics-grid">
+                  <MetricCard label="Retained events" value={formatNumber(visibleCostUsageSummary.totalEvents)} hint={visibleCostUsageSummary.source.replace(/_/g, " ")} />
+                  <MetricCard label="Requests" value={formatNumber(visibleCostUsageSummary.totalRequests)} hint={`Recent events per user limit ${formatNumber(visibleCostUsageSummary.recentEventsPerUserLimit)}`} />
+                  <MetricCard label="Characters" value={formatNumber(visibleCostUsageSummary.totalCharacters)} hint={`Generated ${formatRelativeDate(visibleCostUsageSummary.generatedAt)}`} />
+                  <MetricCard label="Cache hit rate" value={visibleCostUsageSummary.cacheHitRate == null ? "n/a" : `${Math.round(visibleCostUsageSummary.cacheHitRate * 100)}%`} hint="hit / hit+partial+miss events" />
+                  <MetricCard label="Estimated spend" value={formatEstimatedUsd(visibleCostUsageSummary.totalEstimatedSpendUsd)} hint={visibleCostUsageSummary.estimateRegistry.replace(/_/g, " ")} />
+                  <MetricCard label="Daily estimate" value={formatEstimatedUsd(visibleCostUsageSummary.dailyEstimate.estimatedSpendUsd)} hint={`${visibleCostUsageSummary.dailyEstimate.riskLevel} risk · ${visibleCostUsageSummary.dailyEstimate.spikeStatus} signal`} />
+                </div>
+
+                {visibleCostUsageSummary.buckets.length > 0 && (
+                  <div className="table-wrap" style={{ marginTop: "1rem" }}>
+                    <table className="data-table">
+                      <thead>
+                        <tr>
+                          <th>Tier</th>
+                          <th>Task</th>
+                          <th>Cost bucket</th>
+                          <th>Events</th>
+                          <th>Requests</th>
+                            <th>Characters</th>
+                            <th>Est. spend</th>
+                            <th>Fallbacks</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {[...visibleCostUsageSummary.buckets]
+                          .sort((left, right) => right.eventCount - left.eventCount)
+                          .slice(0, 6)
+                          .map((bucket) => (
+                            <tr key={`${bucket.tier}:${bucket.taskClass}:${bucket.costBucket}`}>
+                              <td>{bucket.tier}</td>
+                              <td>{bucket.taskClass}</td>
+                              <td>{bucket.costBucket}</td>
+                              <td>{formatNumber(bucket.eventCount)}</td>
+                              <td>{formatNumber(bucket.requestCount)}</td>
+                              <td>{formatNumber(bucket.characterCount)}</td>
+                              <td>{formatEstimatedUsd(bucket.estimatedSpendUsd)}</td>
+                              <td>{formatNumber(bucket.fallbackCount)}</td>
+                            </tr>
+                          ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+
+                <div className="helper-copy" style={{ marginTop: "0.75rem" }}>
+                  Daily spend signal is aggregate only: {visibleCostUsageSummary.dailyEstimate.date ?? "n/a"} {formatEstimatedUsd(visibleCostUsageSummary.dailyEstimate.estimatedSpendUsd)} · previous {visibleCostUsageSummary.dailyEstimate.previousDate ?? "n/a"} {formatEstimatedUsd(visibleCostUsageSummary.dailyEstimate.previousEstimatedSpendUsd)} · ratio {visibleCostUsageSummary.dailyEstimate.spikeRatio == null ? "new" : `${visibleCostUsageSummary.dailyEstimate.spikeRatio}×`}
+                </div>
+
+                {visibleCostUsageSummary.byCacheStatus.length > 0 && (
+                  <div className="helper-copy" style={{ marginTop: "0.75rem" }}>
+                    Cache status is aggregate only: {visibleCostUsageSummary.byCacheStatus.map((bucket) => `${bucket.cacheStatus} ${formatNumber(bucket.eventCount)} (${Math.round(bucket.share * 100)}%)`).join(" · ")}
+                  </div>
+                )}
+
+                {visibleCostUsageSummary.byServiceMode.length > 0 && (
+                  <div className="helper-copy" style={{ marginTop: "0.75rem" }}>
+                    Service-mode health is aggregate only: {visibleCostUsageSummary.byServiceMode.map((bucket) => `${bucket.serviceMode} P95 ${bucket.latencyP95Ms == null ? "n/a" : `${formatNumber(bucket.latencyP95Ms)}ms`}`).join(" · ")}
+                  </div>
+                )}
+              </>
+            )}
+          </section>
+
+
+          <section className="card">
+            <div className="section-heading">
+              <div>
+                <div className="card-title">{visibleProviderHealthSummary ? "Provider health snapshot" : "Staff route-health snapshot"}</div>
+                <div className="card-copy">
+                  {visibleProviderHealthSummary
+                    ? "Staff-only route health for retained recent usage events. Shows provider/model/service-mode/task aggregates for outage mitigation; no users, emails, hostnames, prompts, text, or per-user rows."
+                    : "Staff-only route health for retained recent usage events. Enter a staff token to load outage-mitigation metadata; ordinary account views do not expose internal routing details."}
+                </div>
+              </div>
+              <button type="button" className="button ghost" onClick={() => void props.onRefreshProviderHealth()} disabled={props.providerHealthState === "loading" || !props.operatorToken.trim()}>
+                {props.providerHealthState === "loading" ? "Refreshing…" : "Refresh route health"}
+              </button>
+            </div>
+
+            {!props.operatorToken.trim() ? (
+              <div className="helper-copy">Enter the staff token above to load route-health metadata.</div>
+            ) : props.providerHealthState === "loading" && !props.providerHealthSummary ? (
+              <div className="helper-copy">Loading route-health metadata…</div>
+            ) : props.providerHealthError ? (
+              <div className="error-note">{props.providerHealthError}</div>
+            ) : !visibleProviderHealthSummary ? (
+              <div className="helper-copy">No route-health snapshot loaded yet. Refresh to fetch retained route-health aggregates.</div>
+            ) : (
+              <>
+                <div className="metrics-grid">
+                  <MetricCard label="Retained events" value={formatNumber(visibleProviderHealthSummary.totalEvents)} hint={visibleProviderHealthSummary.source.replace(/_/g, " ")} />
+                  <MetricCard label="Requests" value={formatNumber(visibleProviderHealthSummary.totalRequests)} hint={`Recent events per user limit ${formatNumber(visibleProviderHealthSummary.recentEventsPerUserLimit)}`} />
+                  <MetricCard label="Incidents" value={formatNumber(providerHealthIncidentCount)} hint="failure/fallback threshold" />
+                  <MetricCard label="Watch" value={formatNumber(providerHealthWatchCount)} hint={`${formatNumber(visibleProviderHealthSummary.buckets.length)} provider buckets`} />
+                </div>
+
+                {visibleProviderHealthSummary.buckets.length > 0 && (
+                  <div className="table-wrap" style={{ marginTop: "1rem" }}>
+                    <table className="data-table">
+                      <thead>
+                        <tr>
+                          <th>Health</th>
+                          <th>Provider</th>
+                          <th>Model</th>
+                          <th>Mode</th>
+                          <th>Task</th>
+                          <th>Events</th>
+                          <th>Success</th>
+                          <th>Fallback</th>
+                          <th>P95</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {visibleProviderHealthSummary.buckets.slice(0, 8).map((bucket) => (
+                          <tr key={`${bucket.provider}:${bucket.model}:${bucket.serviceMode}:${bucket.taskClass}`}>
+                            <td>{bucket.healthStatus}</td>
+                            <td>{bucket.provider}</td>
+                            <td>{bucket.model}</td>
+                            <td>{bucket.serviceMode}</td>
+                            <td>{bucket.taskClass}</td>
+                            <td>{formatNumber(bucket.eventCount)}</td>
+                            <td>{bucket.successRate == null ? "n/a" : `${Math.round(bucket.successRate * 100)}%`}</td>
+                            <td>{bucket.fallbackRate == null ? "n/a" : `${Math.round(bucket.fallbackRate * 100)}%`}</td>
+                            <td>{bucket.latencyP95Ms == null ? "n/a" : `${formatNumber(bucket.latencyP95Ms)}ms`}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </>
+            )}
+          </section>
+
+          <FeatureFlagOpsCard
+            runtime={props.featureFlagRuntime}
+            state={props.featureFlagsState}
+            error={props.featureFlagsError}
+            operatorToken={props.operatorToken}
+            onRefresh={props.onRefreshFeatureFlags}
+            onUpdateKillSwitch={props.onUpdateFeatureFlagKillSwitch}
+          />
+
+          <section className="card">
+            <div className="section-heading">
+              <div>
+                <div className="card-title">Support report triage</div>
+                <div className="card-copy">Staff-only metadata triage for submitted support reports. This panel intentionally omits page text, saved content, transcripts, screenshots, and message bodies.</div>
+              </div>
+              <button type="button" className="button ghost" onClick={() => void props.onRefreshSupportReports()} disabled={props.supportReportsState === "loading" || !props.operatorToken.trim()}>
+                {props.supportReportsState === "loading" ? "Refreshing…" : "Refresh reports"}
+              </button>
+            </div>
+
+            {!props.operatorToken.trim() ? (
+              <div className="helper-copy">Enter the operator token above to load staff support report metadata.</div>
+            ) : props.supportReportsState === "loading" && !props.supportReports ? (
+              <div className="helper-copy">Loading support report metadata…</div>
+            ) : props.supportReportsError ? (
+              <div className="error-note">{props.supportReportsError}</div>
+            ) : !props.supportReports || !props.supportReportSummary ? (
+              <div className="helper-copy">No support report snapshot loaded yet. Refresh reports to fetch the current metadata-only inbox.</div>
+            ) : props.supportReports.reports.length === 0 ? (
+              <>
+                <div className="helper-copy">No support reports are currently in the metadata inbox.</div>
+                {supportMacroCoverage && (
+                  <div className="helper-copy" style={{ marginTop: "0.75rem" }}>
+                    First-response macro coverage is metadata-only: n/a until support reports are submitted. Catalog coverage covers {formatNumber(supportMacroCoverage.catalogCoverage.coveredIssueCategories)} of {formatNumber(supportMacroCoverage.catalogCoverage.totalIssueCategories)} issue categories.
+                  </div>
+                )}
+              </>
+            ) : (
+              <>
+                <div className="metrics-grid">
+                  <MetricCard label="Total reports" value={formatNumber(props.supportReportSummary.totalReports)} hint={`Generated ${formatRelativeDate(props.supportReportSummary.generatedAt)}`} />
+                  <MetricCard label="Buckets" value={formatNumber(props.supportReportSummary.buckets.length)} hint="privacy-safe clusters" />
+                  <MetricCard label="Newest bucket" value={props.supportReportSummary.buckets[0]?.featureSurface ?? "—"} hint={props.supportReportSummary.buckets[0]?.triageStatus ?? "no reports"} />
+                  <MetricCard label="Weekly top issue" value={supportWeeklyTopIssue?.issueCategory ?? "—"} hint={supportWeeklyTopIssue ? `${formatNumber(supportWeeklyTopIssue.reportCount)} reports · week ${supportWeeklyTopIssue.weekStart}` : "no weekly reports"} />
+                  <MetricCard label="Macro coverage" value={supportMacroCoverageRate == null ? "n/a" : `${Math.round(supportMacroCoverageRate * 100)}%`} hint={supportMacroCoverage?.reportedCoverage.ready === false ? "below first-response target" : "first-response target"} />
+                  <MetricCard label="Unresolved" value={formatNumber(supportSlaRisk?.unresolvedCount ?? 0)} hint={`${formatNumber(supportSlaRisk?.urgentUnresolvedCount ?? 0)} urgent`} />
+                  <MetricCard label="Stale triage" value={formatNumber(supportStaleTriageCount)} hint={`oldest unresolved ${supportOldestUnresolvedAge}`} />
+                  <MetricCard label="Follow-up overdue" value={formatNumber(supportSlaRisk?.followUpOverdueCount ?? 0)} hint="selected or handed off >48h" />
+                  <MetricCard label="Follow-up handoff" value={formatNumber(supportHandedOffCount + supportCompletedHandoffCount)} hint="handed off or completed" />
+                  <MetricCard label="Recent reports" value={formatNumber(props.supportReports.reports.length)} hint="metadata rows" />
+                </div>
+
+                {supportMacroCoverage && (
+                  <div className="helper-copy" style={{ marginTop: "0.75rem" }}>
+                    First-response macro coverage is metadata-only: {formatNumber(supportMacroCoverage.reportedCoverage.coveredReports)} of {formatNumber(supportMacroCoverage.reportedCoverage.totalReports)} reports have a matching ordinary-language macro{supportMacroTopBucket?.title ? ` · Top macro: ${supportMacroTopBucket.title}` : ""}.
+                  </div>
+                )}
+
+                {supportWeeklyTopIssue && (
+                  <div className="helper-copy" style={{ marginTop: "0.75rem" }}>
+                    Weekly top issue is aggregate-only: {supportWeeklyTopIssue.issueCategory ?? "unknown issue"} on {supportWeeklyTopIssue.featureSurface}{supportWeeklyTopIssue.hostname ? ` · ${supportWeeklyTopIssue.hostname}` : ""}{supportWeeklyTopIssue.knownIssueId ? ` · known issue ${supportWeeklyTopIssue.knownIssueId}` : ""}.
+                  </div>
+                )}
+
+                <div className="helper-copy" style={{ marginTop: "0.75rem" }}>
+                  Follow-up handoff is metadata-only: {supportHandoffSummary.byPath.map((bucket) => `${bucket.path} ${formatNumber(bucket.count)}`).join(" · ") || "none"}.
+                </div>
+
+                {supportSlaRisk && (
+                  <div className="helper-copy" style={{ marginTop: "0.75rem" }}>
+                    SLA risk is metadata-only: unresolved {formatNumber(supportSlaRisk.unresolvedCount)} · urgent {formatNumber(supportSlaRisk.urgentUnresolvedCount)} · stale 24–72h {formatNumber(supportSlaRisk.staleTriageByAgeBucket.from24hTo72h)} · stale 72h–7d {formatNumber(supportSlaRisk.staleTriageByAgeBucket.from72hTo168h)} · stale 7d+ {formatNumber(supportSlaRisk.staleTriageByAgeBucket.over168h)} · generated {formatRelativeDate(supportSlaRisk.currentNow)}.
+                  </div>
+                )}
+
+                {props.supportReportSummary.buckets.length > 0 && (
+                  <div className="table-wrap" style={{ marginTop: "1rem" }}>
+                    <table className="data-table">
+                      <thead>
+                        <tr>
+                          <th>Count</th>
+                          <th>Surface</th>
+                          <th>Issue</th>
+                          <th>Hostname</th>
+                          <th>Triage</th>
+                          <th>Known issue</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {props.supportReportSummary.buckets.slice(0, 5).map((bucket) => (
+                          <tr key={bucket.key}>
+                            <td>{formatNumber(bucket.count)}</td>
+                            <td>{bucket.featureSurface}</td>
+                            <td>{bucket.issueCategory ?? "—"}</td>
+                            <td>{bucket.hostname ?? "—"}</td>
+                            <td>{bucket.triageStatus}</td>
+                            <td>{bucket.knownIssueId ?? "—"}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+
+                <div className="grid cards-2" style={{ marginTop: "1rem" }}>
+                  {props.supportReports.reports.slice(0, 4).map((report) => (
+                    <SupportReportTriageRow
+                      key={report.reportId}
+                      report={report}
+                      operatorToken={props.operatorToken}
+                      onUpdate={props.onUpdateSupportReportTriage}
+                    />
+                  ))}
+                </div>
+              </>
+            )}
           </section>
 
           <section className="card">

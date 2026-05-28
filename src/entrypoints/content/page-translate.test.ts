@@ -32,6 +32,9 @@ import {
   getPageTranslationState,
   startPageTranslation,
   stopPageTranslation,
+  retryFailedBlocks,
+  translatePageElement,
+  translatePageElements,
 } from "./page-translate"
 
 function setRect(element: Element, top: number, height = 20) {
@@ -241,29 +244,311 @@ describe("page translation controller", () => {
     }
 
     expect(getPageTranslationState().phase).toBe("idle")
-    expect(getPageTranslationState().lastError?.message).toBe("Relay unavailable")
+    expect(getPageTranslationState().lastError?.message).toBe("Your membership is active. Astra is reconnecting.")
     expect(getPageTranslationState().progress.failedBlocks).toBe(1)
 
     const retryButton = document.querySelector<HTMLButtonElement>("[data-astra-error-retry='1']")
     expect(retryButton?.textContent).toContain("Retry paragraph")
     const inlineError = document.querySelector("[data-astra-translation-error='1']")
     expect(inlineError?.textContent).toContain("Couldn't translate this paragraph.")
-    expect(inlineError?.getAttribute("aria-label")).toContain("Relay unavailable")
+    expect(inlineError?.getAttribute("aria-label")).toContain("Your membership is active. Astra is reconnecting.")
+    expect(inlineError?.getAttribute("aria-label")).not.toContain("Relay unavailable")
 
     translateTextsMock.mockResolvedValueOnce({
       ok: true,
       translations: ["重试成功"],
     })
 
-    retryButton?.click()
+    retryFailedBlocks({ serviceMode: "fast" })
     expect(getPageTranslationState().phase).toBe("running")
     expect(document.querySelector("[data-astra-translation=\"loading\"]")?.textContent).toContain("⋯")
     for (let i = 0; i < 4; i++) {
       await flushPromises()
     }
 
+    expect(translateTextsMock).toHaveBeenLastCalledWith(expect.objectContaining({ serviceMode: "fast" }))
     expect(document.querySelector("[data-astra-translation-error='1']")).toBeNull()
     expect(document.querySelector(".astra-translation-inner")?.textContent).toBe("重试成功")
+  })
+
+  it("translates text blocks inside open shadow roots", async () => {
+    document.title = "Shadow Test Page"
+    document.body.innerHTML = `
+      <main>
+        <article>
+          <astra-card id="shadow-host"></astra-card>
+        </article>
+      </main>
+    `
+    const host = document.getElementById("shadow-host") as HTMLElement
+    const shadow = host.attachShadow({ mode: "open" })
+    shadow.innerHTML = `<p id="shadow-paragraph">Shadow paragraph text</p>`
+    const shadowParagraph = shadow.getElementById("shadow-paragraph") as HTMLParagraphElement
+    setRect(shadowParagraph, 60)
+    translateTextsMock.mockResolvedValue({
+      ok: true,
+      translations: ["影子测试页", "阴影段落文本"],
+    })
+
+    await startPageTranslation({ targetLang: "zh-CN" })
+    await flushPromises()
+
+    expect(translateTextsMock).toHaveBeenCalledWith(expect.objectContaining({
+      texts: ["Shadow Test Page", "Shadow paragraph text"],
+      targetLang: "zh-CN",
+    }))
+    expect(shadowParagraph.querySelector("[data-astra-translation=\"1\"]")?.textContent).toContain("阴影段落文本")
+  })
+
+  it("translates the page title with the first visible batch and restores it on stop", async () => {
+    document.title = "Astra Test Page"
+    translateTextsMock.mockResolvedValue({
+      ok: true,
+      translations: ["阿斯特拉测试页", "可见文本"],
+    })
+
+    await startPageTranslation({ targetLang: "zh-CN" })
+    await flushPromises()
+
+    expect(translateTextsMock).toHaveBeenCalledWith(expect.objectContaining({
+      texts: ["Astra Test Page", "Visible text"],
+      targetLang: "zh-CN",
+    }))
+    expect(document.title).toBe("阿斯特拉测试页")
+    expect(document.getElementById("visible")?.querySelector("[data-astra-translation=\"1\"]")?.textContent).toContain("可见文本")
+
+    stopPageTranslation()
+    expect(document.title).toBe("Astra Test Page")
+  })
+
+  it("covers static article pages while skipping non-reading chrome", async () => {
+    document.body.innerHTML = `
+      <nav><p id="article-nav">Navigation headline should stay untouched</p></nav>
+      <article>
+        <h1 id="article-title">Astra improves reading flow</h1>
+        <p id="article-lede">Static article lead paragraph for first-pass page translation.</p>
+        <blockquote id="article-quote">A concise quote remains part of the article.</blockquote>
+      </article>
+      <aside><p id="article-aside">Sponsored sidebar copy should stay untouched</p></aside>
+    `
+    document.title = "Static Article Fixture"
+    setRect(document.getElementById("article-title")!, 40)
+    setRect(document.getElementById("article-lede")!, 80)
+    setRect(document.getElementById("article-quote")!, 120)
+    setRect(document.getElementById("article-nav")!, 20)
+    setRect(document.getElementById("article-aside")!, 160)
+    translateTextsMock.mockImplementation(({ texts }: { texts: string[] }) => Promise.resolve({
+      ok: true,
+      translations: texts.map((text) => `zh:${text}`),
+    }))
+
+    await startPageTranslation({ targetLang: "zh-CN" })
+    await flushPromises()
+
+    expect(translateTextsMock).toHaveBeenCalledWith(expect.objectContaining({
+      texts: [
+        "Static Article Fixture",
+        "Astra improves reading flow",
+        "Static article lead paragraph for first-pass page translation.",
+        "A concise quote remains part of the article.",
+      ],
+      targetLang: "zh-CN",
+    }))
+    expect(document.getElementById("article-lede")?.querySelector("[data-astra-translation=\"1\"]")?.textContent)
+      .toContain("zh:Static article lead paragraph")
+    expect(document.getElementById("article-nav")?.querySelector("[data-astra-translation]")).toBeNull()
+    expect(document.getElementById("article-aside")?.querySelector("[data-astra-translation]")).toBeNull()
+  })
+
+  it("distinguishes immersive page scope from full_page landmark coverage", async () => {
+    document.body.innerHTML = `
+      <header><h1 id="scope-header">Header announcement</h1></header>
+      <nav><p id="scope-nav">Navigation label</p></nav>
+      <main><p id="scope-main">Main paragraph for translation.</p></main>
+      <aside><p id="scope-aside">Aside helper text.</p></aside>
+      <footer><p id="scope-footer">Footer support copy.</p></footer>
+      <pre id="scope-code">const secret = 1</pre>
+    `
+    document.title = "Scope Fixture"
+    for (const [id, top] of [
+      ["scope-header", 20],
+      ["scope-nav", 40],
+      ["scope-main", 80],
+      ["scope-aside", 120],
+      ["scope-footer", 160],
+      ["scope-code", 200],
+    ] as const) {
+      setRect(document.getElementById(id)!, top)
+    }
+    translateTextsMock.mockImplementation(({ texts }: { texts: string[] }) => Promise.resolve({
+      ok: true,
+      translations: texts.map((text) => `zh:${text}`),
+    }))
+
+    await startPageTranslation({ targetLang: "zh-CN", contentScope: "immersive" })
+    await flushPromises()
+
+    expect(translateTextsMock).toHaveBeenLastCalledWith(expect.objectContaining({
+      texts: ["Scope Fixture", "Main paragraph for translation."],
+    }))
+    expect(getPageTranslationState().diagnostics).toMatchObject({
+      contentScope: "immersive",
+      effectiveContentScope: "immersive",
+    })
+    expect(document.getElementById("scope-header")?.querySelector("[data-astra-translation]")).toBeNull()
+    expect(document.getElementById("scope-footer")?.querySelector("[data-astra-translation]")).toBeNull()
+    stopPageTranslation()
+
+    await startPageTranslation({ targetLang: "zh-CN", contentScope: "full_page" })
+    await flushPromises()
+
+    expect(translateTextsMock).toHaveBeenLastCalledWith(expect.objectContaining({
+      texts: [
+        "Scope Fixture",
+        "Header announcement",
+        "Navigation label",
+        "Main paragraph for translation.",
+        "Aside helper text.",
+        "Footer support copy.",
+      ],
+    }))
+    expect(getPageTranslationState().diagnostics).toMatchObject({
+      contentScope: "full_page",
+      effectiveContentScope: "full_page",
+    })
+    expect(document.getElementById("scope-header")?.querySelector("[data-astra-translation=\"1\"]")?.textContent)
+      .toContain("zh:Header announcement")
+    expect(document.getElementById("scope-footer")?.querySelector("[data-astra-translation=\"1\"]")?.textContent)
+      .toContain("zh:Footer support copy.")
+    expect(document.getElementById("scope-code")?.querySelector("[data-astra-translation]")).toBeNull()
+  })
+
+  it("covers news pages with article body and captions but not ads or header chrome", async () => {
+    document.body.innerHTML = `
+      <header><p id="news-header">Breaking news nav should stay untouched</p></header>
+      <main>
+        <article>
+          <h1 id="news-headline">City council approves new library plan</h1>
+          <p id="news-lede">The plan adds reading rooms and language classes downtown.</p>
+          <figure>
+            <figcaption id="news-caption">Residents gather outside the historic library.</figcaption>
+          </figure>
+        </article>
+      </main>
+      <div class="ad-slot"><p id="news-ad">Advertisement copy should stay untouched</p></div>
+    `
+    document.title = "News Fixture"
+    setRect(document.getElementById("news-headline")!, 45)
+    setRect(document.getElementById("news-lede")!, 90)
+    setRect(document.getElementById("news-caption")!, 135)
+    setRect(document.getElementById("news-header")!, 10)
+    setRect(document.getElementById("news-ad")!, 180)
+    translateTextsMock.mockImplementation(({ texts }: { texts: string[] }) => Promise.resolve({
+      ok: true,
+      translations: texts.map((text) => `zh:${text}`),
+    }))
+
+    await startPageTranslation({ targetLang: "zh-CN" })
+    await flushPromises()
+
+    expect(translateTextsMock).toHaveBeenCalledWith(expect.objectContaining({
+      texts: [
+        "News Fixture",
+        "City council approves new library plan",
+        "The plan adds reading rooms and language classes downtown.",
+        "Residents gather outside the historic library.",
+      ],
+      targetLang: "zh-CN",
+    }))
+    expect(document.getElementById("news-caption")?.querySelector("[data-astra-translation=\"1\"]")?.textContent)
+      .toContain("zh:Residents gather outside the historic library.")
+    expect(document.getElementById("news-header")?.querySelector("[data-astra-translation]")).toBeNull()
+    expect(document.getElementById("news-ad")?.querySelector("[data-astra-translation]")).toBeNull()
+  })
+
+  it("covers documentation pages while preserving code examples", async () => {
+    document.body.innerHTML = `
+      <main>
+        <article>
+          <h1 id="docs-title">Install Astra in your browser</h1>
+          <p id="docs-intro">Follow these setup steps before starting your first translation.</p>
+          <pre id="docs-code"><code>pnpm dev:web</code></pre>
+          <ol>
+            <li id="docs-step">Open the extension popup and choose your target language.</li>
+          </ol>
+        </article>
+      </main>
+      <nav><p id="docs-nav">Docs navigation should stay untouched</p></nav>
+    `
+    document.title = "Docs Fixture"
+    setRect(document.getElementById("docs-title")!, 40)
+    setRect(document.getElementById("docs-intro")!, 85)
+    setRect(document.getElementById("docs-code")!, 130)
+    setRect(document.getElementById("docs-step")!, 175)
+    setRect(document.getElementById("docs-nav")!, 20)
+    translateTextsMock.mockImplementation(({ texts }: { texts: string[] }) => Promise.resolve({
+      ok: true,
+      translations: texts.map((text) => `zh:${text}`),
+    }))
+
+    await startPageTranslation({ targetLang: "zh-CN" })
+    await flushPromises()
+
+    expect(translateTextsMock).toHaveBeenCalledWith(expect.objectContaining({
+      texts: [
+        "Docs Fixture",
+        "Install Astra in your browser",
+        "Follow these setup steps before starting your first translation.",
+        "Open the extension popup and choose your target language.",
+      ],
+      targetLang: "zh-CN",
+    }))
+    expect(document.getElementById("docs-step")?.querySelector("[data-astra-translation=\"1\"]")?.textContent)
+      .toContain("zh:Open the extension popup")
+    expect(document.getElementById("docs-code")?.querySelector("[data-astra-translation]")).toBeNull()
+    expect(document.getElementById("docs-nav")?.querySelector("[data-astra-translation]")).toBeNull()
+  })
+
+  it("strips rich page context when privacy mode is enabled", async () => {
+    document.title = "Astra Test Page"
+    readConfigMock.mockResolvedValueOnce({
+      version: 1,
+      targetLang: "zh-CN",
+      privacyMode: true,
+      provider: {
+        id: "openai",
+        accessToken: "astra-token",
+        relayBaseURL: "https://astra.example/v1",
+        model: "gpt-5.4-nano",
+      },
+      presentation: {
+        mode: "bilingual",
+        theme: "default",
+      },
+      sites: {},
+    } as any)
+    translateTextsMock.mockResolvedValue({
+      ok: true,
+      translations: ["阿斯特拉测试页", "可见文本"],
+    })
+
+    await startPageTranslation({ targetLang: "zh-CN" })
+    await flushPromises()
+
+    expect(translateTextsMock).toHaveBeenCalledWith(expect.objectContaining({
+      texts: ["Astra Test Page", "Visible text"],
+      targetLang: "zh-CN",
+      context: {
+        hostname: window.location.hostname,
+        pageUrl: `${window.location.origin}/article`,
+      },
+    }))
+    const request = translateTextsMock.mock.calls[0]?.[0]
+    expect(request?.context).not.toHaveProperty("pageTitle")
+    expect(request?.context).not.toHaveProperty("metaDescription")
+    expect(request?.context).not.toHaveProperty("contentSummary")
+    expect(request?.context?.pageUrl).not.toContain("foo=1")
+    expect(request?.context?.pageUrl).not.toContain("#bar")
   })
 
   it("passes page context and only translates visible blocks immediately", async () => {
@@ -303,6 +588,111 @@ describe("page translation controller", () => {
     }))
   })
 
+  it("carries same-page translation memory into later progressive batches", async () => {
+    document.title = ""
+    translateTextsMock
+      .mockResolvedValueOnce({ ok: true, translations: ["可见文本"] })
+      .mockResolvedValueOnce({ ok: true, translations: ["离屏文本"] })
+
+    await startPageTranslation({ targetLang: "zh-CN" })
+    await flushPromises()
+
+    const observer = MockIntersectionObserver.instances[0]
+    observer.trigger(document.getElementById("offscreen")!)
+    await flushPromises()
+
+    expect(translateTextsMock).toHaveBeenCalledTimes(2)
+    expect(translateTextsMock).toHaveBeenLastCalledWith(expect.objectContaining({
+      texts: ["Offscreen text"],
+      context: expect.objectContaining({
+        translationMemory: "Visible text => 可见文本",
+      }),
+    }))
+  })
+
+  it("prioritizes current viewport blocks before below-fold prefetch and defers far blocks", async () => {
+    document.title = ""
+    document.body.innerHTML = `
+      <main>
+        <p id="below-prefetch">Below fold paragraph within the next reading screen.</p>
+        <p id="far-rest">Far down page paragraph should wait for intersection.</p>
+        <p id="current-viewport">Current viewport paragraph should translate first.</p>
+      </main>
+    `
+    const below = document.getElementById("below-prefetch")!
+    const far = document.getElementById("far-rest")!
+    const current = document.getElementById("current-viewport")!
+    setRect(below, 900)
+    setRect(far, 2400)
+    setRect(current, 50)
+    translateTextsMock
+      .mockResolvedValueOnce({ ok: true, translations: ["当前视口段落", "下方预取段落"] })
+      .mockResolvedValueOnce({ ok: true, translations: ["远端段落"] })
+
+    await startPageTranslation({ targetLang: "zh-CN" })
+    await flushPromises()
+
+    expect(translateTextsMock).toHaveBeenCalledTimes(1)
+    expect(translateTextsMock).toHaveBeenCalledWith(expect.objectContaining({
+      texts: [
+        "Current viewport paragraph should translate first.",
+        "Below fold paragraph within the next reading screen.",
+      ],
+      targetLang: "zh-CN",
+    }))
+    expect(current.querySelector("[data-astra-translation=\"1\"]")?.textContent).toContain("当前视口段落")
+    expect(below.querySelector("[data-astra-translation=\"1\"]")?.textContent).toContain("下方预取段落")
+    expect(far.querySelector("[data-astra-translation]")).toBeNull()
+
+    const observer = MockIntersectionObserver.instances[0]
+    observer.trigger(far)
+    await flushPromises()
+
+    expect(translateTextsMock).toHaveBeenCalledTimes(2)
+    expect(translateTextsMock).toHaveBeenLastCalledWith(expect.objectContaining({
+      texts: ["Far down page paragraph should wait for intersection."],
+      targetLang: "zh-CN",
+    }))
+    expect(far.querySelector("[data-astra-translation=\"1\"]")?.textContent).toContain("远端段落")
+  })
+
+  it("does not include document title when explicit site rules restrict translated content", async () => {
+    document.title = "Filtered Article Shell"
+    document.body.innerHTML = `
+      <main>
+        <article>
+          <p id="rule-target">This long-form article paragraph is the only content that should be translated by the site rule filter.</p>
+        </article>
+        <aside><p id="rule-aside">Sidebar text should stay untouched.</p></aside>
+      </main>
+    `
+    setRect(document.getElementById("rule-target")!, 40)
+    setRect(document.getElementById("rule-aside")!, 80)
+    translateTextsMock.mockImplementation(({ texts }: { texts: string[] }) => Promise.resolve({
+      ok: true,
+      translations: texts.map((text) => `zh:${text}`),
+    }))
+
+    await startPageTranslation({
+      targetLang: "zh-CN",
+      selectors: ["article"],
+      excludeSelectors: ["aside"],
+      paragraphMinLength: 40,
+    })
+    await flushPromises()
+
+    expect(translateTextsMock).toHaveBeenCalledWith(expect.objectContaining({
+      texts: ["This long-form article paragraph is the only content that should be translated by the site rule filter."],
+      targetLang: "zh-CN",
+    }))
+    expect(document.title).toBe("Filtered Article Shell")
+    expect(document.getElementById("rule-target")?.querySelector("[data-astra-translation=\"1\"]")?.textContent)
+      .toContain("zh:This long-form article paragraph")
+    expect(document.getElementById("rule-aside")?.querySelector("[data-astra-translation]")).toBeNull()
+
+    stopPageTranslation()
+  })
+
   it("publishes site-rule diagnostics for invalid selectors and no-match filters", async () => {
     document.body.innerHTML = `
       <main>
@@ -336,6 +726,81 @@ describe("page translation controller", () => {
       diagnostics?.afterParagraphCount,
     ])
     expect(translateTextsMock).not.toHaveBeenCalled()
+  })
+
+  it("translates one target paragraph without starting a full page session", async () => {
+    translateTextsMock.mockResolvedValue({
+      ok: true,
+      translations: ["只翻译这一段"],
+    })
+
+    const visible = document.getElementById("visible") as HTMLParagraphElement
+    const offscreen = document.getElementById("offscreen") as HTMLParagraphElement
+    const result = await translatePageElement(visible, { targetLang: "zh-CN" })
+    await flushPromises()
+
+    expect(result).toEqual({ ok: true, translatedBlocks: 1, failedBlocks: 0 })
+    expect(translateTextsMock).toHaveBeenCalledTimes(1)
+    expect(translateTextsMock).toHaveBeenCalledWith(expect.objectContaining({
+      texts: ["Visible text"],
+      targetLang: "zh-CN",
+      context: expect.objectContaining({
+        pageUrl: `${window.location.origin}/article`,
+        contentSummary: expect.stringContaining("Visible text"),
+      }),
+    }))
+    expect(visible.querySelector("[data-astra-translation=\"1\"]")?.textContent).toContain("只翻译这一段")
+    expect(offscreen.querySelector("[data-astra-translation]")).toBeNull()
+  })
+
+  it("translates a targeted section as multiple existing text blocks", async () => {
+    document.body.innerHTML = `
+      <main>
+        <section id="target-section">
+          <p id="section-one">First section paragraph</p>
+          <p id="section-two">Second section paragraph</p>
+        </section>
+        <p id="outside-section">Outside paragraph</p>
+      </main>
+    `
+    translateTextsMock.mockResolvedValue({
+      ok: true,
+      translations: ["第一段", "第二段"],
+    })
+
+    const sectionBlocks = Array.from(document.querySelectorAll<HTMLElement>("#target-section p"))
+    const result = await translatePageElements(sectionBlocks, { targetLang: "zh-CN" })
+    await flushPromises()
+
+    expect(result).toEqual({ ok: true, translatedBlocks: 2, failedBlocks: 0 })
+    expect(translateTextsMock).toHaveBeenCalledWith(expect.objectContaining({
+      texts: ["First section paragraph", "Second section paragraph"],
+      targetLang: "zh-CN",
+    }))
+    expect(document.getElementById("section-one")?.querySelector("[data-astra-translation=\"1\"]")?.textContent).toContain("第一段")
+    expect(document.getElementById("section-two")?.querySelector("[data-astra-translation=\"1\"]")?.textContent).toContain("第二段")
+    expect(document.getElementById("outside-section")?.querySelector("[data-astra-translation]")).toBeNull()
+  })
+
+  it("renders an inline error for targeted paragraph failures", async () => {
+    translateTextsMock.mockResolvedValue({
+      ok: false,
+      error: { code: "PROVIDER_REQUEST_FAILED", message: "Relay unavailable" },
+    })
+
+    const visible = document.getElementById("visible") as HTMLParagraphElement
+    const result = await translatePageElement(visible, { targetLang: "zh-CN" })
+    await flushPromises()
+
+    expect(result).toEqual({
+      ok: false,
+      translatedBlocks: 0,
+      failedBlocks: 1,
+      message: "Your membership is active. Astra is reconnecting.",
+    })
+    expect(visible.querySelector("[data-astra-translation-error='1']")?.textContent).toContain("Couldn't translate this paragraph.")
+    expect(visible.querySelector("[data-astra-translation-error='1']")?.getAttribute("aria-label")).toContain("Your membership is active. Astra is reconnecting.")
+    expect(visible.querySelector("[data-astra-translation-error='1']")?.getAttribute("aria-label")).not.toContain("Relay unavailable")
   })
 
   it("serializes rich inline text into placeholders and restores safe inline markup", async () => {
@@ -388,40 +853,168 @@ describe("page translation controller", () => {
     expect(translationInner?.textContent).not.toContain("__ASTRA_RT_")
   })
 
-  it("only scans newly added subtrees during mutation updates", async () => {
+  it("translates accordion content after it is revealed", async () => {
     vi.useFakeTimers()
-    translateTextsMock.mockResolvedValue({
+    document.title = "Accordion Test Page"
+    document.body.innerHTML = `
+      <main>
+        <p id="visible">Visible text</p>
+        <section>
+          <p id="accordion-panel" style="display: none">Hidden accordion text</p>
+        </section>
+      </main>
+    `
+    const visible = document.getElementById("visible") as HTMLElement
+    const panel = document.getElementById("accordion-panel") as HTMLElement
+    setRect(visible, 50)
+    setRect(panel, 90)
+    translateTextsMock
+      .mockResolvedValueOnce({ ok: true, translations: ["手风琴测试页", "可见文本"] })
+      .mockResolvedValueOnce({ ok: true, translations: ["展开后的内容"] })
+
+    await startPageTranslation({ targetLang: "zh-CN" })
+    await flushPromises()
+
+    expect(panel.querySelector("[data-astra-translation]")).toBeNull()
+
+    panel.style.display = "block"
+    await flushPromises()
+    await vi.advanceTimersByTimeAsync(200)
+    await flushPromises()
+
+    expect(translateTextsMock).toHaveBeenLastCalledWith(expect.objectContaining({
+      texts: ["Hidden accordion text"],
+      targetLang: "zh-CN",
+    }))
+    expect(panel.querySelector("[data-astra-translation=\"1\"]")?.textContent).toContain("展开后的内容")
+
+    vi.useRealTimers()
+  })
+
+  it("translates newly appended forum comments", async () => {
+    vi.useFakeTimers()
+    document.title = "Forum Thread Test Page"
+    document.body.innerHTML = `
+      <main>
+        <article><p id="post-body">Original forum post</p></article>
+        <section id="comments" aria-label="Comments"></section>
+      </main>
+    `
+    const postBody = document.getElementById("post-body") as HTMLElement
+    setRect(postBody, 40)
+    translateTextsMock.mockResolvedValueOnce({
       ok: true,
-      translations: ["可见文本"],
+      translations: ["论坛帖子测试页", "原始论坛帖子"],
+    })
+
+    await startPageTranslation({ targetLang: "zh-CN" })
+    await flushPromises()
+
+    const comments = document.getElementById("comments") as HTMLElement
+    const comment = document.createElement("div")
+    comment.className = "comment"
+    comment.innerHTML = `<p id="new-comment">New comment added by live thread</p>`
+    const commentParagraph = comment.querySelector("p") as HTMLElement
+    setRect(commentParagraph, 120)
+    translateTextsMock.mockResolvedValueOnce({
+      ok: true,
+      translations: ["实时线程新增评论"],
+    })
+
+    comments.appendChild(comment)
+    await flushPromises()
+    await vi.advanceTimersByTimeAsync(200)
+    await flushPromises()
+
+    expect(translateTextsMock).toHaveBeenLastCalledWith(expect.objectContaining({
+      texts: ["New comment added by live thread"],
+      targetLang: "zh-CN",
+    }))
+    expect(commentParagraph.querySelector("[data-astra-translation=\"1\"]")?.textContent).toContain("实时线程新增评论")
+
+    vi.useRealTimers()
+  })
+
+  it("translates newly appended infinite-scroll paragraphs", async () => {
+    vi.useFakeTimers()
+    document.title = "Infinite Scroll Test Page"
+    translateTextsMock.mockResolvedValueOnce({
+      ok: true,
+      translations: ["无限滚动测试页", "可见文本"],
     })
 
     await startPageTranslation({ targetLang: "zh-CN" })
     await flushPromises()
 
     const main = document.querySelector("main")!
-    const added = document.createElement("div")
+    const feedItem = document.createElement("article")
     const paragraph = document.createElement("p")
-    paragraph.textContent = "Dynamic text"
-    added.appendChild(paragraph)
-    setRect(paragraph, 80)
-    main.appendChild(added)
-
+    paragraph.textContent = "Infinite scroll paragraph"
+    feedItem.appendChild(paragraph)
+    setRect(paragraph, 120)
     translateTextsMock.mockResolvedValueOnce({
       ok: true,
-      translations: ["动态文本"],
+      translations: ["无限滚动段落"],
     })
 
+    main.appendChild(feedItem)
     await flushPromises()
-    vi.advanceTimersByTime(200)
+    await vi.advanceTimersByTimeAsync(200)
     await flushPromises()
 
-    expect(translateTextsMock).toHaveBeenNthCalledWith(2, expect.objectContaining({
-      texts: ["Dynamic text"],
+    expect(translateTextsMock).toHaveBeenLastCalledWith(expect.objectContaining({
+      texts: ["Infinite scroll paragraph"],
       targetLang: "zh-CN",
       context: expect.objectContaining({
         pageUrl: `${window.location.origin}/article`,
       }),
     }))
+    expect(paragraph.querySelector("[data-astra-translation=\"1\"]")?.textContent).toContain("无限滚动段落")
+
+    vi.useRealTimers()
+  })
+
+  it("translates a lazy-loaded article body after it mounts", async () => {
+    vi.useFakeTimers()
+    document.title = "Lazy Article Test Page"
+    document.body.innerHTML = `
+      <main>
+        <article id="lazy-article">
+          <h1>Lazy article shell</h1>
+        </article>
+      </main>
+    `
+    const heading = document.querySelector("h1") as HTMLElement
+    setRect(heading, 40)
+    translateTextsMock.mockResolvedValueOnce({
+      ok: true,
+      translations: ["懒加载文章测试页", "懒加载文章外壳"],
+    })
+
+    await startPageTranslation({ targetLang: "zh-CN" })
+    await flushPromises()
+
+    const lazyBody = document.createElement("div")
+    lazyBody.className = "article-body"
+    const paragraph = document.createElement("p")
+    paragraph.textContent = "Lazy-loaded article body paragraph"
+    lazyBody.appendChild(paragraph)
+    setRect(paragraph, 90)
+    translateTextsMock.mockResolvedValueOnce({
+      ok: true,
+      translations: ["懒加载正文段落"],
+    })
+
+    document.getElementById("lazy-article")?.appendChild(lazyBody)
+    await flushPromises()
+    await vi.advanceTimersByTimeAsync(200)
+    await flushPromises()
+
+    expect(translateTextsMock).toHaveBeenLastCalledWith(expect.objectContaining({
+      texts: ["Lazy-loaded article body paragraph"],
+      targetLang: "zh-CN",
+    }))
+    expect(paragraph.querySelector("[data-astra-translation=\"1\"]")?.textContent).toContain("懒加载正文段落")
 
     vi.useRealTimers()
   })
@@ -489,6 +1082,7 @@ describe("page translation controller", () => {
     expect(translateTextsMock).toHaveBeenCalledWith({
       texts: ["Visible text"],
       targetLang: "ja",
+      serviceMode: undefined,
       context: expect.any(Object),
     })
   })
@@ -797,11 +1391,11 @@ describe("page translation controller", () => {
     vi.useRealTimers()
   })
 
-  it("refreshes translation context after structural page changes", async () => {
+  it("refreshes translation context after structural page changes without regenerating the page summary", async () => {
     vi.useFakeTimers()
     translateTextsMock.mockResolvedValueOnce({
       ok: true,
-      translations: ["可见文本"],
+      translations: ["原标题", "可见文本"],
     })
 
     document.title = "Original title"
@@ -829,8 +1423,98 @@ describe("page translation controller", () => {
       texts: ["Fresh dynamic text"],
       context: expect.objectContaining({
         pageTitle: "Updated title",
+        contentSummary: "Visible text Offscreen text",
       }),
     }))
+    const lastRequest = translateTextsMock.mock.calls.at(-1)?.[0]
+    expect(lastRequest?.context?.contentSummary).not.toContain("Fresh dynamic text")
+
+    vi.useRealTimers()
+  })
+
+  it("observes new text appended inside an already observed open shadow root", async () => {
+    vi.useFakeTimers()
+    document.body.innerHTML = `
+      <main>
+        <p id="visible">Visible text</p>
+        <astra-card id="existing-shadow-host"></astra-card>
+      </main>
+    `
+    setRect(document.getElementById("visible")!, 50)
+    const host = document.getElementById("existing-shadow-host") as HTMLElement
+    const shadow = host.attachShadow({ mode: "open" })
+
+    translateTextsMock.mockResolvedValueOnce({
+      ok: true,
+      translations: ["可见文本"],
+    })
+
+    await startPageTranslation({ targetLang: "zh-CN" })
+    await flushPromises()
+
+    const added = document.createElement("p")
+    added.id = "existing-shadow-text"
+    added.textContent = "Fresh observed shadow text"
+    setRect(added, 80)
+
+    translateTextsMock.mockResolvedValueOnce({
+      ok: true,
+      translations: ["已有阴影新文本"],
+    })
+
+    shadow.appendChild(added)
+
+    await flushPromises()
+    vi.advanceTimersByTime(200)
+    await flushPromises()
+
+    expect(translateTextsMock).toHaveBeenLastCalledWith(expect.objectContaining({
+      texts: ["Fresh observed shadow text"],
+    }))
+    expect(added.querySelector('[data-astra-translation="1"]')?.textContent).toContain("已有阴影新文本")
+
+    vi.useRealTimers()
+  })
+
+  it("observes dynamically added open shadow hosts for text blocks", async () => {
+    vi.useFakeTimers()
+    document.body.innerHTML = `
+      <main>
+        <p id="visible">Visible text</p>
+      </main>
+    `
+    setRect(document.getElementById("visible")!, 50)
+
+    translateTextsMock.mockResolvedValueOnce({
+      ok: true,
+      translations: ["可见文本"],
+    })
+
+    await startPageTranslation({ targetLang: "zh-CN" })
+    await flushPromises()
+
+    const host = document.createElement("astra-card")
+    host.id = "dynamic-shadow-host"
+    const shadow = host.attachShadow({ mode: "open" })
+    shadow.innerHTML = `<p id="dynamic-shadow-text">Fresh shadow text</p>`
+    const added = shadow.getElementById("dynamic-shadow-text") as HTMLElement
+    setRect(added, 80)
+
+    translateTextsMock.mockResolvedValueOnce({
+      ok: true,
+      translations: ["新的阴影文本"],
+    })
+
+    document.querySelector("main")?.appendChild(host)
+
+    await flushPromises()
+    vi.advanceTimersByTime(200)
+    await flushPromises()
+
+    expect(translateTextsMock).toHaveBeenLastCalledWith(expect.objectContaining({
+      texts: ["Fresh shadow text"],
+    }))
+    expect(added.querySelector('[data-astra-translation="1"]')?.textContent).toContain("新的阴影文本")
 
     vi.useRealTimers()
   })

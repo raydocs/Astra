@@ -51,12 +51,12 @@ describe("readability regression fixtures", () => {
     "auth-form-layout",
     "feed-card-list",
     "marketing-landing",
-  ])("keeps %s on page scope instead of forcing an article root", (fixtureName) => {
+  ])("keeps %s on immersive body scope instead of forcing an article root", (fixtureName) => {
     document.body.innerHTML = loadFixture(fixtureName)
 
     const plan = resolveExtractionPlan(document, "article")
 
-    expect(plan.scope).toBe("page")
+    expect(plan.scope).toBe("immersive")
     expect(plan.root.tagName).toBe("BODY")
     expect(plan.blocks.length).toBeGreaterThan(0)
   })

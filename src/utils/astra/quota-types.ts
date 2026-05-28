@@ -1,6 +1,8 @@
+import type { AstraPlan } from "@/types/auth"
+
 export interface QuotaInfo {
   used: number
   limit: number
-  plan: "free" | "pro" | "custom"
+  plan: AstraPlan | "custom"
   resetsAt: string
 }

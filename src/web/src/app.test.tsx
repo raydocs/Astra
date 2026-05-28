@@ -10,10 +10,22 @@ const mocks = vi.hoisted(() => ({
   refreshWebSessionMock: vi.fn(),
   createWebSessionMock: vi.fn(),
   createWebAnonymousSessionMock: vi.fn(),
+  createWebTrialIntentMock: vi.fn(),
   saveWebSessionMock: vi.fn((session) => session),
   fetchWebAccountWorkspaceMock: vi.fn(),
   fetchWebCloudAssetsMock: vi.fn(),
   fetchWebImportQueueObservabilityMock: vi.fn(),
+  fetchWebFeatureFlagRuntimeMock: vi.fn(),
+  updateWebFeatureFlagRuntimeMock: vi.fn(),
+  fetchWebCostUsageSummaryMock: vi.fn(),
+  fetchWebCancellationReasonSummaryMock: vi.fn(),
+  fetchWebOpsAuditSummaryMock: vi.fn(),
+  fetchWebOpsCockpitSummaryMock: vi.fn(),
+  fetchWebOpsUserLookupMock: vi.fn(),
+  fetchWebProviderHealthSummaryMock: vi.fn(),
+  fetchWebSupportReportSummaryMock: vi.fn(),
+  fetchWebSupportReportsMock: vi.fn(),
+  updateWebSupportReportTriageMock: vi.fn(),
   translateWithWebRelayMock: vi.fn(),
   ensureWebDeviceIdentityMock: vi.fn(),
   mergeWebConfigMock: vi.fn((current, patch) => ({
@@ -40,6 +52,10 @@ const mocks = vi.hoisted(() => ({
   downloadWebContinuityExportMock: vi.fn(),
   createWebCloudDataDeleteMock: vi.fn(),
   fetchWebCloudDataDeleteJobMock: vi.fn(),
+  fetchWebCloudLearningMemoryInventoryMock: vi.fn(),
+  deleteWebCloudLearningMemoryMock: vi.fn(),
+  fetchWebWeeklyDigestMock: vi.fn(),
+  updateWebWeeklyDigestPreferenceMock: vi.fn(),
   repairWebCloudSyncMock: vi.fn(),
   createWebVideoNoteJobMock: vi.fn(),
   fetchWebVideoNoteJobMock: vi.fn(),
@@ -59,12 +75,28 @@ vi.mock("./lib/astra-web", () => ({
   clearWebSession: mocks.clearWebSessionMock,
   createWebAnonymousSession: mocks.createWebAnonymousSessionMock,
   createWebSession: mocks.createWebSessionMock,
+  createWebTrialIntent: mocks.createWebTrialIntentMock,
   ensureWebDeviceIdentity: mocks.ensureWebDeviceIdentityMock,
   fetchWebAccountWorkspace: mocks.fetchWebAccountWorkspaceMock,
   fetchWebCloudAssets: mocks.fetchWebCloudAssetsMock,
   fetchWebImportQueueObservability: mocks.fetchWebImportQueueObservabilityMock,
+  fetchWebFeatureFlagRuntime: mocks.fetchWebFeatureFlagRuntimeMock,
+  updateWebFeatureFlagRuntime: mocks.updateWebFeatureFlagRuntimeMock,
+  fetchWebCostUsageSummary: mocks.fetchWebCostUsageSummaryMock,
+  fetchWebCancellationReasonSummary: mocks.fetchWebCancellationReasonSummaryMock,
+  fetchWebOpsAuditSummary: mocks.fetchWebOpsAuditSummaryMock,
+  fetchWebOpsCockpitSummary: mocks.fetchWebOpsCockpitSummaryMock,
+  fetchWebOpsUserLookup: mocks.fetchWebOpsUserLookupMock,
+  fetchWebProviderHealthSummary: mocks.fetchWebProviderHealthSummaryMock,
+  fetchWebSupportReportSummary: mocks.fetchWebSupportReportSummaryMock,
+  fetchWebSupportReports: mocks.fetchWebSupportReportsMock,
+  updateWebSupportReportTriage: mocks.updateWebSupportReportTriageMock,
   fetchWebContinuityExportJob: mocks.fetchWebContinuityExportJobMock,
   fetchWebCloudDataDeleteJob: mocks.fetchWebCloudDataDeleteJobMock,
+  fetchWebCloudLearningMemoryInventory: mocks.fetchWebCloudLearningMemoryInventoryMock,
+  deleteWebCloudLearningMemory: mocks.deleteWebCloudLearningMemoryMock,
+  fetchWebWeeklyDigest: mocks.fetchWebWeeklyDigestMock,
+  updateWebWeeklyDigestPreference: mocks.updateWebWeeklyDigestPreferenceMock,
   createWebVideoNoteJob: mocks.createWebVideoNoteJobMock,
   fetchWebVideoNoteJob: mocks.fetchWebVideoNoteJobMock,
   fetchWebVideoNoteArtifact: mocks.fetchWebVideoNoteArtifactMock,
@@ -476,10 +508,22 @@ describe("AstraWebApp smoke", () => {
     mocks.refreshWebSessionMock.mockReset()
     mocks.createWebSessionMock.mockReset()
     mocks.createWebAnonymousSessionMock.mockReset()
+    mocks.createWebTrialIntentMock.mockReset()
     mocks.saveWebSessionMock.mockClear()
     mocks.fetchWebAccountWorkspaceMock.mockReset()
     mocks.fetchWebCloudAssetsMock.mockReset()
     mocks.fetchWebImportQueueObservabilityMock.mockReset()
+    mocks.fetchWebFeatureFlagRuntimeMock.mockReset()
+    mocks.updateWebFeatureFlagRuntimeMock.mockReset()
+    mocks.fetchWebCostUsageSummaryMock.mockReset()
+    mocks.fetchWebCancellationReasonSummaryMock.mockReset()
+    mocks.fetchWebOpsAuditSummaryMock.mockReset()
+    mocks.fetchWebOpsCockpitSummaryMock.mockReset()
+    mocks.fetchWebOpsUserLookupMock.mockReset()
+    mocks.fetchWebProviderHealthSummaryMock.mockReset()
+    mocks.fetchWebSupportReportSummaryMock.mockReset()
+    mocks.fetchWebSupportReportsMock.mockReset()
+    mocks.updateWebSupportReportTriageMock.mockReset()
     mocks.translateWithWebRelayMock.mockReset()
     mocks.ensureWebDeviceIdentityMock.mockReset()
     mocks.mergeWebConfigMock.mockClear()
@@ -497,6 +541,10 @@ describe("AstraWebApp smoke", () => {
     mocks.downloadWebContinuityExportMock.mockReset()
     mocks.createWebCloudDataDeleteMock.mockReset()
     mocks.fetchWebCloudDataDeleteJobMock.mockReset()
+    mocks.fetchWebCloudLearningMemoryInventoryMock.mockReset()
+    mocks.deleteWebCloudLearningMemoryMock.mockReset()
+    mocks.fetchWebWeeklyDigestMock.mockReset()
+    mocks.updateWebWeeklyDigestPreferenceMock.mockReset()
     mocks.repairWebCloudSyncMock.mockReset()
     mocks.createWebVideoNoteJobMock.mockReset()
     mocks.fetchWebVideoNoteJobMock.mockReset()
@@ -505,6 +553,80 @@ describe("AstraWebApp smoke", () => {
     mocks.readWebSessionMock.mockReturnValue(null)
     mocks.fetchWebAccountWorkspaceMock.mockResolvedValue(createWorkspace())
     mocks.fetchWebCloudAssetsMock.mockResolvedValue(createCloudAssets())
+    mocks.createWebTrialIntentMock.mockResolvedValue({
+      schema: "astra-beta-trial-lifecycle.v1",
+      generatedAt: "2026-05-28T00:00:00.000Z",
+      account: { plan: "free", subscriptionStatus: "active" },
+      explicitActionRequired: true,
+      eligibility: { eligible: true, reason: "eligible_free_account" },
+      trial: { status: "intent_recorded", startedAt: null, expiresAt: null },
+      conversion: { nextStep: "wait_for_beta_billing", checkoutAvailable: false, portalAvailable: false },
+      betaBoundary: {
+        billingUnavailable: true,
+        betaBoundary: true,
+        noPaymentCollected: true,
+        paymentCollected: false,
+        subscriptionMutation: false,
+        proEntitlementGranted: false,
+        trialEntitlementGranted: false,
+      },
+    })
+    mocks.fetchWebCloudLearningMemoryInventoryMock.mockResolvedValue({
+      schema: "astra-cloud-learning-memory-inventory.v1",
+      generatedAt: "2026-05-29T12:00:00.000Z",
+      account: { userId: "usr_demo", identityMode: "authenticated" },
+      collections: [
+        { collection: "config", enabled: true, defaultEnabled: true, mutationCount: 1, activeCount: 1, cursor: "1", lastUpdatedAt: "2026-05-28T12:00:00.000Z" },
+        { collection: "vocabulary", enabled: true, defaultEnabled: true, mutationCount: 2, activeCount: 2, cursor: "2", lastUpdatedAt: "2026-05-28T12:05:00.000Z" },
+        { collection: "review_schedule", enabled: true, defaultEnabled: true, mutationCount: 1, activeCount: 1, cursor: "3", lastUpdatedAt: "2026-05-28T12:06:00.000Z" },
+        { collection: "reading_history", enabled: false, defaultEnabled: false, mutationCount: 0, activeCount: 0, cursor: null, lastUpdatedAt: null },
+        { collection: "study_progress", enabled: false, defaultEnabled: false, mutationCount: 0, activeCount: 0, cursor: null, lastUpdatedAt: null },
+        { collection: "weekly_digest_archive", enabled: true, defaultEnabled: true, mutationCount: 1, activeCount: 1, cursor: null, lastUpdatedAt: "2026-05-29T12:00:00.000Z" },
+      ],
+      preferences: { reading_history: false, study_progress: false, weekly_digest: true },
+      privacy: {
+        metadataOnly: true,
+        rawContentIncluded: false,
+        rawUrlsIncluded: false,
+        emailsIncluded: false,
+        deviceSessionIdsIncluded: false,
+        syncPayloadBodiesIncluded: false,
+        promptModelOutputsIncluded: false,
+        externalProviderReceiptsIncluded: false,
+        localBrowserDeletionIncluded: false,
+      },
+    })
+    mocks.fetchWebWeeklyDigestMock.mockResolvedValue({
+      digestId: "digest_2026-05-25",
+      periodStart: "2026-05-25T00:00:00.000Z",
+      periodEnd: "2026-06-01T00:00:00.000Z",
+      reviewedCount: 1,
+      savedCount: 3,
+      sourceBreakdown: [{ type: "page", count: 2 }, { type: "saved", count: 1 }],
+      highlightedWords: ["private-term"],
+      highlightedSentences: ["Private saved sentence"],
+      nextReviewCount: 4,
+      generatedAt: "2026-05-29T12:00:00.000Z",
+    })
+    mocks.updateWebWeeklyDigestPreferenceMock.mockResolvedValue({ preference: { weekly_digest: false }, serverTime: "2026-05-29T12:01:00.000Z" })
+    mocks.deleteWebCloudLearningMemoryMock.mockResolvedValue({
+      schema: "astra-cloud-learning-memory-deletion-receipt.v1",
+      deletedAt: "2026-05-29T12:02:00.000Z",
+      account: { userId: "usr_demo", identityMode: "authenticated" },
+      collections: [
+        { collection: "vocabulary", clearedMutationCount: 2, clearedActiveCount: 2, previousCursor: "2" },
+        { collection: "review_schedule", clearedMutationCount: 1, clearedActiveCount: 1, previousCursor: "3" },
+        { collection: "weekly_digest_archive", clearedMutationCount: 1, clearedActiveCount: 1, previousCursor: null },
+      ],
+      totals: { clearedMutationCount: 4, clearedActiveCount: 4 },
+      boundary: {
+        metadataOnly: true,
+        cloudServerSideOnly: true,
+        rawContentIncluded: false,
+        externalProviderDeletionIncluded: false,
+        localBrowserDeletionIncluded: false,
+      },
+    })
     mocks.fetchWebImportQueueObservabilityMock.mockResolvedValue({
       fetchedAt: "2026-04-09T01:20:00.000Z",
       requestId: "req-123",
@@ -517,6 +639,448 @@ describe("AstraWebApp smoke", () => {
         statusCounts: { queued: 2, failed: 1, dead_lettered: 1 },
         surfaceCounts: { web: 4 },
         recentFailures: [],
+      },
+    })
+    mocks.fetchWebCostUsageSummaryMock.mockResolvedValue({
+      schema: "astra-cost-usage-summary.v1",
+      generatedAt: "2026-05-27T12:00:00.000Z",
+      source: "recent_user_usage_events",
+      recentEventsPerUserLimit: 10,
+      totalEvents: 3,
+      totalRequests: 7,
+      totalCharacters: 3200,
+      totalEstimatedSpendUsd: 0.0134,
+      estimateRegistry: "internal_deterministic_v1",
+      cacheHitRate: 0.5,
+      dailyEstimate: {
+        date: "2026-05-27",
+        estimatedSpendUsd: 0.0134,
+        previousDate: "2026-05-26",
+        previousEstimatedSpendUsd: 0.004,
+        spikeRatio: 3.35,
+        spikeStatus: "spike",
+        riskLevel: "high",
+      },
+      buckets: [{
+        tier: "pro",
+        taskClass: "deep_read",
+        costBucket: "high",
+        eventCount: 2,
+        requestCount: 5,
+        characterCount: 2600,
+        successCount: 2,
+        failureCount: 0,
+        fallbackCount: 1,
+        estimatedSpendUsd: 0.011,
+      }, {
+        tier: "free",
+        taskClass: "translate",
+        costBucket: "low",
+        eventCount: 1,
+        requestCount: 2,
+        characterCount: 600,
+        successCount: 1,
+        failureCount: 0,
+        fallbackCount: 0,
+        estimatedSpendUsd: 0.0024,
+      }],
+      byServiceMode: [{
+        serviceMode: "automatic",
+        eventCount: 3,
+        requestCount: 7,
+        characterCount: 3200,
+        successCount: 3,
+        failureCount: 0,
+        fallbackCount: 1,
+        latencySampleCount: 2,
+        latencyP50Ms: 500,
+        latencyP95Ms: 1200,
+        estimatedSpendUsd: 0.0134,
+      }],
+      byCacheStatus: [{ cacheStatus: "hit", eventCount: 1, requestCount: 2, characterCount: 600, share: 0.3333, estimatedSpendUsd: 0.0024 }, { cacheStatus: "miss", eventCount: 1, requestCount: 2, characterCount: 600, share: 0.3333, estimatedSpendUsd: 0.011 }, { cacheStatus: "disabled", eventCount: 1, requestCount: 3, characterCount: 2000, share: 0.3333, estimatedSpendUsd: 0 }],
+    })
+    mocks.fetchWebOpsCockpitSummaryMock.mockResolvedValue({
+      schema: "astra-ops-cockpit-summary.v1",
+      generatedAt: "2026-05-28T12:00:00.000Z",
+      privacy: {
+        metadataOnly: true,
+        aggregateOnly: true,
+        readOnly: true,
+        contentIncluded: false,
+        perUserRows: false,
+        identifiersIncluded: false,
+        providerBillingIncluded: false,
+        crmRepliesIncluded: false,
+      },
+      sources: {
+        costUsageSummary: true,
+        supportReportSummary: true,
+        cancellationReasonSummary: true,
+        analyticsCohortSummary: true,
+        mobileRetentionSummary: true,
+        weeklyDigestDeliverySummary: true,
+        providerHealthSummary: true,
+        operatingReviewHelpers: true,
+      },
+      metrics: {
+        cost: {
+          retainedEvents: 3,
+          requests: 7,
+          estimatedSpendUsd: 0.0134,
+          dailyEstimatedSpendUsd: 0.0134,
+          dailyRiskLevel: "high",
+          dailySpikeStatus: "spike",
+          cacheHitRate: 0.5,
+          topCostTaskClass: "deep_read",
+        },
+        support: {
+          totalReports: 1,
+          weeklyTopIssueCount: 1,
+          unresolvedCount: 2,
+          urgentUnresolvedCount: 1,
+          staleTriageCount: 2,
+          followUpOverdueCount: 1,
+          oldestUnresolvedAgeDays: 3,
+          macroCoverageRate: 1,
+        },
+        retentionGrowth: {
+          analyticsGrain: "week",
+          analyticsEvents: 5,
+          mobileRetentionGrain: "week",
+          mobileRetentionEvents: 4,
+          weeklyDigestDeliveryRuns: 1,
+          cancellationSubmissions: 2,
+          cancellationReasonCoverageRate: 1,
+          topCancellationReason: "Privacy concerns",
+        },
+        providerHealth: {
+          available: true,
+          retainedEvents: 3,
+          incidentBucketCount: 1,
+          watchBucketCount: 0,
+        },
+      },
+      reviewCadence: [
+        { cadence: "daily", label: "Outage, error spike, cost spike, support volume", focus: "Protect stability and margin before pushing growth.", requiredEvidence: ["support_report_summary", "cost_usage_summary"], availableEvidence: ["support_report_summary", "cost_usage_summary"], missingEvidence: [] },
+        { cadence: "weekly", label: "Activation, paywall, retention, top failures, heavy users", focus: "Decide experiment winners only when guardrails are healthy.", requiredEvidence: ["activation_funnel", "experiment_guardrails", "support_report_summary", "cost_usage_summary"], availableEvidence: ["activation_funnel", "experiment_guardrails", "support_report_summary", "cost_usage_summary"], missingEvidence: [] },
+      ],
+      experimentGuardrails: [{ area: "support", successMetric: "useful_support_report_rate", guardrailMetrics: ["content_included_rate"], privacyRule: "metadata only" }],
+      riskFlags: [
+        { code: "cost_spike_or_high_risk", severity: "pause_growth", message: "Aggregate daily cost signal is high or spiking." },
+        { code: "support_sla_risk", severity: "watch", message: "Support has unresolved reports." },
+      ],
+    })
+    mocks.fetchWebOpsAuditSummaryMock.mockResolvedValue({
+      schema: "astra-ops-audit-summary.v1",
+      generatedAt: "2026-05-27T12:00:00.000Z",
+      totalEvents: 3,
+      retainedEventLimit: 500,
+      byAction: [
+        { action: "support_report_submitted", count: 1 },
+        { action: "ops_user_lookup", count: 1 },
+      ],
+      byActor: [
+        { actor: "operator", count: 2 },
+        { actor: "user", count: 1 },
+      ],
+      privacy: {
+        userConsentTrueCount: 1,
+        metadataOnlyCount: 3,
+        contentIncludedCount: 0,
+      },
+      recent: [{
+        id: "audit_1",
+        timestamp: "2026-05-27T12:00:00.000Z",
+        actor: "operator",
+        action: "ops_user_lookup",
+        outcome: "success",
+        operatorTokenHash: "b".repeat(64),
+        subjectUserId: "usr_demo",
+        subjectEmailHash: "a".repeat(64),
+        supportReportId: null,
+        metadata: { queryType: "email" },
+        privacy: { userConsent: null, contentIncluded: false, contentAccess: "metadata_only" },
+      }, {
+        id: "audit_2",
+        timestamp: "2026-05-27T11:59:00.000Z",
+        actor: "user",
+        action: "support_report_submitted",
+        outcome: "success",
+        operatorTokenHash: null,
+        subjectUserId: "usr_demo",
+        subjectEmailHash: "a".repeat(64),
+        supportReportId: "rpt_audit_0001",
+        metadata: { featureSurface: "settings" },
+        privacy: { userConsent: true, contentIncluded: false, contentAccess: "metadata_only" },
+      }],
+    })
+    mocks.fetchWebCancellationReasonSummaryMock.mockResolvedValue({
+      schema: "astra-cancellation-reason-summary.v1",
+      generatedAt: "2026-05-27T12:00:00.000Z",
+      totalSubmissions: 2,
+      retainedEventLimit: 500,
+      reasonCoverage: { submittedCount: 2, unknownReasonCount: 0, coverageRate: 1 },
+      byReason: [{
+        reason: "privacy_concerns",
+        label: "Privacy concerns",
+        productMeaning: "Trust, disclosure, or privacy controls need work.",
+        count: 2,
+        share: 1,
+      }],
+      byPlan: [{ plan: "pro", count: 2 }],
+      bySource: [{ source: "settings", count: 1 }, { source: "refund_request", count: 1 }],
+      recent: [{
+        id: "cancel_1",
+        submittedAt: "2026-05-27T12:00:00.000Z",
+        subjectUserId: "usr_demo",
+        subjectEmailHash: "a".repeat(64),
+        reason: "privacy_concerns",
+        plan: "pro",
+        source: "settings",
+        subscriptionStatus: "active",
+        identityMode: "authenticated",
+      }],
+    })
+    mocks.fetchWebOpsUserLookupMock.mockResolvedValue({
+      schema: "astra-ops-user-lookup.v1",
+      generatedAt: "2026-05-27T12:00:00.000Z",
+      queryType: "email",
+      resultWindow: {
+        mode: "exact_lookup",
+        limit: 1,
+        cursor: null,
+        nextCursor: null,
+        returnedCount: 1,
+        totalMatched: 1,
+        hasMore: false,
+      },
+      snapshotBoundary: {
+        metadataOnly: true,
+        contentIncluded: false,
+        rawQueryIncluded: false,
+        exportAvailable: false,
+        recentTaskSummaryLimit: 6,
+        excludedFields: ["email", "deviceId", "sessionId", "provider", "model", "rawQuery", "rawText"],
+      },
+      user: {
+        userId: "usr_demo",
+        emailHash: "a".repeat(64),
+        createdAt: "2026-03-01T00:00:00.000Z",
+        plan: "pro",
+        subscriptionStatus: "active",
+        identityMode: "authenticated",
+        providerEntitlementCount: 2,
+        limits: { dailyRequests: 2000, dailyCharacters: 500000, requestsPerMinute: 120 },
+        usage: {
+          usageDay: "2026-05-27",
+          requestsToday: 120,
+          charactersToday: 60000,
+          totalRequests: 320,
+          totalCharacters: 150000,
+          lastRequestAt: "2026-05-27T00:02:00.000Z",
+          recentEventCount: 3,
+          usageCategory: "heavy",
+        },
+        devices: { activeCount: 1, revokedCount: 0 },
+        sessions: { activeCount: 1, revokedCount: 0 },
+        recentTaskSummary: [{
+          taskClass: "paragraph_understanding",
+          eventCount: 2,
+          successCount: 1,
+          failureCount: 1,
+          fallbackCount: 1,
+          latencySampleCount: 2,
+          latencyP95Ms: 240,
+        }],
+      },
+    })
+    mocks.fetchWebProviderHealthSummaryMock.mockResolvedValue({
+      schema: "astra-provider-health-summary.v1",
+      generatedAt: "2026-05-27T12:00:00.000Z",
+      source: "recent_user_usage_events",
+      recentEventsPerUserLimit: 10,
+      totalEvents: 3,
+      totalRequests: 7,
+      totalCharacters: 3200,
+      buckets: [{
+        provider: "openai",
+        model: "gpt-health-pro",
+        serviceMode: "automatic",
+        taskClass: "deep_read",
+        eventCount: 2,
+        requestCount: 5,
+        characterCount: 2600,
+        successCount: 1,
+        failureCount: 1,
+        fallbackCount: 1,
+        successRate: 0.5,
+        fallbackRate: 0.5,
+        latencySampleCount: 2,
+        latencyP50Ms: 500,
+        latencyP95Ms: 1200,
+        healthStatus: "incident",
+      }, {
+        provider: "gemini",
+        model: "gemini-health-free",
+        serviceMode: "fast",
+        taskClass: "translate",
+        eventCount: 1,
+        requestCount: 2,
+        characterCount: 600,
+        successCount: 1,
+        failureCount: 0,
+        fallbackCount: 0,
+        successRate: 1,
+        fallbackRate: 0,
+        latencySampleCount: 1,
+        latencyP50Ms: 180,
+        latencyP95Ms: 180,
+        healthStatus: "healthy",
+      }],
+    })
+    mocks.fetchWebSupportReportSummaryMock.mockResolvedValue({
+      totalReports: 1,
+      generatedAt: "2026-05-27T12:00:00.000Z",
+      buckets: [{
+        key: "library|review_library",
+        count: 1,
+        latestSubmittedAt: "2026-05-27T11:00:00.000Z",
+        hostname: "library.example",
+        featureSurface: "library",
+        issueCategory: "review_library",
+        extensionVersion: "1.0.0",
+        browser: "Chrome",
+        membershipState: "free",
+        privacyMode: true,
+        knownIssueId: null,
+        knownIssueStatus: null,
+        triageStatus: "new",
+      }],
+      weeklyTopIssues: [{
+        weekStart: "2026-05-25",
+        key: "2026-05-25|library.example|library|review_library|no_known_issue",
+        reportCount: 1,
+        latestSubmittedAt: "2026-05-27T11:00:00.000Z",
+        hostname: "library.example",
+        featureSurface: "library",
+        issueCategory: "review_library",
+        knownIssueId: null,
+        knownIssueStatus: null,
+      }],
+      handoffSummary: {
+        byPath: [{ path: "email_follow_up", count: 1 }],
+        byStatus: [{ status: "handed_off", count: 1 }],
+      },
+      slaRisk: {
+        generatedAt: "2026-05-27T12:00:00.000Z",
+        currentNow: "2026-05-27T12:00:00.000Z",
+        unresolvedCount: 2,
+        urgentUnresolvedCount: 1,
+        staleTriageByAgeBucket: { under24h: 0, from24hTo72h: 1, from72hTo168h: 1, over168h: 0 },
+        followUpOverdueCount: 1,
+        oldestUnresolvedAgeHours: 72.5,
+        oldestUnresolvedAgeDays: 3,
+      },
+      macroCoverage: {
+        schema: "astra-support-first-response-macros.v1",
+        generatedAt: "2026-05-27T12:00:00.000Z",
+        threshold: 0.8,
+        catalogCoverage: { coveredIssueCategories: 8, totalIssueCategories: 8, coverageRate: 1, ready: true },
+        reportedCoverage: { coveredReports: 1, totalReports: 1, unknownIssueReports: 0, coverageRate: 1, ready: true },
+        byIssueCategory: [{ issueCategory: "review_library", count: 1, macroId: "macro_review_library", title: "Saved item or review issue", covered: true }],
+        macros: [{
+          id: "macro_review_library",
+          issueCategory: "review_library",
+          title: "Saved item or review issue",
+          firstResponse: "Thanks for flagging this.",
+          nextStep: "Ask what happened.",
+          privacyNote: "Do not include saved text.",
+          surfaces: ["library", "review"],
+        }],
+      },
+    })
+    mocks.fetchWebSupportReportsMock.mockResolvedValue({
+      schema: "astra-support-report-inbox.v1",
+      reports: [{
+        reportId: "rpt_support_1",
+        status: "submitted",
+        createdAt: "2026-05-27T11:00:00.000Z",
+        updatedAt: "2026-05-27T11:00:00.000Z",
+        submittedAt: "2026-05-27T11:00:00.000Z",
+        ownerEmail: "user@example.com",
+        deviceId: "device-123",
+        sessionId: "sess-123",
+        featureSurface: "library",
+        action: "report_library_source",
+        issueCategory: "review_library",
+        errorCategory: "import_failed",
+        lastErrorCategory: null,
+        runtimeSurface: "web",
+        hostname: "library.example",
+        extensionVersion: "1.0.0",
+        browser: "Chrome",
+        os: "macOS",
+        locale: "en-US",
+        membershipState: "free",
+        privacyMode: true,
+        userMessageIncluded: false,
+        contactIncluded: false,
+        defaultContentIncluded: false,
+        knownIssue: null,
+        triage: {
+          status: "new",
+          assignedTo: null,
+          priority: "normal",
+          resolution: null,
+          updatedAt: null,
+          updatedBy: null,
+        },
+      }],
+    })
+    mocks.fetchWebFeatureFlagRuntimeMock.mockResolvedValue({
+      schema: "astra-feature-flag-runtime.v1",
+      generatedAt: "2026-05-27T12:00:00.000Z",
+      overrides: [{ key: "ui.library_home", status: "on", reason: "test", changedBy: "ops", changedAt: "2026-05-27T11:00:00.000Z" }],
+      killSwitches: [{
+        id: "incident-existing",
+        category: "feature",
+        enabled: false,
+        reason: "Existing incident",
+        fallbackMessage: "Astra is using a simpler flow for now.",
+        safeMode: true,
+      }],
+      changeLog: [{
+        id: "chg_1",
+        changedAt: "2026-05-27T12:00:00.000Z",
+        changedBy: "ops",
+        reason: "Initial runtime",
+        overrideCount: 1,
+        killSwitchCount: 1,
+        previousGeneratedAt: null,
+      }],
+    })
+    mocks.updateWebFeatureFlagRuntimeMock.mockImplementation(async ({ runtime }) => ({
+      ...runtime,
+      generatedAt: "2026-05-27T12:05:00.000Z",
+      changeLog: [{
+        id: "chg_2",
+        changedAt: "2026-05-27T12:05:00.000Z",
+        changedBy: "operator",
+        reason: runtime.killSwitches[0]?.reason ?? "Feature-flag runtime updated.",
+        overrideCount: runtime.overrides.length,
+        killSwitchCount: runtime.killSwitches.length,
+        previousGeneratedAt: "2026-05-27T12:00:00.000Z",
+      }, ...runtime.changeLog],
+    }))
+    mocks.updateWebSupportReportTriageMock.mockResolvedValue({
+      reportId: "rpt_support_1",
+      triage: {
+        status: "investigating",
+        assignedTo: "support@astra.local",
+        priority: "high",
+        resolution: null,
+        updatedAt: "2026-05-27T12:05:00.000Z",
+        updatedBy: "ops-test",
       },
     })
     mocks.updateWebSyncCollectionPreferenceMock.mockResolvedValue(undefined)
@@ -702,6 +1266,10 @@ describe("AstraWebApp smoke", () => {
     expect(render.container.querySelector(".public-site--landing-cert")).toBeFalsy()
     expect(render.container.textContent).toContain("A bilingual reading room")
     expect(render.container.textContent).toContain("Use instantly")
+    expect(render.container.textContent).toContain("Why Astra asks for browser access")
+    expect(render.container.textContent).toContain("Astra reads the page you choose")
+    expect(render.container.textContent).toContain("Astra does not read your clipboard in the background")
+    expect(render.container.textContent).toContain("Read the privacy promise")
     expect(render.container.textContent).not.toContain("What's broken on the current page")
 
     await render.unmount()
@@ -735,6 +1303,93 @@ describe("AstraWebApp smoke", () => {
     expect(mocks.createWebAnonymousSessionMock).not.toHaveBeenCalled()
 
     await unmount()
+  })
+
+  it("renders growth landing copy for sentence-card and referral links without shared text", async () => {
+    window.location.hash = "#/?utm_source=sentence_card&utm_medium=share&utm_campaign=first_90_growth_mvp&share=sentence"
+
+    let render = await renderApp()
+    expect(render.container.textContent).toContain("Someone shared an Astra sentence card")
+    expect(render.container.textContent).toContain("does not host the shared text")
+    expect(render.container.textContent).not.toContain("To inhabit a difficult sentence")
+    let growthEvents = JSON.parse(window.localStorage.getItem("astra.web.growth-events.v1") ?? "[]") as Array<{ data: Record<string, unknown> }>
+    expect(growthEvents[0]?.data).toMatchObject({
+      feature: "learning_loop",
+      event: "landing_visited",
+      source: "web_landing",
+      landingSource: "sentence_card",
+      shareType: "sentence_card",
+      campaign: "first_90_growth_mvp",
+    })
+
+    await render.unmount()
+    window.localStorage.clear()
+    window.location.hash = "#/?utm_source=sentence_card&share=sentence&utm_campaign=https%3A%2F%2Fprivate.example%2Fsecret%3Fq%3DTo%2520inhabit"
+    render = await renderApp()
+    growthEvents = JSON.parse(window.localStorage.getItem("astra.web.growth-events.v1") ?? "[]") as Array<{ data: Record<string, unknown> }>
+    expect(growthEvents[0]?.data).not.toHaveProperty("campaign")
+    expect(JSON.stringify(growthEvents)).not.toContain("private.example")
+    expect(JSON.stringify(growthEvents)).not.toContain("To%20inhabit")
+
+    await render.unmount()
+    window.localStorage.clear()
+    window.location.hash = "#/?utm_source=referral&utm_medium=invite&utm_campaign=first_90_growth_mvp&referral=non_rewarding"
+    render = await renderApp()
+    expect(render.container.textContent).toContain("A friend invited you to try Astra")
+    expect(render.container.textContent).toContain("Referral rewards are not active")
+    growthEvents = JSON.parse(window.localStorage.getItem("astra.web.growth-events.v1") ?? "[]") as Array<{ data: Record<string, unknown> }>
+    expect(growthEvents[0]?.data).toMatchObject({
+      feature: "learning_loop",
+      event: "landing_visited",
+      source: "web_landing",
+      landingSource: "referral",
+      referralType: "non_rewarding",
+      rewardAvailable: false,
+    })
+
+    await render.unmount()
+  })
+
+  it("renders public sample and SEO intent routes without auth or private content leakage", async () => {
+    const routes = [
+      ["/sample", "Try Astra on a static sample before you install.", "public_sample"],
+      ["/learn/read-english-webpages", "Read English webpages with bilingual context.", "read_english_webpages"],
+      ["/learn/youtube-bilingual-subtitles", "Study videos with bilingual subtitle workflows.", "youtube_bilingual_subtitles"],
+      ["/learn/save-english-sentences", "Save English sentences for lightweight review.", "save_english_sentences"],
+      ["/learn/ai-reading-assistant-chinese", "An AI reading assistant for Chinese speakers reading English.", "ai_reading_assistant_chinese"],
+    ] as const
+
+    for (const [route, title, intent] of routes) {
+      window.localStorage.clear()
+      window.location.hash = `#${route}?q=PrivateSentence&sharedText=DoNotRender&url=https%3A%2F%2Fprivate.example%2Fsecret%3Fx%3D1`
+
+      const { container, unmount } = await renderApp()
+
+      expect(container.textContent).toContain(title)
+      expect(container.textContent).toContain("Zero-config static sample")
+      expect(container.textContent).toContain("Start free sample")
+      expect(container.textContent).toContain("Install / open Astra")
+      expect(container.textContent).toContain("Sign in to sync")
+      expect(container.textContent).toContain("public without auth")
+      expect(container.textContent).toContain("static demo copy only")
+      expect(container.querySelector("input[type='password']")).toBeNull()
+      expect(container.textContent).not.toContain("PrivateSentence")
+      expect(container.textContent).not.toContain("DoNotRender")
+      expect(container.textContent).not.toContain("private.example")
+
+      const growthEvents = JSON.parse(window.localStorage.getItem("astra.web.growth-events.v1") ?? "[]") as Array<{ data: Record<string, unknown> }>
+      expect(growthEvents[0]?.data).toMatchObject({
+        feature: "learning_loop",
+        event: "landing_visited",
+        source: "web_landing",
+        intent,
+      })
+      expect(JSON.stringify(growthEvents)).not.toContain("PrivateSentence")
+      expect(JSON.stringify(growthEvents)).not.toContain("DoNotRender")
+      expect(JSON.stringify(growthEvents)).not.toContain("private.example")
+
+      await unmount()
+    }
   })
 
   it("navigates from the public Sign in action to the sign-in route", async () => {
@@ -814,7 +1469,7 @@ describe("AstraWebApp smoke", () => {
     await unmount()
   })
 
-  it("signs in from the public sign-in route and routes to the text workspace", async () => {
+  it("signs in from the public sign-in route and routes to Today Review", async () => {
     mocks.createWebSessionMock.mockResolvedValue(createSession())
     window.location.hash = "#/sign-in"
 
@@ -835,12 +1490,13 @@ describe("AstraWebApp smoke", () => {
       password: "secret-pass",
     }))
     expect(container.textContent).toContain("Signed in to Astra Web Companion.")
-    expect(container.textContent).toContain("Text translation workspace")
+    expect(container.textContent).toContain("Today Review")
+    expect(container.textContent).toContain("cards are ready from your web reading")
 
     await unmount()
   })
 
-  it("starts a public free session and routes to the text workspace", async () => {
+  it("starts a public free session and routes to Today Review", async () => {
     mocks.createWebAnonymousSessionMock.mockResolvedValue(createSession({ identityMode: "anonymous", email: "anonymous@astra.local" }))
     window.location.hash = "#/"
 
@@ -855,7 +1511,7 @@ describe("AstraWebApp smoke", () => {
       baseURL: "http://127.0.0.1:8787/v1",
     }))
     expect(container.textContent).toContain("Free Astra session is ready. Translation uses the managed Astra relay.")
-    expect(container.textContent).toContain("Text translation workspace")
+    expect(container.textContent).toContain("Today Review")
 
     await unmount()
   })
@@ -869,13 +1525,13 @@ describe("AstraWebApp smoke", () => {
     const { container, unmount } = await renderApp()
 
     expect(container.textContent).toContain("Already signed in")
-    expect(container.textContent).toContain("Open workspace")
+    expect(container.textContent).toContain("Open Today Review")
     expect(container.querySelector("input[type='email']")).toBeNull()
 
     await unmount()
   })
 
-  it("signs in and routes to the text workspace", async () => {
+  it("signs in and routes to Today Review", async () => {
     mocks.createWebSessionMock.mockResolvedValue(createSession())
     window.location.hash = "#/account"
 
@@ -894,7 +1550,47 @@ describe("AstraWebApp smoke", () => {
       password: "secret-pass",
     }))
     expect(container.textContent).toContain("Signed in to Astra Web Companion.")
-    expect(container.textContent).toContain("Text translation workspace")
+    expect(container.textContent).toContain("Today Review")
+
+    await unmount()
+  })
+
+  it("renders the mobile Today Review flow from synced vocabulary and queues a local review event", async () => {
+    const session = createSession()
+    mocks.readWebSessionMock.mockReturnValue(session)
+    mocks.refreshWebSessionMock.mockResolvedValue(session)
+    window.location.hash = "#/today"
+
+    const { container, unmount } = await renderApp()
+
+    expect(mocks.fetchWebCloudAssetsMock).toHaveBeenCalledWith({
+      session,
+      device: expect.objectContaining({ deviceId: "device-123" }),
+    })
+    expect(container.textContent).toContain("Today Review")
+    expect(container.textContent).toContain("1 card is ready from your web reading.")
+    expect(container.textContent).toContain("serendipity")
+    expect(container.textContent).toContain("From: example.com")
+    const todayShell = container.querySelector(".mobile-review-shell") as HTMLElement | null
+    expect(todayShell?.textContent).not.toContain("provider")
+    expect(todayShell?.textContent).not.toContain("model")
+
+    await act(async () => {
+      clickButton(container, "Show answer")
+    })
+    await flush()
+
+    expect(container.textContent).toContain("Meaning")
+    expect(container.textContent).toContain("机缘巧合")
+
+    await act(async () => {
+      clickButton(container, "Good")
+    })
+    await flush()
+
+    expect(container.textContent).toContain("Done for today.")
+    const queuedEvents = JSON.parse(window.localStorage.getItem("astra.web.mobile-review-events.v1") ?? "[]") as Array<{ cardId: string; rating: string; queued: boolean }>
+    expect(queuedEvents[0]).toMatchObject({ cardId: "vocab-1", rating: "good", queued: true })
 
     await unmount()
   })
@@ -917,6 +1613,129 @@ describe("AstraWebApp smoke", () => {
     expect(mocks.refreshWebSessionMock).toHaveBeenCalledTimes(1)
     expect(mocks.translateWithWebRelayMock).toHaveBeenCalled()
     expect(container.textContent).toContain("translated:hello world")
+
+    await unmount()
+  })
+
+  it("records beta trial interest from the account workspace without opening billing", async () => {
+    const session = createSession({ plan: "free" })
+    mocks.readWebSessionMock.mockReturnValue(session)
+    mocks.refreshWebSessionMock.mockResolvedValue(session)
+    window.location.hash = "#/account"
+
+    const { container, unmount } = await renderApp()
+
+    expect(container.textContent).toContain("Beta trial interest")
+    expect(container.textContent).toContain("does not collect payment")
+    expect(container.textContent).toContain("Checkout unavailable in beta")
+
+    await act(async () => {
+      clickButton(container, "Record trial interest")
+    })
+    await flush()
+
+    expect(mocks.createWebTrialIntentMock).toHaveBeenCalledWith({
+      session,
+      device: expect.objectContaining({ deviceId: "device-123" }),
+    })
+    expect(mocks.openBillingCheckoutMock).not.toHaveBeenCalled()
+    expect(mocks.openBillingPortalMock).not.toHaveBeenCalled()
+    expect(container.textContent).toContain("Trial status: intent recorded")
+    expect(container.textContent).toContain("Beta boundary: no payment collected, no subscription mutation, no trial or Pro entitlement granted.")
+    expect(container.textContent).not.toContain("api key")
+    expect(container.textContent).not.toContain("openai-key")
+    expect(container.textContent).not.toContain("session-token")
+
+    await unmount()
+  })
+
+  it("shows user-safe cloud learning memory and weekly digest controls", async () => {
+    const session = createSession()
+    mocks.readWebSessionMock.mockReturnValue(session)
+    mocks.refreshWebSessionMock.mockResolvedValue(session)
+    window.location.hash = "#/account"
+
+    const { container, unmount } = await renderApp()
+
+    expect(mocks.fetchWebCloudLearningMemoryInventoryMock).toHaveBeenCalledWith({
+      session,
+      device: expect.objectContaining({ deviceId: "device-123" }),
+    })
+    expect(mocks.fetchWebWeeklyDigestMock).toHaveBeenCalledWith({
+      session,
+      device: expect.objectContaining({ deviceId: "device-123" }),
+    })
+
+    const memoryCard = container.querySelector('[data-testid="cloud-learning-memory-card"]') as HTMLElement
+    const digestCard = container.querySelector('[data-testid="weekly-digest-account-card"]') as HTMLElement
+    expect(memoryCard).toBeTruthy()
+    expect(digestCard).toBeTruthy()
+    expect(memoryCard.textContent).toContain("Cloud learning memory")
+    expect(memoryCard.textContent).toContain("Saved words & sentences")
+    expect(memoryCard.textContent).toContain("Metadata only")
+    expect(memoryCard.textContent).toContain("does not create third-party service deletion receipts")
+    expect(digestCard.textContent).toContain("Weekly digest")
+    expect(digestCard.textContent).toContain("Saved this week")
+    expect(digestCard.textContent).toContain("Source mix: page 2 · saved 1")
+    expect(digestCard.textContent).toContain("does not promise email scheduling")
+    expect(container.textContent).not.toContain("Private saved sentence")
+    expect(container.textContent).not.toContain("private-term")
+    expect(container.textContent).not.toContain("session-token")
+
+    mocks.fetchWebCloudLearningMemoryInventoryMock.mockResolvedValueOnce({
+      schema: "astra-cloud-learning-memory-inventory.v1",
+      generatedAt: "2026-05-29T12:01:00.000Z",
+      account: { userId: "usr_demo", identityMode: "authenticated" },
+      collections: [
+        { collection: "vocabulary", enabled: true, defaultEnabled: true, mutationCount: 2, activeCount: 2, cursor: "2", lastUpdatedAt: "2026-05-28T12:05:00.000Z" },
+        { collection: "weekly_digest_archive", enabled: false, defaultEnabled: true, mutationCount: 1, activeCount: 1, cursor: null, lastUpdatedAt: "2026-05-29T12:00:00.000Z" },
+      ],
+      preferences: { reading_history: false, study_progress: false, weekly_digest: false },
+      privacy: {
+        metadataOnly: true,
+        rawContentIncluded: false,
+        rawUrlsIncluded: false,
+        emailsIncluded: false,
+        deviceSessionIdsIncluded: false,
+        syncPayloadBodiesIncluded: false,
+        promptModelOutputsIncluded: false,
+        externalProviderReceiptsIncluded: false,
+        localBrowserDeletionIncluded: false,
+      },
+    })
+
+    await act(async () => {
+      clickButton(container, "Turn off weekly digest")
+    })
+    await flush()
+
+    expect(mocks.updateWebWeeklyDigestPreferenceMock).toHaveBeenCalledWith({
+      session,
+      device: expect.objectContaining({ deviceId: "device-123" }),
+      enabled: false,
+    })
+    expect(container.textContent).toContain("Weekly digest is off")
+    expect(container.textContent).toContain("Turn on weekly digest")
+
+    vi.mocked(window.confirm).mockReturnValueOnce(false)
+    await act(async () => {
+      clickButton(container, "Delete cloud learning memory")
+    })
+    await flush()
+    expect(mocks.deleteWebCloudLearningMemoryMock).not.toHaveBeenCalled()
+
+    vi.mocked(window.confirm).mockReturnValueOnce(true)
+    await act(async () => {
+      clickButton(container, "Delete cloud learning memory")
+    })
+    await flush()
+
+    expect(mocks.deleteWebCloudLearningMemoryMock).toHaveBeenCalledWith({
+      session,
+      device: expect.objectContaining({ deviceId: "device-123" }),
+    })
+    expect(container.querySelector('[data-testid="cloud-learning-memory-receipt"]')?.textContent).toContain("4 active records cleared")
+    expect(container.querySelector('[data-testid="cloud-learning-memory-receipt"]')?.textContent).toContain("no third-party service deletion included")
 
     await unmount()
   })
@@ -983,6 +1802,563 @@ describe("AstraWebApp smoke", () => {
     expect(container.textContent).toContain("Cloud delete scheduled.")
     expect(container.textContent).toContain("Deletion is scheduled for")
     expect(container.textContent).toContain("Cloud delete: `scheduled` is not deletion yet.")
+
+    await unmount()
+  })
+
+  it("loads staff account lookup metadata from the account operator panel", async () => {
+    const session = createSession()
+    mocks.readWebSessionMock.mockReturnValue(session)
+    mocks.refreshWebSessionMock.mockResolvedValue(session)
+    window.location.hash = "#/account"
+
+    const { container, unmount } = await renderApp()
+
+    expect(container.textContent).toContain("Staff account lookup")
+    expect(container.textContent).toContain("Enter the operator token above to load staff account metadata.")
+    expect(mocks.fetchWebOpsUserLookupMock).not.toHaveBeenCalled()
+
+    setInputValue(container, "Operator token", "operator-secret")
+    setInputValue(container, "Account lookup", "demo@astra.local")
+    await act(async () => {
+      clickButton(container, "Lookup account")
+    })
+    await flush()
+
+    expect(mocks.fetchWebOpsUserLookupMock).toHaveBeenCalledWith({
+      baseURL: "http://127.0.0.1:8787/v1",
+      operatorToken: "operator-secret",
+      query: "demo@astra.local",
+    })
+    const lookupCard = Array.from(container.querySelectorAll(".card"))
+      .find((card) => card.textContent?.includes("Staff account lookup")) as HTMLElement
+    expect(lookupCard.textContent).toContain("usr_demo")
+    expect(lookupCard.textContent).toContain("email hash aaaaaaaaaaaa…")
+    expect(lookupCard.textContent).toContain("Pro plan")
+    expect(lookupCard.textContent).toContain("heavy")
+    expect(lookupCard.textContent).toContain("paragraph_understanding")
+    expect(lookupCard.textContent).toContain("240ms")
+    expect(lookupCard.textContent).toContain("Result window")
+    expect(lookupCard.textContent).toContain("1 of 1")
+    expect(lookupCard.textContent).toContain("Limit 1")
+    expect(lookupCard.textContent).toContain("no next page")
+    expect(lookupCard.textContent).toContain("Snapshot boundary")
+    expect(lookupCard.textContent).toContain("Metadata only")
+    expect(lookupCard.textContent).toContain("no raw query")
+    expect(lookupCard.textContent).toContain("no export/download")
+    expect(lookupCard.textContent).toContain("Recent task rows are capped at 6")
+    expect(lookupCard.textContent).not.toContain("demo@astra.local")
+    expect(lookupCard.textContent).not.toContain("device-current")
+    expect(lookupCard.textContent).not.toContain("sess_demo")
+    expect(lookupCard.textContent).not.toContain("gpt-health-pro")
+    expect(lookupCard.textContent).not.toContain("Hello, world")
+    expect(lookupCard.textContent).not.toContain("Download CSV")
+    expect(lookupCard.textContent).not.toContain("Export")
+
+    setInputValue(container, "Operator token", "rotated-operator-secret")
+    await flush()
+    expect(lookupCard.textContent).not.toContain("usr_demo")
+    expect(lookupCard.textContent).toContain("No account lookup loaded yet")
+
+    setInputValue(container, "Operator token", "operator-secret")
+    await flush()
+    expect(lookupCard.textContent).toContain("No account lookup loaded yet")
+
+    setInputValue(container, "Account lookup", "other@astra.local")
+    await flush()
+    expect(lookupCard.textContent).not.toContain("usr_demo")
+    expect(lookupCard.textContent).toContain("No account lookup loaded yet")
+
+    await unmount()
+  })
+
+  it("loads the privacy-safe operator audit snapshot from the account operator panel", async () => {
+    const session = createSession()
+    mocks.readWebSessionMock.mockReturnValue(session)
+    mocks.refreshWebSessionMock.mockResolvedValue(session)
+    window.location.hash = "#/account"
+
+    const { container, unmount } = await renderApp()
+
+    expect(container.textContent).toContain("Privacy / operator audit")
+    expect(container.textContent).toContain("Enter the operator token above to load privacy-safe audit metadata.")
+    expect(mocks.fetchWebOpsAuditSummaryMock).not.toHaveBeenCalled()
+
+    setInputValue(container, "Operator token", "operator-secret")
+    await act(async () => {
+      clickButton(container, "Refresh audit")
+    })
+    await flush()
+
+    expect(mocks.fetchWebOpsAuditSummaryMock).toHaveBeenCalledWith({
+      baseURL: "http://127.0.0.1:8787/v1",
+      operatorToken: "operator-secret",
+    })
+    let auditCard = Array.from(container.querySelectorAll(".card"))
+      .find((card) => card.textContent?.includes("Privacy / operator audit")) as HTMLElement
+    expect(auditCard.textContent).toContain("Retained audit events")
+    expect(auditCard.textContent).toContain("Metadata-only")
+    expect(auditCard.textContent).toContain("ops_user_lookup")
+    expect(auditCard.textContent).toContain("support_report_submitted")
+    expect(auditCard.textContent).toContain("rpt_audit_0001")
+    expect(auditCard.textContent).toContain("metadata_only")
+    expect(auditCard.textContent).not.toContain("operator-secret")
+    expect(auditCard.textContent).not.toContain("demo@astra.local")
+    expect(auditCard.textContent).not.toContain("device-current")
+    expect(auditCard.textContent).not.toContain("sess_demo")
+    expect(auditCard.textContent).not.toContain("private.example")
+    expect(auditCard.textContent).not.toContain("Hello, world")
+
+    setInputValue(container, "Operator token", "wrong-token")
+    await act(async () => {
+      clickButton(container, "Refresh audit")
+    })
+    await flush()
+    expect(mocks.fetchWebOpsAuditSummaryMock).toHaveBeenLastCalledWith({
+      baseURL: "http://127.0.0.1:8787/v1",
+      operatorToken: "wrong-token",
+    })
+
+    await unmount()
+  })
+
+  it("loads cancellation/refund reason aggregates from the account operator panel", async () => {
+    const session = createSession()
+    mocks.readWebSessionMock.mockReturnValue(session)
+    mocks.refreshWebSessionMock.mockResolvedValue(session)
+    window.location.hash = "#/account"
+
+    const { container, unmount } = await renderApp()
+
+    expect(container.textContent).toContain("Cancellation / refund reasons")
+    expect(container.textContent).toContain("Enter the operator token above to load cancellation/refund reason metadata.")
+    expect(mocks.fetchWebCancellationReasonSummaryMock).not.toHaveBeenCalled()
+
+    setInputValue(container, "Operator token", "operator-secret")
+    await act(async () => {
+      clickButton(container, "Refresh reasons")
+    })
+    await flush()
+
+    expect(mocks.fetchWebCancellationReasonSummaryMock).toHaveBeenCalledWith({
+      baseURL: "http://127.0.0.1:8787/v1",
+      operatorToken: "operator-secret",
+    })
+    const card = Array.from(container.querySelectorAll(".card"))
+      .find((candidate) => candidate.textContent?.includes("Cancellation / refund reasons")) as HTMLElement
+    expect(card.textContent).toContain("Reason submissions")
+    expect(card.textContent).toContain("Privacy concerns")
+    expect(card.textContent).toContain("Trust, disclosure, or privacy controls need work.")
+    expect(card.textContent).toContain("Plans: pro 2")
+    expect(card.textContent).toContain("Sources: settings 1 · refund_request 1")
+    expect(card.textContent).not.toContain("demo@astra.local")
+    expect(card.textContent).not.toContain("device-current")
+    expect(card.textContent).not.toContain("sess_demo")
+    expect(card.textContent).not.toContain("Hello, world")
+
+    await unmount()
+  })
+
+  it("loads the read-only ops cockpit from the account operator panel", async () => {
+    const session = createSession()
+    mocks.readWebSessionMock.mockReturnValue(session)
+    mocks.refreshWebSessionMock.mockResolvedValue(session)
+    window.location.hash = "#/account"
+
+    const { container, unmount } = await renderApp()
+
+    expect(container.textContent).toContain("Ops cockpit / operating review")
+    expect(container.textContent).toContain("Enter the operator token above to load the read-only ops cockpit.")
+    expect(mocks.fetchWebOpsCockpitSummaryMock).not.toHaveBeenCalled()
+
+    setInputValue(container, "Operator token", "operator-secret")
+    await act(async () => {
+      clickButton(container, "Refresh cockpit")
+    })
+    await flush()
+
+    expect(mocks.fetchWebOpsCockpitSummaryMock).toHaveBeenCalledWith({
+      baseURL: "http://127.0.0.1:8787/v1",
+      operatorToken: "operator-secret",
+    })
+    const card = container.querySelector('[data-testid="ops-cockpit-card"]') as HTMLElement
+    expect(card.textContent).toContain("Risk flags")
+    expect(card.textContent).toContain("1 pause / 1 watch")
+    expect(card.textContent).toContain("Cost signal")
+    expect(card.textContent).toContain("high · spike")
+    expect(card.textContent).toContain("Support")
+    expect(card.textContent).toContain("1 urgent · 1 overdue")
+    expect(card.textContent).toContain("Cohort events")
+    expect(card.textContent).toContain("Cancellation feedback")
+    expect(card.textContent).toContain("Privacy concerns")
+    expect(card.textContent).toContain("Route health")
+    expect(card.textContent).toContain("1 incident")
+    expect(card.textContent).toContain("metadata-only aggregate read-only")
+    expect(card.textContent).toContain("provider billing reconciliation excluded")
+    expect(card.textContent).toContain("CRM replies excluded")
+    expect(card.textContent).toContain("cost spike or high risk")
+    expect(card.textContent).toContain("support sla risk")
+    expect(card.textContent).toContain("Daily review: 2/2 evidence ready")
+    expect(card.textContent).toContain("Weekly review: 4/4 evidence ready")
+    expect(card.textContent).toContain("Guardrails loaded: 1")
+    expect(card.textContent).not.toContain("user@example.com")
+    expect(card.textContent).not.toContain("device-current")
+    expect(card.textContent).not.toContain("sess_demo")
+    expect(card.textContent).not.toContain("library.example")
+    expect(card.textContent).not.toContain("gpt-health-pro")
+    expect(card.textContent).not.toContain("Hello, world")
+    expect(card.textContent).not.toContain("Checkout")
+    expect(card.textContent).not.toContain("Reply to customer")
+
+    setInputValue(container, "Operator token", "wrong-token")
+    await act(async () => {
+      clickButton(container, "Refresh cockpit")
+    })
+    await flush()
+    expect(mocks.fetchWebOpsCockpitSummaryMock).toHaveBeenLastCalledWith({
+      baseURL: "http://127.0.0.1:8787/v1",
+      operatorToken: "wrong-token",
+    })
+
+    await unmount()
+  })
+
+  it("loads the aggregate cost-risk snapshot from the account operator panel", async () => {
+    const session = createSession()
+    mocks.readWebSessionMock.mockReturnValue(session)
+    mocks.refreshWebSessionMock.mockResolvedValue(session)
+    window.location.hash = "#/account"
+
+    const { container, unmount } = await renderApp()
+
+    expect(container.textContent).toContain("Cost risk snapshot")
+    expect(container.textContent).toContain("Enter the operator token above to load aggregate cost-risk metadata.")
+    expect(mocks.fetchWebCostUsageSummaryMock).not.toHaveBeenCalled()
+
+    setInputValue(container, "Operator token", "operator-secret")
+    await act(async () => {
+      clickButton(container, "Refresh cost snapshot")
+    })
+    await flush()
+
+    expect(mocks.fetchWebCostUsageSummaryMock).toHaveBeenCalledWith({
+      baseURL: "http://127.0.0.1:8787/v1",
+      operatorToken: "operator-secret",
+    })
+    let costCard = Array.from(container.querySelectorAll(".card"))
+      .find((card) => card.textContent?.includes("Cost risk snapshot")) as HTMLElement
+    expect(costCard.textContent).toContain("recent user usage events")
+    expect(costCard.textContent).toContain("deep_read")
+    expect(costCard.textContent).toContain("high")
+    expect(costCard.textContent).toContain("Cache hit rate")
+    expect(costCard.textContent).toContain("Estimated spend")
+    expect(costCard.textContent).toContain("$0.0134")
+    expect(costCard.textContent).toContain("Daily estimate")
+    expect(costCard.textContent).toContain("high risk · spike signal")
+    expect(costCard.textContent).toContain("Daily spend signal is aggregate only")
+    expect(costCard.textContent).toContain("ratio 3.35×")
+    expect(costCard.textContent).toContain("Cache status is aggregate only")
+    expect(costCard.textContent).toContain("hit 1 (33%)")
+    expect(costCard.textContent).toContain("Service-mode health is aggregate only")
+    expect(costCard.textContent).not.toContain("user@example.com")
+    expect(costCard.textContent).not.toContain("gpt-4.1")
+    expect(costCard.textContent).not.toContain("library.example")
+
+    setInputValue(container, "Operator token", "wrong-token")
+    await act(async () => {
+      clickButton(container, "Refresh cost snapshot")
+    })
+    await flush()
+    expect(mocks.fetchWebCostUsageSummaryMock).toHaveBeenLastCalledWith({
+      baseURL: "http://127.0.0.1:8787/v1",
+      operatorToken: "wrong-token",
+    })
+
+    await unmount()
+  })
+
+  it("loads the provider health snapshot from the account operator panel", async () => {
+    const session = createSession()
+    mocks.readWebSessionMock.mockReturnValue(session)
+    mocks.refreshWebSessionMock.mockResolvedValue(session)
+    window.location.hash = "#/account"
+
+    const { container, unmount } = await renderApp()
+
+    expect(container.textContent).toContain("Staff route-health snapshot")
+    expect(container.textContent).toContain("Enter the staff token above to load route-health metadata.")
+    expect(container.textContent).not.toContain("Provider health snapshot")
+    expect(mocks.fetchWebProviderHealthSummaryMock).not.toHaveBeenCalled()
+
+    setInputValue(container, "Operator token", "operator-secret")
+    await act(async () => {
+      clickButton(container, "Refresh route health")
+    })
+    await flush()
+
+    expect(mocks.fetchWebProviderHealthSummaryMock).toHaveBeenCalledWith({
+      baseURL: "http://127.0.0.1:8787/v1",
+      operatorToken: "operator-secret",
+    })
+    const healthCard = Array.from(container.querySelectorAll(".card"))
+      .find((card) => card.textContent?.includes("Provider health snapshot")) as HTMLElement
+    expect(healthCard.textContent).toContain("Staff-only route health")
+    expect(healthCard.textContent).toContain("incident")
+    expect(healthCard.textContent).toContain("openai")
+    expect(healthCard.textContent).toContain("gpt-health-pro")
+    expect(healthCard.textContent).toContain("automatic")
+    expect(healthCard.textContent).toContain("deep_read")
+    expect(healthCard.textContent).toContain("50%")
+    expect(healthCard.textContent).toContain("1,200ms")
+    expect(healthCard.textContent).not.toContain("user@example.com")
+    expect(healthCard.textContent).not.toContain("library.example")
+    expect(healthCard.textContent).not.toContain("Hello, world")
+
+    setInputValue(container, "Operator token", "wrong-token")
+    await act(async () => {
+      clickButton(container, "Refresh route health")
+    })
+    await flush()
+    expect(mocks.fetchWebProviderHealthSummaryMock).toHaveBeenLastCalledWith({
+      baseURL: "http://127.0.0.1:8787/v1",
+      operatorToken: "wrong-token",
+    })
+
+    await unmount()
+  })
+
+  it("loads support report metadata and patches triage from the account operator panel", async () => {
+    const session = createSession()
+    mocks.readWebSessionMock.mockReturnValue(session)
+    mocks.refreshWebSessionMock.mockResolvedValue(session)
+    window.location.hash = "#/account"
+
+    const { container, unmount } = await renderApp()
+
+    expect(container.textContent).toContain("Support report triage")
+    expect(container.textContent).toContain("Enter the operator token above to load staff support report metadata.")
+    expect(mocks.fetchWebSupportReportsMock).not.toHaveBeenCalled()
+
+    setInputValue(container, "Operator token", "operator-secret")
+    await act(async () => {
+      clickButton(container, "Refresh reports")
+    })
+    await flush()
+
+    expect(mocks.fetchWebSupportReportSummaryMock).toHaveBeenCalledWith({
+      baseURL: "http://127.0.0.1:8787/v1",
+      operatorToken: "operator-secret",
+    })
+    expect(mocks.fetchWebSupportReportsMock).toHaveBeenCalledWith({
+      baseURL: "http://127.0.0.1:8787/v1",
+      operatorToken: "operator-secret",
+    })
+    expect(container.textContent).toContain("rpt_support_1")
+    expect(container.textContent).toContain("library · report_library_source · library.example")
+    expect(container.textContent).toContain("Metadata only: no page text, transcript, screenshot, or user message content is shown here.")
+    expect(container.textContent).toContain("Macro coverage")
+    expect(container.textContent).toContain("First-response macro coverage is metadata-only: 1 of 1 reports have a matching ordinary-language macro")
+    expect(container.textContent).toContain("Top macro: Saved item or review issue")
+    expect(container.textContent).toContain("Weekly top issue")
+    expect(container.textContent).toContain("Weekly top issue is aggregate-only: review_library on library · library.example")
+    expect(container.textContent).toContain("Unresolved")
+    expect(container.textContent).toContain("1 urgent")
+    expect(container.textContent).toContain("Follow-up overdue")
+    expect(container.textContent).toContain("SLA risk is metadata-only: unresolved 2 · urgent 1 · stale 24–72h 1 · stale 72h–7d 1 · stale 7d+ 0")
+    const supportCard = Array.from(container.querySelectorAll(".card"))
+      .find((card) => card.textContent?.includes("Support report triage")) as HTMLElement
+    expect(supportCard.textContent).not.toContain("user@example.com")
+    expect(supportCard.textContent).not.toContain("device-123")
+    expect(supportCard.textContent).not.toContain("sess-123")
+
+    setInputValue(container, "Triage status", "investigating")
+    setInputValue(container, "Triage priority", "high")
+    setInputValue(container, "Assigned to", "support@astra.local")
+    setInputValue(container, "Updated by", "ops-test")
+    setInputValue(container, "Resolution", "Linked to current import incident.")
+
+    await act(async () => {
+      clickButton(container, "Save triage")
+    })
+    await flush()
+
+    expect(mocks.updateWebSupportReportTriageMock).toHaveBeenCalledWith({
+      baseURL: "http://127.0.0.1:8787/v1",
+      operatorToken: "operator-secret",
+      reportId: "rpt_support_1",
+      patch: {
+        status: "investigating",
+        priority: "high",
+        assignedTo: "support@astra.local",
+        resolution: "Linked to current import incident.",
+        updatedBy: "ops-test",
+      },
+    })
+    expect(mocks.fetchWebSupportReportsMock).toHaveBeenLastCalledWith({
+      baseURL: "http://127.0.0.1:8787/v1",
+      operatorToken: "operator-secret",
+    })
+    expect(container.textContent).toContain("Updated support report rpt_support_1 triage.")
+
+    await unmount()
+  })
+
+  it("does not show stale support reports if the operator token changes before refresh resolves", async () => {
+    const session = createSession()
+    mocks.readWebSessionMock.mockReturnValue(session)
+    mocks.refreshWebSessionMock.mockResolvedValue(session)
+    const supportSummary = await mocks.fetchWebSupportReportSummaryMock()
+    const supportList = await mocks.fetchWebSupportReportsMock()
+    mocks.fetchWebSupportReportSummaryMock.mockReset()
+    mocks.fetchWebSupportReportsMock.mockReset()
+    let resolveSummary: (value: typeof supportSummary) => void = () => {}
+    let resolveList: (value: typeof supportList) => void = () => {}
+    mocks.fetchWebSupportReportSummaryMock.mockImplementation(() => new Promise((resolve) => {
+      resolveSummary = resolve
+    }))
+    mocks.fetchWebSupportReportsMock.mockImplementation(() => new Promise((resolve) => {
+      resolveList = resolve
+    }))
+    window.location.hash = "#/account"
+
+    const { container, unmount } = await renderApp()
+
+    setInputValue(container, "Operator token", "operator-secret")
+    await act(async () => {
+      clickButton(container, "Refresh reports")
+    })
+    await flush()
+
+    setInputValue(container, "Operator token", "wrong-token")
+    await act(async () => {
+      resolveSummary(supportSummary)
+      resolveList(supportList)
+    })
+    await flush()
+
+    const supportCard = Array.from(container.querySelectorAll(".card"))
+      .find((card) => card.textContent?.includes("Support report triage")) as HTMLElement
+    expect(supportCard.textContent).not.toContain("rpt_support_1")
+    expect(supportCard.textContent).not.toContain("Weekly top issue is aggregate-only")
+    expect(supportCard.textContent).not.toContain("SLA risk is metadata-only")
+
+    await unmount()
+  })
+
+  it("shows support macro coverage as n/a for an empty metadata inbox", async () => {
+    const session = createSession()
+    mocks.readWebSessionMock.mockReturnValue(session)
+    mocks.refreshWebSessionMock.mockResolvedValue(session)
+    mocks.fetchWebSupportReportSummaryMock.mockResolvedValue({
+      totalReports: 0,
+      generatedAt: "2026-05-27T12:00:00.000Z",
+      buckets: [],
+      weeklyTopIssues: [],
+      handoffSummary: { byPath: [], byStatus: [] },
+      slaRisk: {
+        generatedAt: "2026-05-27T12:00:00.000Z",
+        currentNow: "2026-05-27T12:00:00.000Z",
+        unresolvedCount: 0,
+        urgentUnresolvedCount: 0,
+        staleTriageByAgeBucket: { under24h: 0, from24hTo72h: 0, from72hTo168h: 0, over168h: 0 },
+        followUpOverdueCount: 0,
+        oldestUnresolvedAgeHours: null,
+        oldestUnresolvedAgeDays: null,
+      },
+      macroCoverage: {
+        schema: "astra-support-first-response-macros.v1",
+        generatedAt: "2026-05-27T12:00:00.000Z",
+        threshold: 0.8,
+        catalogCoverage: { coveredIssueCategories: 8, totalIssueCategories: 8, coverageRate: 1, ready: true },
+        reportedCoverage: { coveredReports: 0, totalReports: 0, unknownIssueReports: 0, coverageRate: null, ready: null },
+        byIssueCategory: [{ issueCategory: "review_library", count: 0, macroId: "macro_review_library", title: "Saved item or review issue", covered: true }],
+        macros: [],
+      },
+    })
+    mocks.fetchWebSupportReportsMock.mockResolvedValue({
+      schema: "astra-support-report-inbox.v1",
+      reports: [],
+    })
+    window.location.hash = "#/account"
+
+    const { container, unmount } = await renderApp()
+
+    setInputValue(container, "Operator token", "operator-secret")
+    await act(async () => {
+      clickButton(container, "Refresh reports")
+    })
+    await flush()
+
+    expect(container.textContent).toContain("No support reports are currently in the metadata inbox.")
+    expect(container.textContent).toContain("First-response macro coverage is metadata-only: n/a until support reports are submitted.")
+    expect(container.textContent).toContain("Catalog coverage covers 8 of 8 issue categories.")
+    expect(container.textContent).not.toContain("Top macro:")
+
+    await unmount()
+  })
+
+  it("loads feature flag runtime and updates a kill-switch fallback from the account operator panel", async () => {
+    const session = createSession()
+    mocks.readWebSessionMock.mockReturnValue(session)
+    mocks.refreshWebSessionMock.mockResolvedValue(session)
+    window.location.hash = "#/account"
+
+    const { container, unmount } = await renderApp()
+
+    expect(container.textContent).toContain("Feature flags / kill switches")
+    expect(mocks.fetchWebFeatureFlagRuntimeMock).toHaveBeenCalledWith({ baseURL: "http://127.0.0.1:8787/v1" })
+    expect(container.textContent).toContain("Initial runtime")
+    expect(container.textContent).toContain("Fallback text must be ordinary user-facing copy")
+
+    setInputValue(container, "Operator token", "operator-secret")
+    setInputValue(container, "Kill-switch id", "incident-fallback-copy")
+    setInputValue(container, "Category", "feature")
+    setInputValue(container, "Reason", "Managed AI incident")
+    setInputValue(container, "Changed by", "ops-test")
+    setInputValue(container, "Fallback message", "Astra is temporarily using a simpler explanation. Please try again later.")
+
+    await act(async () => {
+      clickButton(container, "Save kill switch")
+    })
+    await flush()
+
+    expect(mocks.updateWebFeatureFlagRuntimeMock).toHaveBeenCalledWith(expect.objectContaining({
+      baseURL: "http://127.0.0.1:8787/v1",
+      operatorToken: "operator-secret",
+      runtime: expect.objectContaining({
+        schema: "astra-feature-flag-runtime.v1",
+        overrides: [{ key: "ui.library_home", status: "on", reason: "test", changedBy: "ops", changedAt: "2026-05-27T11:00:00.000Z" }],
+        changeLog: expect.arrayContaining([
+          expect.objectContaining({
+            changedBy: "ops-test",
+            reason: "Managed AI incident",
+            overrideCount: 1,
+            killSwitchCount: 2,
+            previousGeneratedAt: "2026-05-27T12:00:00.000Z",
+          }),
+          {
+            id: "chg_1",
+            changedAt: "2026-05-27T12:00:00.000Z",
+            changedBy: "ops",
+            reason: "Initial runtime",
+            overrideCount: 1,
+            killSwitchCount: 1,
+            previousGeneratedAt: null,
+          },
+        ]),
+      }),
+    }))
+    const payload = mocks.updateWebFeatureFlagRuntimeMock.mock.calls[0][0].runtime
+    expect(payload.killSwitches[0]).toEqual({
+      id: "incident-fallback-copy",
+      category: "feature",
+      enabled: true,
+      reason: "Managed AI incident",
+      fallbackMessage: "Astra is temporarily using a simpler explanation. Please try again later.",
+      safeMode: true,
+    })
+    expect(payload.killSwitches[1].id).toBe("incident-existing")
+    expect(container.textContent).toContain("Updated kill switch incident-fallback-copy by ops-test.")
 
     await unmount()
   })

@@ -170,7 +170,7 @@ function buildWhy(params: SiteRulesExplainabilityPanelProps, diagnostics: Transl
     }
     return "Astra is disabled for this site by the current site rule/default setting."
   }
-  if (!providerReady) return "Astra is enabled here, but translation is waiting for provider or relay access."
+  if (!providerReady) return "Astra is enabled here, but translation is waiting for Astra AI sign-in."
   if (siteRules && siteRules.inputBlockCount > 0 && siteRules.afterParagraphCount === 0) {
     return "Astra found page text, but the current site filters matched no translatable blocks."
   }

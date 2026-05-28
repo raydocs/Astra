@@ -21,7 +21,9 @@ import {
   type FileFormat,
 } from "./subtitle-parser"
 import { translateTexts } from "@/utils/translate/translate"
+import { getSafeAiUnavailableCopy } from "@/utils/copy-dictionary"
 import { saveVocabularyEntry } from "@/utils/storage/vocabulary"
+import type { ServiceMode } from "@/types/config"
 import {
   consumeDocumentFileHandoff,
   describeDocumentFileHandoffFailure,
@@ -35,6 +37,65 @@ type Phase = "idle" | "parsed" | "translating" | "done" | "error"
 
 const BATCH_SIZE = 15
 
+interface ReaderConfidenceSummary {
+  tierLabel: string
+  surfaceLabel: string
+  coverageLabel: string
+  guidance: string
+}
+
+function isProofBackedSubtitleFormat(fileFormat: FileFormat): boolean {
+  return fileFormat === "srt" || fileFormat === "vtt"
+}
+
+function summarizeSubtitleReaderConfidence(params: {
+  fileFormat: FileFormat
+  itemCount: number
+  translatedCount: number
+  phase: Phase
+}): ReaderConfidenceSummary | null {
+  const { fileFormat, itemCount, translatedCount, phase } = params
+  if (fileFormat === "unknown" || phase === "idle" || phase === "error") return null
+
+  const coverage = itemCount > 0 ? translatedCount / itemCount : 0
+  const percent = itemCount > 0 ? Math.round(coverage * 100) : 0
+  const proofBacked = isProofBackedSubtitleFormat(fileFormat)
+  const surfaceLabel = proofBacked
+    ? "SRT/VTT controlled subtitle-file reader"
+    : "Opportunistic parser support"
+
+  if (itemCount === 0) {
+    return {
+      tierLabel: "Needs manual review",
+      surfaceLabel,
+      coverageLabel: "No translatable rows detected.",
+      guidance: proofBacked
+        ? "Try re-exporting the subtitle file and compare timings before relying on the result."
+        : "This format is accepted for convenience but is not a proof-backed public support claim yet.",
+    }
+  }
+
+  if (phase === "done" && coverage >= 0.95) {
+    return {
+      tierLabel: proofBacked ? "High confidence" : "Review recommended",
+      surfaceLabel,
+      coverageLabel: `${translatedCount}/${itemCount} rows translated (${percent}%).`,
+      guidance: proofBacked
+        ? "SRT/VTT import, translation, and bilingual export are proof-backed controlled flows."
+        : "ASS/Markdown/TXT/HTML parsing is useful for study drafts; compare with the source before making external claims.",
+    }
+  }
+
+  return {
+    tierLabel: phase === "parsed" ? "Ready to translate" : "In progress",
+    surfaceLabel,
+    coverageLabel: `${translatedCount}/${itemCount} rows translated (${percent}%).`,
+    guidance: proofBacked
+      ? "Translate all rows before export for the strongest subtitle-file confidence."
+      : "Accepted parser format; not a proof-backed public support claim until separate proof is added.",
+  }
+}
+
 function coerceHandoffFailureReason(value: string | null): DocumentFileHandoffFailureReason | null {
   if (value === "invalid" || value === "missing" || value === "expired" || value === "oversize" || value === "corrupt" || value === "storage_error") {
     return value
@@ -42,14 +103,35 @@ function coerceHandoffFailureReason(value: string | null): DocumentFileHandoffFa
   return null
 }
 
-async function getTargetLang(): Promise<string> {
+interface SubtitleReaderConfigSlice {
+  targetLang: string
+  serviceMode: ServiceMode
+}
+
+async function getReaderConfig(): Promise<SubtitleReaderConfigSlice> {
   try {
     const result = await browser.storage.local.get("astra.config.v1")
-    const config = result["astra.config.v1"] as { targetLang?: string } | undefined
-    return config?.targetLang ?? "zh-CN"
+    const config = result["astra.config.v1"] as { targetLang?: string, serviceMode?: ServiceMode } | undefined
+    return {
+      targetLang: config?.targetLang ?? "zh-CN",
+      serviceMode: config?.serviceMode ?? "automatic",
+    }
   } catch {
-    return "zh-CN"
+    return { targetLang: "zh-CN", serviceMode: "automatic" }
   }
+}
+
+function ReaderConfidenceCard({ summary }: { summary: ReaderConfidenceSummary | null }) {
+  if (!summary) return null
+  return (
+    <section data-testid="subtitle-reader-confidence-card" className="astra-subtitle-status-card" aria-label="Subtitle reader confidence">
+      <div className="astra-subtitle-status-card__copy">
+        <strong>Quality Tier v1 · {summary.surfaceLabel}</strong>
+        <div>{summary.tierLabel}: {summary.coverageLabel}</div>
+        <div>{summary.guidance}</div>
+      </div>
+    </section>
+  )
 }
 
 export function SubtitleReaderApp() {
@@ -168,9 +250,10 @@ export function SubtitleReaderApp() {
       setProgress({ current: Math.min(i + BATCH_SIZE, items.length), total: items.length })
 
       try {
+        const { targetLang, serviceMode } = await getReaderConfig()
         const response: RuntimeResponse = await browser.runtime.sendMessage({
           type: "runtime/translate-batch",
-          payload: { texts, targetLang: await getTargetLang(), task: "translate" },
+          payload: { texts, targetLang, serviceMode, task: "translate" },
         })
 
         if (response.type === "runtime/translate-batch:success") {
@@ -201,20 +284,21 @@ export function SubtitleReaderApp() {
       sentenceIndex: rowIndex,
     }).catch(() => undefined)
     try {
-      const targetLang = await getTargetLang()
+      const { targetLang, serviceMode } = await getReaderConfig()
       const result = await translateTexts({
         texts: [text],
         targetLang,
+        serviceMode,
         task: "explain",
       })
       const explanation = result.ok
         ? (result.translations[0] ?? "")
-        : `Warning: ${result.error.message}`
+        : `Warning: ${getSafeAiUnavailableCopy(result.error)}`
       setExplanations((prev) => ({ ...prev, [rowIndex]: explanation }))
     } catch (err) {
       setExplanations((prev) => ({
         ...prev,
-        [rowIndex]: `Warning: ${err instanceof Error ? err.message : "Request failed."}`,
+        [rowIndex]: `Warning: ${getSafeAiUnavailableCopy({ code: "UNKNOWN", message: err instanceof Error ? err.message : "Request failed." })}`,
       }))
     } finally {
       setExplainingIndex(null)
@@ -357,14 +441,17 @@ export function SubtitleReaderApp() {
       )}
 
       {phase === "parsed" && (
-        <div className="astra-subtitle-status-card">
-          <div className="astra-subtitle-status-card__copy">
-            Parsed {itemCount} {isDocument ? "paragraphs" : "cues"} from {formatLabel(fileFormat)} file
+        <>
+          <ReaderConfidenceCard summary={summarizeSubtitleReaderConfidence({ fileFormat, itemCount, translatedCount: translations.size, phase })} />
+          <div className="astra-subtitle-status-card">
+            <div className="astra-subtitle-status-card__copy">
+              Parsed {itemCount} {isDocument ? "paragraphs" : "cues"} from {formatLabel(fileFormat)} file
+            </div>
+            <button type="button" onClick={() => void startTranslation()} className="astra-btn-primary">
+              Translate All
+            </button>
           </div>
-          <button type="button" onClick={() => void startTranslation()} className="astra-btn-primary">
-            Translate All
-          </button>
-        </div>
+        </>
       )}
 
       {phase === "translating" && (
@@ -387,6 +474,7 @@ export function SubtitleReaderApp() {
 
       {(phase === "translating" || phase === "done") && (
         <>
+          <ReaderConfidenceCard summary={summarizeSubtitleReaderConfidence({ fileFormat, itemCount, translatedCount: translations.size, phase })} />
           {phase === "done" && (
             <>
               <div className="astra-subtitle-actions">

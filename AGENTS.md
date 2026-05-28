@@ -32,7 +32,7 @@ For the canonical source-priority/default-read vs generated/runtime classificati
 | Unit tests | `pnpm test` |
 | Deterministic bench | `pnpm bench` |
 | Build extension | `pnpm build` |
-| Live bench (Playwright, extension-loaded) | `pnpm build` then `npx playwright install chromium` (or `npx playwright install --with-deps chromium` like CI). Required release lanes are `pnpm bench:live:lane:release-proof` and `pnpm bench:live:lane:learning-loop`. On Linux without a real display, prefix with `xvfb-run -a` (matches `.github/workflows/ci.yml` `live-browser` job). |
+| Live bench (Playwright, extension-loaded) | `pnpm build` then `npx playwright install chromium` (or `npx playwright install --with-deps chromium` like CI). Required release live gate is `pnpm bench:live:lane:release-proof`, which runs source-core, extension-core, learning-loop, document-proof, youtube-proof, and youtube-holdout. On Linux without a real display, prefix with `xvfb-run -a` (matches `.github/workflows/ci.yml` `live-browser` job). |
 
 ### Non-obvious Caveats
 
@@ -52,7 +52,7 @@ TOKEN=$(curl -s -X POST http://127.0.0.1:8787/v1/auth/session \
 curl -s -X POST http://127.0.0.1:8787/v1/translate \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer $TOKEN" \
-  -d '{"provider":"openai","model":"gpt-4.1-nano","texts":["Hello, world."],"targetLang":"zh-CN","task":"translate"}'
+  -d '{"texts":["Hello, world."],"targetLang":"zh-CN","task":"translate","serviceMode":"fast"}'
 ```
 
 Expect `{"translations":["…"]}` when keys are loaded.

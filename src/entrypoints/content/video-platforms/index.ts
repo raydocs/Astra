@@ -7,14 +7,15 @@
 
 import { runInlineAction } from "../inline-actions"
 import { translateTexts } from "@/utils/translate/translate"
-import { readConfig } from "@/utils/storage/config"
+import { readConfig, saveConfig } from "@/utils/storage/config"
 import {
   DEFAULT_ASTRA_CONFIG,
   resolveSiteTranslationSettings,
   type AstraConfig,
   type ResolvedSiteTranslationSettings,
+  type ServiceMode,
 } from "@/types/config"
-import type { VideoNotePlatform, VideoNoteTranscriptCapture } from "@/types/video-notes"
+import type { VideoNoteLearningContext, VideoNotePlatform, VideoNoteTranscriptCapture } from "@/types/video-notes"
 import type { SubtitleQualitySnapshot } from "@/types/translation"
 
 import type { VideoPlatformConfig, VideoSubtitleRenderingRule } from "./types"
@@ -37,6 +38,7 @@ import { courseraPlatform } from "./coursera"
 import { vimeoPlatform } from "./vimeo"
 import { tedPlatform } from "./ted"
 import { khanAcademyPlatform } from "./khanacademy"
+import { getVideoTranscriptPanelLearningContext, mountVideoTranscriptPanel, unmountVideoTranscriptPanel } from "./transcript-panel"
 
 const ALL_PLATFORMS: VideoPlatformConfig[] = [
   youtubePlatform,
@@ -53,6 +55,10 @@ const ALL_PLATFORMS: VideoPlatformConfig[] = [
 
 const ASTRA_SUBTITLE_CLASS = "astra-video-subtitle"
 const STYLE_ID = "astra-video-subtitle-styles"
+const CONTROL_STYLE_ID = "astra-video-control-styles"
+const YOUTUBE_CONTROL_BUTTON_ID = "astra-youtube-player-button"
+const YOUTUBE_SETTINGS_BUTTON_ID = "astra-youtube-player-settings-button"
+const YOUTUBE_SETTINGS_POPOVER_ID = "astra-youtube-player-settings-popover"
 const PRELOAD_BATCH_SIZE = 15
 const STRUCTURED_CUE_BATCH_SIZE = 20
 const STRUCTURED_CUE_TOLERANCE_SECONDS = 0.35
@@ -97,6 +103,10 @@ let observer: MutationObserver | null = null
 let activePlatform: VideoPlatformConfig | null = null
 let preloadAbort: AbortController | null = null
 let activeSessionStop: (() => void) | null = null
+let videoControlButton: HTMLButtonElement | null = null
+let videoSettingsButton: HTMLButtonElement | null = null
+let videoSettingsPopover: HTMLElement | null = null
+let videoCaptionPosition: "bottom" | "center" | "top" = "bottom"
 
 function detectPlatform(): VideoPlatformConfig | null {
   const hostname = window.location.hostname
@@ -131,11 +141,32 @@ export async function captureCurrentVideoNoteSource(): Promise<VideoNoteSourcePa
     const captureHost = rootContainer instanceof HTMLElement ? rootContainer : document.body
     const capture = await captureYouTubeVideoNoteTranscript(captureHost)
 
+    const sourceUrl = normalizeSourceUrlForVideoNote()
+    const learningContext = getVideoTranscriptPanelLearningContext()
+    const captureLearningContext: VideoNoteLearningContext = learningContext ?? {
+      bilingualTranscriptSegments: [],
+      summary: null,
+      savedSentences: [],
+      savedWords: [],
+    }
     return {
-      sourceUrl: normalizeSourceUrlForVideoNote(),
+      sourceUrl,
       title: getYouTubeVideoNoteTitle(),
       platform: "youtube",
-      capture,
+      capture: capture
+        ? {
+            ...capture,
+            learningContext: {
+              ...captureLearningContext,
+              videoMetadata: {
+                title: getYouTubeVideoNoteTitle(),
+                sourceUrl,
+                platform: "youtube",
+                durationSec: capture.durationSec ?? learningContext?.videoMetadata?.durationSec ?? null,
+              },
+            },
+          }
+        : null,
     }
   }
 
@@ -176,14 +207,20 @@ function resolveCaptionPresentationStyle(
 
 async function getResolvedSubtitleSettings(): Promise<{
   targetLang: string
+  serviceMode: ServiceMode
   presentation: CaptionPresentationStyle
 }> {
   const config = await readConfig()
   const resolved = resolveSiteTranslationSettings(config, window.location.hostname)
   return {
     targetLang: resolved.targetLang,
+    serviceMode: config.serviceMode,
     presentation: resolveCaptionPresentationStyle(config, resolved),
   }
+}
+
+function makeSubtitleCacheKey(sourceText: string, targetLang: string, serviceMode: ServiceMode): string {
+  return `${sourceText}|${targetLang}|${serviceMode}`
 }
 
 function injectStyles(): void {
@@ -220,12 +257,428 @@ function injectStyles(): void {
     .${ASTRA_SUBTITLE_CLASS}[data-astra-presentation-theme="highlight"] {
       background: rgba(99, 102, 241, 0.82);
     }
+
+    .${ASTRA_SUBTITLE_CLASS}[data-astra-presentation-theme="mask"] {
+      background: rgba(15, 23, 42, 0.9);
+      backdrop-filter: blur(3px);
+    }
+
+    .${ASTRA_SUBTITLE_CLASS}[data-astra-video-caption-position="top"] {
+      transform: translateY(-28px);
+    }
+
+    .${ASTRA_SUBTITLE_CLASS}[data-astra-video-caption-position="center"] {
+      transform: translateY(-14px);
+    }
+
+    .ytp-caption-window-bottom[data-astra-presentation-mode="translation-only"] .ytp-caption-segment,
+    .ytp-caption-window-top[data-astra-presentation-mode="translation-only"] .ytp-caption-segment {
+      display: none !important;
+    }
   `
   document.head.appendChild(style)
 }
 
 function removeStyles(): void {
   document.getElementById(STYLE_ID)?.remove()
+}
+
+function injectVideoControlStyles(): void {
+  if (document.getElementById(CONTROL_STYLE_ID)) return
+  const style = document.createElement("style")
+  style.id = CONTROL_STYLE_ID
+  style.textContent = `
+    #${YOUTUBE_CONTROL_BUTTON_ID},
+    #${YOUTUBE_SETTINGS_BUTTON_ID} {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      min-width: 0;
+      height: 28px;
+      padding: 0 8px;
+      margin-inline: 4px;
+      border: 1px solid rgba(255, 255, 255, 0.28);
+      border-radius: 999px;
+      background: rgba(15, 23, 42, 0.82);
+      color: #fff;
+      font: 600 11px/1.2 Roboto, Arial, sans-serif;
+      cursor: pointer;
+      pointer-events: auto;
+    }
+
+    #${YOUTUBE_SETTINGS_BUTTON_ID} {
+      width: 28px;
+      justify-content: center;
+      padding: 0;
+      margin-left: 0;
+    }
+
+    #${YOUTUBE_CONTROL_BUTTON_ID}:hover,
+    #${YOUTUBE_SETTINGS_BUTTON_ID}:hover,
+    #${YOUTUBE_SETTINGS_BUTTON_ID}[aria-expanded="true"] {
+      background: rgba(79, 70, 229, 0.92);
+    }
+
+    #${YOUTUBE_CONTROL_BUTTON_ID} [data-astra-video-control-status] {
+      opacity: 0.86;
+      font-weight: 500;
+    }
+
+    #${YOUTUBE_SETTINGS_POPOVER_ID} {
+      position: absolute;
+      right: 16px;
+      bottom: 44px;
+      z-index: 2147483647;
+      width: 268px;
+      padding: 12px;
+      border: 1px solid rgba(255, 255, 255, 0.18);
+      border-radius: 14px;
+      background: rgba(15, 23, 42, 0.96);
+      color: #fff;
+      box-shadow: 0 18px 48px rgba(0, 0, 0, 0.35);
+      font: 500 12px/1.35 Roboto, Arial, sans-serif;
+      pointer-events: auto;
+    }
+
+    #${YOUTUBE_SETTINGS_POPOVER_ID}[hidden] {
+      display: none;
+    }
+
+    #${YOUTUBE_SETTINGS_POPOVER_ID} [data-astra-video-settings-title] {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 8px;
+      font-weight: 700;
+    }
+
+    #${YOUTUBE_SETTINGS_POPOVER_ID} [data-astra-video-settings-group] {
+      display: grid;
+      gap: 6px;
+      margin-top: 10px;
+    }
+
+    #${YOUTUBE_SETTINGS_POPOVER_ID} [data-astra-video-settings-row] {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+    }
+
+    #${YOUTUBE_SETTINGS_POPOVER_ID} button {
+      border: 1px solid rgba(255, 255, 255, 0.18);
+      border-radius: 999px;
+      background: rgba(255, 255, 255, 0.08);
+      color: inherit;
+      padding: 5px 8px;
+      font: inherit;
+      cursor: pointer;
+    }
+
+    #${YOUTUBE_SETTINGS_POPOVER_ID} button:hover,
+    #${YOUTUBE_SETTINGS_POPOVER_ID} button[data-astra-selected="true"] {
+      background: rgba(99, 102, 241, 0.82);
+    }
+  `
+  document.head.appendChild(style)
+}
+
+function getYouTubeControlHost(): HTMLElement | null {
+  return document.querySelector<HTMLElement>(".ytp-right-controls")
+    ?? document.querySelector<HTMLElement>(".ytp-miniplayer-controls")
+    ?? document.querySelector<HTMLElement>(".ytp-chrome-controls")
+    ?? document.querySelector<HTMLElement>(".html5-video-player")
+    ?? document.querySelector<HTMLElement>("#movie_player")
+}
+
+function mapVideoControlStatus(): "Off" | "Translating" | "On" | "Retry" | "No captions" {
+  if (!activePlatform) return "Off"
+  const status = getVideoSubtitleQualitySnapshot()?.status ?? "starting"
+  if (/no-captions/i.test(status)) return "No captions"
+  if (/error|failed|stale|missing/i.test(status)) return "Retry"
+  if (/ready|observing|fallback-ready/i.test(status)) return "On"
+  return "Translating"
+}
+
+function updateVideoControlButton(): void {
+  if (!videoControlButton?.isConnected) return
+  const status = mapVideoControlStatus()
+  videoControlButton.dataset.astraVideoControlState = status.toLowerCase().replace(/\s+/g, "-")
+  videoControlButton.title = status === "Off"
+    ? "Translate subtitles with Astra"
+    : status === "No captions"
+      ? "No captions available for this video."
+      : "Toggle Astra subtitles"
+  videoControlButton.innerHTML = `<span aria-hidden="true">✦</span><span>Astra</span><span data-astra-video-control-status>${status}</span>`
+}
+
+function closeVideoSettingsPopover(): void {
+  videoSettingsPopover?.setAttribute("hidden", "")
+  videoSettingsButton?.setAttribute("aria-expanded", "false")
+}
+
+function setVideoCaptionPosition(position: "bottom" | "center" | "top"): void {
+  videoCaptionPosition = position
+  document.documentElement.dataset.astraVideoCaptionPosition = position
+  document
+    .querySelectorAll<HTMLElement>(`.${ASTRA_SUBTITLE_CLASS}`)
+    .forEach((subtitle) => {
+      subtitle.dataset.astraVideoCaptionPosition = position
+      if (subtitle.parentElement instanceof HTMLElement) {
+        subtitle.parentElement.dataset.astraVideoCaptionPosition = position
+      }
+    })
+}
+
+async function restartVideoSubtitleTranslation(): Promise<void> {
+  const wasActive = isVideoSubtitleTranslationActive()
+  if (wasActive) {
+    stopVideoSubtitleTranslation()
+    await startVideoSubtitleTranslation()
+  }
+  updateVideoControlButton()
+}
+
+async function saveVideoPresentationSettings(
+  patch: Partial<AstraConfig["presentation"]>,
+): Promise<void> {
+  const config = await readConfig()
+  await saveConfig({
+    presentation: {
+      ...config.presentation,
+      ...patch,
+    },
+  })
+  await restartVideoSubtitleTranslation()
+}
+
+function restoreNativeYouTubeCaptions(): void {
+  stopVideoSubtitleTranslation()
+  clearInjectedTranslations(document)
+
+  const nativeCaptionButton = document.querySelector<HTMLButtonElement>(".ytp-subtitles-button")
+    ?? Array.from(document.querySelectorAll<HTMLButtonElement>("button")).find((button) => {
+      const label = button.getAttribute("aria-label") ?? ""
+      return /subtitles|captions|字幕/i.test(label)
+    })
+  const pressed = nativeCaptionButton?.getAttribute("aria-pressed")
+  if (nativeCaptionButton && (pressed === "false" || pressed === "0")) {
+    nativeCaptionButton.dataset.astraNativeCaptionRestoreRequested = "true"
+    nativeCaptionButton.click()
+    nativeCaptionButton.setAttribute("aria-pressed", "true")
+  }
+  updateVideoControlButton()
+}
+
+function renderVideoSettingsPopover(): HTMLElement {
+  const existing = document.getElementById(YOUTUBE_SETTINGS_POPOVER_ID)
+  if (existing instanceof HTMLElement) {
+    videoSettingsPopover = existing
+    return existing
+  }
+
+  const popover = document.createElement("div")
+  popover.id = YOUTUBE_SETTINGS_POPOVER_ID
+  popover.setAttribute("role", "dialog")
+  popover.setAttribute("aria-label", "Astra subtitle settings")
+  popover.setAttribute("hidden", "")
+  popover.innerHTML = `
+    <div data-astra-video-settings-title>
+      <span>Subtitle settings</span>
+      <button type="button" data-astra-video-setting-close aria-label="Close subtitle settings">×</button>
+    </div>
+    <div data-astra-video-settings-group>
+      <span>Mode</span>
+      <div data-astra-video-settings-row>
+        <button type="button" data-astra-video-setting-mode="bilingual">Bilingual</button>
+        <button type="button" data-astra-video-setting-mode="translation-only">Translation only</button>
+        <button type="button" data-astra-video-setting-mode="original-only">Original only</button>
+      </div>
+    </div>
+    <div data-astra-video-settings-group>
+      <span>Size</span>
+      <div data-astra-video-settings-row>
+        <button type="button" data-astra-video-setting-size="smaller">Smaller</button>
+        <button type="button" data-astra-video-setting-size="larger">Larger</button>
+      </div>
+    </div>
+    <div data-astra-video-settings-group>
+      <span>Position</span>
+      <div data-astra-video-settings-row>
+        <button type="button" data-astra-video-setting-position="bottom">Bottom</button>
+        <button type="button" data-astra-video-setting-position="center">Center</button>
+        <button type="button" data-astra-video-setting-position="top">Top</button>
+      </div>
+    </div>
+    <div data-astra-video-settings-group>
+      <span>Background</span>
+      <div data-astra-video-settings-row>
+        <button type="button" data-astra-video-setting-theme="default">Default</button>
+        <button type="button" data-astra-video-setting-theme="highlight">Highlight</button>
+        <button type="button" data-astra-video-setting-theme="underline">Underline</button>
+        <button type="button" data-astra-video-setting-theme="mask">Mask</button>
+      </div>
+    </div>
+    <div data-astra-video-settings-group>
+      <span>Playback fixes</span>
+      <div data-astra-video-settings-row>
+        <button type="button" data-astra-video-setting-action="retry">Retry Astra subtitles</button>
+        <button type="button" data-astra-video-setting-action="restore-native">Restore native captions</button>
+      </div>
+    </div>
+  `
+
+  popover.addEventListener("click", (event) => {
+    const target = event.target instanceof HTMLElement ? event.target.closest("button") : null
+    if (!(target instanceof HTMLButtonElement)) return
+
+    void (async () => {
+      if (target.hasAttribute("data-astra-video-setting-close")) {
+        closeVideoSettingsPopover()
+        return
+      }
+
+      const mode = target.dataset.astraVideoSettingMode
+      if (mode === "original-only") {
+        restoreNativeYouTubeCaptions()
+        closeVideoSettingsPopover()
+        return
+      }
+      if (mode === "bilingual" || mode === "translation-only") {
+        await saveVideoPresentationSettings({ mode })
+        closeVideoSettingsPopover()
+        return
+      }
+
+      const sizeAction = target.dataset.astraVideoSettingSize
+      if (sizeAction === "smaller" || sizeAction === "larger") {
+        const config = await readConfig()
+        const delta = sizeAction === "larger" ? 0.1 : -0.1
+        const fontSize = Math.min(2, Math.max(0.5, Number((config.presentation.fontSize + delta).toFixed(2))))
+        await saveVideoPresentationSettings({ fontSize })
+        return
+      }
+
+      const position = target.dataset.astraVideoSettingPosition
+      if (position === "bottom" || position === "center" || position === "top") {
+        setVideoCaptionPosition(position)
+        popover
+          .querySelectorAll<HTMLButtonElement>("[data-astra-video-setting-position]")
+          .forEach((button) => {
+            button.dataset.astraSelected = button.dataset.astraVideoSettingPosition === position ? "true" : "false"
+          })
+        return
+      }
+
+      const theme = target.dataset.astraVideoSettingTheme
+      if (theme === "default" || theme === "highlight" || theme === "underline" || theme === "mask") {
+        await saveVideoPresentationSettings({ theme })
+        return
+      }
+
+      const action = target.dataset.astraVideoSettingAction
+      if (action === "retry") {
+        stopVideoSubtitleTranslation()
+        await startVideoSubtitleTranslation()
+        updateVideoControlButton()
+        return
+      }
+      if (action === "restore-native") {
+        restoreNativeYouTubeCaptions()
+        closeVideoSettingsPopover()
+      }
+    })()
+  })
+
+  document.body.appendChild(popover)
+  videoSettingsPopover = popover
+  return popover
+}
+
+function toggleVideoSettingsPopover(): void {
+  const popover = renderVideoSettingsPopover()
+  const willOpen = popover.hasAttribute("hidden")
+  if (willOpen) {
+    popover.removeAttribute("hidden")
+    videoSettingsButton?.setAttribute("aria-expanded", "true")
+  } else {
+    closeVideoSettingsPopover()
+  }
+}
+
+export function ensureVideoPlayerControlButton(): void {
+  const platform = detectPlatform()
+  if (platform?.id !== "youtube" || !platform.isVideoPage()) {
+    videoControlButton?.remove()
+    videoSettingsButton?.remove()
+    videoSettingsPopover?.remove()
+    videoControlButton = null
+    videoSettingsButton = null
+    videoSettingsPopover = null
+    return
+  }
+
+  injectVideoControlStyles()
+  const host = getYouTubeControlHost()
+  if (!host) return
+
+  const ensureSettingsButton = (): void => {
+    const existingSettings = document.getElementById(YOUTUBE_SETTINGS_BUTTON_ID)
+    if (existingSettings instanceof HTMLButtonElement) {
+      videoSettingsButton = existingSettings
+      if (existingSettings.parentElement !== host) {
+        host.appendChild(existingSettings)
+      }
+      return
+    }
+
+    const settingsButton = document.createElement("button")
+    settingsButton.id = YOUTUBE_SETTINGS_BUTTON_ID
+    settingsButton.type = "button"
+    settingsButton.innerHTML = `<span aria-hidden="true">⚙</span>`
+    settingsButton.setAttribute("aria-label", "Astra subtitle settings")
+    settingsButton.setAttribute("aria-controls", YOUTUBE_SETTINGS_POPOVER_ID)
+    settingsButton.setAttribute("aria-expanded", "false")
+    settingsButton.addEventListener("click", (event) => {
+      event.stopPropagation()
+      toggleVideoSettingsPopover()
+    })
+    videoSettingsButton = settingsButton
+    host.appendChild(settingsButton)
+  }
+
+  const existing = document.getElementById(YOUTUBE_CONTROL_BUTTON_ID)
+  if (existing instanceof HTMLButtonElement) {
+    videoControlButton = existing
+    if (existing.parentElement !== host) {
+      host.appendChild(existing)
+    }
+    updateVideoControlButton()
+    ensureSettingsButton()
+    return
+  }
+
+  const button = document.createElement("button")
+  button.id = YOUTUBE_CONTROL_BUTTON_ID
+  button.type = "button"
+  button.setAttribute("aria-label", "Translate subtitles with Astra")
+  button.addEventListener("click", () => {
+    void (async () => {
+      const status = mapVideoControlStatus()
+      if (isVideoSubtitleTranslationActive() && status === "Retry") {
+        stopVideoSubtitleTranslation()
+        await startVideoSubtitleTranslation()
+      } else if (isVideoSubtitleTranslationActive()) {
+        stopVideoSubtitleTranslation()
+      } else {
+        await startVideoSubtitleTranslation()
+      }
+      updateVideoControlButton()
+    })()
+  })
+  videoControlButton = button
+  host.appendChild(button)
+  ensureSettingsButton()
+  updateVideoControlButton()
 }
 
 function getCaptionText(platform: VideoPlatformConfig, container: HTMLElement): string {
@@ -249,7 +702,17 @@ function getCaptionText(platform: VideoPlatformConfig, container: HTMLElement): 
 }
 
 function clearInjectedTranslations(container: ParentNode): void {
-  container.querySelectorAll(`.${ASTRA_SUBTITLE_CLASS}`).forEach((el) => el.remove())
+  const subtitleParents = new Set<HTMLElement>()
+  container.querySelectorAll(`.${ASTRA_SUBTITLE_CLASS}`).forEach((el) => {
+    if (el.parentElement instanceof HTMLElement) {
+      subtitleParents.add(el.parentElement)
+    }
+    el.remove()
+  })
+  subtitleParents.forEach((parent) => {
+    delete parent.dataset.astraPresentationMode
+    delete parent.dataset.astraVideoCaptionPosition
+  })
 }
 
 function hasMatchingTranslation(
@@ -268,6 +731,7 @@ function hasMatchingTranslation(
 function applyPresentationStyle(el: HTMLElement, presentation: CaptionPresentationStyle): void {
   el.dataset.astraPresentationMode = presentation.mode
   el.dataset.astraPresentationTheme = presentation.theme
+  el.dataset.astraVideoCaptionPosition = videoCaptionPosition
   if (presentation.fontSize) {
     el.style.setProperty("--astra-caption-font-size", presentation.fontSize)
   }
@@ -297,6 +761,8 @@ function injectTranslation(
   renderingRule: VideoSubtitleRenderingRule,
 ): void {
   clearInjectedTranslations(container)
+  container.dataset.astraPresentationMode = presentation.mode
+  container.dataset.astraVideoCaptionPosition = videoCaptionPosition
   const el = document.createElement("span")
   el.className = ASTRA_SUBTITLE_CLASS
   el.textContent = text
@@ -310,6 +776,7 @@ async function translateAndInject(
   platform: VideoPlatformConfig,
   captionWindow: HTMLElement,
   targetLang: string,
+  serviceMode: ServiceMode,
   presentation: CaptionPresentationStyle,
 ): Promise<void> {
   const sourceText = getCaptionText(platform, captionWindow).trim()
@@ -318,7 +785,7 @@ async function translateAndInject(
   const existing = captionWindow.querySelector(`.${ASTRA_SUBTITLE_CLASS}`)
   if (existing?.getAttribute("data-source") === sourceText) return
 
-  const cacheKey = `${sourceText}|${targetLang}`
+  const cacheKey = makeSubtitleCacheKey(sourceText, targetLang, serviceMode)
   const cached = cacheGet(cacheKey)
   if (cached) {
     injectTranslation(captionWindow, cached, sourceText, presentation, platform.subtitleRendering)
@@ -332,6 +799,7 @@ async function translateAndInject(
     const result = await runInlineAction({
       text: sourceText,
       targetLang,
+      serviceMode,
       task: "translate",
     })
 
@@ -350,6 +818,7 @@ async function translateAndInject(
 function handleCaptionMutation(
   platform: VideoPlatformConfig,
   targetLang: string,
+  serviceMode: ServiceMode,
   presentation: CaptionPresentationStyle,
 ): void {
   const container = document.querySelector(platform.captionContainerSelector)
@@ -363,14 +832,14 @@ function handleCaptionMutation(
     if (child.classList.contains(ASTRA_SUBTITLE_CLASS)) continue
     const text = getCaptionText(platform, child)
     if (text) {
-      void translateAndInject(platform, child, targetLang, presentation)
+      void translateAndInject(platform, child, targetLang, serviceMode, presentation)
       foundChild = true
     }
   }
 
   if (!foundChild) {
     const text = getCaptionText(platform, container as HTMLElement)
-    if (text) void translateAndInject(platform, container as HTMLElement, targetLang, presentation)
+    if (text) void translateAndInject(platform, container as HTMLElement, targetLang, serviceMode, presentation)
   }
 }
 
@@ -501,17 +970,19 @@ function buildTextTrackSignature(video: HTMLVideoElement, targetLang: string): s
 async function translateStructuredCues(
   cues: StructuredTrackCue[],
   targetLang: string,
+  serviceMode: ServiceMode,
 ): Promise<void> {
   const uniqueTexts = Array.from(new Set(cues.map((cue) => cue.text)))
 
   for (let index = 0; index < uniqueTexts.length; index += STRUCTURED_CUE_BATCH_SIZE) {
     const batch = uniqueTexts.slice(index, index + STRUCTURED_CUE_BATCH_SIZE)
-    const uncached = batch.filter((text) => !cacheGet(`${text}|${targetLang}`))
+    const uncached = batch.filter((text) => !cacheGet(makeSubtitleCacheKey(text, targetLang, serviceMode)))
     if (uncached.length === 0) continue
 
     const result = await translateTexts({
       texts: uncached,
       targetLang,
+      serviceMode,
       task: "translate",
     })
 
@@ -522,13 +993,13 @@ async function translateStructuredCues(
     uncached.forEach((text, translationIndex) => {
       const translation = result.translations[translationIndex]
       if (translation) {
-        cachePut(`${text}|${targetLang}`, translation)
+        cachePut(makeSubtitleCacheKey(text, targetLang, serviceMode), translation)
       }
     })
   }
 
   cues.forEach((cue) => {
-    const translation = cacheGet(`${cue.text}|${targetLang}`)
+    const translation = cacheGet(makeSubtitleCacheKey(cue.text, targetLang, serviceMode))
     if (translation) {
       cue.translation = translation
     }
@@ -561,6 +1032,7 @@ async function startStructuredTrackSubtitleSession(
   platform: VideoPlatformConfig,
   rootContainer: HTMLElement,
   targetLang: string,
+  serviceMode: ServiceMode,
   presentation: CaptionPresentationStyle,
 ): Promise<(() => void) | null> {
   const video = findVideoForContainer(rootContainer)
@@ -578,7 +1050,7 @@ async function startStructuredTrackSubtitleSession(
   }
 
   if (cues.length > 0) {
-    await translateStructuredCues(cues, targetLang)
+    await translateStructuredCues(cues, targetLang, serviceMode)
   }
 
   const refreshStructuredCues = () => {
@@ -594,7 +1066,7 @@ async function startStructuredTrackSubtitleSession(
       trackSignature = buildTextTrackSignature(video, targetLang)
       cues = nextCues
       if (cues.length > 0) {
-        await translateStructuredCues(cues, targetLang)
+        await translateStructuredCues(cues, targetLang, serviceMode)
       }
       if (stopped) return
       renderCurrent()
@@ -612,7 +1084,7 @@ async function startStructuredTrackSubtitleSession(
     }
 
     const translations = activeCues
-      .map((cue) => cue.translation ?? cacheGet(`${cue.text}|${targetLang}`))
+      .map((cue) => cue.translation ?? cacheGet(makeSubtitleCacheKey(cue.text, targetLang, serviceMode)))
       .filter((translation): translation is string => typeof translation === "string" && translation.trim().length > 0)
 
     if (translations.length !== activeCues.length) {
@@ -657,7 +1129,7 @@ async function startStructuredTrackSubtitleSession(
     rootContainer.dataset.astraCaptionPipeline = `${platform.id}-layered`
     rootContainer.dataset.astraCaptionSource = "dom"
     rootContainer.dataset.astraCaptionStatus = "fallback-ready"
-    void translateAndInject(platform, fallbackTarget, targetLang, presentation)
+    void translateAndInject(platform, fallbackTarget, targetLang, serviceMode, presentation)
   }
 
   const sessionObserver = new MutationObserver(() => {
@@ -687,6 +1159,7 @@ async function startStructuredTrackSubtitleSession(
 async function preloadSubtitleBatch(
   platform: VideoPlatformConfig,
   targetLang: string,
+  serviceMode: ServiceMode,
   durationMs = 5000,
 ): Promise<void> {
   const collected = new Set<string>()
@@ -734,7 +1207,7 @@ async function preloadSubtitleBatch(
   collectObserver.disconnect()
   if (abort.signal.aborted) return
 
-  const texts = Array.from(collected).filter((text) => !cacheGet(`${text}|${targetLang}`))
+  const texts = Array.from(collected).filter((text) => !cacheGet(makeSubtitleCacheKey(text, targetLang, serviceMode)))
   if (texts.length === 0) return
 
   for (let index = 0; index < texts.length; index += PRELOAD_BATCH_SIZE) {
@@ -745,13 +1218,14 @@ async function preloadSubtitleBatch(
       const result = await translateTexts({
         texts: batch,
         targetLang,
+        serviceMode,
         task: "translate",
       })
 
       if (result.ok) {
         for (let translationIndex = 0; translationIndex < batch.length; translationIndex += 1) {
           if (result.translations[translationIndex]) {
-            cachePut(`${batch[translationIndex]}|${targetLang}`, result.translations[translationIndex])
+            cachePut(makeSubtitleCacheKey(batch[translationIndex], targetLang, serviceMode), result.translations[translationIndex])
           }
         }
       }
@@ -807,10 +1281,11 @@ export function getVideoSubtitleQualitySnapshot(): SubtitleQualitySnapshot | nul
 
 export async function startVideoSubtitleTranslation(): Promise<void> {
   const platform = detectPlatform()
+  ensureVideoPlayerControlButton()
   if (!platform || !platform.isVideoPage() || activePlatform) return
 
   activePlatform = platform
-  const { targetLang, presentation } = await getResolvedSubtitleSettings()
+  const { targetLang, serviceMode, presentation } = await getResolvedSubtitleSettings()
   injectStyles()
 
   const container = await waitForElement(platform.captionContainerSelector)
@@ -822,6 +1297,7 @@ export async function startVideoSubtitleTranslation(): Promise<void> {
   if (platform.id === "youtube") {
     const session = await startYouTubeHybridSubtitleSession({
       targetLang,
+      serviceMode,
       rootContainer: container as HTMLElement,
       cacheGet,
       cachePut,
@@ -833,10 +1309,12 @@ export async function startVideoSubtitleTranslation(): Promise<void> {
         presentation,
         platform.subtitleRendering,
       ),
+      onStatusChange: updateVideoControlButton,
     })
 
     if (session) {
       activeSessionStop = session.stop
+      mountVideoTranscriptPanel({ targetLang, serviceMode })
       return
     }
   }
@@ -846,23 +1324,24 @@ export async function startVideoSubtitleTranslation(): Promise<void> {
       platform,
       container as HTMLElement,
       targetLang,
+      serviceMode,
       presentation,
     )
 
     if (sessionStop) {
       activeSessionStop = sessionStop
-      void preloadSubtitleBatch(platform, targetLang)
+      void preloadSubtitleBatch(platform, targetLang, serviceMode)
       return
     }
   }
 
   observer = new MutationObserver(() => {
-    handleCaptionMutation(platform, targetLang, presentation)
+    handleCaptionMutation(platform, targetLang, serviceMode, presentation)
   })
   observer.observe(container, { childList: true, subtree: true, characterData: true })
-  handleCaptionMutation(platform, targetLang, presentation)
+  handleCaptionMutation(platform, targetLang, serviceMode, presentation)
   activeSessionStop = null
-  void preloadSubtitleBatch(platform, targetLang)
+  void preloadSubtitleBatch(platform, targetLang, serviceMode)
 }
 
 export function stopVideoSubtitleTranslation(): void {
@@ -874,8 +1353,10 @@ export function stopVideoSubtitleTranslation(): void {
   preloadAbort = null
   observer?.disconnect()
   observer = null
+  unmountVideoTranscriptPanel()
   clearInjectedTranslations(document)
   removeStyles()
+  updateVideoControlButton()
 }
 
 export function clearVideoSubtitleCache(): void {
@@ -883,6 +1364,7 @@ export function clearVideoSubtitleCache(): void {
 }
 
 export function setupVideoNavigationHandler(): void {
+  ensureVideoPlayerControlButton()
   const platform = detectPlatform()
   if (!platform?.navigationEvent) return
 
@@ -893,6 +1375,7 @@ export function setupVideoNavigationHandler(): void {
       lastUrl = newUrl
       stopVideoSubtitleTranslation()
       clearVideoSubtitleCache()
+      ensureVideoPlayerControlButton()
       if (platform.isVideoPage()) {
         void startVideoSubtitleTranslation()
       }

@@ -138,6 +138,7 @@ describe("meeting caption translation", () => {
     expect(runInlineActionMock).toHaveBeenCalledWith({
       text: "Delayed caption",
       targetLang: DEFAULT_ASTRA_CONFIG.targetLang,
+      serviceMode: DEFAULT_ASTRA_CONFIG.serviceMode,
       task: "translate",
     })
     expect(document.querySelector(".astra-meeting-caption")?.textContent).toBe("会议翻译")
@@ -208,6 +209,7 @@ describe("meeting caption translation", () => {
     expect(runInlineActionMock).toHaveBeenCalledWith({
       text: "Zoom variant caption",
       targetLang: DEFAULT_ASTRA_CONFIG.targetLang,
+      serviceMode: DEFAULT_ASTRA_CONFIG.serviceMode,
       task: "translate",
     })
     expect(document.querySelector(".astra-meeting-caption")?.textContent).toBe("会议翻译")
@@ -238,6 +240,7 @@ describe("meeting caption translation", () => {
     expect(runInlineActionMock).toHaveBeenCalledWith({
       text: "Hello team",
       targetLang: DEFAULT_ASTRA_CONFIG.targetLang,
+      serviceMode: DEFAULT_ASTRA_CONFIG.serviceMode,
       task: "translate",
     })
 
@@ -386,6 +389,7 @@ describe("meeting caption translation", () => {
     expect(runInlineActionMock).toHaveBeenCalledWith({
       text: "Updated caption",
       targetLang: DEFAULT_ASTRA_CONFIG.targetLang,
+      serviceMode: DEFAULT_ASTRA_CONFIG.serviceMode,
       task: "translate",
     })
     expect(line.querySelector(".astra-meeting-caption")?.getAttribute("data-source")).toBe(
@@ -423,6 +427,7 @@ describe("meeting caption translation", () => {
     expect(runInlineActionMock).toHaveBeenCalledWith({
       text: "Replacement caption",
       targetLang: DEFAULT_ASTRA_CONFIG.targetLang,
+      serviceMode: DEFAULT_ASTRA_CONFIG.serviceMode,
       task: "translate",
     })
     expect(caption?.textContent).toBe("会议翻译")
@@ -480,6 +485,7 @@ describe("meeting caption translation", () => {
     expect(runInlineActionMock).toHaveBeenCalledWith({
       text: "Alpha caption",
       targetLang: DEFAULT_ASTRA_CONFIG.targetLang,
+      serviceMode: DEFAULT_ASTRA_CONFIG.serviceMode,
       task: "translate",
     })
 
@@ -493,6 +499,7 @@ describe("meeting caption translation", () => {
     expect(runInlineActionMock).toHaveBeenLastCalledWith({
       text: "Beta caption",
       targetLang: DEFAULT_ASTRA_CONFIG.targetLang,
+      serviceMode: DEFAULT_ASTRA_CONFIG.serviceMode,
       task: "translate",
     })
 

@@ -21,7 +21,7 @@ For the canonical read-priority boundary, see [`docs/investigations/ai-readable-
 |---|---|---|
 | AI context routing | [`ai-context/README.md`](./ai-context/README.md) | Choosing focused source, UI, planning, reference, or generated-artifact context. |
 | Plans | [`plans/README.md`](./plans/README.md) | Reading implementation plans or future migration checklists. |
-| Specs | [`specs/`](./specs/) | Product or feature contracts are relevant. |
+| Specs | [`specs/`](./specs/) | Product or feature contracts are relevant. Use [`specs/strategic-non-goals.md`](./specs/strategic-non-goals.md) before accepting product expansion, public claim, issue triage, or support-refusal work. |
 | Reviews | [`reviews/`](./reviews/) | Prior critiques, certifications, or assessment notes are relevant. |
 | Investigations | [`investigations/`](./investigations/) | Research, classification, support matrix, or gap-analysis context is needed. |
 | ADRs | [`adr/`](./adr/) | Architecture decision records are relevant. |

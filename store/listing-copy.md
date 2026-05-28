@@ -1,66 +1,80 @@
 # Chrome Web Store Listing Copy
 
+Macro plan source: [`docs/plans/astra-macro-product-upgrade-plan-2026-05-27.md`](../docs/plans/astra-macro-product-upgrade-plan-2026-05-27.md), especially sections 19, 27, and 28.
+
 ## English
 
 ### Short description (132 characters max)
 
-```
-AI web translator for bilingual reading, selection/hover help, vocabulary review, and PDF/YouTube study. Free public beta.
+```text
+Read English webpages and supported videos with AI, save useful expressions, and review later — no API setup.
 ```
 
-(117 characters)
+(111 characters)
 
 ### Detailed description
 
+```text
+Astra is a browser language-learning layer for people who read real English content every day. Open an article, documentation page, PDF, or supported video; Astra helps you understand it, save useful expressions, and review them later with source context.
+
+WHO ASTRA IS FOR
+中文知识工作者、留学生、自学者, and anyone who wants to read English articles, technical docs, news, papers, and tutorials without configuring AI tools.
+
+READ REAL PAGES
+Translate supported webpages with bilingual or translation-only reading modes. Astra is designed to stay quiet on the page and help when you ask.
+
+EXPLAIN IN CONTEXT
+Select a word, phrase, or sentence to get translation, explanation, grammar notes, and pronunciation/speech support where available.
+
+SAVE WHAT MATTERS
+Save useful words and sentences from the page you are already reading. Astra keeps the source page and context attached so saved items do not disappear into a black hole.
+
+REVIEW LATER
+Saved words and sentences can become lightweight review cards. Review brings you back to the real page or reading source where the expression appeared.
+
+VIDEO AND FILE LEARNING
+Astra includes beta learning surfaces for supported video subtitles, PDFs, EPUBs, and subtitle files. Some surfaces are still beta and work best with clear text/captions.
+
+ZERO SETUP
+You do not need to configure API keys to try the managed Astra experience. Advanced bring-your-own-key settings may exist for users who want them, but they are not required for the default path.
+
+PRIVACY AND CONTROL
+Astra reads page text so it can translate and explain the content you choose to work with. Translation text may be processed by Astra-managed or configured AI services. You choose what gets saved, and Privacy Mode reduces request context; it is not a local-only AI guarantee.
+
+Works best on Chrome/Chromium. Firefox and Safari paths are narrower beta paths. Some pages, protected content, or videos without captions may have limited support.
 ```
-Astra is an AI-powered language learning assistant for reading the web in another language. It helps translate pages, explain selected text, save vocabulary, and review learning material while you browse.
 
-FREE PUBLIC BETA
-Astra is currently offered as a free public beta. Chrome/Chromium is the primary validated desktop path. Firefox and desktop Safari are narrower beta paths, and the iOS Safari shell is experimental.
+### Permission explanation
 
-FULL-PAGE BILINGUAL TRANSLATION
-Translate supported web pages with one click. Astra can render original text alongside translations for parallel reading, or show translation-only, underline, and highlight display modes depending on site behavior.
+| Permission / capability | Plain-language explanation | Control boundary |
+|---|---|---|
+| Page access | Astra reads the page you choose so it can help you understand and translate the content in front of you. | No default support report includes page text. |
+| Storage | Astra saves your language preferences and the learning items you choose to keep. | Saved learning data can be exported or deleted from account controls. |
+| Current tab | Astra checks the current tab so it can offer the right reading, video, or review action. | Tab context is used for product actions, not advertising profiles. |
+| Optional reminders | Optional reminders can let you know when a review or longer task is ready. | Reminders must be low frequency and user-controlled. |
+| Account continuity | Your account keeps membership and learning continuity connected across your devices. | Daily study details stay limited to the data needed for sync and support. |
+| Copy actions | Copy actions happen only when you choose to copy a translation, rule, or learning note. | Astra does not read your clipboard in the background. |
+| Downloads and exports | Download actions are used when you export a report, transcript, or learning file yourself. | Exports are user-initiated and should not duplicate full third-party works. |
 
-SELECTION TOOLBAR
-Select text to reveal a toolbar with Translate, Explain, Grammar, Save, Speak, and Share actions. AI-generated explanations and grammar breakdowns appear near the text you are reading.
+### Screenshot storyboard
 
-HOVER TRANSLATION
-Hold Alt and hover over readable paragraphs for a translation tooltip. Hover behavior can be configured or disabled per site.
+1. Read an English webpage with Astra.
+2. Explain and save a sentence in context.
+3. Turn a supported video moment into learning material.
+4. Review a saved expression card.
+5. Open Library / learning trail and continue a source.
+6. Zero setup / Astra handles the AI.
 
-VIDEO SUBTITLE TRANSLATION
-Astra has a best-effort YouTube subtitle path and a narrower beta/best-effort Bilibili adapter. Other video services, including Netflix, are not claimed as supported for this launch.
-
-PDF & EPUB READER
-Open PDF and EPUB documents in Astra reader surfaces for bilingual reading workflows. Reader and owned-reading features are under active beta development.
-
-STUDY HUB & VOCABULARY
-The popup Study Hub guides a learning loop: Read, Guided Read, Explain, Save Words, Review. Save useful words to a vocabulary notebook and review them later with spaced repetition flashcards.
-
-USAGE TRANSPARENCY
-Monitor translation usage locally in the popup, including request counts, token estimates, and routing information when available.
-
-AI PROVIDER OPTIONS
-Use your own provider keys for direct translation where configured, or use Astra's managed beta relay where available. Direct-to-relay fallback can occur only when both paths are configured and a fallback-eligible provider failure happens.
-
-PRIVACY BOUNDARY
-Astra does not include product analytics or advertising tracking. Translation text can leave your device through direct provider or Astra relay paths. Privacy Mode sanitizes request context, such as URL parameters and richer page metadata, before translation requests; it is not a local-only AI guarantee. Local vocabulary, settings, reading history, and translation cache stay in browser storage unless you enable an account/sync surface.
-
-CUSTOMIZABLE PER SITE
-Configure translation mode, hover trigger, target language, content scope, CSS selectors, and presentation style on a per-site basis.
-
-Supports 8 target languages: Chinese (Simplified/Traditional), English, Japanese, Korean, French, German, and Spanish.
-
-Free public beta. Managed translation uses an anonymous Astra session or optional account; bring-your-own-key/direct mode is available where configured.
-```
+Chrome may allow fewer screenshots; if limited to five, combine screenshots 5 and 6.
 
 ### Category suggestions
 
-- Primary: **Productivity**
-- Secondary: **Education** (if a second category is allowed)
+- Primary: **Education**
+- Secondary: **Productivity** (if a second category is allowed)
 
 ### Tags / Keywords
 
-`translator`, `language learning`, `bilingual`, `AI translation`, `vocabulary`, `flashcards`, `PDF translator`, `subtitle translation`
+`language learning`, `AI reading`, `English learning`, `bilingual reading`, `vocabulary`, `review cards`, `web translator`, `subtitle learning`
 
 ---
 
@@ -68,56 +82,68 @@ Free public beta. Managed translation uses an anonymous Astra session or optiona
 
 ### Short description (132 characters max)
 
-```
-AI 网页翻译与语言学习助手：双语阅读、划词/悬停解释、生词复习、PDF 与 YouTube 学习，免费公开测试版。
+```text
+用 AI 读懂英文网页和受支持视频，保存有用表达并稍后复习。无需配置 API。
 ```
 
-(55 characters)
+(34 characters)
 
 ### Detailed description
 
+```text
+Astra 是浏览器里的语言学习层，面向每天会接触英文网页、技术文档、新闻、论文摘要和 YouTube 教程的中文用户。你只管阅读和观看，Astra 帮你理解、保存重点，并把有用表达带回复习。
+
+适合谁
+中文知识工作者、留学生、自学者，以及希望用真实内容提升英文理解力、但不想配置 AI provider/API/model 的用户。
+
+读懂真实网页
+在支持的网页上使用双语或仅译文阅读模式。Astra 尽量保持安静，只在你需要时提供帮助。
+
+上下文解释
+选中单词、短语或句子，即可获得翻译、解释、语法提示，以及可用时的朗读支持。
+
+保存有用表达
+把真实网页里的词句保存下来。Astra 会尽量保留来源页面和上下文，让保存内容不再进入“黑洞”。
+
+稍后复习
+保存的词句可以成为轻量复习卡片。复习时仍能看到来源和上下文，并可回到原文继续学习。
+
+视频与文件学习
+Astra 包含受支持视频字幕、PDF、EPUB、字幕文件等 Beta 学习面。部分能力仍是 Beta，最适合文本清晰、字幕可用的内容。
+
+无需配置
+默认体验不要求配置 API Key。高级用户仍可使用更深入设置，但普通用户不需要先理解模型或服务路由。
+
+隐私与控制
+Astra 需要读取页面文本，才能翻译和解释你选择处理的内容。翻译文本可能经过 Astra 托管或你配置的 AI 服务处理。你可以决定哪些内容保存；隐私模式会减少请求上下文，但不等于 AI 完全本地处理。
+
+Chrome/Chromium 是主要支持路径。Firefox 与 Safari 为范围较窄的 Beta 路径。受保护页面、无字幕视频或特殊网站可能支持有限。
 ```
-Astra 是一款 AI 驱动的语言学习助手，帮助你用另一种语言阅读网页、解释选中文本、保存词汇，并在日常浏览中复习学习材料。
 
-免费公开测试版
-Astra 目前是免费公开测试版。Chrome/Chromium 是主要验证过的桌面路径；Firefox 和桌面 Safari 属于范围更窄的 Beta 路径；iOS Safari 壳仍为实验性路径。
+### 权限说明
 
-整页双语翻译
-一键翻译受支持的网页。Astra 可将原文和译文并排显示，也可根据站点情况使用仅译文、下划线、高亮等显示模式。
+| 权限 / 能力 | 用户可懂解释 | 控制边界 |
+|---|---|---|
+| 页面访问 | Astra 读取你选择处理的页面，才能帮你理解和翻译眼前内容。 | 默认支持报告不包含页面正文。 |
+| 存储 | Astra 保存你的语言偏好和你主动保留的学习项目。 | 保存的学习数据可从账号控制中导出或删除。 |
+| 当前标签页 | Astra 检查当前标签页，才能提供合适的阅读、视频或复习动作。 | 标签页上下文用于产品动作，不用于广告画像。 |
+| 可选提醒 | 可选提醒会在复习或较长任务准备好时提醒你。 | 提醒必须低频，并且由用户控制。 |
+| 账号连续性 | 账号用于在设备之间连接会员状态和学习连续性。 | 每日学习细节只保留同步和支持所需的数据。 |
+| 复制动作 | 只有当你主动复制译文、规则或学习笔记时才会触发复制。 | Astra 不会在后台读取你的剪贴板。 |
+| 下载与导出 | 当你主动导出报告、字幕或学习文件时才会触发下载。 | 导出由用户主动发起，不应复制完整第三方作品。 |
 
-划词工具栏
-选中文本后弹出工具栏，提供翻译、解释、语法分析、收藏、朗读、分享等操作。AI 解释和语法拆解会在阅读位置附近展示。
+### 截图故事线
 
-悬停翻译
-按住 Alt 悬停在可读段落上即可获得翻译提示。悬停行为可按站点配置或关闭。
+1. 在真实英文网页中阅读。
+2. 解释并保存一句有用表达。
+3. 把受支持视频片段变成学习材料。
+4. 复习保存的表达卡片。
+5. 打开 Library / learning trail 继续学习。
+6. 无需配置，Astra 处理 AI。
 
-视频字幕翻译
-Astra 目前有 YouTube 字幕的 best-effort 支持路径，以及范围更窄的 Bilibili Beta/best-effort 适配。包括 Netflix 在内的其他视频服务，本次发布不宣称支持。
-
-PDF 与 EPUB 阅读器
-可在 Astra 阅读器中打开 PDF 和 EPUB 文档，进行双语阅读。阅读器和 owned-reading 工作流仍在 Beta 开发中。
-
-学习中心与词汇表
-弹窗中的学习中心提供结构化学习流程：阅读 → 引导阅读 → 讲解 → 保存生词 → 复习。将有用词汇保存到词汇本，稍后用间隔重复闪卡复习。
-
-用量透明
-在弹窗中查看本地翻译用量，包括请求数、token 估算以及可用时的路由信息。
-
-AI 提供方选项
-你可以在配置后使用自己的提供方密钥进行直连翻译，也可以在可用时使用 Astra 托管 Beta 中继。仅当直连和中继都已配置、且出现符合回退条件的提供方失败时，才可能发生直连到中继的回退。
-
-隐私边界
-Astra 不包含产品分析或广告追踪代码。翻译文本可能通过直连提供方或 Astra 中继离开设备。隐私模式会在翻译请求前清理请求上下文，例如 URL 参数和更丰富的页面元数据；它不是“AI 完全本地处理”的保证。词汇、设置、阅读历史和翻译缓存默认保存在浏览器本地，除非你启用账号/同步相关功能。
-
-按站点自定义
-可按站点配置翻译模式、悬停触发、目标语言、内容范围、CSS 选择器和展示样式。
-
-支持 8 种目标语言：简体中文、繁体中文、英语、日语、韩语、法语、德语、西班牙语。
-
-免费公开测试版。托管翻译使用匿名 Astra 会话或可选账号；自带密钥/直连模式可在配置后使用。
-```
+如果 Chrome Web Store 限制截图数量，将第 5、6 张合并。
 
 ### Category suggestions
 
-- Primary: **效率工具 (Productivity)**
-- Secondary: **教育 (Education)**
+- Primary: **教育 (Education)**
+- Secondary: **效率工具 (Productivity)**

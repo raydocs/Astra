@@ -12,7 +12,9 @@ import {
   resolveManagedProviderConfig,
   resolveSiteProviderConfig,
   resolveSiteTranslationSettings,
+  resolveTranslationSurfaceMode,
   serializeExplanationGlossary,
+  summarizeConfigContinuity,
   type AstraConfig,
 } from "./config"
 import type { AstraSession } from "./auth"
@@ -51,6 +53,34 @@ describe("config sync records", () => {
       kind: "custom_action",
       action: expect.objectContaining({ id: "glossary" }),
     })
+  })
+
+  it("does not mark managed Astra relay URLs as local-only continuity fields", () => {
+    const summary = summarizeConfigContinuity({
+      ...DEFAULT_ASTRA_CONFIG,
+      connectionMode: "astra",
+      provider: {
+        ...DEFAULT_ASTRA_CONFIG.provider,
+        relayBaseURL: "https://astra.example/v1",
+      },
+    })
+
+    expect(summary.localOnlyFields).not.toContain("provider.relayBaseURL")
+    expect(summary.hasCustomRelayBaseURL).toBe(false)
+  })
+
+  it("keeps custom relay URLs local-only outside managed Astra mode", () => {
+    const summary = summarizeConfigContinuity({
+      ...DEFAULT_ASTRA_CONFIG,
+      connectionMode: "custom",
+      provider: {
+        ...DEFAULT_ASTRA_CONFIG.provider,
+        relayBaseURL: "https://self-hosted.example/v1",
+      },
+    })
+
+    expect(summary.localOnlyFields).toContain("provider.relayBaseURL")
+    expect(summary.hasCustomRelayBaseURL).toBe(true)
   })
 
   it("keeps subtitle QC popup controls local-only during config sync", () => {
@@ -312,6 +342,19 @@ describe("resolveSiteTranslationSettings", () => {
   it("defaults contentScope to page", () => {
     const resolved = resolveSiteTranslationSettings(DEFAULT_ASTRA_CONFIG, "example.com")
     expect(resolved.contentScope).toBe("page")
+    expect(resolveTranslationSurfaceMode(resolved.contentScope)).toBe("immersive")
+  })
+
+  it("accepts explicit immersive and full_page content scopes", () => {
+    expect(resolveTranslationSurfaceMode("page")).toBe("immersive")
+    expect(resolveTranslationSurfaceMode("immersive")).toBe("immersive")
+    expect(resolveTranslationSurfaceMode("full_page")).toBe("full_page")
+    expect(resolveTranslationSurfaceMode("article")).toBe("article")
+
+    expect(resolveSiteTranslationSettings({
+      ...DEFAULT_ASTRA_CONFIG,
+      contentScope: "full_page",
+    }, "example.com").contentScope).toBe("full_page")
   })
 
   it("inherits global contentScope when site override is missing", () => {

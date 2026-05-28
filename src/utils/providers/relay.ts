@@ -48,10 +48,8 @@ export async function translateWithRelay(
   options: RelayTranslationOptions,
 ): Promise<string[]> {
   const {
-    providerId,
     accessToken,
     relayBaseURL,
-    model,
     texts,
     targetLang,
     sourceLang,
@@ -60,6 +58,7 @@ export async function translateWithRelay(
     customSystemPrompt,
     languageLevel,
     explainMode,
+    serviceMode,
     explanationRepairInstruction,
     placeholderFormat,
   } = options
@@ -80,8 +79,6 @@ export async function translateWithRelay(
         Authorization: `Bearer ${accessToken}`,
       },
       body: JSON.stringify({
-        provider: providerId,
-        model,
         texts,
         targetLang,
         ...(sourceLang ? { sourceLang } : {}),
@@ -90,6 +87,7 @@ export async function translateWithRelay(
         ...(customSystemPrompt ? { customSystemPrompt } : {}),
         ...(languageLevel ? { languageLevel } : {}),
         ...(explainMode ? { explainMode } : {}),
+        ...(serviceMode ? { serviceMode } : {}),
         ...(explanationRepairInstruction ? { explanationRepairInstruction } : {}),
         ...(placeholderFormat ? { placeholderFormat } : {}),
       }),

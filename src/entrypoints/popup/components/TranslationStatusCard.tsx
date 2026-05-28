@@ -6,6 +6,7 @@ import {
 } from "@/types/config"
 import type { TranslationProgressSnapshot, TranslationError, SubtitleQualitySnapshot } from "@/types/translation"
 import { t } from "@/utils/i18n"
+import { getSafeAiUnavailableCopy } from "@/utils/copy-dictionary"
 import { statusCardStyle, statusRowStyle, warningStyle } from "./styles"
 
 export interface TranslationStatusCardProps {
@@ -653,7 +654,9 @@ export default function TranslationStatusCard({
         </button>
       )}
       {lastError && (
-        <div role="status" aria-live="assertive" style={warningStyle}>{lastError.message}</div>
+        <div role="status" aria-live="assertive" style={warningStyle}>
+          {getSafeAiUnavailableCopy(lastError, { siteEnabled })}
+        </div>
       )}
       {!siteEnabled && (
         <div role="status" aria-live="polite" style={warningStyle}>{t("status_siteDisabled")}</div>

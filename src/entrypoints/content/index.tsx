@@ -52,6 +52,9 @@ import {
   type TranslationSnapshot,
 } from "@/types/translation"
 import { readConfig } from "@/utils/storage/config"
+import { getDueVocabularyCount, saveVocabularyEntry } from "@/utils/storage/vocabulary"
+import { copyTextToClipboard } from "@/utils/dom/clipboard"
+import { commitLearningContinuitySync } from "@/utils/extension/messages"
 import { buildPageStudyContext } from "./translation-context"
 import {
   hasResolvedSiteProviderAccess,
@@ -59,6 +62,8 @@ import {
   resolveSiteTranslationSettings,
 } from "@/types/config"
 import { readAstraSession } from "@/utils/storage/auth"
+import { runActionById } from "./inline-actions"
+import { markSessionSave } from "./learning-state"
 import {
   doesPageAccessChangeAffectUrl,
   isPageAccessAllowedByPolicyValue,
@@ -692,6 +697,11 @@ function attachSubtitleQuality(snapshot: TranslationSnapshot): TranslationSnapsh
   return subtitleQuality ? { ...snapshot, subtitleQuality } : snapshot
 }
 
+function getSelectionCommandContext(text: string): string {
+  const normalized = text.replace(/\s+/g, " ").trim()
+  return normalized.length > 500 ? `${normalized.slice(0, 500).trim()}…` : normalized
+}
+
 async function handleContentCommand(
   message: ContentCommand,
 ): Promise<ContentCommandResponse> {
@@ -707,7 +717,9 @@ async function handleContentCommand(
     }
   }
 
-  const overrides = "payload" in message ? message.payload : undefined
+  const overrides = message.type === "content/start-translation" || message.type === "content/toggle-translation"
+    ? message.payload
+    : undefined
   const siteSettings = resolveSiteTranslationSettings(config, window.location.hostname, overrides)
   const currentState = attachSubtitleQuality(
     await mergeIdleStateForSite(getPageTranslationState(), window.location.hostname),
@@ -782,6 +794,70 @@ async function handleContentCommand(
     case "content/retry-failed":
       retryFailedBlocks()
       return { ok: true, state: attachSubtitleQuality(getPageTranslationState()) }
+
+    case "content/run-selection-action": {
+      if (!siteSettings.enabled) {
+        return {
+          ok: false,
+          error: createTranslationError("SITE_DISABLED", "Astra is disabled on this site."),
+          state: currentState,
+        }
+      }
+      const selectedText = message.payload.text.trim()
+      const result = await runActionById({
+        actionId: message.payload.actionId,
+        text: selectedText,
+        targetLang: siteSettings.targetLang,
+        languageLevel: config.languageLevel,
+        explainMode: config.explainMode,
+        serviceMode: config.serviceMode,
+        explanationGlossary: config.explanationGlossary,
+        selectionContext: getSelectionCommandContext(selectedText),
+        customActions: config.customActions,
+      })
+
+      if (!result.ok) {
+        return {
+          ok: false,
+          error: createTranslationError("UNKNOWN", result.message),
+          state: currentState,
+        }
+      }
+
+      await copyTextToClipboard(result.text)
+      return { ok: true, state: attachSubtitleQuality(getPageTranslationState()) }
+    }
+
+    case "content/save-selection": {
+      if (!siteSettings.enabled) {
+        return {
+          ok: false,
+          error: createTranslationError("SITE_DISABLED", "Astra is disabled on this site."),
+          state: currentState,
+        }
+      }
+      const selectedText = message.payload.text.trim()
+      await saveVocabularyEntry({
+        text: selectedText,
+        url: window.location.href,
+        context: getSelectionCommandContext(selectedText),
+        sourceContext: {
+          surface: "selection_toolbar",
+          pageTitle: document.title?.trim() || undefined,
+          pageUrl: window.location.href,
+          sentenceText: selectedText,
+          languageLevel: config.languageLevel,
+          explainMode: config.explainMode,
+        },
+      })
+      const nextDueCount = await getDueVocabularyCount().catch(() => null)
+      markSessionSave("selection_toolbar", nextDueCount)
+      void commitLearningContinuitySync("selection-save")
+      return { ok: true, state: attachSubtitleQuality(getPageTranslationState()) }
+    }
+
+    default:
+      return { ok: true, state: currentState }
   }
 }
 
@@ -1192,7 +1268,7 @@ async function handleTranslateImageMessage(imageUrl: string): Promise<void> {
 
   let result: Awaited<ReturnType<typeof extractTextFromImage>>
   try {
-    result = await extractTextFromImage(imageUrl, targetLang)
+    result = await extractTextFromImage(imageUrl, targetLang, config.serviceMode)
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : "Unexpected error during image text extraction."
     console.warn("[Astra] Image text extraction threw:", errorMessage)

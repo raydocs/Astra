@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it } from "vitest"
 
 import { createMockBrowser, setMockBrowser } from "../../../test/utils/mockBrowser"
 import type { OwnedReadingThemePackPackagePayload } from "./owned-reading"
+import { getVocabularySourceSurfaceLabel } from "./vocabulary-core"
 import {
   applyVocabularyReviewScheduleSyncMutationsToStorage,
   applyVocabularySyncMutations,
@@ -15,9 +16,12 @@ import {
   importVocabularyEntriesFromThemePackPayload,
   previewVocabularyEntriesFromThemePackPayload,
   listGlossaryEntriesForHostname,
+  recordVocabularyReviewSchedule,
   removeVocabularyEntry,
+  removeVocabularyEntries,
   saveVocabularyEntry,
   serializeGlossary,
+  VOCABULARY_REVIEW_SCHEDULE_STORAGE_KEY,
   VOCABULARY_STORAGE_KEY,
 } from "./vocabulary"
 
@@ -43,6 +47,32 @@ describe("vocabulary storage", () => {
     expect(entries).toHaveLength(1)
     expect(entries[0].text).toBe("ephemeral")
     expect(entries[0].translation).toBe("短暂的")
+  })
+
+  it("accepts sample lesson entries with source context", async () => {
+    const entry = await saveVocabularyEntry({
+      text: "inhabit a difficult sentence",
+      translation: "进入一句难懂的话",
+      context: "To inhabit a difficult sentence, you have to be willing to sit with it.",
+      url: "astra-sample://first-lesson/quiet-reading",
+      hostname: "astra-sample",
+      sourceContext: {
+        surface: "sample_lesson",
+        pageTitle: "Astra Sample Lesson: The Quiet Architecture of Reading",
+        pageUrl: "astra-sample://first-lesson/quiet-reading",
+        hostname: "astra-sample",
+        sentenceText: "To inhabit a difficult sentence, you have to be willing to sit with it.",
+        sentenceIndex: 0,
+        ownedReadingSourceType: "article",
+        ownedReadingTitle: "Astra Sample Lesson: The Quiet Architecture of Reading",
+      },
+    })
+
+    expect(entry.sourceContext?.surface).toBe("sample_lesson")
+    expect(getVocabularySourceSurfaceLabel(entry.sourceContext?.surface)).toBe("Sample lesson")
+
+    const entries = await getVocabularyEntries()
+    expect(entries[0].sourceContext?.surface).toBe("sample_lesson")
   })
 
   it("deduplicates entries with same text and url", async () => {
@@ -82,9 +112,77 @@ describe("vocabulary storage", () => {
       text: "remove-me",
     })
 
+    await recordVocabularyReviewSchedule({
+      vocabularyEntryId: entry.id,
+      srsBox: 3,
+      nextReviewAt: 300,
+      reviewCount: 1,
+      lastReviewedAt: 200,
+      grade: "good",
+    })
+
     expect(await getVocabularyCount()).toBe(1)
     await removeVocabularyEntry(entry.id)
     expect(await getVocabularyCount()).toBe(0)
+    expect(await readSyncSafeVocabularyReviewSchedules()).toEqual([])
+  })
+
+  it("bulk removes entries and their review schedule records", async () => {
+    const keep = await saveVocabularyEntry({ text: "keep" })
+    const removeA = await saveVocabularyEntry({ text: "remove-a" })
+    const removeB = await saveVocabularyEntry({ text: "remove-b" })
+
+    await applyVocabularyReviewScheduleSyncMutationsToStorage([
+      {
+        recordId: keep.id,
+        operation: "upsert",
+        payload: {
+          vocabularyEntryId: keep.id,
+          srsBox: 2,
+          nextReviewAt: 200,
+          reviewCount: 1,
+          lastReviewedAt: 100,
+          lastReviewGrade: "good",
+          lastReviewGradeAt: 100,
+          updatedAt: 100,
+        },
+      },
+      {
+        recordId: removeA.id,
+        operation: "upsert",
+        payload: {
+          vocabularyEntryId: removeA.id,
+          srsBox: 4,
+          nextReviewAt: 400,
+          reviewCount: 2,
+          lastReviewedAt: 300,
+          lastReviewGrade: "easy",
+          lastReviewGradeAt: 300,
+          updatedAt: 300,
+        },
+      },
+      {
+        recordId: removeB.id,
+        operation: "upsert",
+        payload: {
+          vocabularyEntryId: removeB.id,
+          srsBox: 1,
+          nextReviewAt: 500,
+          reviewCount: 1,
+          lastReviewedAt: 450,
+          lastReviewGrade: "again",
+          lastReviewGradeAt: 450,
+          updatedAt: 450,
+        },
+      },
+    ])
+
+    await removeVocabularyEntries([removeA.id, removeB.id])
+
+    expect((await getVocabularyEntries()).map((entry) => entry.id)).toEqual([keep.id])
+    expect(await readSyncSafeVocabularyReviewSchedules()).toEqual([expect.objectContaining({ vocabularyEntryId: keep.id })])
+    const storage = (globalThis as { __ASTRA_TEST_BROWSER__?: { __storage?: Record<string, unknown> } }).__ASTRA_TEST_BROWSER__?.__storage ?? {}
+    expect(storage[VOCABULARY_REVIEW_SCHEDULE_STORAGE_KEY]).toEqual([expect.objectContaining({ vocabularyEntryId: keep.id })])
   })
 
   it("prepends new entries (most recent first)", async () => {

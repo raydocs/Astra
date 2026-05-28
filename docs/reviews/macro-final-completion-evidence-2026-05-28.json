@@ -1,0 +1,23 @@
+{
+  "schema": "astra-macro-final-completion-evidence.v1",
+  "generatedAt": "2026-05-28T00:00:00.000Z",
+  "label": "Macro plan final completion gate — 2026-05-28",
+  "evidence": {
+    "ciQualityArtifactsAttached": false,
+    "ciLiveBrowserArtifactsAttached": false,
+    "ownerReleaseApprovalRecorded": false,
+    "manualQaChecklistComplete": false,
+    "humanScoredAiQualityReportAttached": false,
+    "billingLegalStoreGtmArtifactsAttached": false,
+    "productionMetricsExportAttached": false
+  },
+  "evidenceLinks": {
+    "ciQualityArtifactsAttached": [],
+    "ciLiveBrowserArtifactsAttached": [],
+    "ownerReleaseApprovalRecorded": [],
+    "manualQaChecklistComplete": [],
+    "humanScoredAiQualityReportAttached": [],
+    "billingLegalStoreGtmArtifactsAttached": [],
+    "productionMetricsExportAttached": []
+  }
+}

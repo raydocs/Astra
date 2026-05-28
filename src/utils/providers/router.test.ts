@@ -26,6 +26,7 @@ vi.mock("./gemini", () => ({
 
 import {
   classifyProviderFailure,
+  classifyProviderFallbackReason,
   PROVIDER_FAILURE_POLICY,
   resetProviderRouterDependenciesForTests,
   setProviderRouterDependenciesForTests,
@@ -168,6 +169,7 @@ describe("provider router", () => {
         attemptedTransports: ["direct", "relay"],
         finalTransport: "relay",
         fallbackUsed: true,
+        fallbackReason: "outage",
         route: "fallback",
       },
     })
@@ -274,6 +276,7 @@ describe("provider router", () => {
         attemptedTransports: ["direct", "relay"],
         finalTransport: "relay",
         fallbackUsed: true,
+        fallbackReason: "outage",
         route: "fallback",
       },
     })
@@ -341,6 +344,7 @@ describe("provider router", () => {
         attemptedTransports: ["direct", "relay"],
         finalTransport: "relay",
         fallbackUsed: true,
+        fallbackReason: "outage",
         route: "fallback",
       },
     })
@@ -404,6 +408,16 @@ describe("provider router", () => {
     expect(classifyProviderFailure(new Error("JSON parse error"))).toBe("fail-fast")
   })
 
+  it("classifies fallback reasons with metadata-only taxonomy", () => {
+    expect(classifyProviderFallbackReason(new Error("request timeout"))).toBe("timeout")
+    expect(classifyProviderFallbackReason(new Error("socket hung up"))).toBe("outage")
+    expect(classifyProviderFallbackReason(new AstraError("QUOTA_EXCEEDED", "monthly boundary"))).toBe("cost")
+    expect(classifyProviderFallbackReason(new AstraError("PROVIDER_PARSE_FAILED", "malformed payload"))).toBe("quality")
+    expect(classifyProviderFallbackReason(new AstraError("CONTENT_UNAVAILABLE", "content unavailable"))).toBe("length")
+    expect(classifyProviderFallbackReason(new AstraError("UNKNOWN", "unclassified"))).toBe("unknown")
+    expect(classifyProviderFallbackReason(new Error("unexpected null"))).toBe("unknown")
+  })
+
   it("allows overriding router dependencies for background-routed test seams", async () => {
     const directStub = vi.fn().mockRejectedValue(new AstraError("PROVIDER_REQUEST_FAILED", "stubbed direct failure"))
     const relayStub = vi.fn().mockResolvedValue(["你好"])
@@ -433,6 +447,7 @@ describe("provider router", () => {
       attemptedTransports: ["direct", "relay"],
       finalTransport: "relay",
       fallbackUsed: true,
+      fallbackReason: "outage",
       route: "fallback",
     })
   })
@@ -453,7 +468,7 @@ describe("provider router", () => {
       )
     ).rejects.toMatchObject({
       code: "CONFIG_MISSING",
-      message: "No API key or Astra access token configured. Open Astra popup to configure your provider.",
+      message: "Sign in to use Astra AI, or try again after Astra reconnects.",
     })
 
     expect(translateWithOpenAIMock).not.toHaveBeenCalled()

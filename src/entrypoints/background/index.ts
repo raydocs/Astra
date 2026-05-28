@@ -18,7 +18,7 @@ import {
   type RuntimeTranslateBatchRequest,
   type RuntimeResponse,
 } from "@/types/messages"
-import { executeTabCommand } from "./frame-coordinator"
+import { executeTabCommand, initializeFrameCoordinator } from "./frame-coordinator"
 import { AstraError, toTranslationError } from "@/types/translation"
 import { toggleTabTranslation } from "@/utils/extension/messages"
 import { reconcileBrowserPermissionEvent } from "@/utils/extension/page-permissions"
@@ -54,9 +54,10 @@ import {
   createAstraVideoNoteJob,
   fetchAstraVideoNoteJob,
 } from "@/utils/astra/video-notes"
-import { resolveSiteProviderConfig, type HoverTrigger } from "@/types/config"
-import { initializeTranslationUsageSession, recordTranslationUsage } from "@/utils/storage/translation-usage"
+import { resolveSiteProviderConfig, type HoverTrigger, type ServiceMode } from "@/types/config"
+import { initializeTranslationUsageSession, recordTranslationUsage, type RequestSource } from "@/utils/storage/translation-usage"
 import { trackEvent } from "@/utils/telemetry"
+import { resolveScheduledServiceMode } from "@/utils/service-mode-scheduler"
 import {
   consumeIosSessionBootstrap,
   isIosHostBridgeAvailable,
@@ -414,6 +415,7 @@ async function handleGetVideoNoteJob(payload: { jobId: string }): Promise<Runtim
 export default defineBackground({
   type: "module",
   main: () => {
+    initializeFrameCoordinator()
     void ensureAstraDeviceIdentity().catch(() => {})
     void retryPendingAnonymousRegistration().catch(() => {})
     schedulePhaseOneCollectionSync()
@@ -426,6 +428,14 @@ export default defineBackground({
 
       // Auto-register anonymous account on first install
       if (details.reason === "install") {
+        trackEvent({
+          type: "feature_usage",
+          data: {
+            feature: "learning_loop",
+            event: "extension_installed",
+            source: "background",
+          },
+        })
         void tryAnonymousRegistration()
       }
 
@@ -440,8 +450,23 @@ export default defineBackground({
         }
 
         createContextMenuItem({
+          id: "astra-translate-page",
+          title: "Translate page with Astra",
+          contexts: ["page"],
+        })
+        createContextMenuItem({
           id: "astra-translate-selection",
-          title: "Translate with Astra",
+          title: "Translate selection with Astra",
+          contexts: ["selection"],
+        })
+        createContextMenuItem({
+          id: "astra-explain-selection",
+          title: "Explain selection with Astra",
+          contexts: ["selection"],
+        })
+        createContextMenuItem({
+          id: "astra-save-selection",
+          title: "Save selection to Astra Review",
           contexts: ["selection"],
         })
         createContextMenuItem({
@@ -461,11 +486,43 @@ export default defineBackground({
     if (browser.contextMenus?.onClicked) {
       try {
         browser.contextMenus.onClicked.addListener((info, tab) => {
-          if (info.menuItemId === "astra-translate-selection") {
-            if (!info.selectionText || !tab?.id) return
-            void browser.tabs.sendMessage(tab.id, {
+          if (info.menuItemId === "astra-translate-page") {
+            if (!tab?.id) return
+            void executeTabCommand(tab.id, {
               type: "content/start-translation",
+              payload: { contentScope: "page" },
             })
+            return
+          }
+
+          if (info.menuItemId === "astra-translate-selection" || info.menuItemId === "astra-explain-selection") {
+            if (!info.selectionText || !tab?.id) return
+            const { frameId: rawFrameId } = info as { frameId?: unknown }
+            const options = typeof rawFrameId === "number" ? { frameId: rawFrameId } : undefined
+            const message = {
+              type: "content/run-selection-action",
+              payload: {
+                actionId: info.menuItemId === "astra-explain-selection" ? "explain" : "translate",
+                text: info.selectionText,
+              },
+            }
+            void (options
+              ? browser.tabs.sendMessage(tab.id, message, options)
+              : browser.tabs.sendMessage(tab.id, message))
+            return
+          }
+
+          if (info.menuItemId === "astra-save-selection") {
+            if (!info.selectionText || !tab?.id) return
+            const { frameId: rawFrameId } = info as { frameId?: unknown }
+            const options = typeof rawFrameId === "number" ? { frameId: rawFrameId } : undefined
+            const message = {
+              type: "content/save-selection",
+              payload: { text: info.selectionText },
+            }
+            void (options
+              ? browser.tabs.sendMessage(tab.id, message, options)
+              : browser.tabs.sendMessage(tab.id, message))
             return
           }
 
@@ -524,7 +581,7 @@ export default defineBackground({
 
           case "translatePage": {
             if (tab?.id) {
-              await browser.tabs.sendMessage(tab.id, {
+              await executeTabCommand(tab.id, {
                 type: "content/start-translation",
                 payload: { contentScope: "page" },
               })
@@ -572,7 +629,7 @@ export default defineBackground({
             ) => {
               if (updatedTabId === tabId && changeInfo.status === "complete") {
                 browser.tabs.onUpdated.removeListener(onUpdated)
-                void browser.tabs.sendMessage(tabId, {
+                void executeTabCommand(tabId, {
                   type: "content/start-translation",
                   payload: { contentScope: "page" },
                 })
@@ -978,6 +1035,24 @@ function resolveHttpHostnameFromSender(sender: { url?: string; tab?: { url?: str
   return null
 }
 
+function inferTranslationRequestSource(payload: RuntimeTranslateBatchRequest["payload"]): RequestSource | undefined {
+  if (payload.placeholderFormat === "astra-rich-text-v1") return "page-translation"
+  if (payload.task === "explain") return "selection"
+  return undefined
+}
+
+function resolveQualityServiceMode(params: {
+  requestedServiceMode?: ServiceMode
+  texts: string[]
+  context?: RuntimeTranslateBatchRequest["payload"]["context"]
+  task: RuntimeTranslateBatchRequest["payload"]["task"]
+  privacyMode?: boolean
+  requestSource?: RequestSource
+  tier?: string
+}): ServiceMode | undefined {
+  return resolveScheduledServiceMode(params)
+}
+
 async function handleTranslate(
   payload: RuntimeTranslateBatchRequest["payload"],
   sender: { url?: string; tab?: { url?: string } },
@@ -1018,6 +1093,18 @@ async function handleTranslate(
   const senderHostname = resolveHttpHostnameFromSender(sender)
   const resolvedProvider = resolveSiteProviderConfig(config, senderHostname, session)
   const task = payload.task ?? "translate"
+  const requestedServiceMode = payload.serviceMode ?? config.serviceMode
+  const requestSource = inferTranslationRequestSource(payload)
+  const usageTier = session?.plan ?? "unknown"
+  const serviceMode = resolveQualityServiceMode({
+    requestedServiceMode,
+    texts: payload.texts,
+    context: requestContext,
+    task,
+    privacyMode: config.privacyMode ?? false,
+    ...(requestSource ? { requestSource } : {}),
+    tier: usageTier,
+  })
   const cacheContext = isTranslationCacheable(
     task,
     payload.customSystemPrompt,
@@ -1026,6 +1113,7 @@ async function handleTranslate(
     ? buildTranslationCacheContext({ ...config, provider: resolvedProvider }, {
       sourceLang: payload.sourceLang,
       context: requestContext,
+      serviceMode,
     })
     : null
 
@@ -1047,8 +1135,32 @@ async function handleTranslate(
   const uncachedEntries = payload.texts.flatMap((text, originalIndex) => (
     cachedTranslations.has(originalIndex) ? [] : [{ originalIndex, text }]
   ))
+  const cacheStatus = !cacheContext
+    ? "disabled"
+    : cachedTranslations.size === 0
+      ? "miss"
+      : uncachedEntries.length === 0
+        ? "hit"
+        : "partial"
 
   if (uncachedEntries.length === 0) {
+    recordTranslationUsage({
+      providerId: resolvedProvider.id,
+      model: resolvedProvider.model,
+      task,
+      texts: payload.texts,
+      serviceMode,
+      attemptedTransports: [],
+      finalTransport: null,
+      fallbackUsed: false,
+      route: null,
+      cacheStatus,
+      fallbackReason: "none",
+      tier: usageTier,
+      success: true,
+      ...(requestSource ? { requestSource } : {}),
+    }).catch(() => {})
+
     return {
       type: "runtime/translate-batch:success",
       payload: {
@@ -1058,6 +1170,7 @@ async function handleTranslate(
   }
 
   const uncachedTexts = uncachedEntries.map(({ text }) => text)
+  const requestStartedAt = Date.now()
 
   try {
     const result = await translateWithProviderDetailed(resolvedProvider, {
@@ -1069,6 +1182,7 @@ async function handleTranslate(
       customSystemPrompt: payload.customSystemPrompt,
       placeholderFormat: payload.placeholderFormat,
       languageLevel: payload.languageLevel ?? config.languageLevel,
+      serviceMode,
       ...(task === "explain" ? { explainMode: payload.explainMode ?? config.explainMode } : {}),
       ...(task === "explain" && payload.explanationRepairInstruction
         ? { explanationRepairInstruction: payload.explanationRepairInstruction }
@@ -1109,8 +1223,10 @@ async function handleTranslate(
         data: {
           providerId: resolvedProvider.id,
           model: resolvedProvider.model,
+          serviceMode,
           attemptedTransports: result.metadata.attemptedTransports,
           finalTransport: result.metadata.finalTransport,
+          fallbackReason: result.metadata.fallbackReason,
         },
       })
     }
@@ -1120,11 +1236,17 @@ async function handleTranslate(
       model: resolvedProvider.model,
       task: payload.task,
       texts: uncachedTexts,
+      serviceMode,
       attemptedTransports: result.metadata.attemptedTransports,
       finalTransport: result.metadata.finalTransport,
       fallbackUsed: result.metadata.fallbackUsed,
       route,
+      cacheStatus,
+      fallbackReason: result.metadata.fallbackReason,
+      tier: usageTier,
       success: true,
+      durationMs: Date.now() - requestStartedAt,
+      ...(requestSource ? { requestSource } : {}),
     }).catch(() => {})
 
     return {
@@ -1144,12 +1266,18 @@ async function handleTranslate(
       model: resolvedProvider.model,
       task: payload.task,
       texts: uncachedTexts,
+      serviceMode,
       attemptedTransports: metadata?.attemptedTransports,
       finalTransport: metadata?.finalTransport,
       fallbackUsed: metadata?.fallbackUsed,
       route,
+      cacheStatus,
+      fallbackReason: metadata?.fallbackReason,
+      tier: usageTier,
       success: false,
       errorCode: translatedError.code,
+      durationMs: Date.now() - requestStartedAt,
+      ...(requestSource ? { requestSource } : {}),
     }).catch(() => {})
 
     throw error

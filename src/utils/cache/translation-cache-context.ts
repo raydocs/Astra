@@ -9,6 +9,7 @@ export interface TranslationCacheContext {
   providerId?: string
   model?: string
   connectionMode?: string
+  serviceMode?: string
   routingKey?: string
   languageLevel?: string
   sourceLang?: string
@@ -35,14 +36,16 @@ export function serializeTranslationRequestContext(
     selectionContext: context?.selectionContext?.trim() || "",
     terminologyGlossary: context?.terminologyGlossary?.trim() || "",
     explanationGlossary: context?.explanationGlossary?.trim() || "",
+    translationMemory: context?.translationMemory?.trim() || "",
   })
 }
 
 export function buildTranslationCacheContext(
-  config: Pick<AstraConfig, "provider" | "connectionMode" | "languageLevel">,
+  config: Pick<AstraConfig, "provider" | "connectionMode" | "languageLevel" | "serviceMode">,
   request: {
     sourceLang?: string
     context?: TranslationRequestContext
+    serviceMode?: string
   },
 ): TranslationCacheContext {
   const relayBaseURL = config.provider.relayBaseURL?.trim()
@@ -51,6 +54,7 @@ export function buildTranslationCacheContext(
     providerId: config.provider.id,
     model: config.provider.model,
     connectionMode: config.connectionMode,
+    serviceMode: request.serviceMode ?? config.serviceMode,
     routingKey: config.connectionMode === "astra"
       ? "astra"
       : relayBaseURL && relayBaseURL.length > 0

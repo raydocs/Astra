@@ -1,7 +1,7 @@
 import type { QuotaInfo } from "@/utils/astra/quota-types"
 import { t } from "@/utils/i18n"
 
-function formatTokenCount(n: number): string {
+function formatWordCount(n: number): string {
   if (n >= 1000000) return `${(n / 1000000).toFixed(1)}M`
   if (n >= 1000) return `${Math.round(n / 1000)}k`
   return `${n}`
@@ -36,14 +36,16 @@ export default function QuotaBar({ quota }: QuotaBarProps) {
 
   const pct = quota.limit > 0 ? Math.min(100, Math.round((quota.used / quota.limit) * 100)) : 0
   const color = getBarColor(pct)
-  const quotaValues = [`${pct}`, formatTokenCount(quota.used), formatTokenCount(quota.limit)]
+  const usedWords = Math.round(quota.used / 5)
+  const limitWords = Math.round(quota.limit / 5)
+  const quotaValues = [`${pct}`, formatWordCount(usedWords), formatWordCount(limitWords)]
   const quotaText = t("popup_quotaToday", quotaValues)
 
   return (
     <div style={{ marginTop: 6 }}>
       <div
         role="progressbar"
-        aria-label="Daily quota usage"
+        aria-label="Daily reading included usage"
         aria-valuemin={0}
         aria-valuemax={quota.limit}
         aria-valuenow={quota.used}

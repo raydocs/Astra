@@ -30,6 +30,14 @@ interface FrameSnapshot {
   snapshot: TranslationSnapshot
 }
 
+interface ActiveTabTranslation {
+  command: ContentCommand
+  frameIds: Set<number>
+}
+
+const activeTabTranslations = new Map<number, ActiveTabTranslation>()
+let frameCoordinatorInitialized = false
+
 async function getTabFrames(tabId: number): Promise<FrameEntry[]> {
   // Try full frame enumeration via webNavigation (may be unavailable in compat builds)
   if (browser.webNavigation?.getAllFrames) {
@@ -62,6 +70,76 @@ async function getTabFrames(tabId: number): Promise<FrameEntry[]> {
 
 function isTranslatableFrame(frame: FrameEntry): boolean {
   return /^https?:/.test(frame.url)
+}
+
+function isStartTranslationCommand(command: ContentCommand): boolean {
+  return command.type === "content/start-translation"
+}
+
+function isStopTranslationCommand(command: ContentCommand): boolean {
+  return command.type === "content/stop-translation"
+}
+
+function rememberActiveTabTranslation(tabId: number, command: ContentCommand, frames: FrameEntry[]): void {
+  if (!isStartTranslationCommand(command)) return
+  activeTabTranslations.set(tabId, {
+    command,
+    frameIds: new Set(frames.map((frame) => frame.frameId)),
+  })
+}
+
+function forgetActiveTabTranslation(tabId: number, command?: ContentCommand): void {
+  if (command && !isStopTranslationCommand(command)) return
+  activeTabTranslations.delete(tabId)
+}
+
+function handleFrameNavigationCompleted(details: {
+  tabId: number
+  frameId: number
+  parentFrameId: number
+  url?: string
+}): void {
+  if (details.frameId === 0) {
+    activeTabTranslations.delete(details.tabId)
+    return
+  }
+
+  const active = activeTabTranslations.get(details.tabId)
+  if (!active || active.frameIds.has(details.frameId)) return
+
+  const frame: FrameEntry = {
+    frameId: details.frameId,
+    parentFrameId: details.parentFrameId,
+    url: details.url ?? "",
+  }
+  if (!isTranslatableFrame(frame)) return
+
+  active.frameIds.add(details.frameId)
+  void sendToFrame(details.tabId, details.frameId, active.command)
+}
+
+export function initializeFrameCoordinator(): void {
+  if (frameCoordinatorInitialized) return
+  frameCoordinatorInitialized = true
+
+  try {
+    browser.webNavigation?.onCompleted?.addListener(handleFrameNavigationCompleted)
+  } catch {
+    // webNavigation events may be unavailable in compat builds.
+  }
+
+  try {
+    browser.tabs.onRemoved?.addListener((tabId) => {
+      activeTabTranslations.delete(tabId)
+    })
+  } catch {
+    // tabs events may be unavailable in compat builds.
+  }
+}
+
+export function __resetFrameCoordinatorForTests(): void {
+  activeTabTranslations.clear()
+  frameCoordinatorInitialized = false
 }
 
 async function sendToFrame(
@@ -164,6 +242,10 @@ export async function executeTabCommand(
   const translatableFrames = frames.filter(isTranslatableFrame)
   const topFrame = translatableFrames.find((frame) => frame.frameId === 0)
 
+  if (isStartTranslationCommand(command) || isStopTranslationCommand(command)) {
+    activeTabTranslations.delete(tabId)
+  }
+
   if (translatableFrames.length === 0) {
     return {
       ok: false,
@@ -187,6 +269,8 @@ export async function executeTabCommand(
     }
 
     if (response.ok) {
+      rememberActiveTabTranslation(tabId, command, translatableFrames)
+      forgetActiveTabTranslation(tabId, command)
       return {
         ok: true,
         state: {
@@ -196,6 +280,7 @@ export async function executeTabCommand(
         },
       }
     }
+    forgetActiveTabTranslation(tabId, command)
     return response
   }
 
@@ -241,12 +326,16 @@ export async function executeTabCommand(
 
   const firstError = validResponses.find(({ response }) => !response.ok)
   if (firstError && !firstError.response.ok && aggregated.phase === "idle") {
+    forgetActiveTabTranslation(tabId, command)
     return {
       ok: false,
       error: firstError.response.error,
       state: aggregated,
     }
   }
+
+  rememberActiveTabTranslation(tabId, command, translatableFrames)
+  forgetActiveTabTranslation(tabId, command)
 
   return {
     ok: true,

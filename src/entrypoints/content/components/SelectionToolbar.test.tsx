@@ -275,6 +275,41 @@ describe("SelectionToolbar interaction suppression", () => {
     expect(getInteractionSuppressionState().hoverSuppressed).toBe(false)
   })
 
+  it("does not open over editable selections", async () => {
+    document.body.innerHTML = `<main><div id="editable" contenteditable="true">Editable draft text</div></main>`
+    const editable = document.getElementById("editable") as HTMLElement
+    const textNode = editable.firstChild as Text
+    const range = {
+      commonAncestorContainer: textNode,
+      startContainer: textNode,
+      endContainer: textNode,
+      getBoundingClientRect: () => ({
+        top: 10,
+        left: 10,
+        right: 120,
+        bottom: 30,
+        width: 110,
+        height: 20,
+        x: 10,
+        y: 10,
+        toJSON: () => ({}),
+      } as DOMRect),
+    }
+    vi.spyOn(window, "getSelection").mockReturnValue({
+      rangeCount: 1,
+      isCollapsed: false,
+      toString: () => "Editable draft text",
+      getRangeAt: () => range,
+    } as unknown as Selection)
+
+    await triggerDocumentMouseDown(editable)
+    await triggerDocumentMouseUp(editable)
+
+    expect(getInteractionSuppressionState().hoverSuppressed).toBe(false)
+    const host = document.getElementById(HOST_ID)
+    expect(host?.shadowRoot?.querySelector("button")).toBeNull()
+  })
+
   it("clears transient pointer suppression when selection is empty", async () => {
     const target = document.getElementById("target") as HTMLElement
 

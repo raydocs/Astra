@@ -20,7 +20,19 @@ import {
   type AstraUsage,
   type AstraUsageSnapshot,
 } from "../types/auth"
-import { ProviderIdSchema, type ProviderId } from "../types/config"
+import { ProviderIdSchema, ServiceModeSchema, type ProviderId, type ServiceMode } from "../types/config"
+import {
+  AstraCacheStatusSchema,
+  AstraContentLengthBucketSchema,
+  AstraCostBucketSchema,
+  AstraFallbackReasonSchema,
+  AstraFeatureSurfaceSchema,
+  AstraLatencyBucketSchema,
+  AstraOperatingTierSchema,
+  AstraTaskClassSchema,
+  type AstraCostBucket,
+  type AstraTaskClass,
+} from "../types/operating-model"
 import { AstraError } from "../types/translation"
 import { isSyncCollectionEnabled, validateSyncMutationPayload } from "../utils/astra/sync-push"
 import { buildAstraAnonymousIdentity } from "../utils/astra/anonymous-identity"
@@ -28,11 +40,14 @@ import {
   hashAstraCredentialSecret,
   verifyAstraCredentialSecret,
 } from "../utils/astra/credential-hash"
+import { getPlanEntitlement, shouldMeterTask } from "../utils/entitlements"
 
 import { buildRelaySession, issueSession, verifySessionToken } from "./auth"
 import { createRelayCloudflareShadowBridge } from "./cloudflare-shadow"
 import type {
   AuthenticatedSession,
+  CloudLearningMemoryDeletionReceipt,
+  CloudLearningMemoryInventory,
   DeviceListEntry,
   DeviceMetadataInput,
   DeviceStatus,
@@ -41,12 +56,33 @@ import type {
   MirroredAuthenticatedIssueInput,
   RelayEnv,
   RelaySession,
+  MobileRetentionSummary,
+  MobileRetentionSummaryGrain,
+  CostUsageSummary,
+  CostUsageSummaryBucket,
+  CostUsageServiceModeSummary,
+  CostUsageCacheStatusSummary,
+  ProviderHealthSummary,
+  ProviderHealthSummaryBucket,
+  ProviderHealthStatus,
+  CostUsageRiskLevel,
+  CostUsageSpikeStatus,
+  ManagedProviderRoute,
+  ServerUsageEvent,
+  OpsUserLookupQueryType,
+  OpsUserLookupSummary,
+  OpsUserLookupTaskSummary,
+  OpsUserUsageCategory,
   ServerDeviceRecord,
+  ServerMobileRetentionEvent,
+  ServerMobileRetentionEventInput,
+  ServerOAuthIdentityRecord,
   ServerSessionRecord,
   ServerSyncMutationRecord,
   ServerUserLimits,
   ServerUserRecord,
   ServerUserSyncPreferences,
+  ServerUsageEventMetadata,
   ServerUserUsage,
   SyncBootstrapResponse,
   SyncCollection,
@@ -55,6 +91,8 @@ import type {
   SyncMutationRejection,
   SyncPullResponse,
   SyncPushResponse,
+  AstraDigestSourceType,
+  AstraWeeklyDigestSnapshot,
 } from "./types"
 import { SYNC_COLLECTIONS } from "./types"
 
@@ -62,6 +100,93 @@ const ServerUserLimitsSchema = z.object({
   dailyRequests: z.number().int().nonnegative(),
   dailyCharacters: z.number().int().nonnegative(),
   requestsPerMinute: z.number().int().nonnegative(),
+})
+
+const ServerUsageEventMetadataSchema = z.object({
+  model: z.string().trim().min(1).optional(),
+  task: z.enum(["translate", "explain", "custom"]).optional(),
+  textCount: z.number().int().nonnegative().optional(),
+  durationMs: z.number().int().nonnegative().optional(),
+  taskClass: AstraTaskClassSchema.optional(),
+  costBucket: AstraCostBucketSchema.optional(),
+  latencyBucket: AstraLatencyBucketSchema.optional(),
+  cacheStatus: AstraCacheStatusSchema.optional(),
+  fallbackReason: AstraFallbackReasonSchema.optional(),
+  tier: AstraOperatingTierSchema.optional(),
+  surface: AstraFeatureSurfaceSchema.optional(),
+  contentLengthBucket: AstraContentLengthBucketSchema.optional(),
+  providerRoute: z.enum(["direct", "openrouter"]).optional(),
+  fallbackUsed: z.boolean().optional(),
+  success: z.boolean().optional(),
+  errorCode: z.enum([
+    "CONFIG_MISSING",
+    "CONTENT_UNAVAILABLE",
+    "PROVIDER_REQUEST_FAILED",
+    "PROVIDER_PARSE_FAILED",
+    "INVALID_RESPONSE",
+    "SITE_DISABLED",
+    "QUOTA_EXCEEDED",
+    "UNKNOWN",
+  ]).optional(),
+}).strict()
+
+function coerceNonnegativeInteger(value: unknown, fallback = 0): number {
+  return typeof value === "number" && Number.isFinite(value) && value >= 0
+    ? Math.round(value)
+    : fallback
+}
+
+function pickParsed<T>(schema: z.ZodType<T>, value: unknown): T | undefined {
+  const parsed = schema.safeParse(value)
+  return parsed.success ? parsed.data : undefined
+}
+
+const ServerStoredUsageEventSchema = z.preprocess((raw) => {
+  const record = typeof raw === "object" && raw !== null && !Array.isArray(raw)
+    ? raw as Record<string, unknown>
+    : {}
+  const timestamp = typeof record.timestamp === "string" && record.timestamp.trim()
+    ? record.timestamp
+    : new Date(0).toISOString()
+  const provider = pickParsed(ProviderIdSchema, record.provider) ?? "openai"
+  const serviceMode = pickParsed(ServiceModeSchema, record.serviceMode) ?? "automatic"
+  const parsedMetadata = ServerUsageEventMetadataSchema.partial().safeParse({
+    model: typeof record.model === "string" && record.model.trim() ? record.model : undefined,
+    task: record.task,
+    textCount: typeof record.textCount === "number" ? coerceNonnegativeInteger(record.textCount) : undefined,
+    durationMs: typeof record.durationMs === "number" ? coerceNonnegativeInteger(record.durationMs) : undefined,
+    taskClass: record.taskClass,
+    costBucket: record.costBucket,
+    latencyBucket: record.latencyBucket,
+    cacheStatus: record.cacheStatus,
+    fallbackReason: record.fallbackReason,
+    tier: record.tier,
+    surface: record.surface,
+    contentLengthBucket: record.contentLengthBucket,
+    providerRoute: record.providerRoute,
+    fallbackUsed: record.fallbackUsed,
+    success: record.success,
+    errorCode: record.errorCode,
+  })
+  const metadata = parsedMetadata.success ? parsedMetadata.data : {}
+
+  return {
+    timestamp,
+    provider,
+    serviceMode,
+    requestCount: coerceNonnegativeInteger(record.requestCount),
+    characterCount: coerceNonnegativeInteger(record.characterCount),
+    ...metadata,
+  }
+}, AstraUsageEventSchema)
+
+const MonthlyTaskRequestsSchema = z.record(z.string(), z.number().int().nonnegative()).transform((record) => {
+  const parsed: Partial<Record<AstraTaskClass, number>> = {}
+  for (const [key, value] of Object.entries(record)) {
+    const taskClass = AstraTaskClassSchema.safeParse(key)
+    if (taskClass.success) parsed[taskClass.data] = value
+  }
+  return parsed
 })
 
 const ServerUsageSchema = z.object({
@@ -72,8 +197,14 @@ const ServerUsageSchema = z.object({
   totalCharacters: z.number().int().nonnegative(),
   lastRequestAt: z.string().trim().min(1).nullable(),
   recentRequestTimestamps: z.array(z.string().trim().min(1)),
-  recentEvents: z.array(AstraUsageEventSchema),
-})
+  recentEvents: z.array(ServerStoredUsageEventSchema),
+  taskUsageMonth: z.string().trim().min(1).default("1970-01"),
+  monthlyTaskRequests: MonthlyTaskRequestsSchema.default({}),
+}).transform<ServerUserUsage>((usage) => ({
+  ...usage,
+  taskUsageMonth: usage.taskUsageMonth,
+  monthlyTaskRequests: usage.monthlyTaskRequests,
+}))
 
 const IdentityModeSchema = z.enum(["anonymous", "authenticated"]).default("authenticated")
 const DeviceStatusSchema = z.enum(["active", "revoked"]).default("active")
@@ -84,12 +215,14 @@ const SyncOperationSchema = z.enum(["upsert", "delete"])
 const ServerUserSyncPreferencesSchema = z.object({
   reading_history: z.boolean().default(false),
   study_progress: z.boolean().default(false),
+  weekly_digest: z.boolean().default(true),
 })
 
 function createDefaultSyncPreferences(): ServerUserSyncPreferences {
   return {
     reading_history: false,
     study_progress: false,
+    weekly_digest: true,
   }
 }
 
@@ -128,6 +261,9 @@ const ServerDeviceRecordSchema = z.object({
   lastSeenAt: z.string().trim().min(1),
   lastSyncAt: z.string().trim().min(1).nullable(),
   status: DeviceStatusSchema,
+  expoPushToken: z.string().trim().min(1).nullable().default(null),
+  expoPushTokenUpdatedAt: z.string().trim().min(1).nullable().default(null),
+  expoPushTokenPlatform: z.string().trim().min(1).nullable().default(null),
   updatedAt: z.string().trim().min(1),
   revokedAt: z.string().trim().min(1).nullable(),
 })
@@ -147,6 +283,17 @@ const ServerSessionRecordSchema = z.object({
   revokedAt: z.string().trim().min(1).nullable(),
 })
 
+const ServerOAuthIdentityRecordSchema = z.object({
+  provider: z.enum(["apple", "google"]),
+  subject: z.string().trim().min(1),
+  userId: z.string().trim().min(1),
+  email: z.string().trim().min(1).nullable(),
+  emailVerified: z.boolean(),
+  createdAt: z.string().trim().min(1),
+  updatedAt: z.string().trim().min(1),
+  lastRedeemedAt: z.string().trim().min(1),
+}) satisfies z.ZodType<ServerOAuthIdentityRecord>
+
 const ServerSyncMutationRecordSchema = z.object({
   ownerId: z.string().trim().min(1),
   email: z.string().trim().min(1),
@@ -163,6 +310,62 @@ const ServerSyncMutationRecordSchema = z.object({
   payload: z.record(z.string(), z.unknown()).nullable().optional(),
 })
 
+const AstraDigestSourceTypeSchema = z.enum(["page", "video", "pdf", "doc", "book", "writing", "saved"])
+const AstraWeeklyDigestSnapshotSchema = z.object({
+  digestId: z.string().trim().min(1),
+  periodStart: z.string().trim().min(1),
+  periodEnd: z.string().trim().min(1),
+  reviewedCount: z.number().int().nonnegative(),
+  savedCount: z.number().int().nonnegative(),
+  sourceBreakdown: z.array(z.object({
+    type: AstraDigestSourceTypeSchema,
+    count: z.number().int().nonnegative(),
+  })),
+  highlightedWords: z.array(z.string()),
+  highlightedSentences: z.array(z.string()),
+  nextReviewCount: z.number().int().nonnegative(),
+  generatedAt: z.string().trim().min(1),
+}) satisfies z.ZodType<AstraWeeklyDigestSnapshot>
+
+const ServerWeeklyDigestRecordSchema = z.object({
+  ownerId: z.string().trim().min(1),
+  email: z.string().trim().min(1),
+  digestId: z.string().trim().min(1),
+  generatedAt: z.string().trim().min(1),
+  snapshot: AstraWeeklyDigestSnapshotSchema,
+})
+
+const ServerMobileRetentionEventSchema = z.object({
+  ownerId: z.string().trim().min(1),
+  email: z.string().trim().min(1),
+  deviceId: z.string().trim().min(1),
+  eventId: z.string().trim().min(1).max(120),
+  name: z.enum([
+    "app_opened",
+    "app_hydrated",
+    "review_rated",
+    "review_skipped",
+    "sync_attempted",
+    "sync_succeeded",
+    "sync_failed",
+    "reminder_preference_changed",
+    "notification_tapped",
+    "sign_in_succeeded",
+    "sign_in_failed",
+    "link_succeeded",
+    "link_failed",
+    "source_hidden",
+    "source_restored",
+    "source_removed",
+    "cloud_learning_delete_requested",
+    "cloud_learning_delete_succeeded",
+    "cloud_learning_delete_failed",
+  ]),
+  clientTimestamp: z.number().finite(),
+  receivedAt: z.string().trim().min(1),
+  metadata: z.record(z.string(), z.union([z.string(), z.number(), z.boolean(), z.null()])),
+}) satisfies z.ZodType<ServerMobileRetentionEvent>
+
 const LegacyServerUserDatabaseSchema = z.object({
   version: z.literal(1),
   users: z.array(ServerUserRecordSchema),
@@ -173,11 +376,17 @@ const ServerUserDatabaseSchema = z.object({
   users: z.array(ServerUserRecordSchema),
   devices: z.array(ServerDeviceRecordSchema).default([]),
   sessions: z.array(ServerSessionRecordSchema).default([]),
+  oauthIdentities: z.array(ServerOAuthIdentityRecordSchema).default([]),
   syncMutations: z.array(ServerSyncMutationRecordSchema).default([]),
+  weeklyDigests: z.array(ServerWeeklyDigestRecordSchema).default([]),
+  mobileRetentionEvents: z.array(ServerMobileRetentionEventSchema).default([]),
   nextSyncCursor: z.number().int().nonnegative().default(0),
 })
 
 export type ServerUserDatabase = z.infer<typeof ServerUserDatabaseSchema>
+
+const WEEKLY_DIGEST_ARCHIVE_LIMIT_PER_USER = 26
+const MOBILE_RETENTION_EVENTS_LIMIT_PER_USER = 500
 
 type SessionContext = {
   user: ServerUserRecord
@@ -189,15 +398,32 @@ function buildUserId(email: string): string {
   return `usr_${createHash("sha256").update(email.trim().toLowerCase()).digest("hex").slice(0, 12)}`
 }
 
+function buildEmailHash(email: string): string {
+  return createHash("sha256").update(email.trim().toLowerCase()).digest("hex")
+}
+
+function buildOAuthUserEmail(provider: "apple" | "google", subject: string): string {
+  const hash = createHash("sha256").update(`${provider}:${subject.trim()}`).digest("hex").slice(0, 16)
+  return `oauth_${provider}_${hash}@astra.oauth`
+}
+
 function getCurrentUsageDay(now: Date): string {
   return now.toISOString().slice(0, 10)
 }
 
+function getCurrentUsageMonth(now: Date): string {
+  return now.toISOString().slice(0, 7)
+}
+
 function defaultLimits(plan: ServerUserRecord["plan"], env?: RelayEnv): ServerUserLimits {
   if (env) {
-    return plan === "pro"
-      ? { dailyRequests: env.proDailyRequests, dailyCharacters: env.proDailyCharacters, requestsPerMinute: env.proRpm }
-      : { dailyRequests: env.freeDailyRequests, dailyCharacters: env.freeDailyCharacters, requestsPerMinute: env.freeRpm }
+    if (plan === "pro") {
+      return { dailyRequests: env.proDailyRequests, dailyCharacters: env.proDailyCharacters, requestsPerMinute: env.proRpm }
+    }
+    if (plan === "trial") {
+      return { dailyRequests: env.trialDailyRequests, dailyCharacters: env.trialDailyCharacters, requestsPerMinute: env.trialRpm }
+    }
+    return { dailyRequests: env.freeDailyRequests, dailyCharacters: env.freeDailyCharacters, requestsPerMinute: env.freeRpm }
   }
   return { dailyRequests: 2000, dailyCharacters: 500_000, requestsPerMinute: 120 }
 }
@@ -215,7 +441,6 @@ function applyTemporaryFreeDefaults(db: ServerUserDatabase, env: RelayEnv): Serv
     ...db,
     users: db.users.map((user) => ({
       ...user,
-      plan: "free",
       providerEntitlements: freeFirstEntitlements(env),
     })),
   }
@@ -231,6 +456,8 @@ function createEmptyUsage(now: Date = new Date()): ServerUserUsage {
     lastRequestAt: null,
     recentRequestTimestamps: [],
     recentEvents: [],
+    taskUsageMonth: getCurrentUsageMonth(now),
+    monthlyTaskRequests: {},
   }
 }
 
@@ -253,7 +480,10 @@ async function createSeedDatabase(env: RelayEnv): Promise<ServerUserDatabase> {
     }],
     devices: [],
     sessions: [],
+    oauthIdentities: [],
     syncMutations: [],
+    weeklyDigests: [],
+    mobileRetentionEvents: [],
     nextSyncCursor: 0,
   }
 }
@@ -272,7 +502,10 @@ async function migrateDatabase(
       users: legacy.data.users,
       devices: [],
       sessions: [],
+      oauthIdentities: [],
       syncMutations: [],
+      weeklyDigests: [],
+      mobileRetentionEvents: [],
       nextSyncCursor: 0,
     }, env)
   }
@@ -329,6 +562,50 @@ function buildUsageSnapshot(user: ServerUserRecord, generatedAt: string): AstraU
     quota: buildQuota(user),
     usage: buildUsage(user),
   })
+}
+
+function startOfDigestWeek(now: Date): Date {
+  const start = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()))
+  const day = start.getUTCDay()
+  const mondayOffset = day === 0 ? -6 : 1 - day
+  start.setUTCDate(start.getUTCDate() + mondayOffset)
+  return start
+}
+
+function mobileRetentionBucketForTimestamp(timestamp: number, grain: MobileRetentionSummaryGrain): string {
+  const eventDate = new Date(timestamp)
+  const utcDay = new Date(Date.UTC(eventDate.getUTCFullYear(), eventDate.getUTCMonth(), eventDate.getUTCDate()))
+  return grain === "week" ? startOfDigestWeek(utcDay).toISOString().slice(0, 10) : utcDay.toISOString().slice(0, 10)
+}
+
+function stringFromSyncPayload(value: unknown): string | undefined {
+  return typeof value === "string" && value.trim().length > 0 ? value.trim() : undefined
+}
+
+function numberFromSyncPayload(value: unknown, fallback: number): number {
+  return typeof value === "number" && Number.isFinite(value) ? value : fallback
+}
+
+function sourceTypeForSyncedVocabularyEntry(record: Record<string, unknown>): AstraDigestSourceType {
+  const sourceContext = record.sourceContext && typeof record.sourceContext === "object"
+    ? record.sourceContext as Record<string, unknown>
+    : {}
+
+  if (sourceContext.surface === "subtitle_reader" || sourceContext.surface === "video_transcript") return "video"
+  if (sourceContext.ownedReadingSourceType === "pdf") return "pdf"
+  if (sourceContext.ownedReadingSourceType === "epub") return "book"
+  if (sourceContext.ownedReadingSourceType === "subtitle-file") return "doc"
+  if (
+    stringFromSyncPayload(sourceContext.pageUrl)
+    || stringFromSyncPayload(record.url)
+    || stringFromSyncPayload(record.hostname)
+    || stringFromSyncPayload(sourceContext.hostname)
+  ) return "page"
+  return "saved"
+}
+
+function syncPayloadRecord(payload: Record<string, unknown> | null | undefined): Record<string, unknown> | null {
+  return payload && typeof payload === "object" ? payload : null
 }
 
 function buildDeviceListEntries(
@@ -393,25 +670,39 @@ function buildSyncCollectionSummaries(
   }
 }
 
+function getSyncCollectionEnabled(user: ServerUserRecord, collection: SyncCollection): boolean {
+  if (collection === "reading_history") return user.syncPreferences.reading_history
+  if (collection === "study_progress") return user.syncPreferences.study_progress
+  return true
+}
+
+function getSyncCollectionDefaultEnabled(collection: SyncCollection): boolean {
+  return collection === "config" || collection === "vocabulary" || collection === "review_schedule"
+}
+
+function getUserSyncMutations(
+  db: ServerUserDatabase,
+  user: ServerUserRecord,
+  collection: SyncCollection,
+): ServerSyncMutationRecord[] {
+  return db.syncMutations
+    .filter((mutation) =>
+      (mutation.email === user.email || mutation.ownerId === user.id) && mutation.collection === collection,
+    )
+    .sort((a, b) => parseCursor(a.cursor) - parseCursor(b.cursor))
+}
+
 function buildSyncCollectionSummary(
   db: ServerUserDatabase,
   user: ServerUserRecord,
   collection: SyncCollection,
 ): AstraAccountSummary["sync"]["collections"][SyncCollection] {
-  const mutations = db.syncMutations
-    .filter((mutation) => mutation.email === user.email && mutation.collection === collection)
-    .sort((a, b) => parseCursor(a.cursor) - parseCursor(b.cursor))
+  const mutations = getUserSyncMutations(db, user, collection)
   const latestMutation = mutations.at(-1) ?? null
-  const defaultEnabled = collection === "config" || collection === "vocabulary" || collection === "review_schedule"
-  const enabled = collection === "reading_history"
-    ? user.syncPreferences.reading_history
-    : collection === "study_progress"
-      ? user.syncPreferences.study_progress
-      : true
 
   return {
-    enabled,
-    defaultEnabled,
+    enabled: getSyncCollectionEnabled(user, collection),
+    defaultEnabled: getSyncCollectionDefaultEnabled(collection),
     cursor: latestMutation?.cursor ?? null,
     mutationCount: mutations.length,
     activeCount: countActiveSyncRecords(mutations),
@@ -422,15 +713,24 @@ function buildSyncCollectionSummary(
 
 function pruneUsageWindow(usage: ServerUserUsage, now: Date): ServerUserUsage {
   const currentDay = getCurrentUsageDay(now)
+  const currentMonth = getCurrentUsageMonth(now)
   const recentWindow = now.getTime() - 60_000
   const timestamps = usage.recentRequestTimestamps.filter((value) => {
     const time = Date.parse(value)
     return Number.isFinite(time) && time >= recentWindow
   })
 
-  if (usage.usageDay !== currentDay) {
+  const nextUsage: ServerUserUsage = usage.taskUsageMonth !== currentMonth
+    ? {
+        ...usage,
+        taskUsageMonth: currentMonth,
+        monthlyTaskRequests: {},
+      }
+    : usage
+
+  if (nextUsage.usageDay !== currentDay) {
     return {
-      ...usage,
+      ...nextUsage,
       usageDay: currentDay,
       requestsToday: 0,
       charactersToday: 0,
@@ -439,12 +739,110 @@ function pruneUsageWindow(usage: ServerUserUsage, now: Date): ServerUserUsage {
   }
 
   return {
-    ...usage,
+    ...nextUsage,
     recentRequestTimestamps: timestamps,
   }
 }
 
-function assertUsageCapacity(user: ServerUserRecord, usage: ServerUserUsage, characterCount: number) {
+function normalizeUsageEventMetadata(metadata: ServerUsageEventMetadata | undefined): ServerUsageEventMetadata {
+  if (!metadata) return {}
+  return ServerUsageEventMetadataSchema.parse(metadata)
+}
+
+function calculateNearestRankPercentile(samples: number[], percentile: number): number | null {
+  if (samples.length === 0) return null
+  const sorted = [...samples].sort((left, right) => left - right)
+  const rank = Math.max(0, Math.min(sorted.length - 1, Math.ceil(percentile * sorted.length) - 1))
+  return sorted[rank] ?? null
+}
+
+const COST_ESTIMATE_REGISTRY_VERSION = "internal_deterministic_v1" as const
+
+const ESTIMATED_COST_BUCKET_USD_PER_1K_CHARS: Record<AstraCostBucket | "unknown", number> = {
+  low: 0.00008,
+  medium: 0.00025,
+  high: 0.0008,
+  long_running: 0.0012,
+  unknown: 0.0002,
+}
+
+const ESTIMATED_SERVICE_MODE_USD_PER_1K_CHARS: Record<ServiceMode, number> = {
+  automatic: 0.00035,
+  fast: 0.00018,
+  balanced: 0.0003,
+  best_quality: 0.00055,
+}
+
+const ESTIMATED_TASK_MULTIPLIER: Record<AstraTaskClass | "unknown", number> = {
+  instant_phrase: 0.7,
+  paragraph_understanding: 1,
+  context_explanation: 1.1,
+  deep_reading: 1.4,
+  video_summary: 1.5,
+  review_card: 0.65,
+  writing_assist: 1.15,
+  digest: 1.25,
+  unknown: 1,
+}
+
+const ESTIMATED_PROVIDER_ROUTE_MULTIPLIER: Record<ManagedProviderRoute, number> = {
+  direct: 1,
+  openrouter: 1.15,
+}
+
+const ESTIMATED_REQUEST_OVERHEAD_USD = 0.00002
+
+function roundEstimatedSpend(value: number): number {
+  return Number(Math.max(0, value).toFixed(6))
+}
+
+function estimateUsageEventSpendUsd(event: ServerUsageEvent): number {
+  const costBucket = event.costBucket ?? "unknown"
+  const taskClass = event.taskClass ?? "unknown"
+  const providerRoute = event.providerRoute ?? "direct"
+  const charsInThousands = Math.max(0, event.characterCount) / 1000
+  const requestCount = Math.max(0, event.requestCount)
+  return roundEstimatedSpend(
+    charsInThousands
+    * (ESTIMATED_COST_BUCKET_USD_PER_1K_CHARS[costBucket] + ESTIMATED_SERVICE_MODE_USD_PER_1K_CHARS[event.serviceMode])
+    * ESTIMATED_TASK_MULTIPLIER[taskClass]
+    * ESTIMATED_PROVIDER_ROUTE_MULTIPLIER[providerRoute]
+    + requestCount * ESTIMATED_REQUEST_OVERHEAD_USD,
+  )
+}
+
+function getUsageEventUtcDate(event: ServerUsageEvent): string | null {
+  const time = Date.parse(event.timestamp)
+  if (!Number.isFinite(time)) return null
+  return new Date(time).toISOString().slice(0, 10)
+}
+
+function getPreviousUtcDate(date: string): string {
+  const previous = new Date(`${date}T00:00:00.000Z`)
+  previous.setUTCDate(previous.getUTCDate() - 1)
+  return previous.toISOString().slice(0, 10)
+}
+
+function deriveCostSpikeStatus(currentSpend: number, previousSpend: number, spikeRatio: number | null): CostUsageSpikeStatus {
+  if (currentSpend >= 0.02 && (previousSpend === 0 || (spikeRatio ?? 0) >= 3)) return "spike"
+  if (currentSpend >= 0.01 && (previousSpend === 0 || (spikeRatio ?? 0) >= 2)) return "watch"
+  return "none"
+}
+
+function deriveCostRiskLevel(dailySpend: number, spikeStatus: CostUsageSpikeStatus): CostUsageRiskLevel {
+  if (dailySpend >= 0.05 || spikeStatus === "spike") return "high"
+  if (dailySpend >= 0.01 || spikeStatus === "watch") return "watch"
+  return "low"
+}
+
+function classifyOpsUserUsage(usage: ServerUserUsage): OpsUserUsageCategory {
+  if (usage.requestsToday >= 500 || usage.charactersToday >= 150_000 || usage.recentEvents.length >= 10) return "extreme"
+  if (usage.requestsToday >= 100 || usage.charactersToday >= 50_000 || usage.recentEvents.length >= 7) return "heavy"
+  if (usage.requestsToday >= 10 || usage.charactersToday >= 5_000 || usage.recentEvents.length >= 3) return "normal"
+  return "light"
+}
+
+function assertUsageCapacity(user: ServerUserRecord, usage: ServerUserUsage, characterCount: number, taskClass?: AstraTaskClass) {
   if (user.subscriptionStatus !== "active") {
     throw new AstraError("CONFIG_MISSING", `Subscription is not active: ${user.subscriptionStatus}.`)
   }
@@ -459,6 +857,19 @@ function assertUsageCapacity(user: ServerUserRecord, usage: ServerUserUsage, cha
 
   if (usage.charactersToday + characterCount > user.limits.dailyCharacters) {
     throw new AstraError("PROVIDER_REQUEST_FAILED", "Daily character quota exceeded.")
+  }
+
+  if (taskClass && shouldMeterTask(taskClass)) {
+    const entitlement = getPlanEntitlement(user.plan, taskClass)
+    if (entitlement.monthlyAllowance !== null) {
+      const used = usage.monthlyTaskRequests[taskClass] ?? 0
+      if (used + 1 > entitlement.monthlyAllowance) {
+        throw new AstraError(
+          "QUOTA_EXCEEDED",
+          `${taskClass} monthly allowance exceeded for the ${user.plan} plan.`,
+        )
+      }
+    }
   }
 }
 
@@ -550,6 +961,21 @@ export async function saveAuthoritativeUserDatabase(
   await writeFile(env.userDbPath, JSON.stringify(db, null, 2))
 }
 
+const OPS_USER_LOOKUP_RESULT_LIMIT = 1
+const OPS_USER_LOOKUP_TASK_SUMMARY_LIMIT = 6
+const OPS_USER_LOOKUP_EXCLUDED_FIELDS = [
+  "email",
+  "billingEmail",
+  "deviceId",
+  "sessionId",
+  "provider",
+  "model",
+  "prompt",
+  "rawText",
+  "rawQuery",
+  "fullUrl",
+]
+
 export class FileUserStore {
   private cache: ServerUserDatabase | null = null
   private readonly cloudflareShadow
@@ -585,6 +1011,390 @@ export class FileUserStore {
     return { user: db.users[userIndex], changed }
   }
 
+  async lookupOpsUser(query: string, now: Date = new Date(), options: { limit?: number } = {}): Promise<OpsUserLookupSummary | null> {
+    const normalizedQuery = query.trim()
+    if (!normalizedQuery) return null
+
+    const db = await this.load()
+    const lowerQuery = normalizedQuery.toLowerCase()
+    const queryType: OpsUserLookupQueryType = normalizedQuery.includes("@")
+      ? "email"
+      : /^[a-f0-9]{64}$/i.test(normalizedQuery)
+        ? "email_hash"
+        : lowerQuery.startsWith("usr_")
+          ? "user_id"
+          : "email"
+    const userIndex = db.users.findIndex((user) => {
+      if (queryType === "user_id") return user.id === normalizedQuery
+      if (queryType === "email_hash") return buildEmailHash(user.email) === lowerQuery
+      return user.email.trim().toLowerCase() === lowerQuery
+    })
+    if (userIndex === -1) return null
+
+    const user = db.users[userIndex]!
+    const devices = db.devices.filter((device) => device.email === user.email || device.userId === user.id)
+    const sessions = db.sessions.filter((session) => session.email === user.email || session.userId === user.id)
+    const taskBuckets = new Map<string, OpsUserLookupTaskSummary>()
+    const latencySamplesByTask = new Map<string, number[]>()
+
+    for (const event of user.usage.recentEvents) {
+      const taskClass = event.taskClass ?? "unknown"
+      const bucket = taskBuckets.get(taskClass) ?? {
+        taskClass,
+        eventCount: 0,
+        successCount: 0,
+        failureCount: 0,
+        fallbackCount: 0,
+        latencySampleCount: 0,
+        latencyP95Ms: null,
+      }
+      bucket.eventCount += 1
+      if (event.success === false) bucket.failureCount += 1
+      else bucket.successCount += 1
+      if (event.fallbackUsed === true) bucket.fallbackCount += 1
+      if (typeof event.durationMs === "number" && Number.isFinite(event.durationMs)) {
+        const sample = Math.max(0, Math.round(event.durationMs))
+        const samples = latencySamplesByTask.get(taskClass) ?? []
+        samples.push(sample)
+        latencySamplesByTask.set(taskClass, samples)
+        bucket.latencySampleCount += 1
+      }
+      taskBuckets.set(taskClass, bucket)
+    }
+
+    const requestedLimit = Number.isFinite(options.limit) ? Math.max(1, Math.floor(options.limit ?? OPS_USER_LOOKUP_RESULT_LIMIT)) : OPS_USER_LOOKUP_RESULT_LIMIT
+    const resultLimit = Math.min(OPS_USER_LOOKUP_RESULT_LIMIT, requestedLimit)
+    const recentTaskSummary = [...taskBuckets.entries()].map(([taskClass, bucket]) => ({
+      ...bucket,
+      latencyP95Ms: calculateNearestRankPercentile(latencySamplesByTask.get(taskClass) ?? [], 0.95),
+    })).sort((left, right) =>
+      right.eventCount - left.eventCount
+      || left.taskClass.localeCompare(right.taskClass),
+    ).slice(0, OPS_USER_LOOKUP_TASK_SUMMARY_LIMIT)
+
+    return {
+      schema: "astra-ops-user-lookup.v1",
+      generatedAt: now.toISOString(),
+      queryType,
+      resultWindow: {
+        mode: "exact_lookup",
+        limit: resultLimit,
+        cursor: null,
+        nextCursor: null,
+        returnedCount: 1,
+        totalMatched: 1,
+        hasMore: false,
+      },
+      snapshotBoundary: {
+        metadataOnly: true,
+        contentIncluded: false,
+        rawQueryIncluded: false,
+        exportAvailable: false,
+        recentTaskSummaryLimit: OPS_USER_LOOKUP_TASK_SUMMARY_LIMIT,
+        excludedFields: OPS_USER_LOOKUP_EXCLUDED_FIELDS,
+      },
+      user: {
+        userId: user.id,
+        emailHash: buildEmailHash(user.email),
+        createdAt: user.createdAt,
+        plan: user.plan,
+        subscriptionStatus: user.subscriptionStatus,
+        identityMode: user.identityMode,
+        providerEntitlementCount: user.providerEntitlements.length,
+        limits: user.limits,
+        usage: {
+          usageDay: user.usage.usageDay,
+          requestsToday: user.usage.requestsToday,
+          charactersToday: user.usage.charactersToday,
+          totalRequests: user.usage.totalRequests,
+          totalCharacters: user.usage.totalCharacters,
+          lastRequestAt: user.usage.lastRequestAt,
+          recentEventCount: user.usage.recentEvents.length,
+          usageCategory: classifyOpsUserUsage(user.usage),
+        },
+        devices: {
+          activeCount: devices.filter((device) => device.status === "active").length,
+          revokedCount: devices.filter((device) => device.status === "revoked").length,
+        },
+        sessions: {
+          activeCount: sessions.filter((session) => session.status === "active").length,
+          revokedCount: sessions.filter((session) => session.status === "revoked").length,
+        },
+        recentTaskSummary,
+      },
+    }
+  }
+
+  async summarizeProviderHealth(now: Date = new Date()): Promise<ProviderHealthSummary> {
+    const db = await this.load()
+    const buckets = new Map<string, ProviderHealthSummaryBucket>()
+    const latencySamplesByKey = new Map<string, number[]>()
+    let totalEvents = 0
+    let totalRequests = 0
+    let totalCharacters = 0
+
+    const healthStatusRank: Record<ProviderHealthStatus, number> = {
+      incident: 0,
+      watch: 1,
+      healthy: 2,
+    }
+
+    const deriveHealthStatus = (bucket: Pick<ProviderHealthSummaryBucket, "eventCount" | "failureCount" | "fallbackCount">): ProviderHealthStatus => {
+      if (bucket.eventCount === 0) return "healthy"
+      const failureRate = bucket.failureCount / bucket.eventCount
+      const fallbackRate = bucket.fallbackCount / bucket.eventCount
+      if (failureRate >= 0.25 || fallbackRate >= 0.5) return "incident"
+      if (failureRate > 0 || fallbackRate > 0) return "watch"
+      return "healthy"
+    }
+
+    for (const user of db.users) {
+      for (const event of user.usage.recentEvents) {
+        const provider = event.provider
+        const model = event.model?.trim() || "unknown"
+        const serviceMode = event.serviceMode
+        const taskClass = event.taskClass ?? "unknown"
+        const key = `${provider}:${model}:${serviceMode}:${taskClass}`
+        const bucket = buckets.get(key) ?? {
+          provider,
+          model,
+          serviceMode,
+          taskClass,
+          eventCount: 0,
+          requestCount: 0,
+          characterCount: 0,
+          successCount: 0,
+          failureCount: 0,
+          fallbackCount: 0,
+          successRate: null,
+          fallbackRate: null,
+          latencySampleCount: 0,
+          latencyP50Ms: null,
+          latencyP95Ms: null,
+          healthStatus: "healthy",
+        }
+
+        bucket.eventCount += 1
+        bucket.requestCount += event.requestCount
+        bucket.characterCount += event.characterCount
+        if (event.success === false) {
+          bucket.failureCount += 1
+        } else {
+          bucket.successCount += 1
+        }
+        if (event.fallbackUsed === true) {
+          bucket.fallbackCount += 1
+        }
+        if (typeof event.durationMs === "number" && Number.isFinite(event.durationMs)) {
+          const sample = Math.max(0, Math.round(event.durationMs))
+          const samples = latencySamplesByKey.get(key) ?? []
+          samples.push(sample)
+          latencySamplesByKey.set(key, samples)
+          bucket.latencySampleCount += 1
+        }
+
+        buckets.set(key, bucket)
+        totalEvents += 1
+        totalRequests += event.requestCount
+        totalCharacters += event.characterCount
+      }
+    }
+
+    return {
+      schema: "astra-provider-health-summary.v1",
+      generatedAt: now.toISOString(),
+      source: "recent_user_usage_events",
+      recentEventsPerUserLimit: 10,
+      totalEvents,
+      totalRequests,
+      totalCharacters,
+      buckets: [...buckets.entries()]
+        .map(([key, bucket]) => {
+          const samples = latencySamplesByKey.get(key) ?? []
+          return {
+            ...bucket,
+            successRate: bucket.eventCount > 0 ? Number((bucket.successCount / bucket.eventCount).toFixed(4)) : null,
+            fallbackRate: bucket.eventCount > 0 ? Number((bucket.fallbackCount / bucket.eventCount).toFixed(4)) : null,
+            latencyP50Ms: calculateNearestRankPercentile(samples, 0.5),
+            latencyP95Ms: calculateNearestRankPercentile(samples, 0.95),
+            healthStatus: deriveHealthStatus(bucket),
+          }
+        })
+        .sort((left, right) =>
+          healthStatusRank[left.healthStatus] - healthStatusRank[right.healthStatus]
+          || right.eventCount - left.eventCount
+          || left.provider.localeCompare(right.provider)
+          || left.model.localeCompare(right.model)
+          || left.serviceMode.localeCompare(right.serviceMode)
+          || left.taskClass.localeCompare(right.taskClass),
+        ),
+    }
+  }
+
+  async summarizeRecentUsageCost(now: Date = new Date()): Promise<CostUsageSummary> {
+    const db = await this.load()
+    const buckets = new Map<string, CostUsageSummaryBucket>()
+    const serviceModeBuckets = new Map<ServiceMode, CostUsageServiceModeSummary>()
+    const cacheStatusBuckets = new Map<string, CostUsageCacheStatusSummary>()
+    const latencySamplesByServiceMode = new Map<ServiceMode, number[]>()
+    const dailyEstimatedSpend = new Map<string, number>()
+    let latestEventDate: string | null = null
+    let totalEvents = 0
+    let totalRequests = 0
+    let totalCharacters = 0
+    let totalEstimatedSpendUsd = 0
+
+    for (const user of db.users) {
+      for (const event of user.usage.recentEvents) {
+        const tier = event.tier ?? (user.plan === "free" || user.plan === "trial" || user.plan === "pro" ? user.plan : "unknown")
+        const taskClass = event.taskClass ?? "unknown"
+        const costBucket = event.costBucket ?? "unknown"
+        const key = `${tier}:${taskClass}:${costBucket}`
+        const bucket = buckets.get(key) ?? {
+          tier,
+          taskClass,
+          costBucket,
+          eventCount: 0,
+          requestCount: 0,
+          characterCount: 0,
+          successCount: 0,
+          failureCount: 0,
+          fallbackCount: 0,
+          estimatedSpendUsd: 0,
+        }
+        const serviceModeBucket = serviceModeBuckets.get(event.serviceMode) ?? {
+          serviceMode: event.serviceMode,
+          eventCount: 0,
+          requestCount: 0,
+          characterCount: 0,
+          successCount: 0,
+          failureCount: 0,
+          fallbackCount: 0,
+          latencySampleCount: 0,
+          latencyP50Ms: null,
+          latencyP95Ms: null,
+          estimatedSpendUsd: 0,
+        }
+        const cacheStatus = event.cacheStatus ?? "unknown"
+        const cacheStatusBucket = cacheStatusBuckets.get(cacheStatus) ?? {
+          cacheStatus,
+          eventCount: 0,
+          requestCount: 0,
+          characterCount: 0,
+          share: 0,
+          estimatedSpendUsd: 0,
+        }
+
+        const estimatedSpendUsd = estimateUsageEventSpendUsd(event)
+        const eventDate = getUsageEventUtcDate(event)
+
+        bucket.eventCount += 1
+        bucket.requestCount += event.requestCount
+        bucket.characterCount += event.characterCount
+        bucket.estimatedSpendUsd = roundEstimatedSpend(bucket.estimatedSpendUsd + estimatedSpendUsd)
+        serviceModeBucket.eventCount += 1
+        serviceModeBucket.requestCount += event.requestCount
+        serviceModeBucket.characterCount += event.characterCount
+        serviceModeBucket.estimatedSpendUsd = roundEstimatedSpend(serviceModeBucket.estimatedSpendUsd + estimatedSpendUsd)
+        cacheStatusBucket.eventCount += 1
+        cacheStatusBucket.requestCount += event.requestCount
+        cacheStatusBucket.characterCount += event.characterCount
+        cacheStatusBucket.estimatedSpendUsd = roundEstimatedSpend(cacheStatusBucket.estimatedSpendUsd + estimatedSpendUsd)
+        if (event.success === false) {
+          bucket.failureCount += 1
+          serviceModeBucket.failureCount += 1
+        } else {
+          bucket.successCount += 1
+          serviceModeBucket.successCount += 1
+        }
+        if (event.fallbackUsed || (event.fallbackReason && event.fallbackReason !== "none")) {
+          bucket.fallbackCount += 1
+          serviceModeBucket.fallbackCount += 1
+        }
+        if (typeof event.durationMs === "number" && Number.isFinite(event.durationMs)) {
+          const sample = Math.max(0, Math.round(event.durationMs))
+          const samples = latencySamplesByServiceMode.get(event.serviceMode) ?? []
+          samples.push(sample)
+          latencySamplesByServiceMode.set(event.serviceMode, samples)
+          serviceModeBucket.latencySampleCount += 1
+        }
+
+        buckets.set(key, bucket)
+        serviceModeBuckets.set(event.serviceMode, serviceModeBucket)
+        cacheStatusBuckets.set(cacheStatus, cacheStatusBucket)
+        totalEvents += 1
+        totalRequests += event.requestCount
+        totalCharacters += event.characterCount
+        totalEstimatedSpendUsd = roundEstimatedSpend(totalEstimatedSpendUsd + estimatedSpendUsd)
+        if (eventDate) {
+          dailyEstimatedSpend.set(eventDate, roundEstimatedSpend((dailyEstimatedSpend.get(eventDate) ?? 0) + estimatedSpendUsd))
+          if (!latestEventDate || eventDate > latestEventDate) {
+            latestEventDate = eventDate
+          }
+        }
+      }
+    }
+
+    const byCacheStatus = [...cacheStatusBuckets.values()]
+      .map((bucket) => ({
+        ...bucket,
+        share: totalEvents > 0 ? Number((bucket.eventCount / totalEvents).toFixed(4)) : 0,
+      }))
+      .sort((left, right) => right.eventCount - left.eventCount || left.cacheStatus.localeCompare(right.cacheStatus))
+    const cacheableEvents = byCacheStatus
+      .filter((bucket) => bucket.cacheStatus === "hit" || bucket.cacheStatus === "partial" || bucket.cacheStatus === "miss")
+      .reduce((sum, bucket) => sum + bucket.eventCount, 0)
+    const cacheHitEvents = byCacheStatus.find((bucket) => bucket.cacheStatus === "hit")?.eventCount ?? 0
+    const activeSpendDate = latestEventDate
+    const previousSpendDate = activeSpendDate ? getPreviousUtcDate(activeSpendDate) : null
+    const dailyEstimatedSpendUsd = activeSpendDate ? roundEstimatedSpend(dailyEstimatedSpend.get(activeSpendDate) ?? 0) : 0
+    const previousDailyEstimatedSpendUsd = previousSpendDate ? roundEstimatedSpend(dailyEstimatedSpend.get(previousSpendDate) ?? 0) : 0
+    const spikeRatio = previousDailyEstimatedSpendUsd > 0
+      ? Number((dailyEstimatedSpendUsd / previousDailyEstimatedSpendUsd).toFixed(4))
+      : dailyEstimatedSpendUsd > 0
+        ? null
+        : 0
+    const spikeStatus = deriveCostSpikeStatus(dailyEstimatedSpendUsd, previousDailyEstimatedSpendUsd, spikeRatio)
+
+    return {
+      schema: "astra-cost-usage-summary.v1",
+      generatedAt: now.toISOString(),
+      source: "recent_user_usage_events",
+      recentEventsPerUserLimit: 10,
+      totalEvents,
+      totalRequests,
+      totalCharacters,
+      totalEstimatedSpendUsd,
+      estimateRegistry: COST_ESTIMATE_REGISTRY_VERSION,
+      cacheHitRate: cacheableEvents > 0 ? Number((cacheHitEvents / cacheableEvents).toFixed(4)) : null,
+      dailyEstimate: {
+        date: activeSpendDate,
+        estimatedSpendUsd: dailyEstimatedSpendUsd,
+        previousDate: previousSpendDate,
+        previousEstimatedSpendUsd: previousDailyEstimatedSpendUsd,
+        spikeRatio,
+        spikeStatus,
+        riskLevel: deriveCostRiskLevel(dailyEstimatedSpendUsd, spikeStatus),
+      },
+      buckets: [...buckets.values()].sort((left, right) =>
+        left.tier.localeCompare(right.tier)
+        || left.taskClass.localeCompare(right.taskClass)
+        || left.costBucket.localeCompare(right.costBucket),
+      ),
+      byServiceMode: [...serviceModeBuckets.values()]
+        .map((bucket) => {
+          const samples = latencySamplesByServiceMode.get(bucket.serviceMode) ?? []
+          return {
+            ...bucket,
+            latencyP50Ms: calculateNearestRankPercentile(samples, 0.5),
+            latencyP95Ms: calculateNearestRankPercentile(samples, 0.95),
+          }
+        })
+        .sort((left, right) => left.serviceMode.localeCompare(right.serviceMode)),
+      byCacheStatus,
+    }
+  }
+
   private upsertDevice(
     db: ServerUserDatabase,
     user: ServerUserRecord,
@@ -615,6 +1425,9 @@ export class FileUserStore {
         browserFamily: browserFamily ?? existing.browserFamily,
         appKind,
         appVersion: appVersion ?? existing.appVersion,
+        expoPushToken: existing.expoPushToken ?? null,
+        expoPushTokenUpdatedAt: existing.expoPushTokenUpdatedAt ?? null,
+        expoPushTokenPlatform: existing.expoPushTokenPlatform ?? null,
         lastSeenAt: timestamp,
         updatedAt: timestamp,
         status,
@@ -638,6 +1451,9 @@ export class FileUserStore {
       lastSeenAt: timestamp,
       lastSyncAt: null,
       status: options.reactivate ? "active" : "active",
+      expoPushToken: null,
+      expoPushTokenUpdatedAt: null,
+      expoPushTokenPlatform: null,
       updatedAt: timestamp,
       revokedAt: null,
     }
@@ -692,6 +1508,45 @@ export class FileUserStore {
     return db.users.find((user) => user.email === email.trim()) ?? null
   }
 
+  async listWeeklyDigestRecipients(limit = 50): Promise<Array<{ userId: string; email: string }>> {
+    const boundedLimit = Math.max(0, Math.min(Math.floor(limit), 200))
+    if (boundedLimit === 0) return []
+    const db = await this.load()
+    return db.users
+      .filter((user) => user.identityMode === "authenticated" && user.syncPreferences.weekly_digest === true)
+      .sort((left, right) => left.createdAt.localeCompare(right.createdAt) || left.email.localeCompare(right.email))
+      .slice(0, boundedLimit)
+      .map((user) => ({ userId: user.id, email: user.email }))
+  }
+
+  async listWeeklyDigestPushRecipients(limit = 50): Promise<Array<{ userId: string; email: string; deviceId: string; expoPushToken: string }>> {
+    const boundedLimit = Math.max(0, Math.min(Math.floor(limit), 200))
+    if (boundedLimit === 0) return []
+    const db = await this.load()
+    const optedInUsers = new Map(db.users
+      .filter((user) => user.identityMode === "authenticated" && user.syncPreferences.weekly_digest === true)
+      .map((user) => [user.id, user]))
+
+    return db.devices
+      .filter((device) => {
+        const user = optedInUsers.get(device.userId)
+        return Boolean(
+          user
+          && device.identityMode === "authenticated"
+          && device.status === "active"
+          && device.expoPushToken,
+        )
+      })
+      .sort((left, right) => left.firstSeenAt.localeCompare(right.firstSeenAt) || left.deviceId.localeCompare(right.deviceId))
+      .slice(0, boundedLimit)
+      .map((device) => ({
+        userId: device.userId,
+        email: optedInUsers.get(device.userId)!.email,
+        deviceId: device.deviceId,
+        expoPushToken: device.expoPushToken!,
+      }))
+  }
+
   async findAnonymousUserByInstallId(installId: string): Promise<ServerUserRecord | null> {
     const db = await this.load()
     return db.users.find(
@@ -731,6 +1586,81 @@ export class FileUserStore {
     db.users.push(record)
     await this.save(db)
     return record
+  }
+
+  async redeemOAuthIdentity(identity: {
+    provider: "apple" | "google"
+    subject: string
+    email?: string | null
+    emailVerified?: boolean
+  }): Promise<ServerUserRecord> {
+    const db = await this.load()
+    const provider = identity.provider
+    const subject = identity.subject.trim()
+    const normalizedEmail = identity.email?.trim().toLowerCase() || null
+    const emailVerified = Boolean(identity.emailVerified)
+    const timestamp = new Date().toISOString()
+
+    const existingIdentityIndex = db.oauthIdentities.findIndex((record) =>
+      record.provider === provider && record.subject === subject,
+    )
+    if (existingIdentityIndex >= 0) {
+      const existingIdentity = db.oauthIdentities[existingIdentityIndex]!
+      db.oauthIdentities[existingIdentityIndex] = {
+        ...existingIdentity,
+        email: normalizedEmail ?? existingIdentity.email,
+        emailVerified: existingIdentity.emailVerified || emailVerified,
+        updatedAt: timestamp,
+        lastRedeemedAt: timestamp,
+      }
+      const existingUser = db.users.find((user) => user.id === existingIdentity.userId) ?? null
+      if (existingUser) {
+        await this.save(db)
+        return existingUser
+      }
+    }
+
+    const normalizedEmailInUse = normalizedEmail
+      ? db.users.some((record) => record.email.toLowerCase() === normalizedEmail)
+      : false
+    const oauthEmail = normalizedEmail && !normalizedEmailInUse
+      ? normalizedEmail
+      : buildOAuthUserEmail(provider, subject)
+    let user = db.users.find((record) => record.email.toLowerCase() === oauthEmail) ?? null
+
+    if (!user) {
+      const plan = "free" as const
+      user = {
+        id: buildUserId(oauthEmail),
+        email: oauthEmail,
+        billingEmail: oauthEmail,
+        createdAt: timestamp,
+        passwordHash: await hashAstraCredentialSecret(`oauth-unusable-${randomUUID()}`),
+        plan,
+        subscriptionStatus: "active",
+        providerEntitlements: defaultEntitlements(plan),
+        limits: defaultLimits(plan, this.env),
+        usage: createEmptyUsage(),
+        identityMode: "authenticated",
+        syncPreferences: createDefaultSyncPreferences(),
+      }
+      db.users.push(user)
+    }
+
+    const record: ServerOAuthIdentityRecord = {
+      provider,
+      subject,
+      userId: user.id,
+      email: normalizedEmail,
+      emailVerified,
+      createdAt: timestamp,
+      updatedAt: timestamp,
+      lastRedeemedAt: timestamp,
+    }
+    if (existingIdentityIndex >= 0) db.oauthIdentities[existingIdentityIndex] = record
+    else db.oauthIdentities.push(record)
+    await this.save(db)
+    return user
   }
 
   async validateCredentials(email: string, password: string): Promise<ServerUserRecord | null> {
@@ -881,6 +1811,71 @@ export class FileUserStore {
     }
 
     return true
+  }
+
+  async deleteAccountFoundation(
+    email: string,
+    now: Date = new Date(),
+  ): Promise<{
+    found: boolean
+    userId: string | null
+    deletedAt: string
+    removedUserCount: number
+    removedDeviceCount: number
+    removedSessionCount: number
+    removedSyncMutationCount: number
+    removedWeeklyDigestCount: number
+    removedMobileRetentionEventCount: number
+  }> {
+    const db = await this.load()
+    const normalizedEmail = email.trim()
+    const user = db.users.find((record) => record.email === normalizedEmail) ?? null
+    const deletedAt = now.toISOString()
+    if (!user) {
+      return {
+        found: false,
+        userId: null,
+        deletedAt,
+        removedUserCount: 0,
+        removedDeviceCount: 0,
+        removedSessionCount: 0,
+        removedSyncMutationCount: 0,
+        removedWeeklyDigestCount: 0,
+        removedMobileRetentionEventCount: 0,
+      }
+    }
+
+    const belongsToDeletedUser = (record: { userId?: string; ownerId?: string; email: string }): boolean => (
+      record.email === normalizedEmail || record.userId === user.id || record.ownerId === user.id
+    )
+    const beforeUsers = db.users.length
+    const beforeDevices = db.devices.length
+    const beforeSessions = db.sessions.length
+    const beforeSyncMutations = db.syncMutations.length
+    const beforeWeeklyDigests = db.weeklyDigests.length
+    const beforeMobileRetentionEvents = db.mobileRetentionEvents.length
+
+    db.users = db.users.filter((record) => record.email !== normalizedEmail && record.id !== user.id)
+    db.devices = db.devices.filter((record) => !belongsToDeletedUser(record))
+    db.sessions = db.sessions.filter((record) => !belongsToDeletedUser(record))
+    db.oauthIdentities = db.oauthIdentities.filter((record) => record.userId !== user.id)
+    db.syncMutations = db.syncMutations.filter((record) => !belongsToDeletedUser(record))
+    db.weeklyDigests = db.weeklyDigests.filter((record) => !belongsToDeletedUser(record))
+    db.mobileRetentionEvents = db.mobileRetentionEvents.filter((record) => !belongsToDeletedUser(record))
+
+    await this.save(db)
+
+    return {
+      found: true,
+      userId: user.id,
+      deletedAt,
+      removedUserCount: beforeUsers - db.users.length,
+      removedDeviceCount: beforeDevices - db.devices.length,
+      removedSessionCount: beforeSessions - db.sessions.length,
+      removedSyncMutationCount: beforeSyncMutations - db.syncMutations.length,
+      removedWeeklyDigestCount: beforeWeeklyDigests - db.weeklyDigests.length,
+      removedMobileRetentionEventCount: beforeMobileRetentionEvents - db.mobileRetentionEvents.length,
+    }
   }
 
   async revokeDevice(
@@ -1120,6 +2115,225 @@ export class FileUserStore {
     })
   }
 
+  async exportAccountData(params: {
+    email: string
+    currentDeviceId?: string
+    currentSessionId?: string
+    serverTime?: string
+  }): Promise<Record<string, unknown> | null> {
+    const db = await this.load()
+    const now = params.serverTime ? new Date(params.serverTime) : new Date()
+    const refreshed = this.refreshUserUsage(db, params.email, now)
+    if (!refreshed) return null
+    if (refreshed.changed) await this.save(db)
+    if (refreshed.changed) {
+      await this.cloudflareShadow?.mirrorUserUsage(refreshed.user, now.toISOString())
+    }
+
+    const user = refreshed.user
+    const belongsToUser = (record: { ownerId?: string; userId?: string; email?: string }) =>
+      record.email === user.email || record.ownerId === user.id || record.userId === user.id
+    const devices = db.devices.filter(belongsToUser)
+    const sessions = db.sessions.filter(belongsToUser)
+    const oauthIdentities = db.oauthIdentities.filter((identity) => identity.userId === user.id)
+    const syncMutations = db.syncMutations.filter(belongsToUser)
+    const weeklyDigests = db.weeklyDigests.filter(belongsToUser)
+    const mobileRetentionEvents = db.mobileRetentionEvents.filter(belongsToUser)
+
+    return {
+      schema: "astra-account-data-export.v1",
+      generatedAt: now.toISOString(),
+      account: {
+        id: user.id,
+        email: user.email,
+        billingEmail: user.billingEmail,
+        createdAt: user.createdAt,
+        plan: user.plan,
+        subscriptionStatus: user.subscriptionStatus,
+        providerEntitlements: user.providerEntitlements,
+        identityMode: user.identityMode,
+        syncPreferences: user.syncPreferences,
+        limits: user.limits,
+        usage: user.usage,
+      },
+      currentSession: {
+        sessionId: params.currentSessionId ?? null,
+        deviceId: params.currentDeviceId ?? null,
+      },
+      devices: devices.map((device) => ({
+        deviceId: device.deviceId,
+        label: device.label,
+        platform: device.platform,
+        browserFamily: device.browserFamily,
+        appKind: device.appKind,
+        appVersion: device.appVersion,
+        firstSeenAt: device.firstSeenAt,
+        lastSeenAt: device.lastSeenAt,
+        lastSyncAt: device.lastSyncAt,
+        status: device.status,
+        isCurrentDevice: device.deviceId === params.currentDeviceId,
+        expoPushTokenStored: Boolean(device.expoPushToken),
+        expoPushTokenUpdatedAt: device.expoPushTokenUpdatedAt,
+        expoPushTokenPlatform: device.expoPushTokenPlatform,
+        updatedAt: device.updatedAt,
+        revokedAt: device.revokedAt,
+      })),
+      sessions: sessions.map((session) => ({
+        sessionId: session.sessionId,
+        deviceId: session.deviceId,
+        identityMode: session.identityMode,
+        issuedAt: session.issuedAt,
+        expiresAt: session.expiresAt,
+        createdAt: session.createdAt,
+        lastSeenAt: session.lastSeenAt,
+        lastVerifiedAt: session.lastVerifiedAt,
+        status: session.status,
+        revokedAt: session.revokedAt,
+        isCurrentSession: session.sessionId === params.currentSessionId,
+      })),
+      oauthIdentities: oauthIdentities.map((identity) => ({
+        provider: identity.provider,
+        subject: identity.subject,
+        email: identity.email,
+        emailVerified: identity.emailVerified,
+        createdAt: identity.createdAt,
+        updatedAt: identity.updatedAt,
+        lastRedeemedAt: identity.lastRedeemedAt,
+      })),
+      syncMutations,
+      weeklyDigests: weeklyDigests.map((record) => ({
+        digestId: record.digestId,
+        generatedAt: record.generatedAt,
+        snapshot: record.snapshot,
+      })),
+      mobileRetentionEvents: mobileRetentionEvents.map((event) => ({
+        deviceId: event.deviceId,
+        eventId: event.eventId,
+        name: event.name,
+        clientTimestamp: event.clientTimestamp,
+        receivedAt: event.receivedAt,
+        metadata: event.metadata,
+      })),
+    }
+  }
+
+  async getCloudLearningMemoryInventory(params: {
+    email: string
+    serverTime?: string
+  }): Promise<CloudLearningMemoryInventory | null> {
+    const db = await this.load()
+    const now = params.serverTime ? new Date(params.serverTime) : new Date()
+    const user = db.users.find((record) => record.email === params.email.trim()) ?? null
+    if (!user) return null
+
+    const weeklyDigests = db.weeklyDigests
+      .filter((record) => record.email === user.email || record.ownerId === user.id)
+      .sort((left, right) => Date.parse(left.generatedAt) - Date.parse(right.generatedAt))
+    const latestDigest = weeklyDigests.at(-1) ?? null
+
+    return {
+      schema: "astra-cloud-learning-memory-inventory.v1",
+      generatedAt: now.toISOString(),
+      account: {
+        userId: user.id,
+        identityMode: user.identityMode,
+      },
+      collections: [
+        ...SYNC_COLLECTIONS.map((collection) => {
+          const mutations = getUserSyncMutations(db, user, collection)
+          const latestMutation = mutations.at(-1) ?? null
+          return {
+            collection,
+            enabled: getSyncCollectionEnabled(user, collection),
+            defaultEnabled: getSyncCollectionDefaultEnabled(collection),
+            mutationCount: mutations.length,
+            activeCount: countActiveSyncRecords(mutations),
+            cursor: latestMutation?.cursor ?? null,
+            lastUpdatedAt: latestMutation?.serverUpdatedAt ?? null,
+          }
+        }),
+        {
+          collection: "weekly_digest_archive" as const,
+          enabled: user.syncPreferences.weekly_digest,
+          defaultEnabled: true,
+          mutationCount: weeklyDigests.length,
+          activeCount: weeklyDigests.length,
+          cursor: null,
+          lastUpdatedAt: latestDigest?.generatedAt ?? null,
+        },
+      ],
+      preferences: user.syncPreferences,
+      privacy: {
+        metadataOnly: true,
+        rawContentIncluded: false,
+        rawUrlsIncluded: false,
+        emailsIncluded: false,
+        deviceSessionIdsIncluded: false,
+        syncPayloadBodiesIncluded: false,
+        promptModelOutputsIncluded: false,
+        externalProviderReceiptsIncluded: false,
+        localBrowserDeletionIncluded: false,
+      },
+    }
+  }
+
+  async deleteCloudLearningMemory(params: {
+    email: string
+    now?: Date
+  }): Promise<CloudLearningMemoryDeletionReceipt | null> {
+    const db = await this.load()
+    const user = db.users.find((record) => record.email === params.email.trim()) ?? null
+    if (!user) return null
+
+    const belongsToUser = (record: { ownerId?: string; email?: string }) =>
+      record.email === user.email || record.ownerId === user.id
+    const collectionReceipts = SYNC_COLLECTIONS.map((collection) => {
+      const mutations = getUserSyncMutations(db, user, collection)
+      const latestMutation = mutations.at(-1) ?? null
+      return {
+        collection,
+        clearedMutationCount: mutations.length,
+        clearedActiveCount: countActiveSyncRecords(mutations),
+        previousCursor: latestMutation?.cursor ?? null,
+      }
+    })
+    const weeklyDigests = db.weeklyDigests.filter(belongsToUser)
+    const receipts: CloudLearningMemoryDeletionReceipt["collections"] = [
+      ...collectionReceipts,
+      {
+        collection: "weekly_digest_archive",
+        clearedMutationCount: weeklyDigests.length,
+        clearedActiveCount: weeklyDigests.length,
+        previousCursor: null,
+      },
+    ]
+
+    db.syncMutations = db.syncMutations.filter((record) => !belongsToUser(record))
+    db.weeklyDigests = db.weeklyDigests.filter((record) => !belongsToUser(record))
+    await this.save(db)
+
+    return {
+      schema: "astra-cloud-learning-memory-deletion-receipt.v1",
+      deletedAt: (params.now ?? new Date()).toISOString(),
+      account: {
+        userId: user.id,
+        identityMode: user.identityMode,
+      },
+      collections: receipts,
+      totals: {
+        clearedMutationCount: receipts.reduce((sum, receipt) => sum + receipt.clearedMutationCount, 0),
+        clearedActiveCount: receipts.reduce((sum, receipt) => sum + receipt.clearedActiveCount, 0),
+      },
+      boundary: {
+        metadataOnly: true,
+        cloudServerSideOnly: true,
+        rawContentIncluded: false,
+        externalProviderDeletionIncluded: false,
+        localBrowserDeletionIncluded: false,
+      },
+    }
+  }
+
   async updatePlan(email: string, plan: ServerUserRecord["plan"]): Promise<AstraAccount | null> {
     const db = await this.load()
     const userIndex = db.users.findIndex((user) => user.email === email.trim())
@@ -1145,6 +2359,7 @@ export class FileUserStore {
   async assertCanTranslate(params: {
     email: string
     characterCount: number
+    taskClass?: AstraTaskClass
     timestamp?: Date
   }): Promise<void> {
     const db = await this.load()
@@ -1156,13 +2371,15 @@ export class FileUserStore {
 
     const user = db.users[userIndex]!
     const usage = pruneUsageWindow(user.usage, now)
-    assertUsageCapacity(user, usage, params.characterCount)
+    assertUsageCapacity(user, usage, params.characterCount, params.taskClass)
   }
 
   async recordTranslationUsage(params: {
     email: string
     provider: ProviderId
+    serviceMode?: ServiceMode
     characterCount: number
+    metadata?: ServerUsageEventMetadata
     timestamp?: Date
   }): Promise<RelaySession> {
     const db = await this.load()
@@ -1174,9 +2391,16 @@ export class FileUserStore {
 
     const user = db.users[userIndex]!
     const usage = pruneUsageWindow(user.usage, now)
-    assertUsageCapacity(user, usage, params.characterCount)
+    const metadata = normalizeUsageEventMetadata(params.metadata)
+    assertUsageCapacity(user, usage, params.characterCount, metadata.taskClass)
 
     const timestamp = now.toISOString()
+    const monthlyTaskRequests = metadata.taskClass && shouldMeterTask(metadata.taskClass)
+      ? {
+          ...usage.monthlyTaskRequests,
+          [metadata.taskClass]: (usage.monthlyTaskRequests[metadata.taskClass] ?? 0) + 1,
+        }
+      : usage.monthlyTaskRequests
     const nextUsage: ServerUserUsage = {
       ...usage,
       requestsToday: usage.requestsToday + 1,
@@ -1185,12 +2409,16 @@ export class FileUserStore {
       totalCharacters: usage.totalCharacters + params.characterCount,
       lastRequestAt: timestamp,
       recentRequestTimestamps: [...usage.recentRequestTimestamps, timestamp],
+      monthlyTaskRequests,
       recentEvents: [
         {
           timestamp,
           provider: params.provider,
+          serviceMode: params.serviceMode ?? "automatic",
           requestCount: 1,
           characterCount: params.characterCount,
+          ...metadata,
+          success: metadata.success ?? true,
         },
         ...usage.recentEvents,
       ].slice(0, 10),
@@ -1225,6 +2453,130 @@ export class FileUserStore {
     )
   }
 
+  async recordTranslationDecisionFailure(params: {
+    email: string
+    provider: ProviderId
+    serviceMode?: ServiceMode
+    characterCount: number
+    metadata?: ServerUsageEventMetadata
+    timestamp?: Date
+  }): Promise<void> {
+    const db = await this.load()
+    const now = params.timestamp ?? new Date()
+    const userIndex = db.users.findIndex((user) => user.email === params.email)
+    if (userIndex === -1) return
+
+    const user = db.users[userIndex]!
+    const usage = pruneUsageWindow(user.usage, now)
+    const timestamp = now.toISOString()
+    const metadata = normalizeUsageEventMetadata(params.metadata)
+    const nextUsage: ServerUserUsage = {
+      ...usage,
+      recentEvents: [
+        {
+          timestamp,
+          provider: params.provider,
+          serviceMode: params.serviceMode ?? "automatic",
+          requestCount: 0,
+          characterCount: params.characterCount,
+          ...metadata,
+          success: false,
+        },
+        ...usage.recentEvents,
+      ].slice(0, 10),
+    }
+
+    db.users[userIndex] = {
+      ...user,
+      usage: nextUsage,
+    }
+
+    await this.save(db)
+    await this.cloudflareShadow?.mirrorUserUsage(db.users[userIndex]!, timestamp)
+  }
+
+  async summarizeMobileRetention(params: { grain?: MobileRetentionSummaryGrain; now?: Date } = {}): Promise<MobileRetentionSummary> {
+    const db = await this.load()
+    const grain = params.grain === "week" ? "week" : "day"
+    const buckets = new Map<string, MobileRetentionSummary["buckets"][number]>()
+    const byEventName = new Map<ServerMobileRetentionEvent["name"], number>()
+
+    for (const event of db.mobileRetentionEvents) {
+      const bucket = mobileRetentionBucketForTimestamp(event.clientTimestamp, grain)
+      const bucketKey = `${bucket}:${event.name}`
+      const currentBucket = buckets.get(bucketKey) ?? { bucket, eventName: event.name, count: 0 }
+      currentBucket.count += 1
+      buckets.set(bucketKey, currentBucket)
+      byEventName.set(event.name, (byEventName.get(event.name) ?? 0) + 1)
+    }
+
+    return {
+      schema: "astra-mobile-retention-summary.v1",
+      generatedAt: (params.now ?? new Date()).toISOString(),
+      source: "metadata_only_mobile_retention_events",
+      retainedEventsPerUserLimit: MOBILE_RETENTION_EVENTS_LIMIT_PER_USER,
+      grain,
+      totalEvents: db.mobileRetentionEvents.length,
+      buckets: [...buckets.values()].sort((left, right) => left.bucket.localeCompare(right.bucket) || left.eventName.localeCompare(right.eventName)),
+      byEventName: [...byEventName.entries()]
+        .map(([eventName, count]) => ({ eventName, count }))
+        .sort((left, right) => right.count - left.count || left.eventName.localeCompare(right.eventName)),
+      privacy: {
+        metadataOnly: true,
+        aggregateOnly: true,
+        perUserRows: false,
+        rawContentIncluded: false,
+        identifiersIncluded: false,
+      },
+    }
+  }
+
+  async recordMobileRetentionEvents(params: {
+    email: string
+    deviceId: string
+    events: ServerMobileRetentionEventInput[]
+    now?: Date
+  }): Promise<{ acceptedCount: number; serverTime: string }> {
+    const db = await this.load()
+    const user = db.users.find((record) => record.email === params.email.trim())
+    if (!user || user.identityMode !== "authenticated") {
+      throw new AstraError("CONFIG_MISSING", "Unknown Astra user.")
+    }
+
+    const serverTime = (params.now ?? new Date()).toISOString()
+    const existingKeys = new Set(db.mobileRetentionEvents
+      .filter((event) => event.email === user.email || event.ownerId === user.id)
+      .map((event) => `${event.deviceId}:${event.eventId}`))
+    const accepted: ServerMobileRetentionEvent[] = []
+
+    for (const event of params.events) {
+      const key = `${params.deviceId}:${event.id}`
+      if (existingKeys.has(key)) continue
+      existingKeys.add(key)
+      accepted.push(ServerMobileRetentionEventSchema.parse({
+        ownerId: user.id,
+        email: user.email,
+        deviceId: params.deviceId,
+        eventId: event.id,
+        name: event.name,
+        clientTimestamp: event.timestamp,
+        receivedAt: serverTime,
+        metadata: event.metadata,
+      }))
+    }
+
+    if (accepted.length > 0) {
+      const otherUsers = db.mobileRetentionEvents.filter((event) => event.email !== user.email && event.ownerId !== user.id)
+      const userEvents = [...accepted, ...db.mobileRetentionEvents.filter((event) => event.email === user.email || event.ownerId === user.id)]
+        .sort((left, right) => right.clientTimestamp - left.clientTimestamp || Date.parse(right.receivedAt) - Date.parse(left.receivedAt))
+        .slice(0, MOBILE_RETENTION_EVENTS_LIMIT_PER_USER)
+      db.mobileRetentionEvents = [...otherUsers, ...userEvents]
+      await this.save(db)
+    }
+
+    return { acceptedCount: accepted.length, serverTime }
+  }
+
   async updateSyncCollectionPreference(
     email: string,
     collection: "reading_history" | "study_progress",
@@ -1239,6 +2591,61 @@ export class FileUserStore {
       ...createDefaultSyncPreferences(),
       ...user.syncPreferences,
       [collection]: enabled,
+    }
+
+    db.users[userIndex] = {
+      ...user,
+      syncPreferences,
+    }
+    await this.save(db)
+    await this.cloudflareShadow?.mirrorSyncPreferences(db.users[userIndex]!, new Date().toISOString())
+    return syncPreferences
+  }
+
+  async updateCurrentDevicePushToken(params: {
+    email: string
+    deviceId: string
+    expoPushToken: string | null
+    platform?: string | null
+    now?: Date
+  }): Promise<ServerDeviceRecord | null> {
+    const db = await this.load()
+    const deviceIndex = db.devices.findIndex((record) =>
+      record.email === params.email.trim()
+      && record.deviceId === params.deviceId
+      && record.identityMode === "authenticated"
+      && record.status === "active",
+    )
+    if (deviceIndex === -1) return null
+
+    const timestamp = (params.now ?? new Date()).toISOString()
+    const token = coerceNullableText(params.expoPushToken)
+    const platform = coerceNullableText(params.platform)
+    const device = db.devices[deviceIndex]!
+    db.devices[deviceIndex] = {
+      ...device,
+      expoPushToken: token,
+      expoPushTokenUpdatedAt: token ? timestamp : null,
+      expoPushTokenPlatform: token ? platform : null,
+      updatedAt: timestamp,
+    }
+    await this.save(db)
+    return db.devices[deviceIndex]!
+  }
+
+  async updateWeeklyDigestPreference(
+    email: string,
+    enabled: boolean,
+  ): Promise<ServerUserSyncPreferences | null> {
+    const db = await this.load()
+    const userIndex = db.users.findIndex((record) => record.email === email.trim())
+    if (userIndex === -1) return null
+
+    const user = db.users[userIndex]!
+    const syncPreferences = {
+      ...createDefaultSyncPreferences(),
+      ...user.syncPreferences,
+      weekly_digest: enabled,
     }
 
     db.users[userIndex] = {
@@ -1304,6 +2711,123 @@ export class FileUserStore {
     })
 
     return bootstrap
+  }
+
+  async getWeeklyDigest(email: string, now: Date = new Date(), options: { archive?: boolean } = {}): Promise<AstraWeeklyDigestSnapshot | null> {
+    const db = await this.load()
+    const user = db.users.find((record) => record.email === email.trim())
+    if (!user) return null
+
+    const periodStart = startOfDigestWeek(now)
+    const periodEnd = new Date(periodStart.getTime() + 7 * 24 * 60 * 60 * 1000)
+    const periodStartTime = periodStart.getTime()
+    const periodEndTime = periodEnd.getTime()
+    const nextReviewUntil = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000)
+
+    const latestVocabulary = new Map<string, ServerSyncMutationRecord>()
+    const latestSchedules = new Map<string, ServerSyncMutationRecord>()
+    const mutations = db.syncMutations
+      .filter((mutation) =>
+        mutation.email === user.email
+        && (mutation.collection === "vocabulary" || mutation.collection === "review_schedule"),
+      )
+      .sort((left, right) => parseCursor(left.cursor) - parseCursor(right.cursor))
+
+    for (const mutation of mutations) {
+      const target = mutation.collection === "vocabulary" ? latestVocabulary : latestSchedules
+      if (mutation.operation === "delete") {
+        target.delete(mutation.recordId)
+        continue
+      }
+      target.set(mutation.recordId, mutation)
+    }
+
+    const savedThisWeek: Array<{
+      text: string
+      itemType: "word" | "sentence"
+      savedAt: number
+      sourceType: AstraDigestSourceType
+    }> = []
+
+    for (const mutation of latestVocabulary.values()) {
+      const record = syncPayloadRecord(mutation.payload)
+      if (!record) continue
+      const text = stringFromSyncPayload(record.text)
+      if (!text) continue
+      const fallbackSavedAt = Date.parse(mutation.clientUpdatedAt || mutation.serverUpdatedAt)
+      const savedAt = numberFromSyncPayload(record.savedAt, Number.isFinite(fallbackSavedAt) ? fallbackSavedAt : 0)
+      if (savedAt < periodStartTime || savedAt >= periodEndTime) continue
+      savedThisWeek.push({
+        text,
+        itemType: text.includes(" ") || text.length > 48 ? "sentence" : "word",
+        savedAt,
+        sourceType: sourceTypeForSyncedVocabularyEntry(record),
+      })
+    }
+
+    savedThisWeek.sort((left, right) => right.savedAt - left.savedAt || left.text.localeCompare(right.text))
+
+    const reviewedIds = new Set<string>()
+    let nextReviewCount = 0
+    for (const mutation of latestSchedules.values()) {
+      const record = syncPayloadRecord(mutation.payload)
+      if (!record) continue
+      const vocabularyEntryId = stringFromSyncPayload(record.vocabularyEntryId) ?? mutation.recordId
+      if (!latestVocabulary.has(vocabularyEntryId)) continue
+      const lastReviewedAt = numberFromSyncPayload(record.lastReviewedAt, 0)
+      if (lastReviewedAt >= periodStartTime && lastReviewedAt < periodEndTime) {
+        reviewedIds.add(vocabularyEntryId)
+      }
+
+      const srsBox = numberFromSyncPayload(record.srsBox, 1)
+      const nextReviewAt = numberFromSyncPayload(record.nextReviewAt, 0)
+      if (srsBox < 5 && nextReviewAt > now.getTime() && nextReviewAt <= nextReviewUntil.getTime()) {
+        nextReviewCount += 1
+      }
+    }
+
+    const sourceCounts = new Map<AstraDigestSourceType, number>()
+    for (const item of savedThisWeek) {
+      sourceCounts.set(item.sourceType, (sourceCounts.get(item.sourceType) ?? 0) + 1)
+    }
+
+    const digest = AstraWeeklyDigestSnapshotSchema.parse({
+      digestId: `digest_${periodStart.toISOString().slice(0, 10)}`,
+      periodStart: periodStart.toISOString(),
+      periodEnd: periodEnd.toISOString(),
+      reviewedCount: reviewedIds.size,
+      savedCount: savedThisWeek.length,
+      sourceBreakdown: [...sourceCounts.entries()]
+        .map(([type, count]) => ({ type, count }))
+        .sort((left, right) => right.count - left.count || left.type.localeCompare(right.type)),
+      highlightedWords: savedThisWeek.filter((item) => item.itemType === "word").slice(0, 3).map((item) => item.text),
+      highlightedSentences: savedThisWeek.filter((item) => item.itemType === "sentence").slice(0, 2).map((item) => item.text),
+      nextReviewCount,
+      generatedAt: now.toISOString(),
+    })
+
+    if (options.archive !== false) {
+      const archiveRecord = ServerWeeklyDigestRecordSchema.parse({
+        ownerId: user.id,
+        email: user.email,
+        digestId: digest.digestId,
+        generatedAt: digest.generatedAt,
+        snapshot: digest,
+      })
+      const otherUsers = db.weeklyDigests.filter((record) => record.email !== user.email && record.ownerId !== user.id)
+      const userArchive = [
+        archiveRecord,
+        ...db.weeklyDigests.filter((record) =>
+          (record.email === user.email || record.ownerId === user.id) && record.digestId !== digest.digestId,
+        ),
+      ]
+        .sort((left, right) => Date.parse(right.generatedAt) - Date.parse(left.generatedAt) || right.digestId.localeCompare(left.digestId))
+        .slice(0, WEEKLY_DIGEST_ARCHIVE_LIMIT_PER_USER)
+      db.weeklyDigests = [...otherUsers, ...userArchive]
+      await this.save(db)
+    }
+
+    return digest
   }
 
   async pushSyncMutations(

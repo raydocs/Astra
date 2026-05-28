@@ -7,6 +7,7 @@ import type {
   TranslationMode,
   TranslationTheme,
 } from "@/types/config"
+import { DEFAULT_ASTRA_CONFIG } from "@/types/config"
 import { t } from "@/utils/i18n"
 import { exportSingleSiteRule, importSiteRules } from "@/utils/storage/site-rules"
 import { labelStyle, checkboxRowStyle, warningStyle } from "./styles"
@@ -655,9 +656,10 @@ export default function SiteSettingsSection({
                     inputTranslationMode: "replace" as const,
                     languageLevel: "intermediate" as const,
                     explainMode: "deep" as const,
+                    serviceMode: "automatic" as const,
                     explanationGlossary: [],
                     privacyMode: false,
-                    provider: { id: "openai" as const, accessToken: "", apiKey: "", model: "gpt-5.4-nano" },
+                    provider: DEFAULT_ASTRA_CONFIG.provider,
                     tts: { enabled: true, engine: "browser" as const, rate: 0.9, pitch: 1.0, highlightSentences: true },
                     sites: {},
                     customActions: [],

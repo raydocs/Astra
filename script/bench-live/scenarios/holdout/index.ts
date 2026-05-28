@@ -9,6 +9,13 @@ import { pageTranslationLayoutNoiseSourceHoldoutScenario } from "./page-translat
 import { pdfReaderLayoutNoiseHoldoutScenario } from "./pdf-reader-layout-noise"
 import { subtitleFileMalformedHoldoutScenario } from "./subtitle-file-malformed"
 import { youtubeSubtitleRaceHoldoutScenario } from "./youtube-subtitle-race"
+import { youtubeNoCaptionsHoldoutScenario } from "./youtube-no-captions"
+import {
+  youtubeAsrOnlyHoldoutScenario,
+  youtubeFullscreenHoldoutScenario,
+  youtubeLongVideoHoldoutScenario,
+  youtubeSpaNavigationHoldoutScenario,
+} from "./youtube-boundary-holdouts"
 import { translationRaceHoldoutScenario } from "./translation-race"
 import { siteRuleUpdateRestartsActiveSessionSourceHoldoutScenario } from "./site-rule-update-restarts-active-session-source"
 import { pageTranslationInvalidSelectorsSourceHoldoutScenario } from "./page-translation-invalid-selectors-source"
@@ -32,6 +39,13 @@ export { pageTranslationLayoutNoiseSourceHoldoutScenario } from "./page-translat
 export { pdfReaderLayoutNoiseHoldoutScenario } from "./pdf-reader-layout-noise"
 export { subtitleFileMalformedHoldoutScenario } from "./subtitle-file-malformed"
 export { youtubeSubtitleRaceHoldoutScenario } from "./youtube-subtitle-race"
+export { youtubeNoCaptionsHoldoutScenario } from "./youtube-no-captions"
+export {
+  youtubeAsrOnlyHoldoutScenario,
+  youtubeFullscreenHoldoutScenario,
+  youtubeLongVideoHoldoutScenario,
+  youtubeSpaNavigationHoldoutScenario,
+} from "./youtube-boundary-holdouts"
 export { translationRaceHoldoutScenario } from "./translation-race"
 export { siteRuleUpdateRestartsActiveSessionSourceHoldoutScenario } from "./site-rule-update-restarts-active-session-source"
 export { pageTranslationInvalidSelectorsSourceHoldoutScenario } from "./page-translation-invalid-selectors-source"
@@ -64,6 +78,11 @@ export const holdoutScenarios = [
   pdfReaderLayoutNoiseHoldoutScenario,
   subtitleFileMalformedHoldoutScenario,
   youtubeSubtitleRaceHoldoutScenario,
+  youtubeNoCaptionsHoldoutScenario,
+  youtubeAsrOnlyHoldoutScenario,
+  youtubeLongVideoHoldoutScenario,
+  youtubeFullscreenHoldoutScenario,
+  youtubeSpaNavigationHoldoutScenario,
   translationRaceHoldoutScenario,
   siteRuleUpdateRestartsActiveSessionSourceHoldoutScenario,
   pageTranslationInvalidSelectorsSourceHoldoutScenario,

@@ -10,6 +10,8 @@ export const VocabularySourceContextSurfaceSchema = z.enum([
   "selection_toolbar",
   "hover_translate",
   "subtitle_reader",
+  "video_transcript",
+  "sample_lesson",
 ])
 
 const VocabularyOwnedReadingSourceTypeSchema = z.enum(["article", "pdf", "epub", "subtitle-file"])
@@ -28,6 +30,7 @@ export const VocabularySourceContextSchema = z.object({
   sentenceText: z.string().trim().min(1).optional(),
   sentenceHash: z.string().trim().min(1).optional(),
   sentenceIndex: z.number().int().nonnegative().optional(),
+  videoTimestampMs: z.number().int().nonnegative().optional(),
   languageLevel: LanguageLevelSchema.optional(),
   explainMode: ExplainModeSchema.optional(),
   ownedReadingItemId: z.string().trim().min(1).optional(),
@@ -404,6 +407,10 @@ export function getVocabularySourceSurfaceLabel(
       return "Hover translate"
     case "subtitle_reader":
       return "Subtitle reader"
+    case "video_transcript":
+      return "Video transcript"
+    case "sample_lesson":
+      return "Sample lesson"
     default:
       return null
   }

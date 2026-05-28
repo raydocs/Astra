@@ -7,6 +7,7 @@ export interface TranslationCacheBucketStats {
   providerId: string
   model: string
   connectionMode: string
+  serviceMode?: string
   lookups: number
   hits: number
   misses: number
@@ -33,6 +34,7 @@ interface TranslationCacheMetricRecord {
   providerId: string
   model: string
   connectionMode: string
+  serviceMode?: string
   lookups: number
   hits: number
   misses: number
@@ -64,6 +66,7 @@ function normalizeCacheContext(context?: TranslationCacheContext) {
     providerId: context?.providerId?.trim() || "default",
     model: context?.model?.trim() || "default",
     connectionMode: context?.connectionMode?.trim() || "default",
+    serviceMode: context?.serviceMode?.trim() || "default",
     routingKey: context?.routingKey?.trim() || "default",
     languageLevel: context?.languageLevel?.trim() || "default",
     sourceLang: context?.sourceLang?.trim() || "default",
@@ -82,12 +85,14 @@ function createBucketInfo(context?: TranslationCacheContext) {
       providerId: normalized.providerId,
       model: normalized.model,
       connectionMode: normalized.connectionMode,
+      serviceMode: normalized.serviceMode,
       routingKey: normalized.routingKey,
       languageLevel: normalized.languageLevel,
     }),
     providerId: normalized.providerId,
     model: normalized.model,
     connectionMode: normalized.connectionMode,
+    serviceMode: normalized.serviceMode,
   }
 }
 
@@ -117,6 +122,7 @@ async function updateMetricRecord(
     if (existing) {
       await db.metrics.put({
         ...existing,
+        serviceMode: existing.serviceMode ?? bucket.serviceMode,
         lookups: existing.lookups + (patch.lookups ?? 0),
         hits: existing.hits + (patch.hits ?? 0),
         misses: existing.misses + (patch.misses ?? 0),
@@ -131,6 +137,7 @@ async function updateMetricRecord(
       providerId: bucket.providerId,
       model: bucket.model,
       connectionMode: bucket.connectionMode,
+      serviceMode: bucket.serviceMode,
       lookups: patch.lookups ?? 0,
       hits: patch.hits ?? 0,
       misses: patch.misses ?? 0,

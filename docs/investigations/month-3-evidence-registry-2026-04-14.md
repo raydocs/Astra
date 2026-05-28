@@ -15,8 +15,8 @@ This file is the Month 3 evidence index for reader / owned-reading work. It answ
 |------|--------|---------|
 | `implemented` | **Yes** | Owned-reading schema v1, queue v1, reader source mapping, and learning-asset backlinks are landed in repo. |
 | `proved` | **Yes** | Fresh browser-backed reader/revisit artifacts exist and are linked below. |
-| `gate-ready` | **No** | Reader / revisit scenarios remain optional scenario proofs, not required Gate 2 CI lanes. |
-| `closeout verdict` | **`pass-with-carry`** | Month 3 is real and replayable, but still carries policy / proof-depth gaps. |
+| `gate-ready` | **Superseded by current release policy for controlled flows** | This historical 2026-04-14 registry predates the current `document-proof` required lane. As of the current release checklist, controlled PDF / EPUB / SRT/VTT document-file proof is required; universal reopen and broader reader parity remain out of scope. |
+| `closeout verdict` | **`pass-with-scoped-claims` under current policy** | Month 3 controlled reader/file proof is release-critical now, but the original carry boundaries still apply to universal reopen and unsupported formats. |
 
 ## Fresh live evidence (exact commands + artifacts)
 
@@ -40,7 +40,7 @@ Artifact structure conventions: `docs/investigations/month-3-bench-artifact-conv
 | EPUB reader surface | `docs/investigations/month-3-epub-reader-closeout-memo-2026-04-16.md` | `bench-live/epub-reader-basic`, artifact `live-20260414T113605-p0m6bj` | **No** | Proves fixture-backed EPUB reader path, including restored reading state. |
 | Subtitle-file reader surface | `docs/investigations/subtitle-reader-learning-chain-2026-04-14.md` | `bench-live/subtitle-file-basic`, artifact `live-20260414T113623-809nid` | **No** | Proves ingest / preview / export browser path; not a full queue reopen smoke. |
 | Revisit v1 article path | `docs/investigations/learning-loop-navigation-matrix-2026-04-14.md`, `src/entrypoints/vocabulary/VocabularyApp.tsx` | `bench-live/learning-loop-revisit-smoke`, artifact `live-20260414T113647-9f8kwi` | **No** | Canonical browser-backed reopen proof today is still the article Reading-tab path. |
-| Month 3 evidence / claim sync | this registry, `docs/investigations/month-3-closeout-inputs-2026-04-14.md`, `docs/investigations/support-matrix-2026-q2.md`, `docs/release-readiness-checklist.md` | linked docs + run ids above | **No** | This work makes the evidence honest; it does not promote reader proofs into Gate 2. |
+| Month 3 evidence / claim sync | this registry, `docs/investigations/month-3-closeout-inputs-2026-04-14.md`, `docs/investigations/support-matrix-2026-q2.md`, `docs/release-readiness-checklist.md` | linked docs + run ids above plus current `document-proof` lane artifacts | **Yes for controlled PDF / EPUB / SRT/VTT document-proof; no for universal reopen or unsupported formats** | Current release policy promotes controlled document/file proof into Gate 2 while keeping broader reader claims scoped. |
 
 ## Honest boundary by source type
 
@@ -55,7 +55,7 @@ Artifact structure conventions: `docs/investigations/month-3-bench-artifact-conv
 
 Primary Month 3 carries:
 
-- **No required Month 3 reader/revisit live lane** in CI yet.
+- **No broad/universal Month 3 reader parity lane** in CI yet; the current required `document-proof` lane covers controlled document/file proof only.
 - **Non-article queue reopen** for PDF / EPUB / subtitle-file is implemented and test-covered, but not separately browser-backed end to end as a dedicated smoke.
 - **Support language must stay narrow**: queue + schema + supported reader proofs, not universal multi-reader parity.
 

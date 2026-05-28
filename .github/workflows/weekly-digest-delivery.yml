@@ -1,0 +1,70 @@
+name: Weekly Digest Delivery
+
+on:
+  workflow_dispatch:
+    inputs:
+      dry-run:
+        description: "Preview recipients and digest IDs without sending email or archiving."
+        required: false
+        default: true
+        type: boolean
+      limit:
+        description: "Maximum opted-in users to process."
+        required: false
+        default: "50"
+        type: string
+      now:
+        description: "Optional ISO timestamp override for deterministic backfills."
+        required: false
+        default: ""
+        type: string
+  schedule:
+    # Monday 15:00 UTC: after the previous UTC week has closed for most users.
+    - cron: "0 15 * * 1"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: weekly-digest-delivery
+  cancel-in-progress: false
+
+jobs:
+  deliver:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      ASTRA_WEEKLY_DIGEST_DELIVERY_URL: ${{ secrets.ASTRA_WEEKLY_DIGEST_DELIVERY_URL }}
+      ASTRA_WEEKLY_DIGEST_OPERATOR_TOKEN: ${{ secrets.ASTRA_WEEKLY_DIGEST_OPERATOR_TOKEN }}
+      ASTRA_WEEKLY_DIGEST_DELIVERY_DRY_RUN: ${{ github.event_name == 'workflow_dispatch' && inputs.dry-run || 'false' }}
+      ASTRA_WEEKLY_DIGEST_DELIVERY_LIMIT: ${{ github.event_name == 'workflow_dispatch' && inputs.limit || '50' }}
+      ASTRA_WEEKLY_DIGEST_DELIVERY_NOW: ${{ github.event_name == 'workflow_dispatch' && inputs.now || '' }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v6
+        with:
+          version: 10.33.0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Validate email delivery configuration
+        run: pnpm weekly-digest:deliver -- --channel email --validate-config-only
+
+      - name: Validate push delivery configuration
+        run: pnpm weekly-digest:deliver -- --channel push --validate-config-only
+
+      - name: Trigger Weekly Digest email delivery
+        run: pnpm weekly-digest:deliver -- --channel email
+
+      - name: Trigger Weekly Digest push delivery
+        run: pnpm weekly-digest:deliver -- --channel push

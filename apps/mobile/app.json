@@ -1,0 +1,43 @@
+{
+  "expo": {
+    "name": "Astra Review",
+    "slug": "astra-mobile-review-companion",
+    "scheme": "astra-review",
+    "version": "0.1.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "automatic",
+    "assetBundlePatterns": [
+      "**/*"
+    ],
+    "ios": {
+      "bundleIdentifier": "so.astra.review",
+      "supportsTablet": true,
+      "usesAppleSignIn": true,
+      "infoPlist": {
+        "NSCameraUsageDescription": "Astra can scan a desktop QR code to link your review account."
+      }
+    },
+    "android": {
+      "package": "so.astra.review",
+      "adaptiveIcon": {
+        "backgroundColor": "#F4EFE6"
+      },
+      "permissions": [
+        "CAMERA",
+        "POST_NOTIFICATIONS"
+      ],
+      "blockedPermissions": [
+        "android.permission.READ_EXTERNAL_STORAGE",
+        "android.permission.RECORD_AUDIO",
+        "android.permission.SYSTEM_ALERT_WINDOW",
+        "android.permission.WRITE_EXTERNAL_STORAGE"
+      ]
+    },
+    "extra": {
+      "astraSurface": "mobile-review-companion"
+    },
+    "plugins": [
+      "expo-web-browser"
+    ]
+  }
+}

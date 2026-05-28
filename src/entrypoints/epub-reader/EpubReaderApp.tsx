@@ -34,6 +34,50 @@ interface ChapterContent {
 
 const BATCH_SIZE = 8
 
+interface ReaderConfidenceSummary {
+  tierLabel: string
+  coverageLabel: string
+  guidance: string
+}
+
+function summarizeEpubReaderConfidence(chapter: ChapterContent | null): ReaderConfidenceSummary | null {
+  if (!chapter) return null
+  const total = chapter.paragraphs.length
+  const translated = chapter.translations.size
+  const coverage = total > 0 ? translated / total : 0
+  const percent = total > 0 ? Math.round(coverage * 100) : 0
+
+  if (total === 0) {
+    return {
+      tierLabel: "Needs manual review",
+      coverageLabel: "No readable passages detected in this chapter.",
+      guidance: "Try another chapter or compare against the source file before relying on the translation.",
+    }
+  }
+
+  if (!chapter.translating && coverage >= 0.95) {
+    return {
+      tierLabel: "High confidence",
+      coverageLabel: `${translated}/${total} passages translated (${percent}%).`,
+      guidance: "Chapter translation is complete enough for normal study; compare nuanced passages when precision matters.",
+    }
+  }
+
+  if (chapter.translating || coverage >= 0.6) {
+    return {
+      tierLabel: "In progress",
+      coverageLabel: `${translated}/${total} passages translated (${percent}%).`,
+      guidance: "Use this chapter as a study draft until translation finishes, then review any missing lines.",
+    }
+  }
+
+  return {
+    tierLabel: "Needs manual review",
+    coverageLabel: `${translated}/${total} passages translated (${percent}%).`,
+    guidance: "Coverage is low for this chapter; compare with the source before saving study notes.",
+  }
+}
+
 function coerceHandoffFailureReason(value: string | null): DocumentFileHandoffFailureReason | null {
   if (value === "invalid" || value === "missing" || value === "expired" || value === "oversize" || value === "corrupt" || value === "storage_error") {
     return value
@@ -310,6 +354,17 @@ export function EpubReaderApp() {
             {chapter && (
               <>
                 <h2 style={{ fontSize: 20, color: "#1e293b", marginBottom: 16 }}>{chapter.title}</h2>
+                {(() => {
+                  const confidence = summarizeEpubReaderConfidence(chapter)
+                  return confidence ? (
+                    <section data-testid="epub-reader-confidence-card" style={confidenceCardStyle} aria-label="EPUB reader confidence">
+                      <div style={confidenceEyebrowStyle}>Quality Tier v1 · EPUB controlled reader</div>
+                      <strong>{confidence.tierLabel}</strong>
+                      <div>{confidence.coverageLabel}</div>
+                      <p style={confidenceGuidanceStyle}>{confidence.guidance}</p>
+                    </section>
+                  ) : null
+                })()}
                 {chapter.translating && (
                   <div style={{ fontSize: 12, color: "var(--astra-brand)", marginBottom: 12 }} role="status" aria-live="polite">
                     Translating...
@@ -380,6 +435,31 @@ const contentStyle: React.CSSProperties = {
 
 const blockStyle: React.CSSProperties = {
   marginBottom: 16,
+}
+
+const confidenceCardStyle: React.CSSProperties = {
+  marginBottom: 12,
+  padding: "10px 12px",
+  border: "1px solid rgba(99, 102, 241, 0.28)",
+  borderRadius: 10,
+  background: "rgba(99, 102, 241, 0.08)",
+  color: "#1e293b",
+  fontSize: 13,
+  lineHeight: 1.5,
+}
+
+const confidenceEyebrowStyle: React.CSSProperties = {
+  fontSize: 11,
+  fontWeight: 800,
+  textTransform: "uppercase",
+  letterSpacing: "0.06em",
+  color: "var(--astra-brand)",
+  marginBottom: 4,
+}
+
+const confidenceGuidanceStyle: React.CSSProperties = {
+  margin: "4px 0 0",
+  color: "#475569",
 }
 
 const sourceStyle: React.CSSProperties = {

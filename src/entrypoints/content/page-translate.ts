@@ -28,11 +28,14 @@ import {
 import {
   buildContentSummary,
   collectTextBlocks,
+  collectTextBlocksFromRoot,
   extractTextBlockText,
+  type CollectOptions,
   type TextBlock,
 } from "@/utils/dom/traversal"
 import { resolveExtractionPlan } from "@/utils/dom/extraction"
 import { translateTexts } from "@/utils/translate/translate"
+import { getSafeAiUnavailableCopy } from "@/utils/copy-dictionary"
 import type { TranslationRequestContext } from "@/types/messages"
 import {
   createSiteSnapshot,
@@ -49,6 +52,8 @@ import {
 import {
   resolveSiteTranslationSettings,
   type ResolvedSiteTranslationSettings,
+  type ServiceMode,
+  type TranslationSurfaceMode,
   type TranslationOverrides,
 } from "@/types/config"
 import {
@@ -60,18 +65,34 @@ import { disconnectInlineSummaryObserver, getDocumentTranslationContext } from "
 import { createBlockRegistry, type BlockRegistry, type RegistrableBlock } from "./page-translate-registry"
 
 const INITIAL_VIEWPORT_MARGIN = 200
+const BELOW_VIEWPORT_PREFETCH_SCREENS = 1.5
 const DRAIN_BATCH_SIZE = 12
 const MUTATION_SCAN_DEBOUNCE_MS = 150
+const TRANSLATION_MEMORY_MAX_ENTRIES = 8
+const TRANSLATION_MEMORY_MAX_CHARS = 1200
+
+export interface TargetedPageTranslationResult {
+  ok: boolean
+  translatedBlocks: number
+  failedBlocks: number
+  message?: string
+}
 
 interface TranslationSession {
   id: number
   phase: TranslationPhase
   targetLang: string
+  serviceMode: ServiceMode
   presentation: ResolvedSiteTranslationSettings["presentation"]
   site: ReturnType<typeof createSiteSnapshot>
   context?: TranslationRequestContext
+  contentSummary: string | null
+  translationMemory: Map<string, string>
+  originalTitle: string
+  translatedTitle: string | null
+  titleTranslated: boolean
   root: HTMLElement
-  effectiveContentScope: "page" | "article"
+  effectiveContentScope: TranslationSurfaceMode
   registry: BlockRegistry
   queue: HTMLElement[]
   contentScope: ResolvedSiteTranslationSettings["contentScope"]
@@ -84,20 +105,44 @@ interface TranslationSession {
   drainPromise: Promise<void> | null
   mutationScanTimer: number | null
   pendingMutationRoots: Set<HTMLElement>
+  observedShadowRoots: WeakSet<ShadowRoot>
+}
+
+const MUTATION_OBSERVER_OPTIONS: MutationObserverInit = {
+  childList: true,
+  subtree: true,
+  characterData: true,
+  attributes: true,
+  attributeFilter: ["style", "class", "hidden", "aria-hidden"],
 }
 
 let currentSession: TranslationSession | null = null
 let nextSessionId = 1
 let sessionLifecycleToken = 0
 
+function getViewportPrefetchBottom(): number {
+  return window.innerHeight * (1 + BELOW_VIEWPORT_PREFETCH_SCREENS)
+}
+
 function isNearViewport(el: HTMLElement): boolean {
   const rect = el.getBoundingClientRect()
   return (
     rect.bottom >= -INITIAL_VIEWPORT_MARGIN
-    && rect.top <= window.innerHeight + INITIAL_VIEWPORT_MARGIN
+    && rect.top <= getViewportPrefetchBottom()
     && rect.right >= -INITIAL_VIEWPORT_MARGIN
     && rect.left <= window.innerWidth + INITIAL_VIEWPORT_MARGIN
   )
+}
+
+function getViewportQueuePriority(el: HTMLElement): number {
+  const rect = el.getBoundingClientRect()
+  if (rect.bottom >= 0 && rect.top <= window.innerHeight) return 0
+  if (rect.top > window.innerHeight && rect.top <= getViewportPrefetchBottom()) return 1
+  return 2
+}
+
+function sortQueueByViewportPriority(session: TranslationSession) {
+  session.queue.sort((a, b) => getViewportQueuePriority(a) - getViewportQueuePriority(b))
 }
 
 function getSessionProgress(session: TranslationSession): TranslationProgressSnapshot {
@@ -107,6 +152,10 @@ function getSessionProgress(session: TranslationSession): TranslationProgressSna
 function updateSnapshot(snapshot: TranslationSnapshot): TranslationSnapshot {
   setTranslationState(snapshot)
   return snapshot
+}
+
+function getCollectOptionsForSurfaceMode(surfaceMode: TranslationSurfaceMode): CollectOptions {
+  return surfaceMode === "full_page" ? { includeLandmarkContent: true } : {}
 }
 
 function cloneDiagnostics(diagnostics: TranslationRuntimeDiagnostics | undefined): TranslationRuntimeDiagnostics | undefined {
@@ -170,6 +219,17 @@ function hasActiveOrDeferredWork(snapshot: TranslationProgressSnapshot): boolean
     || getIdleBlockCount(snapshot) > 0
 }
 
+function toSafeUserTranslationError(
+  error: TranslationError,
+  siteEnabled = true,
+): TranslationError {
+  const safeMessage = getSafeAiUnavailableCopy(error, { siteEnabled })
+  if (safeMessage !== error.message) {
+    console.warn("[Astra] Translation failure diagnostics:", error)
+  }
+  return { ...error, message: safeMessage }
+}
+
 function publishAfterBatchFailure(
   session: TranslationSession,
   error: TranslationError,
@@ -178,7 +238,7 @@ function publishAfterBatchFailure(
   return publishSessionState(
     session,
     hasActiveOrDeferredWork(snapshot) ? "running" : "idle",
-    error,
+    toSafeUserTranslationError(error, session.site.enabled),
   )
 }
 
@@ -231,6 +291,7 @@ function installClickToggleHandler() {
       clearInlineError(blockElement)
       currentSession.registry.markQueued(reset)
       currentSession.queue.push(...reset)
+      sortQueueByViewportPriority(currentSession)
       showQueuedLoading(currentSession, blockElement)
       publishSessionState(currentSession, "running")
       scheduleDrain(currentSession)
@@ -255,6 +316,13 @@ function removeClickToggleHandler() {
   clickToggleHandler = null
 }
 
+function restoreSessionTitle(session: TranslationSession) {
+  if (!session.originalTitle) return
+  if (!session.translatedTitle || document.title === session.translatedTitle) {
+    document.title = session.originalTitle
+  }
+}
+
 function cleanupSession(session: TranslationSession) {
   session.intersectionObserver?.disconnect()
   session.mutationObserver?.disconnect()
@@ -267,6 +335,7 @@ function cleanupSession(session: TranslationSession) {
   session.intersectionObserver = null
   session.mutationObserver = null
   session.mutationScanTimer = null
+  restoreSessionTitle(session)
   removeClickToggleHandler()
 }
 
@@ -298,7 +367,7 @@ function stopSession(
   // Record reading history if at least 1 block was translated
   const progress = getSessionProgress(session)
   if (progress.translatedBlocks > 0) {
-    const title = document.title || window.location.hostname
+    const title = session.originalTitle || document.title || window.location.hostname
     void recordPageTranslation({
       url: window.location.href,
       hostname: window.location.hostname,
@@ -339,6 +408,7 @@ function enqueueBlock(session: TranslationSession, element: HTMLElement) {
 
   session.registry.markQueued([element])
   session.queue.push(element)
+  sortQueueByViewportPriority(session)
   showQueuedLoading(session, element)
 }
 
@@ -427,6 +497,13 @@ function applySiteRuleFilters(blocks: TextBlock[], siteRules: {
   }
 }
 
+function hasActiveSiteRuleFilters(siteRules?: { selectors?: string[]; excludeSelectors?: string[]; paragraphMinLength?: number }): boolean {
+  if (!siteRules) return false
+  return (siteRules.selectors?.length ?? 0) > 0
+    || (siteRules.excludeSelectors?.length ?? 0) > 0
+    || (siteRules.paragraphMinLength ?? 0) > 0
+}
+
 function prepareRegistrableBlock(block: TextBlock): RegistrableBlock {
   const richText = serializeRichTextForTranslation(block.element)
   return {
@@ -434,6 +511,78 @@ function prepareRegistrableBlock(block: TextBlock): RegistrableBlock {
     sourceText: block.text,
     requestText: richText.requestText || block.text,
   }
+}
+
+function renderTranslatedContent(requestText: string, rawTranslation: string) {
+  if (!containsRichTextPlaceholders(requestText)) return rawTranslation
+  const decoded = decodeRichTextTranslation(rawTranslation, requestText)
+  return decoded.fragment ?? decoded.fallbackText ?? rawTranslation
+}
+
+function normalizeMemoryValue(value: string): string {
+  return value.replace(/\s+/g, " ").trim()
+}
+
+function escapeMemoryValue(value: string): string {
+  return normalizeMemoryValue(value)
+    .replace(/\\/g, "\\\\")
+    .replace(/\r\n?|\n/g, "\\n")
+    .replace(/=>/g, "\\=>")
+}
+
+function serializeTranslationMemory(memory: Map<string, string>): string | undefined {
+  const lines: string[] = []
+  let charCount = 0
+
+  for (const [source, translation] of Array.from(memory.entries()).slice(-TRANSLATION_MEMORY_MAX_ENTRIES)) {
+    const sourceText = escapeMemoryValue(source)
+    const translationText = escapeMemoryValue(translation)
+    if (!sourceText || !translationText) continue
+
+    const line = `${sourceText} => ${translationText}`
+    if (charCount + line.length > TRANSLATION_MEMORY_MAX_CHARS) break
+    lines.push(line)
+    charCount += line.length + 1
+  }
+
+  return lines.length > 0 ? lines.join("\n") : undefined
+}
+
+function applyTranslationMemoryToContext(
+  context: TranslationRequestContext | undefined,
+  session: TranslationSession,
+): TranslationRequestContext | undefined {
+  if (!context || session.privacyMode) return context
+  const translationMemory = serializeTranslationMemory(session.translationMemory)
+  if (!translationMemory) {
+    const { translationMemory: _translationMemory, ...rest } = context
+    return rest
+  }
+  return { ...context, translationMemory }
+}
+
+function rememberSessionTranslation(
+  session: TranslationSession,
+  sourceText: string | undefined,
+  translation: string | undefined,
+) {
+  if (session.privacyMode) return
+  const source = normalizeMemoryValue(sourceText ?? "")
+  const target = normalizeMemoryValue(translation ?? "")
+  if (!source || !target) return
+
+  if (session.translationMemory.has(source)) {
+    session.translationMemory.delete(source)
+  }
+  session.translationMemory.set(source, target)
+
+  while (session.translationMemory.size > TRANSLATION_MEMORY_MAX_ENTRIES) {
+    const firstKey = session.translationMemory.keys().next().value
+    if (!firstKey) break
+    session.translationMemory.delete(firstKey)
+  }
+
+  session.context = applyTranslationMemoryToContext(session.context, session)
 }
 
 function registerBlocks(session: TranslationSession, blocks: TextBlock[]) {
@@ -504,9 +653,11 @@ function pruneBlocksOutsideRoot(session: TranslationSession, root: HTMLElement):
 function refreshSessionContext(
   session: TranslationSession,
   blocks: TextBlock[],
-  summary: string | null = buildContentSummary(blocks),
 ) {
-  session.context = buildPageContext(blocks, session.site.hostname, summary, session.privacyMode)
+  session.context = applyTranslationMemoryToContext(
+    buildPageContext(blocks, session.site.hostname, session.contentSummary, session.privacyMode),
+    session,
+  )
 }
 
 function applyExtractionPlan(
@@ -521,7 +672,7 @@ function applyExtractionPlan(
 
   session.root = plan.root
   session.effectiveContentScope = plan.scope
-  refreshSessionContext(session, plan.blocks, plan.summary)
+  refreshSessionContext(session, plan.blocks)
   return rootOrScopeChanged
 }
 
@@ -561,11 +712,16 @@ function scheduleDrain(session: TranslationSession) {
         })
         publishSessionState(session, "running")
 
-        const requestTexts = inFlightInfo.map(({ element }) => {
+        const blockRequestTexts = inFlightInfo.map(({ element }) => {
           const block = session.registry.getBlock(element)
           return block?.requestText ?? ""
         })
-        const usesRichTextPlaceholders = requestTexts.some(containsRichTextPlaceholders)
+        const includeTitle = !hasActiveSiteRuleFilters(session.siteRules)
+          && !session.titleTranslated
+          && session.originalTitle.trim().length > 0
+        const requestTexts = includeTitle ? [session.originalTitle, ...blockRequestTexts] : blockRequestTexts
+        const blockTranslationOffset = includeTitle ? 1 : 0
+        const usesRichTextPlaceholders = blockRequestTexts.some(containsRichTextPlaceholders)
 
         let result: Awaited<ReturnType<typeof translateTexts>>
 
@@ -573,6 +729,7 @@ function scheduleDrain(session: TranslationSession) {
           result = await translateTexts({
             texts: requestTexts,
             targetLang: session.targetLang,
+            serviceMode: session.serviceMode,
             context: session.context,
             ...(usesRichTextPlaceholders ? { placeholderFormat: "astra-rich-text-v1" as const } : {}),
           })
@@ -585,8 +742,12 @@ function scheduleDrain(session: TranslationSession) {
             inFlightInfo.map(({ element, revision }) => ({ element, revision })),
           )
 
+          const safeError = toSafeUserTranslationError({
+            code: "UNKNOWN",
+            message: error instanceof Error ? error.message : "Translation failed.",
+          }, session.site.enabled)
           exhausted.forEach((element) => {
-            showInlineError(element, "Astra couldn't translate this paragraph. The rest of the page can keep going.", {
+            showInlineError(element, safeError.message, {
               mode: session.presentation.mode,
               theme: session.presentation.theme,
               targetLang: session.targetLang,
@@ -596,15 +757,13 @@ function scheduleDrain(session: TranslationSession) {
           // Re-add requeued blocks to the session queue
           if (requeued.length > 0) {
             session.queue.push(...requeued)
+            sortQueueByViewportPriority(session)
           }
 
           // Check if everything is done (no more work)
           const snapshot = session.registry.getSnapshot()
           if (snapshot.queuedBlocks === 0 && snapshot.inFlightBlocks === 0 && exhausted.length > 0) {
-            publishAfterBatchFailure(session, {
-              code: "UNKNOWN",
-              message: error instanceof Error ? error.message : "Translation failed.",
-            })
+            publishAfterBatchFailure(session, safeError)
             return
           }
 
@@ -621,8 +780,9 @@ function scheduleDrain(session: TranslationSession) {
             inFlightInfo.map(({ element, revision }) => ({ element, revision })),
           )
 
+          const safeError = toSafeUserTranslationError(result.error, session.site.enabled)
           exhausted.forEach((element) => {
-            showInlineError(element, result.error.message || "Astra couldn't translate this paragraph.", {
+            showInlineError(element, safeError.message, {
               mode: session.presentation.mode,
               theme: session.presentation.theme,
               targetLang: session.targetLang,
@@ -631,11 +791,12 @@ function scheduleDrain(session: TranslationSession) {
 
           if (requeued.length > 0) {
             session.queue.push(...requeued)
+            sortQueueByViewportPriority(session)
           }
 
           const snapshot = session.registry.getSnapshot()
           if (snapshot.queuedBlocks === 0 && snapshot.inFlightBlocks === 0 && exhausted.length > 0) {
-            publishAfterBatchFailure(session, result.error)
+            publishAfterBatchFailure(session, safeError)
             return
           }
 
@@ -643,11 +804,21 @@ function scheduleDrain(session: TranslationSession) {
           continue
         }
 
+        if (includeTitle) {
+          session.titleTranslated = true
+          const translatedTitle = result.translations[0]?.trim()
+          if (translatedTitle) {
+            session.translatedTitle = translatedTitle
+            document.title = translatedTitle
+            rememberSessionTranslation(session, session.originalTitle, translatedTitle)
+          }
+        }
+
         const accepted = session.registry.markTranslated(
           inFlightInfo.map((info, i) => ({
             element: info.element,
             revision: info.revision,
-            translation: result.translations[i],
+            translation: result.translations[i + blockTranslationOffset] ?? "",
           })),
         )
 
@@ -655,20 +826,18 @@ function scheduleDrain(session: TranslationSession) {
           if (!accepted.includes(info.element)) return
           if (!info.element.isConnected) return
 
-          const requestText = requestTexts[index]
-          const rawTranslation = result.translations[index]
-          const translatedContent = containsRichTextPlaceholders(requestText)
-            ? (() => {
-                const decoded = decodeRichTextTranslation(rawTranslation, requestText)
-                return decoded.fragment ?? decoded.fallbackText ?? rawTranslation
-              })()
-            : rawTranslation
+          const requestText = blockRequestTexts[index] ?? ""
+          const rawTranslation = result.translations[index + blockTranslationOffset] ?? ""
+          const translatedContent = renderTranslatedContent(requestText, rawTranslation)
 
           replaceLoading(info.element, translatedContent, {
             mode: session.presentation.mode,
             theme: session.presentation.theme,
             targetLang: session.targetLang,
           })
+
+          const block = session.registry.getBlock(info.element)
+          rememberSessionTranslation(session, block?.sourceText, rawTranslation)
         })
 
         publishSessionState(session, "running")
@@ -707,10 +876,10 @@ function scheduleMutationScan(session: TranslationSession) {
 
     roots.forEach((root) => {
       if (!root.isConnected) return
-      if (!(session.root.contains(root) || root.contains(session.root))) return
+      if (!isWithinSessionRoot(session, root) && !root.contains(session.root)) return
 
       const baseRoot = root.contains(session.root) ? session.root : root
-      registerBlocks(session, collectTextBlocks(baseRoot))
+      registerBlocks(session, collectTextBlocksFromRoot(baseRoot, getCollectOptionsForSurfaceMode(session.effectiveContentScope)))
     })
 
     if (removedBlocks || planRefreshed) {
@@ -718,7 +887,10 @@ function scheduleMutationScan(session: TranslationSession) {
     }
 
     if (removedBlocks || planRefreshed || roots.length > 0) {
-      refreshSessionContext(session, collectTextBlocks(session.root))
+      refreshSessionContext(session, collectTextBlocks(
+        session.root,
+        getCollectOptionsForSurfaceMode(session.effectiveContentScope),
+      ))
     }
 
     scheduleDrain(session)
@@ -746,7 +918,7 @@ function createIntersectionObserver(session: TranslationSession): IntersectionOb
     }
     scheduleDrain(session)
   }, {
-    rootMargin: `${INITIAL_VIEWPORT_MARGIN}px 0px`,
+    rootMargin: `${INITIAL_VIEWPORT_MARGIN}px 0px ${Math.round(window.innerHeight * BELOW_VIEWPORT_PREFETCH_SCREENS)}px 0px`,
   })
 }
 
@@ -817,6 +989,28 @@ function handleTextChanges(session: TranslationSession, elements: Set<HTMLElemen
   }
 }
 
+function isWithinSessionRoot(session: TranslationSession, el: HTMLElement): boolean {
+  if (session.root.contains(el)) return true
+  const nodeRoot = el.getRootNode()
+  return nodeRoot instanceof ShadowRoot && session.root.contains(nodeRoot.host)
+}
+
+function observeOpenShadowRoots(session: TranslationSession, root: ParentNode = document): void {
+  const observer = session.mutationObserver
+  if (!observer) return
+
+  const candidates = root instanceof HTMLElement
+    ? [root, ...Array.from(root.querySelectorAll<HTMLElement>("*"))]
+    : Array.from(root.querySelectorAll<HTMLElement>("*"))
+
+  for (const candidate of candidates) {
+    const shadowRoot = candidate.shadowRoot
+    if (!shadowRoot || session.observedShadowRoots.has(shadowRoot)) continue
+    session.observedShadowRoots.add(shadowRoot)
+    observer.observe(shadowRoot, MUTATION_OBSERVER_OPTIONS)
+  }
+}
+
 function createMutationObserver(session: TranslationSession): MutationObserver | null {
   if (typeof MutationObserver === "undefined") return null
 
@@ -839,6 +1033,7 @@ function createMutationObserver(session: TranslationSession): MutationObserver |
           if (addedNode.closest("[data-astra-translation]")) continue
           if (addedNode.classList.contains("notranslate")) continue
 
+          observeOpenShadowRoots(session, addedNode)
           session.pendingMutationRoots.add(addedNode)
           hasStructuralChanges = true
         }
@@ -846,6 +1041,12 @@ function createMutationObserver(session: TranslationSession): MutationObserver |
         if (mutation.removedNodes.length > 0) {
           hasStructuralChanges = true
         }
+      } else if (mutation.type === "attributes") {
+        const target = mutation.target
+        if (!(target instanceof HTMLElement)) continue
+        if (isWithinAstraTranslation(target)) continue
+        session.pendingMutationRoots.add(target)
+        hasStructuralChanges = true
       } else if (mutation.type === "characterData") {
         const trackedTarget = findTrackedBlockElement(session, mutation.target)
         if (!trackedTarget) continue
@@ -900,6 +1101,92 @@ export function subscribePageTranslationState(
   return subscribeTranslationState(listener)
 }
 
+export async function translatePageElements(
+  elements: HTMLElement[],
+  overrides: TranslationOverrides = {},
+): Promise<TargetedPageTranslationResult> {
+  const uniqueElements = Array.from(new Set(elements)).filter((element) => element.isConnected)
+  if (uniqueElements.length === 0) {
+    return { ok: false, translatedBlocks: 0, failedBlocks: 0, message: "No readable paragraph found." }
+  }
+
+  const { config, resolved, privacyMode } = await resolveStartSettings(overrides)
+  if (!resolved.enabled) {
+    return { ok: false, translatedBlocks: 0, failedBlocks: uniqueElements.length, message: "Astra is hidden on this site." }
+  }
+
+  const textBlocks = uniqueElements
+    .map((element): TextBlock => ({ element, text: extractTextBlockText(element) }))
+    .filter((block) => block.text.length >= Math.max(2, resolved.paragraphMinLength ?? 2))
+
+  if (textBlocks.length === 0) {
+    return { ok: false, translatedBlocks: 0, failedBlocks: 0, message: "No readable paragraph found." }
+  }
+
+  const siteSnapshot = createSiteSnapshot(resolved)
+  const requestBlocks = textBlocks.map(prepareRegistrableBlock)
+  const requestTexts = requestBlocks.map((block) => block.requestText)
+  const usesRichTextPlaceholders = requestTexts.some(containsRichTextPlaceholders)
+  const injectOptions = {
+    mode: resolved.presentation.mode,
+    theme: resolved.presentation.theme,
+    targetLang: resolved.targetLang,
+  }
+
+  applySiteCustomCss(resolved.customCss)
+  requestBlocks.forEach(({ element }) => {
+    removeTranslationFor(element)
+    showLoading(element, injectOptions)
+  })
+
+  try {
+    const result = await translateTexts({
+      texts: requestTexts,
+      targetLang: resolved.targetLang,
+      serviceMode: config.serviceMode,
+      context: buildPageContext(textBlocks, siteSnapshot.hostname, buildContentSummary(textBlocks), privacyMode),
+      ...(usesRichTextPlaceholders ? { placeholderFormat: "astra-rich-text-v1" as const } : {}),
+    })
+
+    if (!result.ok) {
+      const safeError = toSafeUserTranslationError(result.error, resolved.enabled)
+      requestBlocks.forEach(({ element }) => {
+        showInlineError(element, safeError.message, injectOptions)
+      })
+      return {
+        ok: false,
+        translatedBlocks: 0,
+        failedBlocks: requestBlocks.length,
+        message: safeError.message,
+      }
+    }
+
+    requestBlocks.forEach(({ element }, index) => {
+      const requestText = requestTexts[index] ?? ""
+      const rawTranslation = result.translations[index] ?? ""
+      replaceLoading(element, renderTranslatedContent(requestText, rawTranslation), injectOptions)
+    })
+
+    return { ok: true, translatedBlocks: requestBlocks.length, failedBlocks: 0 }
+  } catch (error) {
+    const safeError = toSafeUserTranslationError({
+      code: "UNKNOWN",
+      message: error instanceof Error ? error.message : "Translation failed.",
+    }, resolved.enabled)
+    requestBlocks.forEach(({ element }) => {
+      showInlineError(element, safeError.message, injectOptions)
+    })
+    return { ok: false, translatedBlocks: 0, failedBlocks: requestBlocks.length, message: safeError.message }
+  }
+}
+
+export async function translatePageElement(
+  element: HTMLElement,
+  overrides: TranslationOverrides = {},
+): Promise<TargetedPageTranslationResult> {
+  return translatePageElements([element], overrides)
+}
+
 export async function startPageTranslation(
   overrides: TranslationOverrides = {},
 ): Promise<TranslationSnapshot> {
@@ -909,7 +1196,7 @@ export async function startPageTranslation(
     stopSession(null, { invalidatePendingStart: false })
   }
 
-  const { resolved, privacyMode } = await resolveStartSettings(overrides)
+  const { config, resolved, privacyMode } = await resolveStartSettings(overrides)
   if (startToken !== sessionLifecycleToken) {
     return getTranslationState()
   }
@@ -934,9 +1221,15 @@ export async function startPageTranslation(
     id: nextSessionId++,
     phase: "starting",
     targetLang: resolved.targetLang,
+    serviceMode: config.serviceMode,
     presentation: resolved.presentation,
     site: siteSnapshot,
     context: buildPageContext(blocks, siteSnapshot.hostname, summary, privacyMode),
+    contentSummary: summary,
+    translationMemory: new Map(),
+    originalTitle: document.title,
+    translatedTitle: null,
+    titleTranslated: false,
     root,
     effectiveContentScope: plan.scope,
     registry,
@@ -954,6 +1247,7 @@ export async function startPageTranslation(
     drainPromise: null,
     mutationScanTimer: null,
     pendingMutationRoots: new Set(),
+    observedShadowRoots: new WeakSet(),
     diagnostics: {
       contentScope: resolved.contentScope,
       effectiveContentScope: plan.scope,
@@ -973,11 +1267,8 @@ export async function startPageTranslation(
 
   const mutationRoot = document.body ?? document.documentElement
   if (mutationRoot && session.mutationObserver) {
-    session.mutationObserver.observe(mutationRoot, {
-      childList: true,
-      subtree: true,
-      characterData: true,
-    })
+    session.mutationObserver.observe(mutationRoot, MUTATION_OBSERVER_OPTIONS)
+    observeOpenShadowRoots(session, mutationRoot)
   }
 
   if (blocks.length === 0) {
@@ -993,8 +1284,11 @@ export function stopPageTranslation(): TranslationSnapshot {
   return stopSession()
 }
 
-export function retryFailedBlocks(): void {
+export function retryFailedBlocks(options: { serviceMode?: ServiceMode } = {}): void {
   if (!currentSession) return
+  if (options.serviceMode) {
+    currentSession.serviceMode = options.serviceMode
+  }
   const failedElements = currentSession.registry.getElementsByState("failed")
   if (failedElements.length === 0) return
 
@@ -1003,6 +1297,7 @@ export function retryFailedBlocks(): void {
 
   currentSession.registry.markQueued(reset)
   currentSession.queue.push(...reset)
+  sortQueueByViewportPriority(currentSession)
   const session = currentSession
   reset.forEach((element) => {
     showQueuedLoading(session, element)

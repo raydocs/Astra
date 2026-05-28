@@ -1,13 +1,12 @@
 import { useCallback, useEffect, useRef, useState } from "react"
 import { browser } from "#imports"
-import { Toast } from "@/components/Toast"
+import { Toast, ToastViewport } from "@/components/Toast"
 import type {
   AstraConfig,
   ContentScope,
   CustomAction,
   HoverTrigger,
   InputTranslation,
-  ProviderId,
   SiteConfig,
   TTSSettings,
   TranslationMode,
@@ -16,33 +15,50 @@ import type {
 import type { AstraDeviceIdentity, AstraSession } from "@/types/auth"
 import {
   DEFAULT_ASTRA_CONFIG,
-  getDefaultProviderModel,
   isDefaultSiteConfig,
   normalizeSiteKey,
+  resolveTranslationSurfaceMode,
 } from "@/types/config"
 import { readConfig, saveConfig } from "@/utils/storage/config"
+import { forgetRememberedTerm, readLearningProfile, updateLearningProfile, type LearningProfile, type LearningProfileGoal } from "@/utils/storage/learning-profile"
 import { clearAstraSession, ensureAstraDeviceIdentity, readAstraSession, saveAstraSession } from "@/utils/storage/auth"
 import { refreshAstraSession } from "@/utils/astra/auth"
 import { fetchAstraContinuitySnapshot, revokeAstraDevice, updateAstraSyncCollectionPreference } from "@/utils/astra/account"
+import { submitAstraCancellationReason, submitAstraSupportReport } from "@/utils/astra/support"
+import { ASTRA_CANCELLATION_REASON_OPTIONS, buildAstraCancellationReasonSubmission, type AstraCancellationReason } from "@/utils/cancellation-reasons"
 import { buildContinuityStatus, exportConfig, importConfig, downloadConfigFile, readConfigFile, runPhaseOneCollectionSync, type AstraContinuityRemoteSnapshot, type AstraContinuityStatus } from "@/utils/storage/config-sync"
 import { exportSiteRules, importSiteRules } from "@/utils/storage/site-rules"
 import { clearTranslationCache, getCacheStats } from "@/utils/cache/translation-cache"
+import { buildLearningDataExport, stringifyLearningDataExport } from "@/utils/storage/learning-data-export"
+import { buildLearningMemoryInventory, type LearningMemoryInventory } from "@/utils/storage/learning-memory"
+import { buildSupportBundle, describeKnownIssueForUser, describeSupportBundle, type SupportBundleFeatureSurface, type SupportBundleIssueCategory } from "@/utils/support-bundle"
+import { refreshRemoteFeatureFlagRuntime } from "@/utils/feature-flags"
 import {
+  aggregateLearningLoopActivationDashboard,
   aggregateLearningLoopFunnel,
+  aggregateLearningLoopLearningDashboard,
+  aggregateLearningLoopRetentionDashboard,
+  aggregateLearningLoopUpgradePromptDashboard,
   getLearningLoopCopyVariantAutoSelectionStatus,
   LEARNING_LOOP_EVENT_NAMES,
+  recordLearningLoopEvent,
+  type LearningLoopActivationDashboard,
   type LearningLoopCopyVariantAutoSelectionStatus,
   type LearningLoopEventName,
   type LearningLoopFunnelAggregation,
+  type LearningLoopLearningDashboard,
+  type LearningLoopRetentionDashboard,
+  type LearningLoopUpgradePromptDashboard,
 } from "@/utils/learning-loop-events"
 import { getRecentEvents, type TelemetryEvent } from "@/utils/telemetry"
 import { isTtsSupported, listVoices, type TTSVoiceOption } from "@/utils/tts"
-import { diagnoseProvider, PROVIDER_CAPABILITIES, type ProviderDiagnostics } from "@/utils/providers/capabilities"
 import { useViewportProfile } from "@/utils/ui/useViewportProfile"
 import { useAstraTheme } from "@/utils/ui/useAstraTheme"
 import { t } from "@/utils/i18n"
+import { getSafeAiUnavailableCopy } from "@/utils/copy-dictionary"
 
 type Section = "general" | "providers" | "translation" | "actions" | "sites" | "vocabulary" | "diagnostics" | "about"
+const OPTION_SECTIONS: Section[] = ["general", "providers", "translation", "actions", "sites", "vocabulary", "diagnostics", "about"]
 
 type PendingRevokeDevice = {
   deviceId: string
@@ -67,35 +83,37 @@ const HOVER_TRIGGER_OPTIONS = [
 ] as const
 
 const CONTENT_SCOPE_OPTIONS = [
-  { value: "page", label: "Full page" },
+  { value: "immersive", label: "Immersive page" },
+  { value: "full_page", label: "Full page" },
   { value: "article", label: "Article only" },
 ] as const
 
-const PROVIDER_OPTIONS = [
-  { value: "google_translate", label: "Google Translate" },
-  { value: "openai", label: "OpenAI" },
-  { value: "gemini", label: "Gemini" },
-] as const
+function getContentScopeSelectValue(scope: ContentScope): Exclude<ContentScope, "page"> {
+  return scope === "page" ? "immersive" : scope
+}
 
-function getProviderApiKeyPlaceholder(providerId: ProviderId): string {
-  switch (providerId) {
-    case "google_translate":
-    case "gemini":
-      return "AIzaSy..."
-    case "openai":
-      return "sk-..."
+function formatContentScopeLabel(scope: ContentScope): string {
+  switch (resolveTranslationSurfaceMode(scope)) {
+    case "article":
+      return "Article area only"
+    case "full_page":
+      return "Full page including navigation and footer"
+    case "immersive":
+      return "Immersive page"
   }
 }
 
-function getProviderDirectServiceName(providerId: ProviderId): string {
-  switch (providerId) {
-    case "google_translate":
-      return "Google Cloud Translation"
-    case "gemini":
-      return "Google Gemini"
-    case "openai":
-      return "OpenAI"
-  }
+function getSafeSettingsSaveError(error: unknown): string {
+  const fallbackCopy = error instanceof Error
+    ? error.message.trim()
+    : typeof error === "string"
+      ? error.trim()
+      : ""
+
+  return getSafeAiUnavailableCopy(
+    { code: "UNKNOWN", message: fallbackCopy || "Settings update failed" },
+    { fallbackCopy: fallbackCopy || "Astra could not update settings right now." },
+  )
 }
 
 const MODE_OPTIONS = [
@@ -115,12 +133,33 @@ const LANGUAGE_LEVEL_OPTIONS = [
   { value: "advanced", label: "Advanced" },
 ] as const
 
+const LEARNING_GOAL_OPTIONS: Array<{ value: LearningProfileGoal; label: string }> = [
+  { value: "read_articles_docs", label: "Read articles and docs" },
+  { value: "watch_tutorials", label: "Watch videos" },
+  { value: "save_expressions", label: "Save useful expressions" },
+  { value: "work_study", label: "Work or study" },
+  { value: "exam_prep", label: "Exam prep" },
+  { value: "interest_reading", label: "Interest reading" },
+  { value: "build_vocabulary", label: "Build vocabulary" },
+]
+
+const SERVICE_MODE_OPTIONS: Array<{
+  value: AstraConfig["serviceMode"]
+  label: string
+  hint: string
+}> = [
+  { value: "automatic", label: "Automatic", hint: "Recommended. Astra decides whether speed or precision matters more for each task." },
+  { value: "fast", label: "Fast", hint: "Prioritizes quick page reading and everyday browsing." },
+  { value: "balanced", label: "Balanced", hint: "Keeps normal reading quick while staying careful for explanations." },
+  { value: "best_quality", label: "Best quality", hint: "Uses the most careful service path for harder content and study work." },
+]
+
 const NAV_ITEMS: { key: Section; label: string }[] = [
   { key: "translation", label: "Translation" },
   { key: "actions", label: "Actions" },
   { key: "sites", label: "Sites" },
   { key: "vocabulary", label: "Vocabulary" },
-  { key: "providers", label: "Providers" },
+  { key: "providers", label: "Astra AI" },
   { key: "diagnostics", label: "Diagnostics" },
   { key: "general", label: "General" },
   { key: "about", label: "About" },
@@ -155,9 +194,9 @@ const NAV_GROUPS: { label: string; items: NavGroupItem[] }[] = [
     ],
   },
   {
-    label: "Engine",
+    label: "Service",
     items: [
-      { key: "providers", label: "Providers" },
+      { key: "providers", label: "Astra AI" },
       { key: "diagnostics", label: "Diagnostics" },
     ],
   },
@@ -175,13 +214,44 @@ const SECTION_META: Record<Section, { breadcrumb: string }> = {
   actions: { breadcrumb: "Actions" },
   sites: { breadcrumb: "Sites" },
   vocabulary: { breadcrumb: "Vocabulary" },
-  providers: { breadcrumb: "Providers" },
+  providers: { breadcrumb: "Astra AI" },
   diagnostics: { breadcrumb: "Diagnostics" },
   general: { breadcrumb: "General" },
   about: { breadcrumb: "About" },
 }
 
 const BRAND_COLOR = "var(--astra-brand)"
+
+function detectBrowserLabel(): string {
+  if (typeof navigator === "undefined") return "Unknown browser"
+  const ua = navigator.userAgent
+  if (ua.includes("Firefox/")) return `Firefox ${ua.split("Firefox/")[1]?.split(" ")[0] ?? ""}`.trim()
+  if (ua.includes("Edg/")) return `Edge ${ua.split("Edg/")[1]?.split(" ")[0] ?? ""}`.trim()
+  if (ua.includes("Chrome/")) return `Chrome ${ua.split("Chrome/")[1]?.split(" ")[0] ?? ""}`.trim()
+  if (ua.includes("Safari/")) return "Safari"
+  return "Unknown browser"
+}
+
+function detectOsLabel(): string {
+  if (typeof navigator === "undefined") return "Unknown OS"
+  const platform = navigator.platform || navigator.userAgent
+  if (/Mac/i.test(platform)) return "macOS"
+  if (/Win/i.test(platform)) return "Windows"
+  if (/Linux/i.test(platform)) return "Linux"
+  if (/iPhone|iPad|iPod/i.test(navigator.userAgent)) return "iOS"
+  if (/Android/i.test(navigator.userAgent)) return "Android"
+  return "Unknown OS"
+}
+
+function getInitialOptionsSection(): Section {
+  if (typeof window === "undefined") return "translation"
+  try {
+    const candidate = new URLSearchParams(window.location.search).get("section")
+    return OPTION_SECTIONS.includes(candidate as Section) ? candidate as Section : "translation"
+  } catch {
+    return "translation"
+  }
+}
 
 function SectionHeader({
   eyebrow,
@@ -244,10 +314,20 @@ function getLearningLoopEventLabel(event: LearningLoopEventName): string {
   switch (event) {
     case "copy_variant_assigned":
       return "Learning-loop copy variant assigned"
+    case "extension_installed":
+      return "Extension installed"
+    case "onboarding_started":
+      return "Onboarding started"
+    case "sample_started":
+      return "Sample lesson started"
+    case "first_value_seen":
+      return "First value seen"
     case "popup_primer_viewed":
       return "Popup primer viewed"
     case "popup_primer_cta_clicked":
       return "Popup primer CTA clicked"
+    case "first_content_understood":
+      return "First content understood"
     case "onboarding_closure_viewed":
       return "Onboarding closure copy viewed"
     case "onboarding_closure_cta_clicked":
@@ -260,17 +340,91 @@ function getLearningLoopEventLabel(event: LearningLoopEventName): string {
       return t("options_learningLoopEventSentenceExplained")
     case "sentence_saved":
       return t("options_learningLoopEventSentenceSaved")
+    case "saved_snippet_created":
+      return "Saved snippet created"
+    case "review_opened":
+      return "Review opened"
     case "review_answered":
       return t("options_learningLoopEventReviewAnswered")
+    case "review_session_completed":
+      return "Review session completed"
+    case "library_opened":
+      return "Library opened"
     case "returned_to_source":
       return t("options_learningLoopEventReturnedToSource")
+    case "return_to_source_clicked":
+      return "Return to source clicked"
+    case "continue_clicked":
+      return "Continue clicked"
     case "resumed_reading":
       return t("options_learningLoopEventResumedReading")
+    case "digest_viewed":
+      return "Digest viewed"
+    case "digest_opened":
+      return "Digest opened"
+    case "reminder_dismissed":
+      return "Reminder dismissed"
+    case "reminder_disabled":
+      return "Reminder disabled"
+    case "winback_sent":
+      return "Win-back sent"
+    case "paywall_viewed":
+      return "Upgrade prompt viewed"
+    case "trial_started":
+      return "Trial started"
+    case "pro_value_seen":
+      return "Pro value seen"
+    case "membership_activated":
+      return "Membership activated"
+    case "support_report_submitted":
+      return "Support report submitted"
+    case "known_issue_viewed":
+      return "Known issue viewed"
+    case "cancellation_reason_submitted":
+      return "Cancellation reason submitted"
+    case "share_card_created":
+      return "Share card created"
+    case "referral_sent":
+      return "Referral invite sent"
+    case "referral_converted":
+      return "Referral converted"
+    case "landing_visited":
+      return "Growth landing visited"
+    case "landing_install_clicked":
+      return "Landing install clicked"
+    case "variant_assigned":
+      return "Experiment variant assigned"
+    case "conversion_event":
+      return "Experiment conversion event"
+    case "guardrail_metric":
+      return "Experiment guardrail metric"
   }
 }
 
 function formatLearningLoopFunnelRate(value: number | null): string {
   return value == null ? "n/a" : `${Math.round(value * 100)}%`
+}
+
+function formatLearningLoopDurationSeconds(value: number | null): string {
+  if (value == null) return "n/a"
+  if (value < 60) return `${Math.round(value)}s`
+  const minutes = Math.floor(value / 60)
+  const seconds = Math.round(value % 60)
+  return `${minutes}m ${seconds}s`
+}
+
+function formatLearningLoopDashboardStatus(value: number | null, target: number, direction: "at_least" | "below"): string {
+  if (value == null) return "needs data"
+  const passes = direction === "at_least" ? value >= target : value < target
+  return passes ? "on target" : "watch"
+}
+
+function formatLearningLoopSourceMix(dashboard: LearningLoopLearningDashboard): string {
+  if (dashboard.savedBySourceType.length === 0) return "none yet"
+  return dashboard.savedBySourceType
+    .slice(0, 3)
+    .map((entry) => `${entry.sourceType} ${entry.count}`)
+    .join(" · ")
 }
 
 function formatLearningLoopAutoSelectionPhase(status: LearningLoopCopyVariantAutoSelectionStatus): string {
@@ -291,6 +445,19 @@ function formatLearningLoopAutoSelectionPhase(status: LearningLoopCopyVariantAut
 function formatLearningLoopAutoSelectionTime(value: number | null): string {
   if (value == null) return "n/a"
   return new Date(value).toLocaleString()
+}
+
+function formatServiceModeLabel(serviceMode: AstraConfig["serviceMode"]): string {
+  switch (serviceMode) {
+    case "fast":
+      return "Managed · Fast"
+    case "balanced":
+      return "Managed · Balanced"
+    case "best_quality":
+      return "Managed · Best quality"
+    case "automatic":
+      return "Managed · Automatic"
+  }
 }
 
 function getLearningLoopEventSummary(event: TelemetryEvent): string | null {
@@ -370,6 +537,11 @@ function GeneralSection({
   loadingVoices,
   ttsSupported,
   onRefreshVoices,
+  learningProfile,
+  learningMemoryInventory,
+  onLearningProfileChange,
+  onForgetRememberedTerm,
+  onNavigate,
 }: {
   config: AstraConfig
   onChange: (patch: Partial<AstraConfig>) => void
@@ -378,6 +550,11 @@ function GeneralSection({
   loadingVoices: boolean
   ttsSupported: boolean
   onRefreshVoices: () => void
+  learningProfile: LearningProfile | null
+  learningMemoryInventory: LearningMemoryInventory | null
+  onLearningProfileChange: (patch: Partial<LearningProfile>) => void
+  onForgetRememberedTerm: (termId: string) => void
+  onNavigate: (section: Section) => void
 }) {
   const savedVoiceMissing = !!config.tts.voiceName
     && !availableVoices.some((voice) => voice.name === config.tts.voiceName)
@@ -421,6 +598,100 @@ function GeneralSection({
         <div style={hintStyle}>Adjusts explanation detail based on your proficiency.</div>
       </div>
 
+      <div className="astra-card" data-testid="learning-profile-controls" style={{ marginBottom: 20 }}>
+        <h3 className="astra-section-subheading">Personalization memory</h3>
+        <div style={{ ...hintStyle, marginBottom: 12 }}>
+          Astra uses only lightweight preferences you can review or undo: your goal, daily target, excluded sites, and remembered terms.
+        </div>
+
+        <div style={fieldGroup}>
+          <label htmlFor="options-learning-profile-goal" style={labelStyle}>Learning goal</label>
+          <select
+            id="options-learning-profile-goal"
+            className="astra-input"
+            value={learningProfile?.primaryGoal ?? "read_articles_docs"}
+            onChange={(e) => onLearningProfileChange({ primaryGoal: e.target.value as LearningProfileGoal })}
+          >
+            {LEARNING_GOAL_OPTIONS.map((goal) => (
+              <option key={goal.value} value={goal.value}>{goal.label}</option>
+            ))}
+          </select>
+        </div>
+
+        <div style={fieldGroup}>
+          <label htmlFor="options-learning-profile-daily-goal" style={labelStyle}>Daily study target</label>
+          <input
+            id="options-learning-profile-daily-goal"
+            className="astra-input"
+            type="number"
+            min={1}
+            max={60}
+            value={learningProfile?.dailyGoalMinutes ?? 5}
+            onChange={(e) => onLearningProfileChange({ dailyGoalMinutes: Number(e.target.value) })}
+          />
+          <div style={hintStyle}>Minutes per day. Astra keeps this lightweight by default.</div>
+        </div>
+
+        <div style={checkboxRow}>
+          <input
+            type="checkbox"
+            id="options-learning-profile-enabled"
+            checked={learningProfile?.personalizationEnabled ?? true}
+            onChange={(e) => onLearningProfileChange({ personalizationEnabled: e.target.checked })}
+          />
+          <label htmlFor="options-learning-profile-enabled" style={{ fontSize: 14, color: "var(--astra-text-secondary)" }}>
+            Let Astra adapt explanations and review suggestions from my learning profile
+          </label>
+        </div>
+
+        <div data-testid="learning-profile-remembered-terms" style={{ ...hintStyle, marginTop: 10 }}>
+          Remembered terms: {learningProfile?.rememberedTerms.length ?? 0}
+        </div>
+
+        <div data-testid="learning-memory-inventory" style={{ border: "1px solid var(--astra-border)", borderRadius: 12, padding: 12, marginTop: 12 }}>
+          <div style={{ fontSize: 13, fontWeight: 700, color: "var(--astra-text-primary)", marginBottom: 6 }}>What Astra remembers</div>
+          <div style={{ ...hintStyle, marginBottom: 8 }}>
+            Astra keeps learning memory visible and reversible. This summary uses counts and categories, not page text, transcripts, prompts, model output, or full URL paths.
+          </div>
+          {learningMemoryInventory ? (
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))", gap: 8 }}>
+              {learningMemoryInventory.sections.map((section) => (
+                <div key={section.id} style={{ border: "1px solid var(--astra-border)", borderRadius: 10, padding: "8px 10px" }}>
+                  <div style={{ fontSize: 12, fontWeight: 700, color: "var(--astra-text-primary)" }}>{section.label}</div>
+                  <div style={{ fontSize: 12, color: "var(--astra-text-secondary)" }}>{section.count} item{section.count === 1 ? "" : "s"}</div>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div style={hintStyle}>Memory summary will appear after Astra reads your local learning data.</div>
+          )}
+          <div style={{ ...hintStyle, marginTop: 8 }}>
+            {learningMemoryInventory?.privacyModeEffect ?? "Privacy Mode reduces automatic memory updates when enabled."}
+          </div>
+        </div>
+
+        {(learningProfile?.rememberedTerms ?? []).slice(0, 5).map((term) => (
+          <div key={term.id} style={{ display: "flex", gap: 8, alignItems: "center", justifyContent: "space-between", border: "1px solid var(--astra-border)", borderRadius: 10, padding: "8px 10px", marginTop: 8 }}>
+            <span style={{ fontSize: 12, color: "var(--astra-text-secondary)" }}>
+              {term.sourceTerm} → {term.preferredTerm}{term.hostname ? ` · ${term.hostname}` : ""}
+            </span>
+            <button
+              type="button"
+              className="astra-btn-secondary"
+              data-testid={`forget-remembered-term-${term.id}`}
+              onClick={() => onForgetRememberedTerm(term.id)}
+            >
+              Forget
+            </button>
+          </div>
+        ))}
+        {(learningProfile?.excludedHostnames.length ?? 0) > 0 && (
+          <div data-testid="learning-profile-excluded-sites" style={{ ...hintStyle, marginTop: 10 }}>
+            Not learning preferences on: {learningProfile?.excludedHostnames.join(", ")}
+          </div>
+        )}
+      </div>
+
       <div style={fieldGroup}>
         <label htmlFor="options-general-hover-trigger" style={labelStyle}>Hover trigger</label>
         <select
@@ -440,7 +711,7 @@ function GeneralSection({
         <select
           id="options-general-content-scope"
           className="astra-input"
-          value={config.contentScope}
+          value={getContentScopeSelectValue(config.contentScope)}
           onChange={(e) => onChange({ contentScope: e.target.value as ContentScope })}
         >
           {CONTENT_SCOPE_OPTIONS.map((o) => (
@@ -476,7 +747,30 @@ function GeneralSection({
         </label>
       </div>
       <div style={{ ...hintStyle, marginTop: -4, marginBottom: 8 }}>
-        When enabled, sensitive form fields are excluded from translation.
+        When enabled, Astra reduces page context and automatic learning-memory updates for sensitive moments. It is not a local-only guarantee: requested translation text may still be sent to managed AI services.
+      </div>
+
+      <div className="astra-card" data-testid="privacy-data-controls-card" style={{ marginBottom: 20 }}>
+        <h3 className="astra-section-subheading">Privacy & data controls</h3>
+        <div style={{ ...hintStyle, marginBottom: 12 }}>
+          Astra keeps saved learning data user-controlled: export it, delete saved items and source records, disable sync for sources, or follow the account-deletion help path. Support reports stay metadata-only by default.
+        </div>
+        <ul style={{ ...hintStyle, margin: "0 0 12px 18px", padding: 0 }}>
+          <li>Export learning data from Vocabulary as JSON; full webpages and full transcripts are not intentionally included.</li>
+          <li>Delete saved words, sentences, source records, and related review cards from the Library controls.</li>
+          <li>For account data deletion, use Diagnostics to send a metadata-only account request until self-serve deletion ships.</li>
+        </ul>
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+          <button type="button" className="astra-btn-secondary" data-testid="privacy-export-learning-data-link" onClick={() => onNavigate("vocabulary")}>
+            Export learning data
+          </button>
+          <button type="button" className="astra-btn-secondary" data-testid="privacy-delete-learning-data-link" onClick={() => onNavigate("vocabulary")}>
+            Manage saved learning data
+          </button>
+          <button type="button" className="astra-btn-secondary" data-testid="privacy-account-delete-help-link" onClick={() => onNavigate("diagnostics")}>
+            Account deletion help
+          </button>
+        </div>
       </div>
 
       <div style={{ ...fieldGroup, marginTop: 28 }}>
@@ -506,7 +800,7 @@ function GeneralSection({
             disabled={!config.tts.enabled}
             onChange={(e) => onTtsChange({ engine: e.target.value as "browser" | "edge", voiceName: undefined })}
           >
-            <option value="browser">Browser (Web Speech API)</option>
+            <option value="browser">Browser speech</option>
             <option value="edge">Edge TTS (Neural voices)</option>
           </select>
           <div style={hintStyle}>
@@ -614,129 +908,91 @@ function GeneralSection({
 
 function ProvidersSection({
   config,
-  onProviderChange,
+  onConfigChange,
 }: {
   config: AstraConfig
-  onProviderChange: (patch: Partial<AstraConfig["provider"]>) => void
+  onConfigChange: (patch: Partial<AstraConfig>) => void
 }) {
-  const providerRows = PROVIDER_OPTIONS.map((provider) => {
-    const active = provider.value === config.provider.id
-    const model = active ? (config.provider.model || getDefaultProviderModel(provider.value)) : getDefaultProviderModel(provider.value)
-    const hasDirectKey = active && Boolean(config.provider.apiKey?.trim())
-    const hasRelay = active && Boolean(config.provider.relayBaseURL?.trim())
-    const hasManagedToken = active && Boolean(config.provider.accessToken?.trim())
-    const status: "active" | "configured" | "off" = active
-      ? "active"
-      : "off"
-    const statusLabel = active
-      ? (hasDirectKey || hasRelay || hasManagedToken ? "Active" : "Selected · needs access")
-      : "Not configured"
-    const routeLabel = active
-      ? hasDirectKey
-        ? "Direct API key"
-        : hasRelay || hasManagedToken
-          ? "Astra relay"
-          : "Add a key or relay URL"
-      : "Select to configure"
-
-    return {
-      value: provider.value,
-      label: provider.label,
-      model,
-      active,
-      status,
-      statusLabel,
-      routeLabel,
-    }
-  })
+  const selectedMode = SERVICE_MODE_OPTIONS.find((option) => option.value === config.serviceMode)
+    ?? SERVICE_MODE_OPTIONS[0]
 
   return (
     <div className="astra-settings-section">
       <SectionHeader
-        eyebrow="Engine · AI providers"
-        headline="Which model does the heavy lifting"
-        intro="Astra can talk to any compatible relay or call Google Translate, OpenAI, or Gemini directly with your own key. The active model lives next to every translation row."
+        eyebrow="Astra AI · managed service"
+        headline="Astra chooses the best path automatically"
+        intro="Customers do not need to understand AI settings. Astra balances speed, accuracy, reliability, and cost behind the scenes."
       />
 
-      <h2 className="astra-section-heading astra-sr-only">Providers</h2>
+      <h2 className="astra-section-heading astra-sr-only">Astra AI</h2>
 
-      <div className="astra-settings-provider-list" style={{ marginBottom: "var(--astra-space-5)" }} data-testid="options-provider-status-list">
-        {providerRows.map((provider) => (
-          <div key={provider.value} className="astra-settings-provider-row">
-            <span className="astra-settings-provider-row__initial" aria-hidden="true">{provider.label[0]}</span>
-            <div className="astra-settings-provider-row__body">
-              <div className="astra-settings-provider-row__title">{provider.label}</div>
-              <div className="astra-settings-provider-row__model">{provider.model} · {provider.routeLabel}</div>
-            </div>
-            <div className="astra-settings-provider-row__actions">
-              <span className="astra-settings-provider-status" data-status={provider.status}>{provider.statusLabel}</span>
-              <button
-                type="button"
-                className="astra-settings-provider-row__edit"
-                disabled={provider.active}
-                onClick={() => onProviderChange({ id: provider.value, model: getDefaultProviderModel(provider.value) })}
-              >
-                {provider.active ? "Editing below" : "Use provider"}
-                {!provider.active && <span aria-hidden="true">›</span>}
-              </button>
+      <div className="astra-group-card astra-group-card--padded" style={{ marginBottom: "var(--astra-space-5)", display: "grid", gap: 10 }}>
+        <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "flex-start" }}>
+          <div>
+            <div className="astra-quiet-eyebrow">Default experience</div>
+            <div style={{ fontSize: 18, lineHeight: 1.25, fontWeight: 800, color: "var(--astra-text-primary)", marginTop: 3 }}>
+              Zero setup. Just sign in and read.
             </div>
           </div>
-        ))}
-      </div>
-
-      <div style={fieldGroup}>
-        <label htmlFor="options-provider-id" style={labelStyle}>Provider</label>
-        <select
-          id="options-provider-id"
-          className="astra-input"
-          value={config.provider.id}
-          onChange={(e) => {
-            const id = e.target.value as ProviderId
-            onProviderChange({ id, model: getDefaultProviderModel(id) })
-          }}
-        >
-          {PROVIDER_OPTIONS.map((o) => (
-            <option key={o.value} value={o.value}>{o.label}</option>
-          ))}
-        </select>
-      </div>
-
-      <div style={fieldGroup}>
-        <label htmlFor="options-provider-api-key" style={labelStyle}>API key</label>
-        <input
-          id="options-provider-api-key"
-          type="password"
-          className="astra-input"
-          value={config.provider.apiKey ?? ""}
-          onChange={(e) => onProviderChange({ apiKey: e.target.value })}
-          placeholder={getProviderApiKeyPlaceholder(config.provider.id)}
-        />
-        <div style={hintStyle}>
-          With an API key, requests go directly to {getProviderDirectServiceName(config.provider.id)} -- no Astra account required.
+          <span className="astra-settings-pill">Astra Managed</span>
+        </div>
+        <div style={{ fontSize: 13, lineHeight: 1.55, color: "var(--astra-text-secondary)" }}>
+          During the free public beta, Astra includes translation, explanation, and learning assistance without technical setup. Astra automatically switches between faster and more accurate service paths depending on the page and task.
+        </div>
+        <div style={{ display: "grid", gap: 8 }}>
+          <div className="astra-settings-row" style={{ margin: 0 }}>
+            <div className="astra-settings-row__body">
+              <p className="astra-settings-row__title">{selectedMode.label} service</p>
+              <p className="astra-settings-row__hint">{selectedMode.hint}</p>
+            </div>
+            <span className="astra-settings-pill">No setup</span>
+          </div>
+          <div className="astra-settings-row" style={{ margin: 0 }}>
+            <div className="astra-settings-row__body">
+              <p className="astra-settings-row__title">Quality upgrades happen in the background</p>
+              <p className="astra-settings-row__hint">Long articles, hard sentences, and learning cards can use a more precise path without asking the user to choose.</p>
+            </div>
+          </div>
         </div>
       </div>
 
-      <div style={fieldGroup}>
-        <label htmlFor="options-provider-relay-url" style={labelStyle}>Relay URL</label>
-        <input
-          id="options-provider-relay-url"
-          className="astra-input"
-          value={config.provider.relayBaseURL ?? ""}
-          onChange={(e) => onProviderChange({ relayBaseURL: e.target.value })}
-          placeholder="https://api.astra.example/v1"
-        />
-        <div style={hintStyle}>Optional. Route requests through an Astra relay server.</div>
-      </div>
-
-      <div style={fieldGroup}>
-        <label htmlFor="options-provider-model" style={labelStyle}>Model</label>
-        <input
-          id="options-provider-model"
-          className="astra-input"
-          value={config.provider.model}
-          onChange={(e) => onProviderChange({ model: e.target.value })}
-          placeholder={getDefaultProviderModel(config.provider.id)}
-        />
+      <div className="astra-group-card astra-group-card--padded" style={{ display: "grid", gap: 12 }}>
+        <div>
+          <div className="astra-quiet-eyebrow">Service preference</div>
+          <div style={{ fontSize: 16, lineHeight: 1.3, fontWeight: 800, color: "var(--astra-text-primary)", marginTop: 3 }}>
+            Choose a simple reading style — not technical setup.
+          </div>
+          <div style={{ fontSize: 13, lineHeight: 1.55, color: "var(--astra-text-secondary)", marginTop: 6 }}>
+            Astra still handles the technical choices, retries, and upgrades for you. This only tells Astra what kind of experience you prefer.
+          </div>
+        </div>
+        <div className="astra-settings-rows" style={{ gap: 8 }}>
+          {SERVICE_MODE_OPTIONS.map((option) => {
+            const checked = config.serviceMode === option.value
+            return (
+              <button
+                key={option.value}
+                type="button"
+                className="astra-settings-row"
+                aria-pressed={checked}
+                onClick={() => onConfigChange({ serviceMode: option.value })}
+                style={{
+                  margin: 0,
+                  textAlign: "left",
+                  borderColor: checked ? "var(--astra-accent-primary)" : undefined,
+                  background: checked ? "color-mix(in srgb, var(--astra-accent-primary) 8%, var(--astra-surface))" : undefined,
+                  cursor: "pointer",
+                }}
+              >
+                <div className="astra-settings-row__body">
+                  <p className="astra-settings-row__title">{option.label}</p>
+                  <p className="astra-settings-row__hint">{option.hint}</p>
+                </div>
+                {checked && <span className="astra-settings-pill">Selected</span>}
+              </button>
+            )
+          })}
+        </div>
       </div>
     </div>
   )
@@ -753,14 +1009,13 @@ function TranslationSection({
 }) {
   const previewSource = "The afternoon light slipped between the columns and rested on the open page."
   const previewTarget = "下午的光线从立柱之间穿过，停在翻开的书页上。"
-  const activeModel = config.provider.model || getDefaultProviderModel(config.provider.id)
 
   return (
     <div className="astra-settings-section">
       <SectionHeader
         eyebrow="Reading · Translation"
         headline="How Astra translates the page"
-        intro="Quiet rails that keep the source visible while the model whispers an alternate reading. Every control here also accepts per-site overrides under Sites."
+        intro="Quiet reading controls that keep the source visible while Astra adds an alternate reading. Every control here also accepts per-site overrides under Sites."
       />
 
       <div className="astra-settings-rows">
@@ -794,7 +1049,7 @@ function TranslationSection({
             <select
               id="options-translation-range"
               className="astra-input"
-              value={config.contentScope}
+                value={getContentScopeSelectValue(config.contentScope)}
               onChange={(e) => onConfigChange({ contentScope: e.target.value as ContentScope })}
             >
               {CONTENT_SCOPE_OPTIONS.map((o) => (
@@ -930,10 +1185,9 @@ function TranslationSection({
         <div className="astra-settings-row">
           <div className="astra-settings-row__body">
             <p className="astra-settings-row__title">AI smart context</p>
-            <p className="astra-settings-row__hint">Send surrounding paragraphs so the model nails ambiguous pronouns. Translation requests run on:</p>
+            <p className="astra-settings-row__hint">Let Astra include nearby paragraphs so ambiguous pronouns, terms, and tone are handled more accurately.</p>
           </div>
           <div className="astra-settings-row__control">
-            <span className="astra-settings-pill" title={`Provider · ${config.provider.id}`}>{activeModel}</span>
             <span className="astra-settings-toggle">
               <input
                 id="options-translation-input"
@@ -983,10 +1237,6 @@ function hasAdvancedRules(siteConfig: SiteConfig): boolean {
     || siteConfig.paragraphMinLength != null
 }
 
-function hasProviderOverride(siteConfig: SiteConfig): boolean {
-  return !!siteConfig.provider?.id || !!siteConfig.provider?.model
-}
-
 function siteControlId(hostname: string, field: string): string {
   return `options-site-${encodeURIComponent(hostname)}-${field}`
 }
@@ -1014,8 +1264,6 @@ function SitesSection({
   const [importText, setImportText] = useState("")
 
   type SitePresentationOverride = NonNullable<SiteConfig["presentation"]>
-  type SiteProviderOverride = NonNullable<SiteConfig["provider"]>
-
   useEffect(() => {
     const entries = Object.entries(config.sites)
     setSelectorDrafts(Object.fromEntries(entries.map(([hostname, siteConfig]) => [hostname, toMultilineValue(siteConfig.selectors)])))
@@ -1062,26 +1310,6 @@ function SitesSection({
     })
   }
 
-  const mutateSiteProvider = <K extends keyof SiteProviderOverride>(
-    hostname: string,
-    key: K,
-    value: SiteProviderOverride[K] | undefined,
-  ) => {
-    mutateSite(hostname, (current) => {
-      const nextProvider = { ...(current.provider ?? {}) }
-      if (value === undefined || value === "") {
-        delete nextProvider[key]
-      } else {
-        nextProvider[key] = value
-      }
-
-      const { provider: _provider, ...siteWithoutProvider } = current
-      return Object.keys(nextProvider).length > 0
-        ? { ...siteWithoutProvider, provider: nextProvider }
-        : siteWithoutProvider
-    })
-  }
-
   const addSite = () => {
     const key = normalizeSiteKey(newSiteKey)
     if (!key) return
@@ -1099,7 +1327,7 @@ function SitesSection({
       <SectionHeader
         eyebrow="Reading · Sites & rules"
         headline="Tune Astra per site"
-        intro="Per-site rules override global settings — pick which sites get auto-translation, swap models per host, or keep specific selectors out of the reading flow."
+        intro="Per-site rules override global settings — pick which sites get auto-translation, choose a reading style, or keep specific selectors out of the reading flow."
       />
 
       <h2 className="astra-section-heading astra-sr-only">Sites</h2>
@@ -1209,11 +1437,6 @@ function SitesSection({
                   advanced
                 </span>
               )}
-              {hasProviderOverride(siteConfig) && (
-                <span style={{ marginLeft: 8, fontSize: 11, color: "#7c3aed", background: "#f3e8ff", padding: "2px 6px", borderRadius: 4 }}>
-                  provider
-                </span>
-              )}
             </div>
             <div style={{ display: "flex", gap: 6 }}>
               <button
@@ -1313,7 +1536,7 @@ function SitesSection({
                   id={siteControlId(hostname, "content-scope")}
                   className="astra-input"
                   style={{ maxWidth: 220 }}
-                  value={siteConfig.contentScope ?? ""}
+                  value={siteConfig.contentScope ? getContentScopeSelectValue(siteConfig.contentScope) : ""}
                   onChange={(e) => mutateSite(hostname, (current) => {
                     const nextSite = { ...current }
                     if (e.target.value) {
@@ -1329,42 +1552,6 @@ function SitesSection({
                     <option key={o.value} value={o.value}>{o.label}</option>
                   ))}
                 </select>
-              </div>
-              <div style={fieldGroup}>
-                <label htmlFor={siteControlId(hostname, "provider-id")} style={labelStyle}>Provider override</label>
-                <select
-                  id={siteControlId(hostname, "provider-id")}
-                  className="astra-input"
-                  style={{ maxWidth: 220 }}
-                  value={siteConfig.provider?.id ?? ""}
-                  onChange={(e) => mutateSiteProvider(
-                    hostname,
-                    "id",
-                    e.target.value ? e.target.value as ProviderId : undefined,
-                  )}
-                >
-                  <option value="">Use global provider ({config.provider.id})</option>
-                  {PROVIDER_OPTIONS.map((o) => (
-                    <option key={o.value} value={o.value}>{o.label}</option>
-                  ))}
-                </select>
-                <div style={hintStyle}>Provider changes use relay routing unless the global direct key belongs to the same provider.</div>
-              </div>
-              <div style={fieldGroup}>
-                <label htmlFor={siteControlId(hostname, "provider-model")} style={labelStyle}>Model override</label>
-                <input
-                  id={siteControlId(hostname, "provider-model")}
-                  className="astra-input"
-                  style={{ maxWidth: 320 }}
-                  value={siteConfig.provider?.model ?? ""}
-                  onChange={(e) => mutateSiteProvider(
-                    hostname,
-                    "model",
-                    e.target.value.trim() || undefined,
-                  )}
-                  placeholder={siteConfig.provider?.id ? getDefaultProviderModel(siteConfig.provider.id) : config.provider.model}
-                />
-                <div style={hintStyle}>Blank inherits the global model, or the selected provider default when provider is overridden.</div>
               </div>
               <div style={fieldGroup}>
                 <label htmlFor={siteControlId(hostname, "presentation-mode")} style={labelStyle}>Presentation mode override</label>
@@ -1815,6 +2002,7 @@ function VocabularySection() {
   const [cacheInfo, setCacheInfo] = useState<string>("Loading...")
   const [learningLoopSummary, setLearningLoopSummary] = useState<string>(t("options_learningLoopLoading"))
   const [learningLoopEvents, setLearningLoopEvents] = useState<Array<{ id: string, summary: string, relativeTime: string }>>([])
+  const [learningExportStatus, setLearningExportStatus] = useState<{ type: "success" | "error"; message: string } | null>(null)
 
   const refreshCacheInfo = async () => {
     try {
@@ -1823,16 +2011,12 @@ function VocabularySection() {
         getCacheStats(),
       ])
       const localStorageUsage = typeof bytes === "number"
-        ? `${(bytes / 1024).toFixed(1)} KB local storage usage`
-        : "local storage usage unavailable"
-      const hitRate = stats.lookups > 0 ? `${(stats.hitRate * 100).toFixed(0)}%` : "n/a"
-      const hottestBucket = stats.buckets[0]
-      const hottestLabel = hottestBucket
-        ? `${hottestBucket.providerId}/${hottestBucket.model}`
-        : "no buckets yet"
-      setCacheInfo(`${localStorageUsage} · ${stats.count} cached items · ${stats.lookups} lookups · ${hitRate} hit rate · top bucket ${hottestLabel}`)
+        ? `${(bytes / 1024).toFixed(1)} KB saved locally`
+        : "local save estimate unavailable"
+      const reuseRate = stats.lookups > 0 ? `${(stats.hitRate * 100).toFixed(0)}%` : "n/a"
+      setCacheInfo(`${localStorageUsage} · ${stats.count} saved translations · ${stats.lookups} checks · ${reuseRate} reuse rate`)
     } catch {
-      setCacheInfo("Cache telemetry unavailable")
+      setCacheInfo("Saved translation stats unavailable")
     }
   }
 
@@ -1900,6 +2084,23 @@ function VocabularySection() {
     }
   }
 
+  const exportLearningData = async () => {
+    try {
+      setLearningExportStatus(null)
+      const payload = await buildLearningDataExport()
+      downloadConfigFile(
+        stringifyLearningDataExport(payload),
+        `astra-learning-data-${new Date(payload.generatedAt).toISOString().slice(0, 10)}.json`,
+      )
+      setLearningExportStatus({
+        type: "success",
+        message: `Exported ${payload.summary.savedSnippetCount} saved snippet${payload.summary.savedSnippetCount === 1 ? "" : "s"} and ${payload.summary.reviewCardCount} review card${payload.summary.reviewCardCount === 1 ? "" : "s"}.`,
+      })
+    } catch {
+      setLearningExportStatus({ type: "error", message: "Learning data export failed." })
+    }
+  }
+
   return (
     <div className="astra-settings-section">
       <SectionHeader
@@ -1917,6 +2118,39 @@ function VocabularySection() {
         </div>
         <button type="button" className="astra-btn-primary" onClick={openVocabulary}>
           Open vocabulary
+        </button>
+      </div>
+
+      <div className="astra-card" data-testid="learning-data-export-card">
+        <div style={{ marginBottom: 12 }}>
+          <strong>Export learning data</strong>
+          <div style={hintStyle}>
+            Download your saved snippets, review cards, reading queue, reading history, and local study progress as JSON. This export is user-initiated and does not intentionally include full webpages or full transcripts.
+          </div>
+        </div>
+        {learningExportStatus && (
+          <div
+            role="status"
+            aria-live={learningExportStatus.type === "error" ? "assertive" : "polite"}
+            data-testid="learning-data-export-status"
+            style={{
+              ...successBanner,
+              marginBottom: 12,
+              ...(learningExportStatus.type === "error"
+                ? { background: "#fef2f2", color: "#dc2626", borderColor: "#fecaca" }
+                : {}),
+            }}
+          >
+            {learningExportStatus.message}
+          </div>
+        )}
+        <button
+          type="button"
+          className="astra-btn-primary"
+          data-testid="export-learning-data-btn"
+          onClick={() => void exportLearningData()}
+        >
+          Export learning data
         </button>
       </div>
 
@@ -1963,9 +2197,18 @@ function VocabularySection() {
 }
 
 function DiagnosticsSection({ config }: { config: AstraConfig }) {
+  const [activationDashboard, setActivationDashboard] = useState<LearningLoopActivationDashboard>(() => aggregateLearningLoopActivationDashboard([]))
+  const [learningDashboard, setLearningDashboard] = useState<LearningLoopLearningDashboard>(() => aggregateLearningLoopLearningDashboard([]))
+  const [retentionDashboard, setRetentionDashboard] = useState<LearningLoopRetentionDashboard>(() => aggregateLearningLoopRetentionDashboard([]))
+  const [upgradePromptDashboard, setUpgradePromptDashboard] = useState<LearningLoopUpgradePromptDashboard>(() => aggregateLearningLoopUpgradePromptDashboard([]))
   const [learningLoopFunnel, setLearningLoopFunnel] = useState<LearningLoopFunnelAggregation>(() => aggregateLearningLoopFunnel([]))
   const [learningLoopFunnelStatus, setLearningLoopFunnelStatus] = useState("Loading local funnel telemetry...")
   const [learningLoopAutoSelection, setLearningLoopAutoSelection] = useState<LearningLoopCopyVariantAutoSelectionStatus | null>(null)
+  const [supportBundleStatus, setSupportBundleStatus] = useState<{ type: "success" | "error"; message: string } | null>(null)
+  const [supportIssueCategory, setSupportIssueCategory] = useState<SupportBundleIssueCategory>("translation_quality")
+  const [supportFeatureSurface, setSupportFeatureSurface] = useState<SupportBundleFeatureSurface>("page")
+  const [cancellationReason, setCancellationReason] = useState<AstraCancellationReason>("did_not_use_it")
+  const [cancellationReasonStatus, setCancellationReasonStatus] = useState<string | null>(null)
 
   useEffect(() => {
     let mounted = true
@@ -1973,9 +2216,17 @@ function DiagnosticsSection({ config }: { config: AstraConfig }) {
     void getRecentEvents(200)
       .then(async (events) => {
         if (!mounted) return
+        const activation = aggregateLearningLoopActivationDashboard(events)
+        const learning = aggregateLearningLoopLearningDashboard(events)
+        const retention = aggregateLearningLoopRetentionDashboard(events)
+        const upgradePrompt = aggregateLearningLoopUpgradePromptDashboard(events)
         const aggregation = aggregateLearningLoopFunnel(events)
         const autoSelection = await getLearningLoopCopyVariantAutoSelectionStatus(events)
         if (!mounted) return
+        setActivationDashboard(activation)
+        setLearningDashboard(learning)
+        setRetentionDashboard(retention)
+        setUpgradePromptDashboard(upgradePrompt)
         setLearningLoopFunnel(aggregation)
         setLearningLoopAutoSelection(autoSelection)
         setLearningLoopFunnelStatus(
@@ -1986,6 +2237,10 @@ function DiagnosticsSection({ config }: { config: AstraConfig }) {
       })
       .catch(() => {
         if (!mounted) return
+        setActivationDashboard(aggregateLearningLoopActivationDashboard([]))
+        setLearningDashboard(aggregateLearningLoopLearningDashboard([]))
+        setRetentionDashboard(aggregateLearningLoopRetentionDashboard([]))
+        setUpgradePromptDashboard(aggregateLearningLoopUpgradePromptDashboard([]))
         setLearningLoopFunnel(aggregateLearningLoopFunnel([]))
         setLearningLoopAutoSelection(null)
         setLearningLoopFunnelStatus("Learning-loop funnel telemetry unavailable.")
@@ -1996,107 +2251,441 @@ function DiagnosticsSection({ config }: { config: AstraConfig }) {
     }
   }, [])
 
-  const diag = diagnoseProvider({
-    providerId: config.provider.id,
-    model: config.provider.model,
-    apiKey: config.provider.apiKey ?? "",
-    accessToken: config.provider.accessToken ?? "",
-    relayBaseURL: config.provider.relayBaseURL,
-  })
-
-  const capability = PROVIDER_CAPABILITIES[config.provider.id]
-
-  const statusColors: Record<ProviderDiagnostics["status"], string> = {
-    connected: "#16a34a",
-    partial: "#d97706",
-    disconnected: "#dc2626",
-  }
-
   const autoSelectionCurrent = learningLoopAutoSelection?.candidates.find((candidate) => candidate.variant === learningLoopAutoSelection.currentVariant)
   const autoSelectionWinner = learningLoopAutoSelection?.candidates.find((candidate) => candidate.variant === learningLoopAutoSelection.winnerVariant)
+  const buildCurrentSupportBundle = (timestamp: Date | string = new Date()) => buildSupportBundle({
+    extensionVersion: browser.runtime.getManifest?.()?.version ?? "0.1.0",
+    browser: detectBrowserLabel(),
+    os: detectOsLabel(),
+    locale: typeof navigator === "undefined" ? "unknown" : navigator.language,
+    featureSurface: supportFeatureSurface,
+    action: "report_issue",
+    issueCategory: supportIssueCategory,
+    runtimeSurface: "options_diagnostics",
+    timestamp,
+    privacyMode: config.privacyMode,
+    membershipState: "unknown",
+    userMessageIncluded: false,
+    contactIncluded: false,
+  })
+
+  const supportPreviewBundle = buildCurrentSupportBundle("2026-05-27T00:00:00.000Z")
+
+  const exportSupportBundle = () => {
+    try {
+      setSupportBundleStatus(null)
+      const bundle = buildCurrentSupportBundle()
+      downloadConfigFile(
+        JSON.stringify(bundle, null, 2),
+        `astra-support-bundle-${new Date(bundle.timestamp).toISOString().slice(0, 10)}.json`,
+      )
+      setSupportBundleStatus({ type: "success", message: describeSupportBundle(bundle) })
+    } catch {
+      setSupportBundleStatus({ type: "error", message: "Support bundle export failed." })
+    }
+  }
+
+  const submitCancellationReason = async () => {
+    const storedSession = await readAstraSession().catch(() => null)
+    const submission = buildAstraCancellationReasonSubmission({
+      reason: cancellationReason,
+      plan: storedSession?.plan ?? "unknown",
+      source: "settings",
+    })
+
+    recordLearningLoopEvent("cancellation_reason_submitted", {
+      source: submission.source,
+      reason: submission.reason,
+      plan: submission.plan,
+    })
+
+    if (storedSession?.sessionToken && storedSession.deviceId && storedSession.relayBaseURL) {
+      try {
+        await submitAstraCancellationReason({
+          baseURL: storedSession.relayBaseURL,
+          sessionToken: storedSession.sessionToken,
+          deviceId: storedSession.deviceId,
+          reason: submission.reason,
+          source: submission.source,
+        })
+        setCancellationReasonStatus("Thanks — saved to Astra support metadata. No page text, learning content, or personal note was included.")
+        return
+      } catch {
+        // Keep local metadata feedback even if the relay is unavailable.
+      }
+    }
+
+    setCancellationReasonStatus("Thanks — saved locally as metadata-only feedback. No page text, learning content, or personal note was included.")
+  }
+
+  const submitSupportBundle = async () => {
+    try {
+      setSupportBundleStatus(null)
+      const storedSession = await readAstraSession()
+      if (!storedSession?.sessionToken || !storedSession.deviceId) {
+        setSupportBundleStatus({
+          type: "error",
+          message: "Sign in to submit a metadata report to Astra support, or use Download support info to keep a local copy.",
+        })
+        return
+      }
+
+      const bundle = buildCurrentSupportBundle()
+      const result = await submitAstraSupportReport({
+        baseURL: storedSession.relayBaseURL,
+        sessionToken: storedSession.sessionToken,
+        deviceId: storedSession.deviceId,
+        bundle,
+      })
+      if (result.report.knownIssue) {
+        recordLearningLoopEvent("known_issue_viewed", {
+          source: "options_diagnostics",
+          issueId: result.report.knownIssue.issueId,
+          status: result.report.knownIssue.status,
+          surface: result.report.knownIssue.featureSurface,
+        })
+      }
+      setSupportBundleStatus({
+        type: "success",
+        message: [
+          `Submitted metadata report ${result.report.reportId}.`,
+          result.report.knownIssue ? describeKnownIssueForUser(result.report.knownIssue) : null,
+          describeSupportBundle(bundle),
+        ].filter(Boolean).join("\n"),
+      })
+    } catch {
+      setSupportBundleStatus({ type: "error", message: "Support report submission failed. You can still download the metadata-only JSON and send it manually." })
+    }
+  }
 
   return (
     <div className="astra-settings-section">
       <SectionHeader
-        eyebrow="Engine · Diagnostics"
+        eyebrow="Astra · Diagnostics"
         headline="What Astra sees from this device"
-        intro="Provider status, the local learning-loop A/B funnel, and recent telemetry — all visible only to you, on this machine."
+        intro="Local learning-loop telemetry and support details — visible only to you, on this machine."
       />
 
       <h2 className="astra-section-heading astra-sr-only">Diagnostics</h2>
 
-      <div className="astra-card">
-        <h3 style={{ fontSize: 16, fontWeight: 600, marginBottom: 12, color: "var(--astra-text-primary)" }}>{t("options_diagProviderStatus")}</h3>
-
-        <div style={{
-          display: "flex",
-          alignItems: "center",
-          gap: 8,
-          padding: "10px 14px",
-          background: "var(--astra-bg-primary)",
-          borderRadius: 8,
-          border: "1px solid var(--astra-border)",
-        }}
-        >
-          <span style={{
-            width: 10,
-            height: 10,
-            borderRadius: "50%",
-            background: statusColors[diag.status],
-            flexShrink: 0,
-          }}
-          />
-          <div>
-            <div style={{ fontSize: 14, fontWeight: 600, color: "var(--astra-text-primary)" }}>
-              {diag.providerName} — {diag.modelLabel ?? diag.model}
-            </div>
-            <div style={{ fontSize: 12, color: "var(--astra-text-muted)", marginTop: 2 }}>
-              {t("options_diagDirect")} {diag.directAccess ? t("options_diagYes") : t("options_diagNo")} · {t("options_diagRelay")} {diag.relayAccess ? t("options_diagYes") : t("options_diagNo")} · {t("options_diagCostPerPage")} {diag.estimatedCostPerPage}
-            </div>
-          </div>
+      <div className="astra-card" data-testid="support-bundle-card">
+        <h3 className="astra-section-subheading">Report a problem</h3>
+        <div style={hintStyle}>
+          Submit or download a metadata-only report bundle for support. It contains version, browser, OS, locale, feature surface, issue category, Privacy Mode state, and timestamp — no page text, saved snippets, transcripts, screenshots, or user input.
         </div>
-
-        <div style={{ marginTop: 16 }}>
-          <h4 style={{ fontSize: 13, fontWeight: 600, color: "var(--astra-text-secondary)", marginBottom: 8 }}>{t("options_diagTransportRoutes")}</h4>
-          <div style={{ display: "flex", gap: 8 }}>
-            <div style={{
-              flex: 1,
-              padding: "8px 12px",
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: 10, marginTop: 12 }}>
+          <label style={{ display: "grid", gap: 6, fontSize: 12, fontWeight: 700, color: "var(--astra-text-secondary)" }}>
+            What happened?
+            <select
+              className="astra-input"
+              data-testid="support-issue-category-select"
+              value={supportIssueCategory}
+              onChange={(event) => setSupportIssueCategory(event.target.value as SupportBundleIssueCategory)}
+            >
+              <option value="translation_quality">Translation quality</option>
+              <option value="page_not_working">Page not working</option>
+              <option value="video_subtitles">Video subtitles</option>
+              <option value="file_reader">File reader</option>
+              <option value="review_library">Review or Library</option>
+              <option value="account_access">Account access</option>
+              <option value="privacy_question">Privacy question</option>
+              <option value="other">Other</option>
+            </select>
+          </label>
+          <label style={{ display: "grid", gap: 6, fontSize: 12, fontWeight: 700, color: "var(--astra-text-secondary)" }}>
+            Where did it happen?
+            <select
+              className="astra-input"
+              data-testid="support-feature-surface-select"
+              value={supportFeatureSurface}
+              onChange={(event) => setSupportFeatureSurface(event.target.value as SupportBundleFeatureSurface)}
+            >
+              <option value="page">Page translation</option>
+              <option value="video">Video</option>
+              <option value="file">File reader</option>
+              <option value="review">Review</option>
+              <option value="library">Library</option>
+              <option value="account">Account</option>
+              <option value="onboarding">Onboarding</option>
+              <option value="settings">Settings</option>
+            </select>
+          </label>
+        </div>
+        <pre data-testid="support-bundle-preview" style={{ whiteSpace: "pre-wrap", margin: "12px 0", padding: "10px 12px", borderRadius: 8, border: "1px solid var(--astra-border)", background: "var(--astra-bg-elevated)", color: "var(--astra-text-secondary)", fontSize: 12, lineHeight: 1.5 }}>
+          {describeSupportBundle(supportPreviewBundle)}
+        </pre>
+        {supportBundleStatus && (
+          <pre
+            role="status"
+            aria-live={supportBundleStatus.type === "error" ? "assertive" : "polite"}
+            data-testid="support-bundle-status"
+            style={{
+              whiteSpace: "pre-wrap",
+              margin: "12px 0",
+              padding: "10px 12px",
               borderRadius: 8,
               border: "1px solid var(--astra-border)",
-              background: diag.directAccess ? "#f0fdf4" : "#fef2f2",
+              background: supportBundleStatus.type === "error" ? "#fef2f2" : "var(--astra-bg-primary)",
+              color: supportBundleStatus.type === "error" ? "#dc2626" : "var(--astra-text-secondary)",
+              fontSize: 12,
+              lineHeight: 1.5,
             }}
-            >
-              <div style={{ fontSize: 12, fontWeight: 600, color: diag.directAccess ? "#166534" : "#991b1b" }}>
-                {t("options_diagDirectApi")}
-              </div>
-              <div style={{ fontSize: 11, color: "var(--astra-text-muted)", marginTop: 2 }}>
-                {diag.directAccess ? t("options_diagApiKeyConfigured", diag.providerName) : t("options_diagNoApiKey")}
-              </div>
-            </div>
-            <div style={{
-              flex: 1,
-              padding: "8px 12px",
-              borderRadius: 8,
-              border: "1px solid var(--astra-border)",
-              background: diag.relayAccess ? "#f0fdf4" : "#fef2f2",
+          >
+            {supportBundleStatus.message}
+          </pre>
+        )}
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+          <button
+            type="button"
+            className="astra-btn-primary"
+            data-testid="submit-support-bundle-btn"
+            onClick={() => {
+              void submitSupportBundle()
             }}
-            >
-              <div style={{ fontSize: 12, fontWeight: 600, color: diag.relayAccess ? "#166534" : "#991b1b" }}>
-                {t("options_diagAstraRelay")}
-              </div>
-              <div style={{ fontSize: 11, color: "var(--astra-text-muted)", marginTop: 2 }}>
-                {diag.relayAccess ? t("options_diagRelayActive") : t("options_diagNoRelay")}
-              </div>
-            </div>
-          </div>
+          >
+            Submit metadata report
+          </button>
+          <button
+            type="button"
+            className="astra-btn-secondary"
+            data-testid="export-support-bundle-btn"
+            onClick={exportSupportBundle}
+          >
+            Download support info
+          </button>
         </div>
       </div>
 
-      <div className="astra-card" style={{ marginTop: 16 }} data-testid="learning-loop-funnel-card">
+      <div className="astra-card" data-testid="cancellation-reason-card" style={{ marginTop: 16 }}>
+        <h3 className="astra-section-subheading">Leaving or taking a break?</h3>
+        <div style={hintStyle}>
+          If you cancel, pause, or ask for a refund later, Astra records only this normalized reason plus your current plan/source. No page text, saved snippets, transcripts, URL paths, or free-form note is collected here.
+        </div>
+        <label style={{ display: "grid", gap: 6, fontSize: 12, fontWeight: 700, color: "var(--astra-text-secondary)", marginTop: 12 }}>
+          Main reason
+          <select
+            className="astra-input"
+            data-testid="cancellation-reason-select"
+            value={cancellationReason}
+            onChange={(event) => setCancellationReason(event.target.value as AstraCancellationReason)}
+          >
+            {ASTRA_CANCELLATION_REASON_OPTIONS.map((option) => (
+              <option key={option.value} value={option.value}>{option.label}</option>
+            ))}
+          </select>
+        </label>
+        <div style={{ ...hintStyle, marginTop: 8 }}>
+          Product meaning: {ASTRA_CANCELLATION_REASON_OPTIONS.find((option) => option.value === cancellationReason)?.productMeaning ?? "Needs manual review."}
+        </div>
+        {cancellationReasonStatus && (
+          <div
+            role="status"
+            aria-live="polite"
+            data-testid="cancellation-reason-status"
+            style={{ ...successBanner, marginTop: 12 }}
+          >
+            {cancellationReasonStatus}
+          </div>
+        )}
+        <button
+          type="button"
+          className="astra-btn-secondary"
+          data-testid="submit-cancellation-reason-btn"
+          style={{ marginTop: 12 }}
+          onClick={() => {
+            void submitCancellationReason()
+          }}
+        >
+          Save feedback
+        </button>
+      </div>
+
+      <div className="astra-card" data-testid="activation-dashboard-card" style={{ marginTop: 16 }}>
+        <h3 className="astra-section-subheading">Activation dashboard</h3>
+        <div style={hintStyle}>
+          V0 local dashboard for the first 10 minutes: setup completion, first value timing, first save, first review, trial starts, and Pro-value visibility. It uses local event metadata only.
+        </div>
+        <div style={{ ...hintStyle, marginTop: 4 }} data-testid="activation-dashboard-summary">
+          Starts {activationDashboard.activationStartCount} · First value {activationDashboard.firstValueCount} · First saves {activationDashboard.firstSaveCount} · Trial starts {activationDashboard.trialStartedCount} · Pro value seen {activationDashboard.proValueSeenCount}
+        </div>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: 10, marginTop: 12 }}>
+          <div data-testid="activation-dashboard-onboarding" style={{ border: "1px solid var(--astra-border)", borderRadius: 8, padding: "10px 12px", background: "var(--astra-bg-primary)" }}>
+            <strong style={{ fontSize: 13, color: "var(--astra-text-primary)" }}>Onboarding completion</strong>
+            <div style={{ fontSize: 18, fontWeight: 800, color: "var(--astra-text-primary)", marginTop: 4 }}>
+              {formatLearningLoopFunnelRate(activationDashboard.onboardingCompletionRate)}
+            </div>
+            <div style={hintStyle}>
+              Target ≥80% · {formatLearningLoopDashboardStatus(activationDashboard.onboardingCompletionRate, 0.8, "at_least")}
+            </div>
+          </div>
+          <div data-testid="activation-dashboard-first-value" style={{ border: "1px solid var(--astra-border)", borderRadius: 8, padding: "10px 12px", background: "var(--astra-bg-primary)" }}>
+            <strong style={{ fontSize: 13, color: "var(--astra-text-primary)" }}>First value P50</strong>
+            <div style={{ fontSize: 18, fontWeight: 800, color: "var(--astra-text-primary)", marginTop: 4 }}>
+              {formatLearningLoopDurationSeconds(activationDashboard.firstValueP50Seconds)}
+            </div>
+            <div style={hintStyle}>
+              Target &lt;60s · {formatLearningLoopDashboardStatus(activationDashboard.firstValueP50Seconds, 60, "below")}
+            </div>
+          </div>
+          <div data-testid="activation-dashboard-first-save" style={{ border: "1px solid var(--astra-border)", borderRadius: 8, padding: "10px 12px", background: "var(--astra-bg-primary)" }}>
+            <strong style={{ fontSize: 13, color: "var(--astra-text-primary)" }}>First save rate</strong>
+            <div style={{ fontSize: 18, fontWeight: 800, color: "var(--astra-text-primary)", marginTop: 4 }}>
+              {formatLearningLoopFunnelRate(activationDashboard.firstSaveRate)}
+            </div>
+            <div style={hintStyle}>
+              Target ≥25% · {formatLearningLoopDashboardStatus(activationDashboard.firstSaveRate, 0.25, "at_least")}
+            </div>
+          </div>
+          <div data-testid="activation-dashboard-first-review" style={{ border: "1px solid var(--astra-border)", borderRadius: 8, padding: "10px 12px", background: "var(--astra-bg-primary)" }}>
+            <strong style={{ fontSize: 13, color: "var(--astra-text-primary)" }}>First review completion</strong>
+            <div style={{ fontSize: 18, fontWeight: 800, color: "var(--astra-text-primary)", marginTop: 4 }}>
+              {formatLearningLoopFunnelRate(activationDashboard.firstReviewCompletionRate)}
+            </div>
+            <div style={hintStyle}>
+              Target ≥15% · {formatLearningLoopDashboardStatus(activationDashboard.firstReviewCompletionRate, 0.15, "at_least")}
+            </div>
+          </div>
+        </div>
+        <div style={{ ...hintStyle, marginTop: 10 }} data-testid="activation-dashboard-privacy">
+          {activationDashboard.privacyPolicy}
+        </div>
+      </div>
+
+      <div className="astra-card" data-testid="learning-dashboard-card" style={{ marginTop: 16 }}>
+        <h3 className="astra-section-subheading">Learning dashboard</h3>
+        <div style={hintStyle}>
+          V0 local dashboard for M2/M3 learning-loop health: saves, review completion, reviewable-card proxy, Library opens, source return, continue actions, and saved source mix. It uses local event metadata only.
+        </div>
+        <div style={{ ...hintStyle, marginTop: 4 }} data-testid="learning-dashboard-summary">
+          Saves {learningDashboard.savedItemCount} · Review completed {learningDashboard.reviewCompletedCount} · Source returns {learningDashboard.sourceReturnCount} · Continue actions {learningDashboard.continueLearningCount} · Active days {learningDashboard.activeLearningDaysLast28}/28
+        </div>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: 10, marginTop: 12 }}>
+          <div data-testid="learning-dashboard-saves" style={{ border: "1px solid var(--astra-border)", borderRadius: 8, padding: "10px 12px", background: "var(--astra-bg-primary)" }}>
+            <strong style={{ fontSize: 13, color: "var(--astra-text-primary)" }}>Saved learning assets</strong>
+            <div style={{ fontSize: 18, fontWeight: 800, color: "var(--astra-text-primary)", marginTop: 4 }}>
+              {learningDashboard.savedItemCount}
+            </div>
+            <div style={hintStyle}>
+              Source mix: {formatLearningLoopSourceMix(learningDashboard)}
+            </div>
+          </div>
+          <div data-testid="learning-dashboard-reviewable" style={{ border: "1px solid var(--astra-border)", borderRadius: 8, padding: "10px 12px", background: "var(--astra-bg-primary)" }}>
+            <strong style={{ fontSize: 13, color: "var(--astra-text-primary)" }}>Reviewable-card proxy</strong>
+            <div style={{ fontSize: 18, fontWeight: 800, color: "var(--astra-text-primary)", marginTop: 4 }}>
+              {formatLearningLoopFunnelRate(learningDashboard.reviewableCardProxyRate)}
+            </div>
+            <div style={hintStyle}>
+              Explicit review-card saves {learningDashboard.reviewableCardProxyCount}/{learningDashboard.savedItemCount}
+            </div>
+          </div>
+          <div data-testid="learning-dashboard-review" style={{ border: "1px solid var(--astra-border)", borderRadius: 8, padding: "10px 12px", background: "var(--astra-bg-primary)" }}>
+            <strong style={{ fontSize: 13, color: "var(--astra-text-primary)" }}>Review completion</strong>
+            <div style={{ fontSize: 18, fontWeight: 800, color: "var(--astra-text-primary)", marginTop: 4 }}>
+              {formatLearningLoopFunnelRate(learningDashboard.reviewCompletionRate)}
+            </div>
+            <div style={hintStyle}>
+              Opened {learningDashboard.reviewOpenedCount} · Completed {learningDashboard.reviewCompletedCount} · Answered {learningDashboard.reviewAnsweredCount}
+            </div>
+          </div>
+          <div data-testid="learning-dashboard-library" style={{ border: "1px solid var(--astra-border)", borderRadius: 8, padding: "10px 12px", background: "var(--astra-bg-primary)" }}>
+            <strong style={{ fontSize: 13, color: "var(--astra-text-primary)" }}>Library/source continuity</strong>
+            <div style={{ fontSize: 18, fontWeight: 800, color: "var(--astra-text-primary)", marginTop: 4 }}>
+              {learningDashboard.libraryOpenedCount}
+            </div>
+            <div style={hintStyle}>
+              Library opens · Source returns {learningDashboard.sourceReturnCount} · Continue {learningDashboard.continueLearningCount}
+            </div>
+          </div>
+        </div>
+        <div style={{ ...hintStyle, marginTop: 10 }} data-testid="learning-dashboard-privacy">
+          {learningDashboard.privacyPolicy}
+        </div>
+      </div>
+
+      <div className="astra-card" data-testid="retention-dashboard-card" style={{ marginTop: 16 }}>
+        <h3 className="astra-section-subheading">Retention dashboard</h3>
+        <div style={hintStyle}>
+          V0 local dashboard for review return, Digest follow-through, source return, reminders, Pro repeat value, and cancellation value-risk signals. It uses local event metadata only.
+        </div>
+        <div style={{ ...hintStyle, marginTop: 4 }} data-testid="retention-dashboard-summary">
+          Active days {retentionDashboard.activeLearningDaysLast28}/28 · Active weeks {retentionDashboard.activeLearningWeeksLast4}/4 · Digest views {retentionDashboard.digestViewedCount} · Source returns {retentionDashboard.sourceReturnCount} · Value-risk cancels {retentionDashboard.cancellationValueRiskCount}
+        </div>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: 10, marginTop: 12 }}>
+          <div data-testid="retention-dashboard-review" style={{ border: "1px solid var(--astra-border)", borderRadius: 8, padding: "10px 12px", background: "var(--astra-bg-primary)" }}>
+            <strong style={{ fontSize: 13, color: "var(--astra-text-primary)" }}>Review completion</strong>
+            <div style={{ fontSize: 18, fontWeight: 800, color: "var(--astra-text-primary)", marginTop: 4 }}>
+              {formatLearningLoopFunnelRate(retentionDashboard.reviewCompletionRate)}
+            </div>
+            <div style={hintStyle}>
+              Opened {retentionDashboard.reviewOpenedCount} · Completed {retentionDashboard.reviewCompletedCount} · Answered {retentionDashboard.reviewAnsweredCount}
+            </div>
+          </div>
+          <div data-testid="retention-dashboard-digest" style={{ border: "1px solid var(--astra-border)", borderRadius: 8, padding: "10px 12px", background: "var(--astra-bg-primary)" }}>
+            <strong style={{ fontSize: 13, color: "var(--astra-text-primary)" }}>Digest follow-through</strong>
+            <div style={{ fontSize: 18, fontWeight: 800, color: "var(--astra-text-primary)", marginTop: 4 }}>
+              {formatLearningLoopFunnelRate(retentionDashboard.digestReviewFollowThroughRate)}
+            </div>
+            <div style={hintStyle}>
+              Views {retentionDashboard.digestViewedCount} · Opens {retentionDashboard.digestOpenedCount} · Review/continue {retentionDashboard.digestReviewFollowThroughCount}
+            </div>
+          </div>
+          <div data-testid="retention-dashboard-source-return" style={{ border: "1px solid var(--astra-border)", borderRadius: 8, padding: "10px 12px", background: "var(--astra-bg-primary)" }}>
+            <strong style={{ fontSize: 13, color: "var(--astra-text-primary)" }}>Return to source</strong>
+            <div style={{ fontSize: 18, fontWeight: 800, color: "var(--astra-text-primary)", marginTop: 4 }}>
+              {retentionDashboard.sourceReturnCount}
+            </div>
+            <div style={hintStyle}>
+              Continue actions {retentionDashboard.continueCount} · last 28-day local source-value signal
+            </div>
+          </div>
+          <div data-testid="retention-dashboard-controls" style={{ border: "1px solid var(--astra-border)", borderRadius: 8, padding: "10px 12px", background: "var(--astra-bg-primary)" }}>
+            <strong style={{ fontSize: 13, color: "var(--astra-text-primary)" }}>Retention controls</strong>
+            <div style={{ fontSize: 18, fontWeight: 800, color: "var(--astra-text-primary)", marginTop: 4 }}>
+              {retentionDashboard.reminderControlledCount}
+            </div>
+            <div style={hintStyle}>
+              Reminder dismiss/disable · Win-back sent {retentionDashboard.winbackSentCount} · Pro repeat value {retentionDashboard.proRepeatValueCount}
+            </div>
+          </div>
+        </div>
+        <div style={{ ...hintStyle, marginTop: 10 }} data-testid="retention-dashboard-privacy">
+          {retentionDashboard.privacyPolicy}
+        </div>
+      </div>
+
+      <div className="astra-card" data-testid="upgrade-prompt-observability-card" style={{ marginTop: 16 }}>
+        <h3 className="astra-section-subheading">Upgrade prompt observability</h3>
+        <div style={hintStyle}>
+          Local beta-safe visibility for the popup upgrade-interest prompt. Paid upgrades are not launched; intent clicks only record local interest and do not start checkout, a trial, email capture, or a subscription change.
+        </div>
+        <div style={{ ...hintStyle, marginTop: 4 }} data-testid="upgrade-prompt-observability-summary">
+          Assignments {upgradePromptDashboard.assignments} · Views {upgradePromptDashboard.views} · Intents {upgradePromptDashboard.intents} · Intent rate {formatLearningLoopFunnelRate(upgradePromptDashboard.intentRate)}
+        </div>
+        <div style={{ display: "grid", gap: 8, marginTop: 12 }}>
+          {upgradePromptDashboard.rows.length === 0 ? (
+            <div style={hintStyle}>No local upgrade prompt events yet.</div>
+          ) : upgradePromptDashboard.rows.map((row) => (
+            <div
+              key={`${row.variant}:${row.trigger}`}
+              data-testid={`upgrade-prompt-row-${row.variant}-${row.trigger}`}
+              style={{ border: "1px solid var(--astra-border)", borderRadius: 8, padding: "10px 12px", background: "var(--astra-bg-primary)" }}
+            >
+              <strong style={{ fontSize: 13, color: "var(--astra-text-primary)" }}>{row.variant} · {row.trigger}</strong>
+              <div style={{ fontSize: 12, color: "#334155", marginTop: 6, lineHeight: 1.55 }}>
+                Assignments {row.assignments} · Views {row.views} · Intents {row.intents} · Intent/view {formatLearningLoopFunnelRate(row.intentRate)}
+              </div>
+            </div>
+          ))}
+        </div>
+        <div style={{ ...hintStyle, marginTop: 10 }} data-testid="upgrade-prompt-observability-privacy">
+          {upgradePromptDashboard.privacyPolicy}
+        </div>
+      </div>
+
+      <div className="astra-card" data-testid="learning-loop-funnel-card" style={{ marginTop: 16 }}>
         <h3 className="astra-section-subheading">Local A/B learning funnel</h3>
         <div style={hintStyle}>
-          Uses only this device's local telemetry from the popup primer through Deep Read, explanation, save, and review events. No backend or schema migration is required.
+          Uses only this device's local telemetry from the popup primer through Deep Read, explanation, save, and review events.
         </div>
         <div style={{ ...hintStyle, marginTop: 4 }} data-testid="learning-loop-funnel-status">
           {learningLoopFunnelStatus}
@@ -2163,62 +2752,13 @@ function DiagnosticsSection({ config }: { config: AstraConfig }) {
       </div>
 
       <div className="astra-card" style={{ marginTop: 16 }}>
-        <h3 className="astra-section-subheading">{t("options_diagProviderCapabilities")}</h3>
-
-        <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
-          <thead>
-            <tr style={{ borderBottom: "2px solid var(--astra-border)" }}>
-              <th style={{ textAlign: "left", padding: "6px 8px", color: "var(--astra-text-secondary)" }}>{t("options_diagColModel")}</th>
-              <th style={{ textAlign: "right", padding: "6px 8px", color: "var(--astra-text-secondary)" }}>{t("options_diagColInputCost")}</th>
-              <th style={{ textAlign: "right", padding: "6px 8px", color: "var(--astra-text-secondary)" }}>{t("options_diagColOutputCost")}</th>
-              <th style={{ textAlign: "right", padding: "6px 8px", color: "var(--astra-text-secondary)" }}>{t("options_diagColContext")}</th>
-            </tr>
-          </thead>
-          <tbody>
-            {capability.models.map((model) => (
-              <tr
-                key={model.id}
-                style={{
-                  borderBottom: "1px solid #f1f5f9",
-                  background: model.id === config.provider.model ? "#eff6ff" : "transparent",
-                }}
-              >
-                <td style={{ padding: "6px 8px", color: "var(--astra-text-primary)" }}>
-                  {model.label}
-                  {model.recommended && (
-                    <span style={{ marginLeft: 6, fontSize: 10, color: "#6366f1", fontWeight: 600 }}>{t("options_diagRecommended")}</span>
-                  )}
-                  {model.id === config.provider.model && (
-                    <span style={{ marginLeft: 6, fontSize: 10, color: "#2563eb", fontWeight: 600 }}>{t("options_diagActive")}</span>
-                  )}
-                </td>
-                <td style={{ textAlign: "right", padding: "6px 8px", color: "var(--astra-text-muted)" }}>
-                  {model.inputCostPer1kTokens > 0 ? `$${model.inputCostPer1kTokens}` : t("options_diagFree")}
-                </td>
-                <td style={{ textAlign: "right", padding: "6px 8px", color: "var(--astra-text-muted)" }}>
-                  {model.outputCostPer1kTokens > 0 ? `$${model.outputCostPer1kTokens}` : t("options_diagFree")}
-                </td>
-                <td style={{ textAlign: "right", padding: "6px 8px", color: "var(--astra-text-muted)" }}>
-                  {(model.maxContextTokens / 1000).toFixed(0)}k
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-
-        <div style={{ marginTop: 12, fontSize: 11, color: "var(--astra-text-hint)" }}>
-          {t("options_diagMaxBatch", [String(capability.maxBatchSize), capability.maxInputCharsPerRequest.toLocaleString()])}
-        </div>
-      </div>
-
-      <div className="astra-card" style={{ marginTop: 16 }}>
         <h3 className="astra-section-subheading">{t("options_diagWorkflowConfig")}</h3>
         <div style={{ fontSize: 12, color: "#334155", lineHeight: 1.6 }}>
           <div style={{ marginBottom: 8 }}>
-            <strong>{t("options_diagConnectionMode")}</strong> {config.connectionMode === "astra" ? t("options_diagAstraManaged") : t("options_diagCustomKey")}
+            <strong>Astra AI:</strong> {formatServiceModeLabel(config.serviceMode)}
           </div>
           <div style={{ marginBottom: 8 }}>
-            <strong>Translation scope:</strong> {config.contentScope === "article" ? "Article area only" : "Full page"}
+            <strong>Translation scope:</strong> {formatContentScopeLabel(config.contentScope)}
           </div>
           <div style={{ marginBottom: 8 }}>
             <strong>Hover trigger:</strong> {config.hoverTrigger === "alt" ? "Alt + Hover" : config.hoverTrigger === "always" ? "Always" : "Disabled"}
@@ -2233,7 +2773,7 @@ function DiagnosticsSection({ config }: { config: AstraConfig }) {
             <strong>Privacy mode:</strong> {config.privacyMode ? "On" : "Off"}
           </div>
           <div>
-            <strong>TTS engine:</strong> {config.tts.engine === "edge" ? "Edge TTS (Neural)" : "Browser (Web Speech)"} · Rate: {config.tts.rate}x
+            <strong>Voice:</strong> {config.tts.engine === "edge" ? "Neural voice" : "Browser voice"} · Rate: {config.tts.rate}x
           </div>
         </div>
       </div>
@@ -2630,7 +3170,7 @@ function AboutSection({
 
 export default function OptionsApp() {
   const { astraTheme, astraDirection } = useAstraTheme()
-  const [section, setSection] = useState<Section>("translation")
+  const [section, setSection] = useState<Section>(() => getInitialOptionsSection())
   const [searchQuery, setSearchQuery] = useState("")
   const [config, setConfig] = useState<AstraConfig>(DEFAULT_ASTRA_CONFIG)
   const [availableVoices, setAvailableVoices] = useState<TTSVoiceOption[]>([])
@@ -2643,6 +3183,8 @@ export default function OptionsApp() {
   const [continuityBusy, setContinuityBusy] = useState(false)
   const [continuityActionBusyDeviceId, setContinuityActionBusyDeviceId] = useState<string | null>(null)
   const [pendingRevokeDevice, setPendingRevokeDevice] = useState<PendingRevokeDevice | null>(null)
+  const [learningProfile, setLearningProfile] = useState<LearningProfile | null>(null)
+  const [learningMemoryInventory, setLearningMemoryInventory] = useState<LearningMemoryInventory | null>(null)
   const [saved, setSaved] = useState(false)
   const [dirty, setDirty] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -2692,6 +3234,7 @@ export default function OptionsApp() {
             sessionToken: storedSession.sessionToken,
           })
           session = await saveAstraSession(session)
+          await refreshRemoteFeatureFlagRuntime(session.relayBaseURL).catch(() => undefined)
         } catch (refreshError) {
           const message = refreshError instanceof Error ? refreshError.message : "Failed to refresh continuity status."
           await clearAstraSession()
@@ -2729,14 +3272,27 @@ export default function OptionsApp() {
     }
   }, [])
 
+  const refreshLearningMemoryInventory = useCallback(async () => {
+    try {
+      setLearningMemoryInventory(await buildLearningMemoryInventory())
+    } catch {
+      setLearningMemoryInventory(null)
+    }
+  }, [])
+
   useEffect(() => {
     void (async () => {
       const loadedConfig = await readConfig()
+      const loadedProfile = await readLearningProfile()
       setConfig(loadedConfig)
-      await refreshContinuityState(loadedConfig)
+      setLearningProfile(loadedProfile)
+      await Promise.all([
+        refreshContinuityState(loadedConfig),
+        refreshLearningMemoryInventory(),
+      ])
     })()
     void refreshVoices()
-  }, [refreshContinuityState, refreshVoices])
+  }, [refreshContinuityState, refreshLearningMemoryInventory, refreshVoices])
 
   useEffect(() => {
     if (!continuityDevice) return
@@ -2753,6 +3309,36 @@ export default function OptionsApp() {
     setSaved(false)
     setConfig((current) => ({ ...current, ...patch }))
   }
+
+  const updateLearningProfilePatch = useCallback((patch: Partial<LearningProfile>) => {
+    void (async () => {
+      setError(null)
+      try {
+        const next = await updateLearningProfile(patch)
+        setLearningProfile(next)
+        await refreshLearningMemoryInventory()
+        setSaved(true)
+        setTimeout(() => setSaved(false), 3000)
+      } catch (err) {
+        setError(err instanceof Error ? err.message : "Failed to update learning profile.")
+      }
+    })()
+  }, [refreshLearningMemoryInventory])
+
+  const handleForgetRememberedTerm = useCallback((termId: string) => {
+    void (async () => {
+      setError(null)
+      try {
+        const next = await forgetRememberedTerm(termId)
+        setLearningProfile(next)
+        await refreshLearningMemoryInventory()
+        setSaved(true)
+        setTimeout(() => setSaved(false), 3000)
+      } catch (err) {
+        setError(err instanceof Error ? err.message : "Failed to forget remembered term.")
+      }
+    })()
+  }, [refreshLearningMemoryInventory])
 
   const handleToggleOptionalCollectionSync = useCallback(async (
     collection: "reading_history" | "study_progress",
@@ -2838,15 +3424,6 @@ export default function OptionsApp() {
     void executeRevokeContinuityDevice(pendingRevokeDevice.deviceId)
   }, [continuityActionBusyDeviceId, continuityBusy, executeRevokeContinuityDevice, pendingRevokeDevice])
 
-  const updateProvider = (patch: Partial<AstraConfig["provider"]>) => {
-    setDirty(true)
-    setSaved(false)
-    setConfig((current) => ({
-      ...current,
-      provider: { ...current.provider, ...patch },
-    }))
-  }
-
   const updatePresentation = (patch: Partial<AstraConfig["presentation"]>) => {
     setDirty(true)
     setSaved(false)
@@ -2883,6 +3460,7 @@ export default function OptionsApp() {
         contentScope: config.contentScope,
         inputTranslation: config.inputTranslation,
         languageLevel: config.languageLevel,
+        serviceMode: config.serviceMode,
         privacyMode: config.privacyMode,
         provider: {
           id: config.provider.id,
@@ -2895,12 +3473,19 @@ export default function OptionsApp() {
         sites: config.sites,
         customActions: config.customActions,
       })
+      const nextProfile = await updateLearningProfile({
+        targetLang: nextConfig.targetLang,
+        languageLevel: nextConfig.languageLevel,
+        explainMode: nextConfig.explainMode,
+      })
       setConfig(nextConfig)
+      setLearningProfile(nextProfile)
+      await refreshLearningMemoryInventory()
       setDirty(false)
       setSaved(true)
       setTimeout(() => setSaved(false), 3000)
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to save settings")
+      setError(getSafeSettingsSaveError(err))
     }
   }
 
@@ -2916,10 +3501,15 @@ export default function OptionsApp() {
             loadingVoices={loadingVoices}
             ttsSupported={ttsSupported}
             onRefreshVoices={() => void refreshVoices()}
+            learningProfile={learningProfile}
+            learningMemoryInventory={learningMemoryInventory}
+            onLearningProfileChange={updateLearningProfilePatch}
+            onForgetRememberedTerm={handleForgetRememberedTerm}
+            onNavigate={setSection}
           />
         )
       case "providers":
-        return <ProvidersSection config={config} onProviderChange={updateProvider} />
+        return <ProvidersSection config={config} onConfigChange={updateConfig} />
       case "translation":
         return (
           <TranslationSection
@@ -3082,8 +3672,20 @@ export default function OptionsApp() {
           )}
 
           <div className="astra-settings-body">
-            {saved && <Toast variant="success">Settings saved.</Toast>}
-            {error && <Toast variant="error">{error}</Toast>}
+            {(saved || error) && (
+              <ToastViewport placement="top" aria-label="Settings notifications" className="astra-settings-toast-viewport">
+                {saved && (
+                  <Toast variant="success" title="Saved">
+                    Done — settings saved.
+                  </Toast>
+                )}
+                {error && (
+                  <Toast variant="error" title="Settings update failed">
+                    {error} Next step: try again in a moment.
+                  </Toast>
+                )}
+              </ToastViewport>
+            )}
 
             {renderSection()}
 

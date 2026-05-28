@@ -5,20 +5,24 @@ import {
   createAstraPortalLink,
   createAstraAccountExportJob,
   createAstraCloudDataDeleteJob,
+  deleteAstraCloudLearningMemory,
   fetchAstraAccount,
   fetchAstraAccountSummary,
   fetchAstraAccountExportJob,
+  fetchAstraCloudLearningMemoryInventory,
   fetchAstraContinuitySnapshot,
   fetchAstraDevices,
   fetchAstraSyncBootstrap,
   fetchAstraCloudDataDeleteJob,
   revokeAstraDevice,
   fetchAstraUsageSnapshot,
+  fetchAstraWeeklyDigest,
   pullAstraSyncDeltas,
   pushAstraSyncMutations,
   repairAstraSyncState,
   updateAstraPlan,
   updateAstraSyncCollectionPreference,
+  updateAstraWeeklyDigestPreference,
 } from "./account"
 
 describe("Astra account client", () => {
@@ -327,6 +331,109 @@ describe("Astra account client", () => {
         Authorization: "Bearer astra-session",
         "X-Astra-Device-Id": "device-123",
       },
+    }))
+  })
+
+  it("fetches and deletes cloud learning memory plus updates weekly digest preference", async () => {
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(new Response(JSON.stringify({
+        schema: "astra-cloud-learning-memory-inventory.v1",
+        generatedAt: "2026-05-29T12:00:00.000Z",
+        account: { userId: "usr_demo", identityMode: "authenticated" },
+        collections: [
+          { collection: "vocabulary", enabled: true, defaultEnabled: true, mutationCount: 2, activeCount: 2, cursor: "2", lastUpdatedAt: "2026-05-29T11:00:00.000Z" },
+          { collection: "weekly_digest_archive", enabled: true, defaultEnabled: true, mutationCount: 1, activeCount: 1, cursor: null, lastUpdatedAt: "2026-05-29T12:00:00.000Z" },
+        ],
+        preferences: { reading_history: false, study_progress: false, weekly_digest: true },
+        privacy: {
+          metadataOnly: true,
+          rawContentIncluded: false,
+          rawUrlsIncluded: false,
+          emailsIncluded: false,
+          deviceSessionIdsIncluded: false,
+          syncPayloadBodiesIncluded: false,
+          promptModelOutputsIncluded: false,
+          externalProviderReceiptsIncluded: false,
+          localBrowserDeletionIncluded: false,
+        },
+      }), { status: 200, headers: { "Content-Type": "application/json" } }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({
+        digestId: "digest_2026-05-25",
+        periodStart: "2026-05-25T00:00:00.000Z",
+        periodEnd: "2026-06-01T00:00:00.000Z",
+        reviewedCount: 1,
+        savedCount: 2,
+        sourceBreakdown: [{ type: "page", count: 2 }],
+        highlightedWords: ["word"],
+        highlightedSentences: ["A saved sentence"],
+        nextReviewCount: 3,
+        generatedAt: "2026-05-29T12:00:00.000Z",
+      }), { status: 200, headers: { "Content-Type": "application/json" } }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({
+        preference: { weekly_digest: false },
+        serverTime: "2026-05-29T12:01:00.000Z",
+      }), { status: 200, headers: { "Content-Type": "application/json" } }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({
+        schema: "astra-cloud-learning-memory-deletion-receipt.v1",
+        deletedAt: "2026-05-29T12:02:00.000Z",
+        account: { userId: "usr_demo", identityMode: "authenticated" },
+        collections: [
+          { collection: "vocabulary", clearedMutationCount: 2, clearedActiveCount: 2, previousCursor: "2" },
+          { collection: "weekly_digest_archive", clearedMutationCount: 1, clearedActiveCount: 1, previousCursor: null },
+        ],
+        totals: { clearedMutationCount: 3, clearedActiveCount: 3 },
+        boundary: {
+          metadataOnly: true,
+          cloudServerSideOnly: true,
+          rawContentIncluded: false,
+          externalProviderDeletionIncluded: false,
+          localBrowserDeletionIncluded: false,
+        },
+      }), { status: 200, headers: { "Content-Type": "application/json" } }))
+    vi.stubGlobal("fetch", fetchMock)
+
+    const inventory = await fetchAstraCloudLearningMemoryInventory({
+      baseURL: "https://astra.example/v1",
+      sessionToken: "astra-session",
+      deviceId: "device-123",
+    })
+    const digest = await fetchAstraWeeklyDigest({
+      baseURL: "https://astra.example/v1",
+      sessionToken: "astra-session",
+      deviceId: "device-123",
+    })
+    const preference = await updateAstraWeeklyDigestPreference({
+      baseURL: "https://astra.example/v1",
+      sessionToken: "astra-session",
+      deviceId: "device-123",
+      enabled: false,
+    })
+    const receipt = await deleteAstraCloudLearningMemory({
+      baseURL: "https://astra.example/v1",
+      sessionToken: "astra-session",
+      deviceId: "device-123",
+    })
+
+    expect(inventory.privacy).toMatchObject({ metadataOnly: true, rawContentIncluded: false, externalProviderReceiptsIncluded: false })
+    expect(digest.savedCount).toBe(2)
+    expect(preference.preference.weekly_digest).toBe(false)
+    expect(receipt.boundary).toMatchObject({ cloudServerSideOnly: true, externalProviderDeletionIncluded: false, localBrowserDeletionIncluded: false })
+    expect(fetchMock).toHaveBeenNthCalledWith(1, "https://astra.example/v1/account/learning-memory/inventory", expect.objectContaining({
+      method: "GET",
+      headers: { Authorization: "Bearer astra-session", "X-Astra-Device-Id": "device-123" },
+    }))
+    expect(fetchMock).toHaveBeenNthCalledWith(2, "https://astra.example/v1/account/weekly-digest", expect.objectContaining({
+      method: "GET",
+      headers: { Authorization: "Bearer astra-session", "X-Astra-Device-Id": "device-123" },
+    }))
+    expect(fetchMock).toHaveBeenNthCalledWith(3, "https://astra.example/v1/account/preferences/weekly-digest", expect.objectContaining({
+      method: "PATCH",
+      headers: { Authorization: "Bearer astra-session", "X-Astra-Device-Id": "device-123", "Content-Type": "application/json" },
+      body: JSON.stringify({ enabled: false }),
+    }))
+    expect(fetchMock).toHaveBeenNthCalledWith(4, "https://astra.example/v1/account/learning-memory", expect.objectContaining({
+      method: "DELETE",
+      headers: { Authorization: "Bearer astra-session", "X-Astra-Device-Id": "device-123" },
     }))
   })
 

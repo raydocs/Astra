@@ -255,6 +255,7 @@ describe("DeepReadApp", () => {
     readConfigMock.mockResolvedValue(createConfig({
       explainMode: "deep",
       targetLang: "zh-CN",
+      serviceMode: "best_quality",
       tts: {
         ...DEFAULT_ASTRA_CONFIG.tts,
         enabled: true,
@@ -423,6 +424,38 @@ describe("DeepReadApp", () => {
 
     expect(container.textContent).toContain("Sentence 3 / 3")
     expect(container.textContent).toContain("Closing sentence.")
+  })
+
+  it("passes configured service mode to sentence explanations and digest generation", async () => {
+    const explainButton = Array.from(container.querySelectorAll("button")).find((button) => button.textContent === "Explain") as HTMLButtonElement
+    expect(explainButton).toBeTruthy()
+
+    await act(async () => {
+      explainButton.click()
+      await Promise.resolve()
+      await Promise.resolve()
+    })
+
+    expect(translateTextsMock).toHaveBeenCalledWith(expect.objectContaining({
+      texts: ["Selected sentence survives."],
+      task: "explain",
+      serviceMode: "best_quality",
+    }))
+
+    const digestButton = Array.from(container.querySelectorAll("button")).find((button) => button.textContent === "Generate digest") as HTMLButtonElement
+    expect(digestButton).toBeTruthy()
+
+    await act(async () => {
+      digestButton.click()
+      await Promise.resolve()
+      await Promise.resolve()
+    })
+
+    expect(generatePageDigestMock).toHaveBeenCalledWith(expect.objectContaining({
+      targetLang: "zh-CN",
+      languageLevel: "intermediate",
+      serviceMode: "best_quality",
+    }))
   })
 
   it("shows persisted page saved review CTA on revisit and opens page-loop review", async () => {

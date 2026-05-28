@@ -12,11 +12,13 @@ export type AstraAccountSurfaceSource = "account_summary" | "session_snapshot" |
 export function formatAstraPlanLabel(plan: AstraPlan | "custom" | null | undefined): string {
   switch (plan) {
     case "pro":
-      return "Pro plan"
+      return "Pro plan (not launched)"
+    case "trial":
+      return "Trial access (not launched)"
     case "custom":
       return "Custom plan"
     case "free":
-      return "Free plan"
+      return "Free beta"
     default:
       return "Local only"
   }
@@ -25,7 +27,7 @@ export function formatAstraPlanLabel(plan: AstraPlan | "custom" | null | undefin
 export function formatAstraSubscriptionStatusLabel(status: AstraSubscriptionStatus | null | undefined): string {
   switch (status) {
     case "active":
-      return "Active"
+      return "Active beta session"
     case "past_due":
       return "Past due"
     case "canceled":

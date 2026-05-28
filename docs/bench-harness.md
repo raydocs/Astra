@@ -149,6 +149,14 @@ pnpm bench:dispatch
 
 ### Live bench
 
+Required release live gate:
+
+```bash
+pnpm bench:live:lane:release-proof
+```
+
+As of 2026-05-27, `release-proof` is the aggregate CI/manual release gate and runs: `source-core`, `extension-core`, `learning-loop`, `document-proof`, `youtube-proof`, and `youtube-holdout`. Run narrower lanes only when debugging a specific surface.
+
 ```bash
 pnpm bench:live -- --list
 pnpm bench:live -- --scenario script/bench-live/page-translation-article-basic-source-bilingual

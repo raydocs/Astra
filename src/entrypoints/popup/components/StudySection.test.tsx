@@ -27,6 +27,16 @@ function createWeeklyRoi(overrides: Partial<StudySectionProps["weeklyRoi"]> = {}
       reviewAttemptCount: 2,
       reviewHitRate: 100,
     },
+    reviewableLearningMoments: {
+      weekStartAt: 0,
+      weekEndAt: 1000,
+      savedSnippetCount: 3,
+      reviewedCardCount: 2,
+      returnToSourceCount: 1,
+      masteredCardCount: 2,
+      reviewableLearningMoments: 3,
+      weightedReviewableLearningMoments: 11.2,
+    },
     generatedAt: 1000,
     ...overrides,
   }
@@ -44,6 +54,7 @@ function createProps(patch: Partial<StudySectionProps> = {}): StudySectionProps 
     onOpenAccountContinuitySignIn: noop,
     studyLoop: null,
     weeklyRoi: createWeeklyRoi(),
+    retentionReminderStatus: null,
     pageSavedReviewSummary: null,
     pageAssetSaveStatus: "idle",
     pageAssetSaveMessage: null,
@@ -73,6 +84,9 @@ function createProps(patch: Partial<StudySectionProps> = {}): StudySectionProps 
     onOpenReview: noop,
     onOpenVocabulary: noop,
     onOpenReadingQueue: noop,
+    onDisableRetentionReminders: noop,
+    onPauseRetentionReminders: noop,
+    onEnableRetentionReminders: noop,
     onReadArticle: noop,
     onExplainSentence: noop,
     ...patch,
@@ -249,22 +263,24 @@ describe("StudySection weekly ROI", () => {
     expect(container.querySelector('[data-testid="study-account-continuity-sign-in-cta"]')).toBeNull()
   })
 
-  it("renders a read-only weekly ROI summary card", () => {
+  it("renders a read-only weekly digest summary card", () => {
     act(() => {
       root.render(<StudySection {...createProps()} />)
     })
 
     const card = container.querySelector('[data-testid="weekly-roi-summary-card"]') as HTMLElement
     expect(card).toBeTruthy()
-    expect(card.textContent).toContain("Weekly ROI")
-    expect(card.textContent).toContain("7-day learning return")
-    expect(card.textContent).toContain("Input time → mastered vocabulary → review hit rate")
+    expect(card.textContent).toContain("Weekly Digest")
+    expect(card.textContent).toContain("You learned 3 expressions from 2 sources this week.")
+    expect(card.textContent).toContain("privacy-safe local summary")
     expect(card.textContent).toContain("1.5h")
     expect(card.textContent).toContain("100%")
+    expect(card.textContent).toContain("Reviewable")
     expect(card.textContent).toContain("2 active pages")
     expect(card.textContent).toContain("1 loop closed")
     expect(card.textContent).toContain("3 saved")
     expect(card.textContent).toContain("2 reviewed")
+    expect(card.textContent).toContain("reviewable moment score 11.2")
     expect(card.textContent).toContain("1.3 mastered/hour")
     expect(card.querySelector("button")).toBeNull()
   })
@@ -290,6 +306,16 @@ describe("StudySection weekly ROI", () => {
             reviewHitCount: 0,
             reviewAttemptCount: 0,
             reviewHitRate: null,
+          },
+          reviewableLearningMoments: {
+            weekStartAt: 0,
+            weekEndAt: 1000,
+            savedSnippetCount: 0,
+            reviewedCardCount: 0,
+            returnToSourceCount: 0,
+            masteredCardCount: 0,
+            reviewableLearningMoments: 0,
+            weightedReviewableLearningMoments: 0,
           },
         }),
       })} />)

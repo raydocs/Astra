@@ -5,15 +5,15 @@ import { translateWithGemini } from "./gemini"
 import { translateWithGoogleTranslate } from "./google-translate"
 import { translateWithOpenAI } from "./openai"
 import { translateWithRelay } from "./relay"
-import { summarizeProviderRoute, type ProviderTransport, type ProviderRoute } from "./routing-metadata"
+import { summarizeProviderRoute, type ProviderTransport, type ProviderRoute, type ProviderFallbackReason } from "./routing-metadata"
 import type { ConfiguredProvider, ProviderTranslationRequest } from "./types"
 
-export type { ProviderTransport, ProviderRoute } from "./routing-metadata"
-
+export type { ProviderTransport, ProviderRoute, ProviderFallbackReason } from "./routing-metadata"
 export interface ProviderRoutingMetadata {
   attemptedTransports: ProviderTransport[]
   finalTransport: ProviderTransport | null
   fallbackUsed: boolean
+  fallbackReason: ProviderFallbackReason
   route: ProviderRoute | null
 }
 
@@ -101,6 +101,26 @@ function hasRelayAccess(provider: ConfiguredProvider): boolean {
 }
 
 const NETWORK_ERROR_PATTERNS = /\b(fetch|network|econnrefused|econnreset|enotfound|timeout|abort|socket|dns|tls|ssl|connect|epipe|ehostunreach|enetunreach)\b/i
+const TIMEOUT_ERROR_PATTERNS = /\b(timeout|abort)\b/i
+
+export function classifyProviderFallbackReason(error: unknown): ProviderFallbackReason {
+  if (error instanceof AstraError) {
+    if (error.code === "QUOTA_EXCEEDED") return "cost"
+    if (error.code === "CONTENT_UNAVAILABLE") return "length"
+    if (error.code === "PROVIDER_PARSE_FAILED" || error.code === "INVALID_RESPONSE") return "quality"
+    if (error.code === "PROVIDER_REQUEST_FAILED") {
+      return TIMEOUT_ERROR_PATTERNS.test(error.message) ? "timeout" : "outage"
+    }
+    return "unknown"
+  }
+
+  if (error instanceof Error) {
+    if (TIMEOUT_ERROR_PATTERNS.test(error.message)) return "timeout"
+    if (NETWORK_ERROR_PATTERNS.test(error.message)) return "outage"
+  }
+
+  return "unknown"
+}
 
 export function classifyProviderFailure(error: unknown): ProviderFailurePolicy {
   if (error instanceof AstraError) {
@@ -117,12 +137,14 @@ export function classifyProviderFailure(error: unknown): ProviderFailurePolicy {
 function metadataFor(
   attemptedTransports: ProviderTransport[],
   finalTransport: ProviderTransport | null,
+  fallbackReason: ProviderFallbackReason = "none",
 ): ProviderRoutingMetadata {
   const route = summarizeProviderRoute(attemptedTransports, finalTransport)
   return {
     attemptedTransports: [...attemptedTransports],
     finalTransport,
     fallbackUsed: route === "fallback",
+    fallbackReason,
     route,
   }
 }
@@ -132,7 +154,7 @@ function wrapProviderRoutingError(
   attemptedTransports: ProviderTransport[],
   finalTransport: ProviderTransport | null,
 ): ProviderRoutingError {
-  const metadata = metadataFor(attemptedTransports, finalTransport)
+  const metadata = metadataFor(attemptedTransports, finalTransport, classifyProviderFallbackReason(error))
 
   if (error instanceof ProviderRoutingError) {
     return error
@@ -205,6 +227,7 @@ export async function translateWithProviderDetailed(
   const directAvailable = hasDirectAccess(normalizedProvider)
   const relayAvailable = hasRelayAccess(normalizedProvider)
   const attemptedTransports: ProviderTransport[] = []
+  let fallbackReason: ProviderFallbackReason = "none"
 
   if (directAvailable) {
     attemptedTransports.push("direct")
@@ -215,7 +238,9 @@ export async function translateWithProviderDetailed(
         metadata: metadataFor(attemptedTransports, "direct") as ProviderRoutingSuccessMetadata,
       }
     } catch (error) {
-      if (!relayAvailable || classifyProviderFailure(error) !== "fallback-to-relay") {
+      const failurePolicy = classifyProviderFailure(error)
+      fallbackReason = classifyProviderFallbackReason(error)
+      if (!relayAvailable || failurePolicy !== "fallback-to-relay") {
         const wrapped = wrapProviderRoutingError(error, attemptedTransports, null)
         trackEvent({
           type: "translation_error",
@@ -238,7 +263,7 @@ export async function translateWithProviderDetailed(
       const translations = await translateViaRelay(normalizedProvider, request, deps)
       return {
         translations,
-        metadata: metadataFor(attemptedTransports, "relay") as ProviderRoutingSuccessMetadata,
+        metadata: metadataFor(attemptedTransports, "relay", fallbackReason) as ProviderRoutingSuccessMetadata,
       }
     } catch (error) {
       const wrapped = wrapProviderRoutingError(error, attemptedTransports, "relay")
@@ -258,7 +283,7 @@ export async function translateWithProviderDetailed(
 
   const configError = new ProviderRoutingError(
     "CONFIG_MISSING",
-    "No API key or Astra access token configured. Open Astra popup to configure your provider.",
+    "Sign in to use Astra AI, or try again after Astra reconnects.",
     metadataFor(attemptedTransports, null),
   )
   trackEvent({

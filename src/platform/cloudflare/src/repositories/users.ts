@@ -19,6 +19,7 @@ interface ShadowUserDatabaseRow {
   provider_entitlements_json: string
   reading_history_sync_enabled: number | boolean
   study_progress_sync_enabled: number | boolean
+  weekly_digest_sync_enabled?: number | boolean
   shadow_updated_at: string
 }
 
@@ -44,6 +45,7 @@ const SHADOW_USER_SELECT = `
     provider_entitlements_json,
     reading_history_sync_enabled,
     study_progress_sync_enabled,
+    weekly_digest_sync_enabled,
     shadow_updated_at
   FROM shadow_users
 `
@@ -67,6 +69,7 @@ function normalizeShadowUser(snapshot: ShadowUserSnapshot): ShadowUserRow {
     syncPreferences: {
       reading_history: snapshot.syncPreferences.reading_history,
       study_progress: snapshot.syncPreferences.study_progress,
+      weekly_digest: snapshot.syncPreferences.weekly_digest,
     },
     shadowUpdatedAt: snapshot.shadowUpdatedAt ?? new Date().toISOString(),
   }
@@ -95,6 +98,7 @@ function mapShadowUserRow(row: ShadowUserDatabaseRow): ShadowUserRow {
     syncPreferences: {
       reading_history: fromSqlBoolean(row.reading_history_sync_enabled),
       study_progress: fromSqlBoolean(row.study_progress_sync_enabled),
+      weekly_digest: row.weekly_digest_sync_enabled === undefined ? true : fromSqlBoolean(row.weekly_digest_sync_enabled),
     },
     shadowUpdatedAt: row.shadow_updated_at,
   }
@@ -132,8 +136,9 @@ export async function upsertShadowUser(
       provider_entitlements_json,
       reading_history_sync_enabled,
       study_progress_sync_enabled,
+      weekly_digest_sync_enabled,
       shadow_updated_at
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     ON CONFLICT(id) DO UPDATE SET
       email = excluded.email,
       billing_email = excluded.billing_email,
@@ -145,6 +150,7 @@ export async function upsertShadowUser(
       provider_entitlements_json = excluded.provider_entitlements_json,
       reading_history_sync_enabled = excluded.reading_history_sync_enabled,
       study_progress_sync_enabled = excluded.study_progress_sync_enabled,
+      weekly_digest_sync_enabled = excluded.weekly_digest_sync_enabled,
       shadow_updated_at = excluded.shadow_updated_at
   `)
     .bind(
@@ -159,6 +165,7 @@ export async function upsertShadowUser(
       serializeJsonColumn(row.providerEntitlements),
       toSqlBoolean(row.syncPreferences.reading_history),
       toSqlBoolean(row.syncPreferences.study_progress),
+      toSqlBoolean(row.syncPreferences.weekly_digest),
       row.shadowUpdatedAt,
     )
     .run()
@@ -227,8 +234,9 @@ export async function createShadowAnonymousUser(
       provider_entitlements_json,
       reading_history_sync_enabled,
       study_progress_sync_enabled,
+      weekly_digest_sync_enabled,
       shadow_updated_at
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `)
     .bind(
       row.id,
@@ -242,6 +250,7 @@ export async function createShadowAnonymousUser(
       serializeJsonColumn(row.providerEntitlements),
       toSqlBoolean(row.syncPreferences.reading_history),
       toSqlBoolean(row.syncPreferences.study_progress),
+      toSqlBoolean(row.syncPreferences.weekly_digest),
       row.shadowUpdatedAt,
     )
     .run()

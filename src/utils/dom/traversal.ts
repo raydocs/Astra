@@ -11,6 +11,11 @@ export interface TextBlock {
 
 export interface CollectOptions {
   minTextLength?: number
+  /**
+   * Include page landmarks such as nav/header/footer/aside. The default keeps
+   * the existing immersive-reader behavior; full-page translation opts in.
+   */
+  includeLandmarkContent?: boolean
 }
 
 export interface BuildContentSummaryOptions {
@@ -18,18 +23,22 @@ export interface BuildContentSummaryOptions {
   maxChars?: number
 }
 
-const SKIP_TAGS = new Set([
+const UNSAFE_SKIP_TAGS = new Set([
   "SCRIPT", "STYLE", "NOSCRIPT", "IFRAME", "OBJECT", "EMBED",
   "SVG", "CANVAS", "TEMPLATE", "TEXTAREA", "INPUT", "SELECT",
   "VIDEO", "AUDIO", "IMG", "BR", "HR", "BUTTON", "SUMMARY",
-  "DETAILS", "NAV", "FOOTER", "ASIDE", "HEADER",
+  "DETAILS",
+  "PRE", "CODE", "MATH",
 ])
+
+const LANDMARK_SKIP_TAGS = new Set(["NAV", "FOOTER", "ASIDE", "HEADER"])
 
 const INTERACTIVE_ROLES = new Set([
   "button", "menuitem", "tab", "option", "switch", "textbox",
-  "searchbox", "combobox", "link", "navigation", "banner",
-  "contentinfo", "complementary",
+  "searchbox", "combobox", "link",
 ])
+
+const LANDMARK_ROLES = new Set(["navigation", "banner", "contentinfo", "complementary"])
 
 const MAIN_CONTENT_SELECTORS = [
   "article",
@@ -53,7 +62,7 @@ const INLINE_TAGS = new Set([
   "A", "ABBR", "B", "BDI", "BDO", "CITE", "DATA", "DEL", "DFN",
   "EM", "I", "INS", "KBD", "MARK", "Q", "RP", "RT", "RUBY", "S",
   "SAMP", "SMALL", "SPAN", "STRONG", "SUB", "SUP", "TIME", "U",
-  "VAR", "WBR", "LABEL", "CODE",
+  "VAR", "WBR", "LABEL",
 ])
 
 function normalizeWhitespace(value: string): string {
@@ -71,19 +80,80 @@ function isInline(el: HTMLElement): boolean {
   return getComputedStyle(el).display.startsWith("inline")
 }
 
-function shouldSkip(el: HTMLElement): boolean {
-  if (SKIP_TAGS.has(el.tagName)) return true
+function hasAdMarker(el: HTMLElement): boolean {
+  const markerText = [
+    el.id,
+    el.getAttribute("aria-label"),
+    el.getAttribute("data-testid"),
+    el.getAttribute("data-ad"),
+    el.getAttribute("data-ad-slot"),
+  ].filter(Boolean).join(" ").toLowerCase()
+
+  if (/\b(ad|ads|advert|advertisement|sponsored)\b/.test(markerText)) return true
+  if (/^(ad|ads)[-_]/.test(el.id.toLowerCase())) return true
+
+  return Array.from(el.classList).some((className) => {
+    const normalized = className.toLowerCase()
+    return normalized === "ad"
+      || normalized === "ads"
+      || normalized === "advertisement"
+      || normalized === "sponsored"
+      || normalized.startsWith("ad-")
+      || normalized.startsWith("ads-")
+      || normalized.includes("ad-slot")
+  })
+}
+
+function isInsideAdRegion(el: HTMLElement): boolean {
+  let current: HTMLElement | null = el
+  while (current && current !== document.documentElement) {
+    if (hasAdMarker(current)) return true
+    current = getComposedParentElement(current)
+  }
+  return false
+}
+
+function getOpenShadowChildren(el: HTMLElement): HTMLElement[] {
+  const shadowRoot = el.shadowRoot
+  if (!shadowRoot) return []
+  return Array.from(shadowRoot.children).filter((child): child is HTMLElement => child instanceof HTMLElement)
+}
+
+function getWalkableChildren(el: HTMLElement): HTMLElement[] {
+  return [
+    ...Array.from(el.children).filter((child): child is HTMLElement => child instanceof HTMLElement),
+    ...getOpenShadowChildren(el),
+  ]
+}
+
+function getComposedParentElement(el: HTMLElement): HTMLElement | null {
+  if (el.parentElement) return el.parentElement
+  const root = el.getRootNode()
+  return root instanceof ShadowRoot ? root.host as HTMLElement : null
+}
+
+function isWithinRoot(root: HTMLElement, el: HTMLElement): boolean {
+  if (root.contains(el)) return true
+  const nodeRoot = el.getRootNode()
+  return nodeRoot instanceof ShadowRoot && root.contains(nodeRoot.host)
+}
+
+function shouldSkip(el: HTMLElement, options: CollectOptions = {}): boolean {
+  if (UNSAFE_SKIP_TAGS.has(el.tagName)) return true
+  if (!options.includeLandmarkContent && LANDMARK_SKIP_TAGS.has(el.tagName)) return true
+  if (isInsideAdRegion(el)) return true
   if (el.matches(ASTRA_TRANSLATION_SELECTOR) || el.closest(ASTRA_TRANSLATION_SELECTOR)) return true
   if (el.getAttribute("translate") === "no" || el.classList.contains("notranslate")) return true
   if (el.isContentEditable || el.getAttribute("contenteditable") === "true") return true
 
   const role = el.getAttribute("role")
   if (role && INTERACTIVE_ROLES.has(role)) return true
+  if (!options.includeLandmarkContent && role && LANDMARK_ROLES.has(role)) return true
 
   return false
 }
 
-function collectInlineText(node: Node): string {
+function collectInlineText(node: Node, options: CollectOptions = {}): string {
   if (node.nodeType === Node.TEXT_NODE) {
     return node.textContent ?? ""
   }
@@ -94,29 +164,29 @@ function collectInlineText(node: Node): string {
   if (el.hasAttribute(ASTRA_TRANSLATION_ATTR)) return ""
 
   if (el.hasAttribute(ASTRA_SOURCE_ATTR)) {
-    return Array.from(el.childNodes).map(collectInlineText).join(" ")
+    return Array.from(el.childNodes).map((child) => collectInlineText(child, options)).join(" ")
   }
 
   if (!isVisible(el)) return ""
 
-  if (shouldSkip(el) || !isInline(el)) return ""
+  if (shouldSkip(el, options) || !isInline(el)) return ""
 
-  return Array.from(el.childNodes).map(collectInlineText).join(" ")
+  return Array.from(el.childNodes).map((child) => collectInlineText(child, options)).join(" ")
 }
 
-export function extractTextBlockText(el: HTMLElement): string {
-  return normalizeWhitespace(Array.from(el.childNodes).map(collectInlineText).join(" "))
+export function extractTextBlockText(el: HTMLElement, options: CollectOptions = {}): string {
+  return normalizeWhitespace(Array.from(el.childNodes).map((child) => collectInlineText(child, options)).join(" "))
 }
 
-function hasDirectBlockChild(el: HTMLElement): boolean {
-  return Array.from(el.children).some(
-    (child) => child instanceof HTMLElement && !shouldSkip(child) && !isInline(child),
+function hasDirectBlockChild(el: HTMLElement, options: CollectOptions = {}): boolean {
+  return getWalkableChildren(el).some(
+    (child) => !shouldSkip(child, options) && !isInline(child),
   )
 }
 
-function isCandidateElement(el: HTMLElement): boolean {
+function isCandidateElement(el: HTMLElement, options: CollectOptions = {}): boolean {
   if (PRIMARY_BLOCK_TAGS.has(el.tagName)) return true
-  return FALLBACK_CONTAINER_TAGS.has(el.tagName) && !hasDirectBlockChild(el)
+  return FALLBACK_CONTAINER_TAGS.has(el.tagName) && !hasDirectBlockChild(el, options)
 }
 
 export function findContentRoot(doc: Document = document): HTMLElement {
@@ -138,25 +208,25 @@ export function findClosestTextBlock(
     ? startNode
     : startNode?.parentElement ?? null
 
-  if (!startElement || !root.contains(startElement)) {
+  if (!startElement || !isWithinRoot(root, startElement)) {
     return null
   }
 
   let current: HTMLElement | null = startElement
   while (current && current !== root.parentElement) {
-    if (current !== root && !root.contains(current)) {
+    if (current !== root && !isWithinRoot(root, current)) {
       return null
     }
 
-    if (!shouldSkip(current) && isVisible(current) && isCandidateElement(current)) {
-      const text = extractTextBlockText(current)
+    if (!shouldSkip(current, options) && isVisible(current) && isCandidateElement(current, options)) {
+      const text = extractTextBlockText(current, options)
       if (text.length >= minTextLength) {
         return { element: current, text }
       }
     }
 
     if (current === root) break
-    current = current.parentElement
+    current = getComposedParentElement(current)
   }
 
   return null
@@ -170,25 +240,40 @@ export function collectTextBlocks(
   const blocks: TextBlock[] = []
 
   function walk(node: HTMLElement) {
-    if (shouldSkip(node)) return
+    if (shouldSkip(node, options)) return
     if (node !== root && !isVisible(node)) return
 
-    if (isCandidateElement(node)) {
-      const text = extractTextBlockText(node)
+    if (isCandidateElement(node, options)) {
+      const text = extractTextBlockText(node, options)
       if (text.length >= minTextLength) {
         blocks.push({ element: node, text })
       }
     }
 
-    for (const child of node.children) {
-      if (child instanceof HTMLElement) {
-        walk(child)
-      }
+    for (const child of getWalkableChildren(node)) {
+      walk(child)
     }
   }
 
   walk(root)
   return blocks
+}
+
+export function collectTextBlocksFromRoot(
+  root: Document | ShadowRoot | HTMLElement,
+  options: CollectOptions = {},
+): TextBlock[] {
+  if (root instanceof Document) {
+    return collectTextBlocks(root.body ?? findContentRoot(root), options)
+  }
+
+  if (root instanceof ShadowRoot) {
+    return Array.from(root.children)
+      .filter((child): child is HTMLElement => child instanceof HTMLElement)
+      .flatMap((child) => collectTextBlocks(child, options))
+  }
+
+  return collectTextBlocks(root, options)
 }
 
 export function buildContentSummary(

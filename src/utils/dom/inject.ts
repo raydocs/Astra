@@ -3,6 +3,7 @@
  */
 
 import type { TranslationMode, TranslationTheme } from "@/types/config"
+import { getSafeAiUnavailableCopy } from "@/utils/copy-dictionary"
 
 export const ASTRA_TRANSLATION_ATTR = "data-astra-translation"
 export const ASTRA_TRANSLATION_SELECTOR = `[${ASTRA_TRANSLATION_ATTR}]`
@@ -236,8 +237,9 @@ export function showInlineError(
   text.className = "notranslate astra-translation-error-text"
   text.textContent = "Couldn't translate this paragraph."
   if (message.trim()) {
-    text.title = message
-    wrapper.setAttribute("aria-label", `Couldn't translate this paragraph. ${message}`)
+    const safeMessage = getSafeAiUnavailableCopy({ message })
+    text.title = safeMessage
+    wrapper.setAttribute("aria-label", `Couldn't translate this paragraph. ${safeMessage}`)
   }
 
   const retry = document.createElement("button")

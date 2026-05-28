@@ -253,9 +253,54 @@ export interface RecordStudyEventInput {
   count?: number // for explain/vocab_save/vocab_review increments
 }
 
+function buildReducedStudyProgressUrl(url: string, hostname: string): string {
+  try {
+    const parsed = new URL(url)
+    return `${parsed.protocol}//${parsed.hostname}/`
+  } catch {
+    return hostname.trim() ? `https://${hostname.trim().toLowerCase()}/` : "astra-private://source/"
+  }
+}
+
+function reduceStudyEventInput(input: RecordStudyEventInput): RecordStudyEventInput {
+  const hostname = input.hostname.trim().toLowerCase()
+  return {
+    ...input,
+    url: buildReducedStudyProgressUrl(input.url, hostname),
+    hostname,
+    title: "Private page",
+  }
+}
+
+function buildSuppressedStudyProgress(input: RecordStudyEventInput): StudyPageProgress {
+  const reduced = reduceStudyEventInput(input)
+  const now = Date.now()
+  const increment = input.count ?? 1
+  return {
+    url: buildStudyProgressRecordId(reduced.url),
+    hostname: reduced.hostname,
+    title: reduced.title,
+    completedSteps: [input.step],
+    sentencesExplained: input.step === "explain" ? increment : 0,
+    vocabSaved: input.step === "vocab_save" ? increment : 0,
+    vocabReviewed: input.step === "vocab_review" ? increment : 0,
+    startedAt: now,
+    lastActivityAt: now,
+  }
+}
+
 export async function recordStudyEvent(input: RecordStudyEventInput): Promise<StudyPageProgress> {
+  const { resolveLearningMemoryWritePolicy } = await import("./learning-memory")
+  const policy = await resolveLearningMemoryWritePolicy({
+    surface: "study_progress",
+    hostname: input.hostname,
+    url: input.url,
+  })
+  if (policy.decision === "suppress") return buildSuppressedStudyProgress(input)
+
+  const writableInput = policy.decision === "reduce" ? reduceStudyEventInput(input) : input
   let store = ensureDailyStats(await readStore())
-  const cleanUrl = buildStudyProgressRecordId(input.url)
+  const cleanUrl = buildStudyProgressRecordId(writableInput.url)
   const now = Date.now()
 
   let pageIdx = store.pages.findIndex((p) => p.url === cleanUrl)
@@ -266,8 +311,8 @@ export async function recordStudyEvent(input: RecordStudyEventInput): Promise<St
   } else {
     page = {
       url: cleanUrl,
-      hostname: input.hostname,
-      title: input.title,
+      hostname: writableInput.hostname,
+      title: writableInput.title,
       completedSteps: [],
       sentencesExplained: 0,
       vocabSaved: 0,
@@ -283,7 +328,7 @@ export async function recordStudyEvent(input: RecordStudyEventInput): Promise<St
     page.completedSteps = [...page.completedSteps, input.step]
   }
   page.lastActivityAt = now
-  page.title = input.title || page.title
+  page.title = writableInput.title || page.title
 
   // Update counters
   const increment = input.count ?? 1

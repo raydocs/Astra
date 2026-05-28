@@ -2,8 +2,9 @@ import { join } from "node:path"
 
 import type { ProviderId } from "../types/config"
 import type { AstraPlan, AstraSubscriptionStatus } from "../types/auth"
+import { ASTRA_OPS_ROLES, type AstraOpsRoleId } from "../utils/ops-console"
 
-import type { RelayEnv } from "./types"
+import type { RelayEnv, RelayOperatorPrincipal } from "./types"
 
 const ALL_PROVIDER_IDS: ProviderId[] = ["google_translate", "openai", "gemini"]
 
@@ -42,7 +43,8 @@ function parseProviderEntitlements(raw: string | undefined): ProviderId[] {
 }
 
 function parsePlan(raw: string | undefined): AstraPlan {
-  return raw === "pro" ? "pro" : "free"
+  if (raw === "pro" || raw === "trial") return raw
+  return "free"
 }
 
 function parseSubscriptionStatus(raw: string | undefined): AstraSubscriptionStatus {
@@ -60,12 +62,66 @@ function parseOptionalText(raw: string | undefined): string | undefined {
   return trimmed ? trimmed : undefined
 }
 
+function parseOptionalTextList(...values: Array<string | undefined>): string[] | undefined {
+  const parsed = values
+    .flatMap((value) => value?.split(",") ?? [])
+    .map((item) => item.trim())
+    .filter(Boolean)
+  return parsed.length > 0 ? Array.from(new Set(parsed)) : undefined
+}
+
 function parseCorsAllowedOrigins(raw: string | undefined): string[] {
   const values = (raw ?? "*")
     .split(",")
     .map((item) => item.trim())
     .filter(Boolean)
   return values.length > 0 ? values : ["*"]
+}
+
+function parseEmailDeliveryProvider(raw: string | undefined): RelayEnv["emailDeliveryProvider"] {
+  const normalized = raw?.trim().toLowerCase()
+  return normalized === "resend" ? "resend" : undefined
+}
+
+const ASTRA_OPS_ROLE_IDS = new Set<AstraOpsRoleId>(ASTRA_OPS_ROLES.map((role) => role.id))
+
+function parseOperatorPrincipals(raw: string | undefined): RelayOperatorPrincipal[] {
+  if (!raw?.trim()) return []
+
+  let decoded: unknown
+  try {
+    decoded = JSON.parse(raw)
+  } catch {
+    throw new Error("ASTRA_OPERATOR_TOKENS must be valid JSON.")
+  }
+
+  if (!Array.isArray(decoded)) {
+    throw new Error("ASTRA_OPERATOR_TOKENS must be a JSON array.")
+  }
+
+  const seenIds = new Set<string>()
+  const seenTokens = new Set<string>()
+  return decoded.map((item, index) => {
+    if (typeof item !== "object" || item === null || Array.isArray(item)) {
+      throw new Error(`ASTRA_OPERATOR_TOKENS[${index}] must be an object.`)
+    }
+    const candidate = item as Record<string, unknown>
+    const id = typeof candidate.id === "string" ? candidate.id.trim() : ""
+    const role = typeof candidate.role === "string" ? candidate.role.trim() : ""
+    const token = typeof candidate.token === "string" ? candidate.token.trim() : ""
+
+    if (!id) throw new Error(`ASTRA_OPERATOR_TOKENS[${index}].id must be a non-empty string.`)
+    if (!token) throw new Error(`ASTRA_OPERATOR_TOKENS[${index}].token must be a non-empty string.`)
+    if (!ASTRA_OPS_ROLE_IDS.has(role as AstraOpsRoleId)) {
+      throw new Error(`ASTRA_OPERATOR_TOKENS[${index}].role is not a valid Astra ops role.`)
+    }
+    if (seenIds.has(id)) throw new Error(`ASTRA_OPERATOR_TOKENS contains duplicate operator id: ${id}`)
+    if (seenTokens.has(token)) throw new Error("ASTRA_OPERATOR_TOKENS contains duplicate operator tokens.")
+    seenIds.add(id)
+    seenTokens.add(token)
+
+    return { id, role: role as AstraOpsRoleId, token }
+  })
 }
 
 function parsePositiveInteger(raw: string | undefined, fallback: number): number {
@@ -105,8 +161,40 @@ export function loadRelayEnv(env: NodeJS.ProcessEnv = process.env): RelayEnv {
     sessionPublicBaseURL,
     sessionSecret: env.ASTRA_SESSION_SECRET ?? "astra-dev-secret",
     platformMirrorSecret: parseOptionalText(env.ASTRA_PLATFORM_MIRROR_SECRET),
+    operatorPrincipals: parseOperatorPrincipals(env.ASTRA_OPERATOR_TOKENS),
     userDbPath: resolveRelayDataFilePath(env, env.ASTRA_USER_DB_PATH, "users.json"),
     videoNoteStorePath: resolveRelayDataFilePath(env, env.ASTRA_VIDEO_NOTE_STORE_PATH, "video-notes.json"),
+    longRunningTaskStorePath: resolveRelayDataFilePath(env, env.ASTRA_LONG_RUNNING_TASK_STORE_PATH, "long-tasks.json"),
+    supportReportInboxPath: resolveRelayDataFilePath(
+      env,
+      env.ASTRA_SUPPORT_REPORT_INBOX_PATH,
+      "support-reports.json",
+    ),
+    supportKnownIssueStorePath: resolveRelayDataFilePath(
+      env,
+      env.ASTRA_SUPPORT_KNOWN_ISSUE_STORE_PATH,
+      "support-known-issues.json",
+    ),
+    featureFlagRuntimePath: resolveRelayDataFilePath(
+      env,
+      env.ASTRA_FEATURE_FLAG_RUNTIME_PATH,
+      "feature-flags.json",
+    ),
+    opsAuditLogPath: resolveRelayDataFilePath(
+      env,
+      env.ASTRA_OPS_AUDIT_LOG_PATH,
+      "ops-audit-log.json",
+    ),
+    cancellationReasonStorePath: resolveRelayDataFilePath(
+      env,
+      env.ASTRA_CANCELLATION_REASON_STORE_PATH,
+      "cancellation-reasons.json",
+    ),
+    analyticsEventStorePath: resolveRelayDataFilePath(
+      env,
+      env.ASTRA_ANALYTICS_EVENT_STORE_PATH,
+      "analytics-events.json",
+    ),
     loginEmail: env.ASTRA_RELAY_EMAIL ?? "demo@astra.local",
     loginPassword: env.ASTRA_RELAY_PASSWORD ?? "astra-demo-pass",
     plan: parsePlan(env.ASTRA_RELAY_PLAN),
@@ -127,12 +215,23 @@ export function loadRelayEnv(env: NodeJS.ProcessEnv = process.env): RelayEnv {
     freeDailyRequests: Number(env.ASTRA_FREE_DAILY_REQUESTS ?? "2000"),
     freeDailyCharacters: Number(env.ASTRA_FREE_DAILY_CHARACTERS ?? "500000"),
     freeRpm: Number(env.ASTRA_FREE_RPM ?? "120"),
+    trialDailyRequests: Number(env.ASTRA_TRIAL_DAILY_REQUESTS ?? env.ASTRA_PRO_DAILY_REQUESTS ?? "2000"),
+    trialDailyCharacters: Number(env.ASTRA_TRIAL_DAILY_CHARACTERS ?? env.ASTRA_PRO_DAILY_CHARACTERS ?? "500000"),
+    trialRpm: Number(env.ASTRA_TRIAL_RPM ?? env.ASTRA_PRO_RPM ?? "120"),
     proDailyRequests: Number(env.ASTRA_PRO_DAILY_REQUESTS ?? "2000"),
     proDailyCharacters: Number(env.ASTRA_PRO_DAILY_CHARACTERS ?? "500000"),
     proRpm: Number(env.ASTRA_PRO_RPM ?? "120"),
     sessionTtlMs: Number(env.ASTRA_SESSION_TTL_MS ?? String(30 * 24 * 60 * 60 * 1000)),
     syncMaxMutationsPerRequest: parsePositiveInteger(env.ASTRA_SYNC_MAX_MUTATIONS_PER_REQUEST, 200),
     videoNoteMaxConcurrentJobs: parsePositiveInteger(env.ASTRA_VIDEO_NOTE_MAX_CONCURRENT_JOBS, 1),
+    emailSignInCodeDevelopmentEcho: parseBooleanFlag(env.ASTRA_EMAIL_SIGN_IN_CODE_DEVELOPMENT_ECHO),
+    emailDeliveryProvider: parseEmailDeliveryProvider(env.ASTRA_EMAIL_DELIVERY_PROVIDER),
+    emailDeliveryResendApiKey: parseOptionalText(env.RESEND_API_KEY) ?? parseOptionalText(env.ASTRA_RESEND_API_KEY),
+    emailDeliveryResendFrom: parseOptionalText(env.ASTRA_EMAIL_FROM),
+    emailDeliveryResendApiBaseUrl: parseOptionalText(env.ASTRA_RESEND_API_BASE_URL),
+    oauthGoogleClientIds: parseOptionalTextList(env.ASTRA_OAUTH_GOOGLE_CLIENT_IDS, env.GOOGLE_OAUTH_CLIENT_ID),
+    oauthAppleClientIds: parseOptionalTextList(env.ASTRA_OAUTH_APPLE_CLIENT_IDS, env.APPLE_OAUTH_CLIENT_ID),
+    oauthIdentityDevelopmentRedeem: parseBooleanFlag(env.ASTRA_OAUTH_IDENTITY_DEVELOPMENT_REDEEM),
     cloudflareShadow: {
       writeEnabled: parseBooleanFlag(env.ASTRA_CF_SHADOW_WRITE_ENABLED),
       readParityEnabled: parseBooleanFlag(env.ASTRA_CF_READ_PARITY_ENABLED),

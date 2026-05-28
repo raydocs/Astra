@@ -5,6 +5,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 const createObjectURLMock = vi.fn()
 const revokeObjectURLMock = vi.fn()
 const anchorClickMock = vi.fn()
+const navigatorShareMock = vi.fn()
+const clipboardWriteTextMock = vi.fn()
 const NativeBlob = globalThis.Blob
 let clickedDownloadAnchor: HTMLAnchorElement | null = null
 let lastDownloadBlobParts: BlobPart[] = []
@@ -14,6 +16,7 @@ const {
   importVocabularyEntriesFromThemePackPayloadMock,
   previewVocabularyEntriesFromThemePackPayloadMock,
   removeVocabularyEntryMock,
+  removeVocabularyEntriesMock,
   getDueVocabularyCountMock,
   updateVocabularyEntryMock,
   readConfigMock,
@@ -28,6 +31,7 @@ const {
   listOwnedReadingItemsMock,
   markOwnedReadingOpenedMock,
   setOwnedReadingStatusMock,
+  setOwnedReadingUserControlMock,
   removeOwnedReadingItemMock,
   buildOwnedReadingThemePacksMock,
   buildSignedOwnedReadingThemePackPackageMock,
@@ -39,11 +43,22 @@ const {
   openPageInDeepReadMock,
   openFocusedReviewMock,
   openPageReviewLoopMock,
+  recordLearningLoopEventMock,
+  buildLearningMemoryLibraryViewMock,
+  setLearningMemoryLibrarySourceControlsMock,
+  deleteLearningMemoryLibrarySourcesMock,
+  forgetRememberedTermMock,
+  setPersonalizationEnabledMock,
+  updateLearningProfileMock,
+  readLearningProfileMock,
+  buildLearningDataExportMock,
+  stringifyLearningDataExportMock,
 } = vi.hoisted(() => ({
   getVocabularyEntriesMock: vi.fn(),
   importVocabularyEntriesFromThemePackPayloadMock: vi.fn(),
   previewVocabularyEntriesFromThemePackPayloadMock: vi.fn(),
   removeVocabularyEntryMock: vi.fn(),
+  removeVocabularyEntriesMock: vi.fn(),
   getDueVocabularyCountMock: vi.fn(),
   updateVocabularyEntryMock: vi.fn(),
   readConfigMock: vi.fn(),
@@ -58,6 +73,7 @@ const {
   listOwnedReadingItemsMock: vi.fn(),
   markOwnedReadingOpenedMock: vi.fn(),
   setOwnedReadingStatusMock: vi.fn(),
+  setOwnedReadingUserControlMock: vi.fn(),
   removeOwnedReadingItemMock: vi.fn(),
   buildOwnedReadingThemePacksMock: vi.fn(),
   buildSignedOwnedReadingThemePackPackageMock: vi.fn(),
@@ -69,6 +85,16 @@ const {
   openPageInDeepReadMock: vi.fn(),
   openFocusedReviewMock: vi.fn(),
   openPageReviewLoopMock: vi.fn(),
+  recordLearningLoopEventMock: vi.fn(),
+  buildLearningMemoryLibraryViewMock: vi.fn(),
+  setLearningMemoryLibrarySourceControlsMock: vi.fn(),
+  deleteLearningMemoryLibrarySourcesMock: vi.fn(),
+  forgetRememberedTermMock: vi.fn(),
+  setPersonalizationEnabledMock: vi.fn(),
+  updateLearningProfileMock: vi.fn(),
+  readLearningProfileMock: vi.fn(),
+  buildLearningDataExportMock: vi.fn(),
+  stringifyLearningDataExportMock: vi.fn(),
 }))
 
 vi.mock("@/utils/storage/vocabulary", () => ({
@@ -76,12 +102,31 @@ vi.mock("@/utils/storage/vocabulary", () => ({
   importVocabularyEntriesFromThemePackPayload: importVocabularyEntriesFromThemePackPayloadMock,
   previewVocabularyEntriesFromThemePackPayload: previewVocabularyEntriesFromThemePackPayloadMock,
   removeVocabularyEntry: removeVocabularyEntryMock,
+  removeVocabularyEntries: removeVocabularyEntriesMock,
   getDueVocabularyCount: getDueVocabularyCountMock,
   updateVocabularyEntry: updateVocabularyEntryMock,
 }))
 
 vi.mock("@/utils/storage/config", () => ({
   readConfig: readConfigMock,
+}))
+
+vi.mock("@/utils/storage/learning-memory-library", () => ({
+  buildLearningMemoryLibraryView: buildLearningMemoryLibraryViewMock,
+  setLearningMemoryLibrarySourceControls: setLearningMemoryLibrarySourceControlsMock,
+  deleteLearningMemoryLibrarySources: deleteLearningMemoryLibrarySourcesMock,
+}))
+
+vi.mock("@/utils/storage/learning-profile", () => ({
+  forgetRememberedTerm: forgetRememberedTermMock,
+  setPersonalizationEnabled: setPersonalizationEnabledMock,
+  updateLearningProfile: updateLearningProfileMock,
+  readLearningProfile: readLearningProfileMock,
+}))
+
+vi.mock("@/utils/storage/learning-data-export", () => ({
+  buildLearningDataExport: buildLearningDataExportMock,
+  stringifyLearningDataExport: stringifyLearningDataExportMock,
 }))
 
 vi.mock("@/utils/storage/auth", () => ({
@@ -173,6 +218,14 @@ vi.mock("@/utils/i18n", () => ({
   },
 }))
 
+vi.mock("@/utils/learning-loop-events", async () => {
+  const actual = await vi.importActual<typeof import("@/utils/learning-loop-events")>("@/utils/learning-loop-events")
+  return {
+    ...actual,
+    recordLearningLoopEvent: recordLearningLoopEventMock,
+  }
+})
+
 vi.mock("@/utils/deep-read-link", () => ({
   openVocabularyEntryInDeepRead: openVocabularyEntryInDeepReadMock,
   openPageInDeepRead: openPageInDeepReadMock,
@@ -190,6 +243,13 @@ vi.mock("@/utils/storage/owned-reading", () => {
   }
 
   return {
+    OwnedReadingUserControlSchema: {
+      parse: (value?: { syncEnabled?: boolean; excludedFromDigest?: boolean; privacyModeAtCapture?: boolean }) => ({
+        syncEnabled: value?.syncEnabled ?? true,
+        excludedFromDigest: value?.excludedFromDigest ?? false,
+        privacyModeAtCapture: value?.privacyModeAtCapture ?? false,
+      }),
+    },
     deriveOwnedReadingArticleUrl,
     buildOwnedReadingResumeTarget: (item: { sourceType: string; sourceUrl?: string | null; localUri?: string | null; reopenHint?: string | null; readingHistoryRecordId?: string | null; studyProgressRecordId?: string | null }) => {
       if (item.sourceType === "article") {
@@ -285,6 +345,7 @@ vi.mock("@/utils/storage/owned-reading", () => {
     listOwnedReadingItems: listOwnedReadingItemsMock,
     markOwnedReadingOpened: markOwnedReadingOpenedMock,
     setOwnedReadingStatus: setOwnedReadingStatusMock,
+    setOwnedReadingUserControl: setOwnedReadingUserControlMock,
     removeOwnedReadingItem: removeOwnedReadingItemMock,
   }
 })
@@ -378,6 +439,16 @@ describe("VocabularyApp", () => {
       configurable: true,
       value: anchorClickMock,
     })
+    navigatorShareMock.mockResolvedValue(undefined)
+    clipboardWriteTextMock.mockResolvedValue(undefined)
+    Object.defineProperty(navigator, "share", {
+      configurable: true,
+      value: navigatorShareMock,
+    })
+    Object.defineProperty(navigator, "clipboard", {
+      configurable: true,
+      value: { writeText: clipboardWriteTextMock },
+    })
     window.history.replaceState({}, "", "/vocabulary.html")
     readConfigMock.mockResolvedValue({
       targetLang: "zh-CN",
@@ -445,6 +516,7 @@ describe("VocabularyApp", () => {
     }])
     getDueVocabularyCountMock.mockResolvedValue(1)
     removeVocabularyEntryMock.mockResolvedValue(undefined)
+    removeVocabularyEntriesMock.mockResolvedValue(undefined)
     updateVocabularyEntryMock.mockResolvedValue(null)
     getReadingHistoryEntryMock.mockResolvedValue(null)
     syncRecentReadingHistoryToOwnedQueueMock.mockResolvedValue(undefined)
@@ -539,6 +611,7 @@ describe("VocabularyApp", () => {
     })
     markOwnedReadingOpenedMock.mockResolvedValue(undefined)
     setOwnedReadingStatusMock.mockResolvedValue(undefined)
+    setOwnedReadingUserControlMock.mockResolvedValue(undefined)
     removeOwnedReadingItemMock.mockResolvedValue(undefined)
     getPageStudyProgressMock.mockResolvedValue(null)
     getStudyProgressMock.mockResolvedValue({
@@ -551,6 +624,109 @@ describe("VocabularyApp", () => {
         vocabReviewed: 0,
       },
     })
+    buildLearningMemoryLibraryViewMock.mockResolvedValue({
+      schema: "astra-learning-memory-library.v1",
+      generatedAt: "2026-05-27T12:00:00.000Z",
+      localOnly: true,
+      inventory: {
+        schema: "astra-learning-memory-inventory.v1",
+        generatedAt: "2026-05-27T12:00:00.000Z",
+        privacyMode: false,
+        personalizationEnabled: true,
+        summary: {
+          preferenceCount: 5,
+          rememberedTermCount: 1,
+          savedSnippetCount: 2,
+          reviewCardCount: 2,
+          sourceContentCount: 2,
+          ownedReadingCount: 2,
+          readingHistoryCount: 1,
+          studyProgressPageCount: 1,
+        },
+        sections: [
+          { id: "learning_profile", label: "Learning profile", count: 5, description: "Preferences only.", whyAstraKeepsIt: "Personalization.", userControls: [], contentPolicy: "Preferences only; no page text." },
+          { id: "remembered_terms", label: "Remembered terms", count: 1, description: "Term preferences.", whyAstraKeepsIt: "Consistency.", userControls: [], contentPolicy: "User-visible terms only." },
+          { id: "source_history", label: "Source history", count: 2, description: "Source titles, source types, hostnames, and progress metadata.", whyAstraKeepsIt: "Continuity.", userControls: [], contentPolicy: "Source metadata only; no sensitive URL parameters." },
+        ],
+        globalControls: [],
+        privacyModeEffect: "Privacy Mode is off.",
+        contentPolicy: {
+          includesFullPageText: false,
+          includesFullTranscriptText: false,
+          includesPromptText: false,
+          includesModelOutput: false,
+          includesFullUrlPaths: false,
+          description: "No full page text.",
+        },
+      },
+      rememberedTerms: [{
+        id: "term-render",
+        sourceTerm: "render",
+        preferredTerm: "渲染",
+        hostname: "docs.example",
+        source: "user_correction",
+        updatedAt: "2026-05-27T00:00:00.000Z",
+      }],
+      sourceRows: [{
+        id: "memsrc_article",
+        title: "Example article",
+        sourceType: "article",
+        sourceTypeLabel: "Article",
+        hostname: "example.com",
+        savedCardCount: 1,
+        readingHistoryCount: 1,
+        studyProgressEventCount: 3,
+        sentencesExplained: 1,
+        vocabSaved: 1,
+        vocabReviewed: 0,
+        progressStatus: "saved",
+        progressPercent: null,
+        syncEnabled: true,
+        excludedFromDigest: false,
+        privacyModeAtCapture: false,
+        lastActivityAt: 1000,
+        timeline: [
+          { id: "event-save", label: "Saved review card", detail: "A user-saved vocabulary card is linked to this source.", occurredAt: 1000 },
+          { id: "event-study", label: "Study loop progress", detail: "3 steps · 1 explained · 1 saved · 0 reviewed", occurredAt: 900 },
+        ],
+        actionRef: {
+          sourceContentId: "or_article_example",
+          ownedReadingItemId: "or_article_example",
+          readingHistoryRecordIds: ["https://example.com/article"],
+          studyProgressRecordIds: ["https://example.com/article"],
+          vocabularyEntryIds: ["entry-1"],
+        },
+      }],
+      summary: { sourceCount: 1, rememberedTermCount: 1, savedCardCount: 2 },
+      contentPolicy: {
+        localOnly: true,
+        includesFullPageText: false,
+        includesFullTranscriptText: false,
+        includesPromptText: false,
+        includesModelOutput: false,
+        includesFullUrlPaths: false,
+        actionRefsAreInternal: true,
+        description: "Local-only metadata view.",
+      },
+    })
+    setLearningMemoryLibrarySourceControlsMock.mockResolvedValue({ selectedCount: 1, updatedSourceControlCount: 1, removedSourceHistoryCount: 0, removedSavedCardCount: 0 })
+    deleteLearningMemoryLibrarySourcesMock.mockResolvedValue({ selectedCount: 1, updatedSourceControlCount: 0, removedSourceHistoryCount: 2, removedSavedCardCount: 1 })
+    forgetRememberedTermMock.mockResolvedValue(undefined)
+    setPersonalizationEnabledMock.mockResolvedValue(undefined)
+    updateLearningProfileMock.mockResolvedValue(undefined)
+    readLearningProfileMock.mockResolvedValue({
+      targetLang: "zh-CN",
+      languageLevel: "intermediate",
+      explainMode: "deep",
+      personalizationEnabled: true,
+      excludedHostnames: [],
+      rememberedTerms: [],
+    })
+    buildLearningDataExportMock.mockResolvedValue({
+      generatedAt: "2026-05-27T12:00:00.000Z",
+      summary: { savedSnippetCount: 2, reviewCardCount: 2 },
+    })
+    stringifyLearningDataExportMock.mockReturnValue("{\n  \"schema\": \"astra-learning-data-export.v1\"\n}")
 
     container = document.createElement("div")
     document.body.appendChild(container)
@@ -591,6 +767,479 @@ describe("VocabularyApp", () => {
     })
   }
 
+  it("surfaces a library home summary for recent learning, review, and continuation", async () => {
+    const card = container.querySelector('[data-testid="library-home-summary-card"]') as HTMLElement
+
+    expect(card).toBeTruthy()
+    expect(card.textContent).toContain("Library home")
+    expect(card.textContent).toContain("Recently learned")
+    expect(card.textContent).toContain("2 saved items")
+    expect(card.textContent).toContain("ephemeral")
+    expect(card.textContent).toContain("Review today")
+    expect(card.textContent).toContain("1 due today")
+    expect(card.textContent).toContain("Continue learning")
+    expect(card.textContent).toContain("2 learning sources")
+    expect(card.textContent).toContain("Example article")
+  })
+
+  async function openMemoryTab() {
+    const memoryBtn = [...container.querySelectorAll("button")].find((b) => b.textContent?.trim() === "What Astra remembers")
+    await act(async () => {
+      memoryBtn!.click()
+      await Promise.resolve()
+      await Promise.resolve()
+      await Promise.resolve()
+    })
+  }
+
+  it("shows a local-only memory tab with inventory sections and privacy-safe timelines", async () => {
+    await openMemoryTab()
+
+    const trust = container.querySelector('[data-testid="memory-local-trust-card"]') as HTMLElement
+    expect(trust).toBeTruthy()
+    expect(trust.textContent).toContain("Local-only memory")
+    expect(trust.textContent).toContain("not full page text")
+    expect(trust.textContent).toContain("URL query strings")
+
+    const inventory = container.querySelector('[data-testid="memory-inventory-sections"]') as HTMLElement
+    expect(inventory.textContent).toContain("Learning profile")
+    expect(inventory.textContent).toContain("Remembered terms")
+    expect(inventory.textContent).toContain("Source history")
+
+    const row = container.querySelector('[data-testid="memory-source-row-memsrc_article"]') as HTMLElement
+    expect(row.textContent).toContain("Example article")
+    expect(row.textContent).toContain("Article · example.com")
+    expect(row.textContent).toContain("1 saved cards")
+    expect(row.textContent).toContain("Sync: included")
+
+    const toggle = container.querySelector('[data-testid="memory-toggle-source-memsrc_article"]') as HTMLButtonElement
+    await act(async () => {
+      toggle.click()
+      await Promise.resolve()
+    })
+    const events = container.querySelector('[data-testid="memory-source-events-memsrc_article"]') as HTMLElement
+    expect(events.textContent).toContain("Saved review card")
+    expect(events.textContent).toContain("Study loop progress")
+
+    expect(container.textContent).not.toContain("The ephemeral phase passes quickly")
+    expect(container.textContent).not.toContain("https://example.com/article")
+    expect(syncRecentReadingHistoryToOwnedQueueMock).not.toHaveBeenCalled()
+  })
+
+  it("supports remembered term controls and local learning data export from memory", async () => {
+    await openMemoryTab()
+
+    const forget = container.querySelector('[data-testid="memory-forget-term-term-render"]') as HTMLButtonElement
+    await act(async () => {
+      forget.click()
+      await Promise.resolve()
+      await Promise.resolve()
+    })
+    expect(forgetRememberedTermMock).toHaveBeenCalledWith("term-render")
+    expect(container.querySelector('[data-testid="memory-action-status"]')?.textContent).toContain("Forgot that remembered term")
+
+    const clear = container.querySelector('[data-testid="memory-clear-terms"]') as HTMLButtonElement
+    await act(async () => {
+      clear.click()
+      await Promise.resolve()
+    })
+    expect(updateLearningProfileMock).not.toHaveBeenCalledWith({ rememberedTerms: [] })
+    const confirmClear = container.querySelector('[data-testid="memory-clear-terms-confirm"]') as HTMLButtonElement
+    await act(async () => {
+      confirmClear.click()
+      await Promise.resolve()
+      await Promise.resolve()
+    })
+    expect(updateLearningProfileMock).toHaveBeenCalledWith({ rememberedTerms: [] })
+
+    const exportBtn = container.querySelector('[data-testid="memory-export-learning-data"]') as HTMLButtonElement
+    await act(async () => {
+      exportBtn.click()
+      await Promise.resolve()
+    })
+    expect(buildLearningDataExportMock).toHaveBeenCalled()
+    expect(stringifyLearningDataExportMock).toHaveBeenCalled()
+    expect(clickedDownloadAnchor?.download).toBe("astra-learning-data-2026-05-27.json")
+    expect(lastDownloadBlobParts.join("\n")).toContain("astra-learning-data-export.v1")
+
+    const personalize = container.querySelector('[data-testid="memory-turn-off-personalization"]') as HTMLButtonElement
+    await act(async () => {
+      personalize.click()
+      await Promise.resolve()
+      await Promise.resolve()
+    })
+    expect(setPersonalizationEnabledMock).toHaveBeenCalledWith(false)
+  })
+
+  it("gates memory bulk source controls and delete modes behind selection and confirmation", async () => {
+    await openMemoryTab()
+
+    const exclude = container.querySelector('[data-testid="memory-bulk-exclude-digest"]') as HTMLButtonElement
+    const disableSync = container.querySelector('[data-testid="memory-bulk-disable-sync"]') as HTMLButtonElement
+    const removeHistory = container.querySelector('[data-testid="memory-bulk-remove-history"]') as HTMLButtonElement
+    expect(exclude.disabled).toBe(true)
+    expect(disableSync.disabled).toBe(true)
+    expect(removeHistory.disabled).toBe(true)
+
+    const select = container.querySelector('[data-testid="memory-select-source-memsrc_article"]') as HTMLInputElement
+    await act(async () => {
+      select.click()
+      await Promise.resolve()
+    })
+    expect((container.querySelector('[data-testid="memory-bulk-exclude-digest"]') as HTMLButtonElement).disabled).toBe(false)
+
+    await act(async () => {
+      exclude.click()
+      await Promise.resolve()
+      await Promise.resolve()
+    })
+    expect(setLearningMemoryLibrarySourceControlsMock).toHaveBeenCalledWith([expect.objectContaining({ ownedReadingItemId: "or_article_example" })], { excludedFromDigest: true })
+
+    await act(async () => {
+      disableSync.click()
+      await Promise.resolve()
+      await Promise.resolve()
+    })
+    expect(setLearningMemoryLibrarySourceControlsMock).toHaveBeenCalledWith([expect.objectContaining({ ownedReadingItemId: "or_article_example" })], { syncEnabled: false })
+
+    await act(async () => {
+      removeHistory.click()
+      await Promise.resolve()
+    })
+    expect(deleteLearningMemoryLibrarySourcesMock).not.toHaveBeenCalled()
+    expect(container.querySelector('[data-testid="memory-delete-confirmation"]')?.textContent).toContain("saved cards stay")
+    await act(async () => {
+      ;(container.querySelector('[data-testid="memory-confirm-delete"]') as HTMLButtonElement).click()
+      await Promise.resolve()
+      await Promise.resolve()
+    })
+    expect(deleteLearningMemoryLibrarySourcesMock).toHaveBeenCalledWith([expect.objectContaining({ ownedReadingItemId: "or_article_example" })], "source_history_only")
+
+    await openMemoryTab()
+    await act(async () => {
+      ;(container.querySelector('[data-testid="memory-select-source-memsrc_article"]') as HTMLInputElement).click()
+      await Promise.resolve()
+    })
+    await act(async () => {
+      ;(container.querySelector('[data-testid="memory-bulk-delete-source-cards"]') as HTMLButtonElement).click()
+      await Promise.resolve()
+    })
+    expect(container.querySelector('[data-testid="memory-delete-confirmation"]')?.textContent).toContain("plus saved cards")
+    await act(async () => {
+      ;(container.querySelector('[data-testid="memory-confirm-delete"]') as HTMLButtonElement).click()
+      await Promise.resolve()
+      await Promise.resolve()
+    })
+    expect(deleteLearningMemoryLibrarySourcesMock).toHaveBeenCalledWith([expect.objectContaining({ ownedReadingItemId: "or_article_example" })], "source_and_saved_cards")
+  })
+
+  it("shows a local weekly digest without page text", async () => {
+    const now = Date.now()
+    getVocabularyEntriesMock.mockResolvedValue([{
+      id: "entry-weekly",
+      text: "ephemeral",
+      translation: "短暂",
+      explanation: "This raw explanation should not appear in the digest card.",
+      context: "The raw sentence should not appear in the digest card.",
+      url: "https://example.com/article",
+      hostname: "example.com",
+      savedAt: now,
+      srsBox: 3,
+      nextReviewAt: now + 86_400_000,
+      reviewCount: 1,
+      lastReviewedAt: now,
+      sourceContext: {
+        surface: "popup_deep_read",
+        pageTitle: "Example article",
+        pageUrl: "https://example.com/article",
+        hostname: "example.com",
+        sentenceText: "The raw sentence should not appear in the digest card.",
+        ownedReadingItemId: "or_article_example",
+        ownedReadingSourceType: "article",
+        ownedReadingTitle: "Example article",
+      },
+    }, {
+      id: "entry-weekly-second",
+      text: "ephemeral",
+      translation: "短暂",
+      explanation: "Second raw explanation should not appear.",
+      context: "Second raw sentence should not appear.",
+      url: "https://example.org/second",
+      hostname: "example.org",
+      savedAt: now,
+      srsBox: 2,
+      nextReviewAt: now + 86_400_000,
+      reviewCount: 1,
+      lastReviewedAt: now,
+      sourceContext: {
+        surface: "popup_deep_read",
+        pageTitle: "Second article",
+        pageUrl: "https://example.org/second",
+        hostname: "example.org",
+        sentenceText: "Second raw sentence should not appear.",
+        ownedReadingItemId: "or_article_second",
+        ownedReadingSourceType: "article",
+        ownedReadingTitle: "Second article",
+      },
+    }])
+    listOwnedReadingItemsMock.mockResolvedValue([{
+      id: "or_article_example",
+      sourceType: "article",
+      title: "Example article",
+      sourceUrl: "https://example.com/article",
+      openedAt: now,
+      updatedAt: now,
+      status: "saved",
+      readingHistoryRecordId: "https://example.com/article",
+      studyProgressRecordId: "https://example.com/article",
+    }, {
+      id: "or_article_second",
+      sourceType: "article",
+      title: "Second article",
+      sourceUrl: "https://example.org/second",
+      openedAt: now,
+      updatedAt: now + 1,
+      status: "in_progress",
+      progress: { fraction: 0.5, sentenceIndex: 8 },
+      readingHistoryRecordId: "https://example.org/second",
+      studyProgressRecordId: "https://example.org/second",
+    }])
+
+    await rerenderApp()
+
+    const digest = container.querySelector('[data-testid="library-weekly-digest-card"]') as HTMLElement
+    expect(digest).toBeTruthy()
+    expect(digest.textContent).toContain("Weekly digest · local")
+    expect(digest.textContent).toContain("You saved 2 reviewable moments this week")
+    expect(digest.textContent).toContain("2 sources contributed")
+    expect(digest.textContent).toContain("Saved")
+    expect(digest.textContent).toContain("Reviewed")
+    expect(digest.textContent).toContain("Privacy: this digest uses counts")
+    expect(container.querySelector('[data-testid="library-weekly-digest-sources"]')?.textContent)
+      .toContain("Example article · 1 saved · 1 reviewed")
+    expect(container.querySelector('[data-testid="library-weekly-digest-insights"]')?.textContent)
+      .toContain("Repeated vocabulary: ephemeral across 2 sources")
+    expect(container.querySelector('[data-testid="library-weekly-digest-insights"]')?.textContent)
+      .toContain("Continue: Second article · sentence 9")
+    expect(digest.textContent).toContain("Continue source")
+    expect(digest.textContent).not.toContain("The raw sentence")
+    expect(digest.textContent).not.toContain("Second raw sentence")
+    expect(digest.textContent).not.toContain("raw explanation")
+  })
+
+  it("records weekly digest viewed once per visible digest card in a component lifetime", async () => {
+    const now = Date.now()
+    getVocabularyEntriesMock.mockResolvedValue([{
+      id: "entry-weekly-viewed",
+      text: "ephemeral",
+      translation: "短暂",
+      context: "The raw sentence should not be recorded.",
+      url: "https://example.com/article",
+      hostname: "example.com",
+      savedAt: now,
+      srsBox: 3,
+      nextReviewAt: now + 86_400_000,
+      reviewCount: 1,
+      lastReviewedAt: now,
+      sourceContext: {
+        surface: "popup_deep_read",
+        pageTitle: "Example article",
+        pageUrl: "https://example.com/article",
+        hostname: "example.com",
+        sentenceText: "The raw sentence should not be recorded.",
+        ownedReadingItemId: "or_article_example",
+        ownedReadingSourceType: "article",
+        ownedReadingTitle: "Example article",
+      },
+    }])
+    listOwnedReadingItemsMock.mockResolvedValue([{
+      id: "or_article_example",
+      sourceType: "article",
+      title: "Example article",
+      sourceUrl: "https://example.com/article",
+      openedAt: now,
+      status: "saved",
+      readingHistoryRecordId: "https://example.com/article",
+      studyProgressRecordId: "https://example.com/article",
+    }])
+
+    recordLearningLoopEventMock.mockClear()
+    await rerenderApp()
+
+    const viewedCalls = () => recordLearningLoopEventMock.mock.calls.filter(([event]) => event === "digest_viewed")
+    expect(viewedCalls()).toHaveLength(1)
+    expect(viewedCalls()[0]?.[1]).toEqual(expect.objectContaining({
+      reminderType: "weekly_digest",
+      surface: "vocabulary_library",
+      savedSnippetCount: 1,
+      reviewedCardCount: 1,
+      sourceCount: 1,
+      reviewableLearningMoments: 1,
+    }))
+
+    const alphaSort = Array.from(container.querySelectorAll("button")).find((button) => button.textContent === "A-Z") as HTMLButtonElement
+    await act(async () => {
+      alphaSort.click()
+      await Promise.resolve()
+    })
+
+    expect(viewedCalls()).toHaveLength(1)
+  })
+
+  it("records weekly digest opened from the Open review CTA and then opens Review", async () => {
+    const now = Date.now()
+    getVocabularyEntriesMock.mockResolvedValue([{
+      id: "entry-weekly-opened",
+      text: "ephemeral",
+      translation: "短暂",
+      context: "Private sentence.",
+      url: "https://example.com/article",
+      hostname: "example.com",
+      savedAt: now,
+      srsBox: 1,
+      nextReviewAt: now,
+      reviewCount: 0,
+      lastReviewedAt: null,
+      sourceContext: {
+        surface: "popup_deep_read",
+        pageTitle: "Example article",
+        pageUrl: "https://example.com/article",
+        hostname: "example.com",
+        sentenceText: "Private sentence.",
+        ownedReadingItemId: "or_article_example",
+        ownedReadingSourceType: "article",
+        ownedReadingTitle: "Example article",
+      },
+    }])
+    listOwnedReadingItemsMock.mockResolvedValue([{
+      id: "or_article_example",
+      sourceType: "article",
+      title: "Example article",
+      sourceUrl: "https://example.com/article",
+      openedAt: now,
+      status: "saved",
+      readingHistoryRecordId: "https://example.com/article",
+      studyProgressRecordId: "https://example.com/article",
+    }])
+
+    await rerenderApp()
+    recordLearningLoopEventMock.mockClear()
+
+    const digest = container.querySelector('[data-testid="library-weekly-digest-card"]') as HTMLElement
+    const openReview = Array.from(digest.querySelectorAll("button")).find((button) => button.textContent === "Review 1") as HTMLButtonElement
+    await act(async () => {
+      openReview.click()
+      await Promise.resolve()
+      await Promise.resolve()
+    })
+
+    expect(recordLearningLoopEventMock).toHaveBeenCalledWith("digest_opened", expect.objectContaining({
+      reminderType: "weekly_digest",
+      surface: "vocabulary_library",
+      savedSnippetCount: 1,
+      sourceCount: 1,
+    }))
+    const selectedReviewTab = Array.from(container.querySelectorAll('[role="tab"][aria-selected="true"]'))
+      .find((tab) => tab.textContent?.includes("Review"))
+    expect(selectedReviewTab).toBeTruthy()
+  })
+
+  it("shows every macro Library asset type as ready, empty, or planned", async () => {
+    const coverage = container.querySelector('[data-testid="library-asset-coverage-card"]') as HTMLElement
+
+    expect(coverage).toBeTruthy()
+    expect(coverage.textContent).toContain("Learning asset coverage")
+    expect(coverage.textContent).toContain("macro asset types")
+    for (const label of [
+      "Saved Pages",
+      "Saved Videos",
+      "Saved Files",
+      "Saved Sentences",
+      "Saved Words",
+      "Video Notes",
+      "Reading Queue",
+      "Review Queue",
+      "Personal Glossary",
+      "Learning Digest",
+    ]) {
+      expect(coverage.textContent).toContain(label)
+    }
+    expect(container.querySelector('[data-testid="library-asset-coverage-saved_pages"]')?.textContent).toContain("1 source")
+    expect(container.querySelector('[data-testid="library-asset-coverage-saved_files"]')?.textContent).toContain("1 source")
+    expect(container.querySelector('[data-testid="library-asset-coverage-saved_words"]')?.textContent).toContain("2 words")
+    expect(container.querySelector('[data-testid="library-asset-coverage-review_queue"]')?.textContent).toContain("1 due")
+    expect(container.querySelector('[data-testid="library-asset-coverage-personal_glossary"]')?.textContent).toContain("Not yet added")
+    expect(container.querySelector('[data-testid="library-asset-coverage-saved_videos"]')?.getAttribute("data-status")).toBe("deferred")
+    expect(coverage.textContent).toContain("Empty rows do not store content")
+  })
+
+  it("supports keyboard-first saved-item search and announces library result state", async () => {
+    const input = container.querySelector('[data-testid="library-search-input"]') as HTMLInputElement
+    const status = container.querySelector('[data-testid="library-search-status"]') as HTMLElement
+    const savedList = container.querySelector('[data-testid="library-saved-items-list"]') as HTMLElement
+
+    expect(input).toBeTruthy()
+    expect(input.getAttribute("aria-describedby")).toBe("library-search-status")
+    expect(input.getAttribute("aria-label")).toContain("Press slash to focus search")
+    expect(status?.getAttribute("role")).toBe("status")
+    expect(status?.textContent).toContain("Showing 2 saved items")
+    expect(savedList?.getAttribute("role")).toBe("list")
+    expect(savedList?.querySelectorAll('[role="listitem"]')).toHaveLength(2)
+
+    await act(async () => {
+      window.dispatchEvent(new KeyboardEvent("keydown", { key: "/", bubbles: true }))
+      await new Promise((resolve) => window.setTimeout(resolve, 0))
+    })
+
+    expect(document.activeElement).toBe(input)
+
+    await act(async () => {
+      const desc = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")
+      desc?.set?.call(input, "Example article")
+      input.dispatchEvent(new Event("input", { bubbles: true }))
+      input.dispatchEvent(new Event("change", { bubbles: true }))
+      await Promise.resolve()
+      await Promise.resolve()
+    })
+
+    expect(status.textContent).toContain("Search active for “Example article”")
+    expect(status.textContent).toContain("1 saved word")
+    expect(status.textContent).toContain("1 source title match")
+  })
+
+  it("organizes saved learning by source type and filters the library list", async () => {
+    const sourceMap = container.querySelector('[data-testid="library-source-map-card"]') as HTMLElement
+    expect(sourceMap).toBeTruthy()
+    const sourceFilterGroup = sourceMap.querySelector('[aria-label="Filter saved items by source type"]') as HTMLElement
+    expect(sourceFilterGroup?.getAttribute("role")).toBe("group")
+    expect(sourceMap.textContent).toContain("Source map")
+    expect(sourceMap.textContent).toContain("Articles")
+    expect(sourceMap.textContent).toContain("Subtitle files")
+    expect(sourceMap.textContent).toContain("every card can stay connected to where it came from")
+
+    const subtitleFilter = container.querySelector('[data-testid="library-source-filter-subtitle-file"]') as HTMLButtonElement
+    expect(subtitleFilter).toBeTruthy()
+    expect(subtitleFilter.getAttribute("aria-label")).toBe("Subtitle files: 1 saved item")
+
+    await act(async () => {
+      subtitleFilter.click()
+      await Promise.resolve()
+    })
+
+    expect(container.querySelector('[data-testid="library-active-source-filter"]')?.textContent).toContain("1 saved item from subtitle files")
+    expect(container.querySelector('[data-role="vocabulary-entry-card"][data-entry-id="entry-1"]')).toBeNull()
+    expect(container.querySelector('[data-role="vocabulary-entry-card"][data-entry-id="entry-2"]')).toBeTruthy()
+
+    const allSourcesFilter = container.querySelector('[data-testid="library-source-filter-all"]') as HTMLButtonElement
+    await act(async () => {
+      allSourcesFilter.click()
+      await Promise.resolve()
+    })
+
+    expect(container.querySelector('[data-role="vocabulary-entry-card"][data-entry-id="entry-1"]')).toBeTruthy()
+    expect(container.querySelector('[data-role="vocabulary-entry-card"][data-entry-id="entry-2"]')).toBeTruthy()
+  })
+
   it("renders popup deep-read source context in the vocabulary list", async () => {
     expect(container.textContent).toContain("Popup deep-read")
     expect(container.textContent).toContain("Example article")
@@ -620,6 +1269,130 @@ describe("VocabularyApp", () => {
 
     expect(markOwnedReadingOpenedMock).toHaveBeenCalledWith("or_article_example")
     expect(browser.tabs.create).toHaveBeenCalledWith({ url: "https://example.com/article" })
+  })
+
+  it("offers an explicit user-selected sentence share card for eligible saved snippets without telemetry leaks", async () => {
+    getVocabularyEntriesMock.mockResolvedValueOnce([{
+      id: "entry-share",
+      text: "ephemeral phase",
+      translation: "短暂阶段很快过去。",
+      context: "The ephemeral phase passes quickly.",
+      url: "https://example.com/private/path?token=secret#frag",
+      hostname: "example.com",
+      savedAt: 1200,
+      srsBox: 1,
+      nextReviewAt: 1200,
+      reviewCount: 0,
+      lastReviewedAt: null,
+      sourceContext: {
+        surface: "popup_deep_read" as const,
+        pageTitle: "Example article",
+        pageUrl: "https://example.com/private/path?token=secret#frag",
+        hostname: "example.com",
+        sentenceText: "The ephemeral phase passes quickly.",
+        sentenceIndex: 0,
+      },
+    }])
+    listOwnedReadingItemsMock.mockResolvedValueOnce([])
+
+    await rerenderApp()
+    recordLearningLoopEventMock.mockClear()
+
+    const card = container.querySelector('[data-role="vocabulary-entry-card"][data-entry-id="entry-share"]') as HTMLButtonElement
+    await act(async () => {
+      card.click()
+      await Promise.resolve()
+    })
+
+    const shareButton = container.querySelector('[data-testid="vocab-share-sentence-card-entry-share"]') as HTMLButtonElement
+    expect(shareButton).toBeTruthy()
+    expect(shareButton.textContent).toContain("Share sentence card")
+
+    await act(async () => {
+      shareButton.click()
+      await Promise.resolve()
+      await Promise.resolve()
+    })
+
+    expect(navigatorShareMock).toHaveBeenCalledWith(expect.objectContaining({
+      title: "Astra sentence card",
+      text: expect.stringContaining("The ephemeral phase passes quickly."),
+      url: expect.stringContaining("utm_source=sentence_card"),
+    }))
+    expect(navigatorShareMock.mock.calls[0]?.[0].text).toContain("短暂阶段很快过去。")
+    expect(recordLearningLoopEventMock).toHaveBeenCalledWith("share_card_created", expect.objectContaining({
+      source: "vocabulary",
+      surface: "library",
+      shareType: "sentence_card",
+      landingSource: "sentence_card",
+      contentOrigin: "user_selected",
+      contentLengthBucket: "short",
+      hasSourceTitle: true,
+    }))
+    const serializedTelemetry = JSON.stringify(recordLearningLoopEventMock.mock.calls.map(([, data]) => data))
+    expect(serializedTelemetry).not.toContain("private/path")
+    expect(serializedTelemetry).not.toContain("token=secret")
+    expect(serializedTelemetry).not.toContain("The ephemeral phase")
+    expect(serializedTelemetry).not.toContain("短暂阶段")
+  })
+
+  it("does not offer share cards for long or local private saved snippets", async () => {
+    getVocabularyEntriesMock.mockResolvedValueOnce([{
+      id: "entry-long-share",
+      text: "long",
+      translation: "很长",
+      context: `${"Long private sentence. ".repeat(20)}`,
+      url: "https://example.com/long",
+      hostname: "example.com",
+      savedAt: 1200,
+      srsBox: 1,
+      nextReviewAt: 1200,
+      reviewCount: 0,
+      lastReviewedAt: null,
+      sourceContext: {
+        surface: "popup_deep_read" as const,
+        pageTitle: "Long article",
+        pageUrl: "https://example.com/long",
+        hostname: "example.com",
+        sentenceText: `${"Long private sentence. ".repeat(20)}`,
+        sentenceIndex: 0,
+      },
+    }, {
+      id: "entry-local-share",
+      text: "local",
+      translation: "本地",
+      context: "This local file sentence is short.",
+      url: "astra-local://subtitle/private.vtt",
+      hostname: "subtitle-reader",
+      savedAt: 1100,
+      srsBox: 1,
+      nextReviewAt: 1100,
+      reviewCount: 0,
+      lastReviewedAt: null,
+      sourceContext: {
+        surface: "subtitle_reader" as const,
+        pageTitle: "private.vtt",
+        pageUrl: "astra-local://subtitle/private.vtt",
+        hostname: "subtitle-reader",
+        sentenceText: "This local file sentence is short.",
+        sentenceIndex: 0,
+      },
+    }])
+    listOwnedReadingItemsMock.mockResolvedValueOnce([])
+
+    await rerenderApp()
+
+    for (const id of ["entry-long-share", "entry-local-share"]) {
+      const card = container.querySelector(`[data-role="vocabulary-entry-card"][data-entry-id="${id}"]`) as HTMLButtonElement
+      await act(async () => {
+        card.click()
+        await Promise.resolve()
+      })
+      expect(container.querySelector(`[data-testid="vocab-share-sentence-card-${id}"]`)).toBeNull()
+    }
+
+    expect(navigatorShareMock).not.toHaveBeenCalled()
+    expect(recordLearningLoopEventMock.mock.calls.some(([event]) => event === "share_card_created")).toBe(false)
   })
 
   it("renders subtitle-reader source context and reopens the linked subtitle-file asset", async () => {
@@ -962,6 +1735,187 @@ describe("VocabularyApp", () => {
     expect(browser.runtime.sendMessage).toHaveBeenCalledWith({
       type: "runtime/learning-continuity-sync",
       reason: "vocabulary-owned-reading-status",
+    })
+  })
+
+  it("updates per-source sync and digest controls from the Reading queue", async () => {
+    const readingBtn = [...container.querySelectorAll("button")].find((b) => b.textContent?.trim() === "Reading")
+    await act(async () => {
+      readingBtn!.click()
+      await Promise.resolve()
+      await Promise.resolve()
+    })
+    vi.mocked(browser.runtime.sendMessage).mockClear()
+
+    const controls = container.querySelector('[data-testid="reading-source-controls-or_article_example"]') as HTMLElement
+    expect(controls).toBeTruthy()
+    expect(controls.textContent).toContain("Source controls")
+    expect(controls.textContent).toContain("Sync: included")
+    expect(controls.textContent).toContain("Digest: included")
+    expect(controls.textContent).toContain("saved cards stay")
+
+    const disableSync = container.querySelector('[data-testid="reading-toggle-sync-or_article_example"]') as HTMLButtonElement
+    await act(async () => {
+      disableSync.click()
+      await Promise.resolve()
+    })
+
+    expect(setOwnedReadingUserControlMock).toHaveBeenCalledWith("or_article_example", { syncEnabled: false })
+    expect(browser.runtime.sendMessage).toHaveBeenCalledWith({
+      type: "runtime/learning-continuity-sync",
+      reason: "vocabulary-owned-reading-user-control",
+    })
+
+    const excludeDigest = container.querySelector('[data-testid="reading-toggle-digest-or_article_example"]') as HTMLButtonElement
+    await act(async () => {
+      excludeDigest.click()
+      await Promise.resolve()
+    })
+
+    expect(setOwnedReadingUserControlMock).toHaveBeenCalledWith("or_article_example", { excludedFromDigest: true })
+  })
+
+  it("records metadata-only source digest opt-out from Reading queue controls", async () => {
+    const readingBtn = [...container.querySelectorAll("button")].find((b) => b.textContent?.trim() === "Reading")
+    await act(async () => {
+      readingBtn!.click()
+      await Promise.resolve()
+      await Promise.resolve()
+    })
+    recordLearningLoopEventMock.mockClear()
+
+    const excludeDigest = container.querySelector('[data-testid="reading-toggle-digest-or_article_example"]') as HTMLButtonElement
+    await act(async () => {
+      excludeDigest.click()
+      await Promise.resolve()
+      await Promise.resolve()
+    })
+
+    expect(recordLearningLoopEventMock).toHaveBeenCalledWith("reminder_disabled", {
+      reminderType: "weekly_digest",
+      controlScope: "source",
+      surface: "vocabulary_reading_queue",
+      sourceType: "article",
+      status: "saved",
+      privacyModeAtCapture: false,
+    })
+    const [, metadata] = recordLearningLoopEventMock.mock.calls.find(([event]) => event === "reminder_disabled") ?? []
+    const serialized = JSON.stringify(metadata)
+    expect(serialized).not.toContain("or_article_example")
+    expect(serialized).not.toContain("Example article")
+    expect(serialized).not.toContain("https://example.com/article")
+    expect(serialized).not.toContain("ephemeral")
+    expect(serialized).not.toContain("The ephemeral phase passes quickly")
+  })
+
+  it("shows source details and offers explicit cascade delete for linked saved cards", async () => {
+    getVocabularyEntriesMock.mockResolvedValueOnce([{
+      id: "entry-1",
+      text: "ephemeral",
+      explanation: "Short-lived in the article context.",
+      context: "The ephemeral phase passes quickly.",
+      url: "https://example.com/article",
+      hostname: "example.com",
+      savedAt: 1000,
+      srsBox: 1,
+      nextReviewAt: 1000,
+      reviewCount: 0,
+      lastReviewedAt: null,
+      sourceContext: {
+        surface: "popup_deep_read",
+        pageTitle: "Example article",
+        pageUrl: "https://example.com/article?from=popup",
+        hostname: "example.com",
+        sentenceText: "The ephemeral phase passes quickly.",
+        ownedReadingItemId: "or_article_example",
+        ownedReadingSourceType: "article",
+        ownedReadingTitle: "Example article",
+        studyProgressRecordId: "https://example.com/article",
+      },
+    }, {
+      id: "entry-1b",
+      text: "resilient",
+      translation: "有韧性",
+      url: "https://example.com/article",
+      hostname: "example.com",
+      savedAt: 950,
+      srsBox: 1,
+      nextReviewAt: 950,
+      reviewCount: 0,
+      lastReviewedAt: null,
+      sourceContext: {
+        surface: "popup_deep_read",
+        pageTitle: "Example article",
+        pageUrl: "https://example.com/article",
+        hostname: "example.com",
+        sentenceText: "A second linked card.",
+        ownedReadingItemId: "or_article_example",
+        ownedReadingSourceType: "article",
+        ownedReadingTitle: "Example article",
+        studyProgressRecordId: "https://example.com/article",
+      },
+    }, {
+      id: "entry-2",
+      text: "subtitle-word",
+      translation: "字幕词",
+      context: "sample.srt · row 2",
+      url: "astra-local://subtitle/sample.srt",
+      hostname: "subtitle-reader",
+      savedAt: 900,
+      srsBox: 1,
+      nextReviewAt: 900,
+      reviewCount: 0,
+      lastReviewedAt: null,
+      sourceContext: {
+        surface: "subtitle_reader",
+        pageTitle: "sample.srt",
+        pageUrl: "astra-local://subtitle/sample.srt",
+        hostname: "subtitle-reader",
+        sentenceText: "subtitle-word",
+        ownedReadingItemId: "or_subtitle_sample",
+        ownedReadingSourceType: "subtitle-file",
+        ownedReadingTitle: "sample.srt · SRT · 12 items",
+      },
+    }])
+    const readingBtn = [...container.querySelectorAll("button")].find((b) => b.textContent?.trim() === "Reading")
+    await act(async () => {
+      readingBtn!.click()
+      await Promise.resolve()
+      await Promise.resolve()
+    })
+    vi.mocked(browser.runtime.sendMessage).mockClear()
+
+    const detail = container.querySelector('[data-testid="reading-source-detail-or_article_example"]') as HTMLElement
+    expect(detail).toBeTruthy()
+    expect(detail.textContent).toContain("Source detail")
+    expect(detail.textContent).toContain("Saved cards linked to this source: 2")
+    expect(container.querySelector('[data-testid="reading-source-derived-cards-or_article_example"]')?.textContent).toContain("ephemeral")
+    expect(container.querySelector('[data-testid="reading-source-derived-cards-or_article_example"]')?.textContent).toContain("resilient")
+
+    const deleteSource = container.querySelector('[data-testid="reading-delete-source-or_article_example"]') as HTMLButtonElement
+    await act(async () => {
+      deleteSource.click()
+      await Promise.resolve()
+    })
+
+    const confirm = container.querySelector('[data-testid="reading-delete-source-confirm-or_article_example"]') as HTMLElement
+    expect(confirm.textContent).toContain("keep 2 saved cards")
+    expect(removeOwnedReadingItemMock).not.toHaveBeenCalled()
+
+    const cascade = container.querySelector('[data-testid="reading-confirm-delete-source-cascade-or_article_example"]') as HTMLButtonElement
+    await act(async () => {
+      cascade.click()
+      await Promise.resolve()
+      await Promise.resolve()
+    })
+
+    expect(removeVocabularyEntriesMock).toHaveBeenCalledWith(["entry-1", "entry-1b"])
+    expect(removeVocabularyEntryMock).not.toHaveBeenCalledWith("entry-1")
+    expect(removeVocabularyEntriesMock).not.toHaveBeenCalledWith(expect.arrayContaining(["entry-2"]))
+    expect(removeOwnedReadingItemMock).toHaveBeenCalledWith("or_article_example")
+    expect(browser.runtime.sendMessage).toHaveBeenCalledWith({
+      type: "runtime/learning-continuity-sync",
+      reason: "vocabulary-owned-reading-remove-cascade",
     })
   })
 

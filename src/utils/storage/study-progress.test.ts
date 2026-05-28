@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it } from "vitest"
+import { createMockBrowser, setMockBrowser } from "../../../test/utils/mockBrowser"
 import {
   applyStudyProgressSyncMutation,
   applyStudyProgressSyncMutations,
@@ -19,9 +20,12 @@ import {
   STUDY_STEPS_ORDER,
   type StudyProgressStore,
 } from "./study-progress"
+import { saveConfig } from "./config"
+import { excludeHostnameFromPersonalization } from "./learning-profile"
 
 describe("study-progress", () => {
   beforeEach(async () => {
+    setMockBrowser(createMockBrowser())
     await clearStudyProgress()
   })
 
@@ -36,6 +40,49 @@ describe("study-progress", () => {
     expect(page.completedSteps).toEqual(["read"])
     expect(page.url).toBe("https://example.com/article")
     expect(page.title).toBe("Test Article")
+  })
+
+  it("reduces automatic page progress metadata under Privacy Mode", async () => {
+    await saveConfig({ privacyMode: true })
+
+    const page = await recordStudyEvent({
+      url: "https://private.example/sensitive/path?token=secret#section",
+      hostname: "private.example",
+      title: "Sensitive Full Title",
+      step: "read",
+    })
+
+    expect(page).toMatchObject({
+      url: "https://private.example/",
+      hostname: "private.example",
+      title: "Private page",
+      completedSteps: ["read"],
+    })
+    expect(await getPageStudyProgress("https://private.example/sensitive/path")).toBeNull()
+    expect(await getPageStudyProgress("https://private.example/")).toMatchObject({
+      title: "Private page",
+    })
+  })
+
+  it("suppresses automatic page progress writes for excluded hosts", async () => {
+    await excludeHostnameFromPersonalization("private.example")
+
+    const page = await recordStudyEvent({
+      url: "https://private.example/sensitive/path",
+      hostname: "private.example",
+      title: "Sensitive Full Title",
+      step: "explain",
+      count: 2,
+    })
+
+    expect(page).toMatchObject({
+      url: "https://private.example/",
+      hostname: "private.example",
+      title: "Private page",
+      completedSteps: ["explain"],
+      sentencesExplained: 2,
+    })
+    expect((await getStudyProgress()).pages).toEqual([])
   })
 
   it("accumulates multiple steps for the same page", async () => {

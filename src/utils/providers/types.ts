@@ -1,4 +1,4 @@
-import type { AstraConfig } from "@/types/config"
+import type { AstraConfig, ServiceMode } from "@/types/config"
 import type {
   TranslationPlaceholderFormat,
   TranslationRequestContext,
@@ -15,6 +15,7 @@ export interface ProviderTranslationRequest {
   placeholderFormat?: TranslationPlaceholderFormat
   languageLevel?: "beginner" | "intermediate" | "advanced"
   explainMode?: "beginner" | "exam" | "deep"
+  serviceMode?: ServiceMode
   explanationRepairInstruction?: string
 }
 

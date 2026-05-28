@@ -3,6 +3,7 @@ import { createRoot } from "react-dom/client"
 import { browser } from "#imports"
 import { ErrorBoundary } from "@/components/ErrorBoundary"
 import { t } from "@/utils/i18n"
+import { getSafeAiUnavailableCopy } from "@/utils/copy-dictionary"
 import { readConfig } from "@/utils/storage/config"
 import { saveVocabularyEntry } from "@/utils/storage/vocabulary"
 import { formatGlossaryEvidenceLabel } from "@/utils/storage/vocabulary-core"
@@ -88,6 +89,22 @@ function getSelectionToolbarLeft(rect: DOMRect, fontScale: number): number {
   if (left < 12) left = 12
   if (left + resultWidth > viewportWidth - 12) left = Math.max(12, viewportWidth - resultWidth - 12)
   return left
+}
+
+function getElementFromNode(node: Node | null): HTMLElement | null {
+  if (!node) return null
+  return node instanceof HTMLElement ? node : node.parentElement
+}
+
+function isEditableSelectionElement(element: HTMLElement | null): boolean {
+  if (!element) return false
+  return !!element.closest("input, textarea, select, [contenteditable='true'], [contenteditable=''], [role='textbox']")
+}
+
+function isRangeInsideEditable(range: Range): boolean {
+  return isEditableSelectionElement(getElementFromNode(range.commonAncestorContainer))
+    || isEditableSelectionElement(getElementFromNode(range.startContainer))
+    || isEditableSelectionElement(getElementFromNode(range.endContainer))
 }
 
 function ToolbarIcon({ type, size = 13 }: { type: "translate" | "explain" | "save"; size?: number }) {
@@ -551,6 +568,11 @@ function SelectionToolbarApp() {
           }
 
           const range = selection.getRangeAt(0)
+          if (isRangeInsideEditable(range)) {
+            dismiss()
+            clearInteractionSuppression(["selection-pointer", "selection-toolbar"])
+            return
+          }
           const requestVersion = selectionVersionRef.current + 1
           selectionVersionRef.current = requestVersion
           setInteractionSuppressionReason("selection-toolbar", true)
@@ -608,6 +630,11 @@ function SelectionToolbarApp() {
         }
 
         const range = selection.getRangeAt(0)
+        if (isRangeInsideEditable(range)) {
+          dismiss()
+          clearInteractionSuppression(["selection-pointer", "selection-toolbar"])
+          return
+        }
         const requestVersion = selectionVersionRef.current + 1
         selectionVersionRef.current = requestVersion
         setInteractionSuppressionReason("selection-toolbar", true)
@@ -728,6 +755,7 @@ function SelectionToolbarApp() {
         targetLang,
         languageLevel: config.languageLevel,
         explainMode: config.explainMode,
+        serviceMode: config.serviceMode,
         explanationGlossary: config.explanationGlossary,
         selectionContext: requestContext,
         contextElement: selectionContextElementRef.current,
@@ -750,7 +778,7 @@ function SelectionToolbarApp() {
       if (requestVersion !== selectionVersionRef.current) return
       setActionResult({
         actionId: action.id,
-        text: `⚠ ${error instanceof Error ? error.message : t("actionOperationFailed")}`,
+        text: `⚠ ${getSafeAiUnavailableCopy({ code: "UNKNOWN", message: error instanceof Error ? error.message : t("actionOperationFailed") })}`,
       })
     } finally {
       if (requestVersion === selectionVersionRef.current) {
@@ -918,6 +946,7 @@ function SelectionToolbarApp() {
         text: selectedText,
         targetLang: config.targetLang,
         languageLevel: config.languageLevel,
+        serviceMode: config.serviceMode,
         sentenceContext: selectionContext,
       })
       if (requestVersion !== selectionVersionRef.current) return
@@ -944,6 +973,7 @@ function SelectionToolbarApp() {
         sentenceContext: selectionContext,
         targetLang: config.targetLang,
         languageLevel: config.languageLevel,
+        serviceMode: config.serviceMode,
       })
       if (requestVersion !== selectionVersionRef.current) return
       setWordAnnotation(result)

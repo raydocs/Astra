@@ -10,6 +10,7 @@ CREATE TABLE IF NOT EXISTS shadow_users (
   provider_entitlements_json TEXT NOT NULL,
   reading_history_sync_enabled INTEGER NOT NULL DEFAULT 0 CHECK (reading_history_sync_enabled IN (0, 1)),
   study_progress_sync_enabled INTEGER NOT NULL DEFAULT 0 CHECK (study_progress_sync_enabled IN (0, 1)),
+  weekly_digest_sync_enabled INTEGER NOT NULL DEFAULT 1 CHECK (weekly_digest_sync_enabled IN (0, 1)),
   shadow_updated_at TEXT NOT NULL
 );
 

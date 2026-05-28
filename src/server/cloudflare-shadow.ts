@@ -194,6 +194,7 @@ function normalizeUserForParity(user: ServerUserRecord | null) {
     syncPreferences: {
       reading_history: user.syncPreferences.reading_history,
       study_progress: user.syncPreferences.study_progress,
+      weekly_digest: user.syncPreferences.weekly_digest,
     },
   }
 }

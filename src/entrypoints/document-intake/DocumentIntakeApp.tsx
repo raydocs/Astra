@@ -215,7 +215,7 @@ export function DocumentIntakeApp() {
       </section>
 
       <section data-testid="document-intake-quality-tier-note" style={noteStyle}>
-        <strong>Quality Tier v1:</strong> image OCR and PDF translation readers classify extraction/translation confidence in-reader, so you can decide when compare or manual review is needed.
+        <strong>Quality Tier v1:</strong> PDF, EPUB, and subtitle readers classify extraction/translation confidence in-reader. SRT/VTT are proof-backed subtitle-file flows; ASS/Markdown/TXT/HTML remain opportunistic parser support until separately proven.
       </section>
 
       {phase === "saving" && (

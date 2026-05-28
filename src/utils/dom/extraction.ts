@@ -1,11 +1,10 @@
 import { collectTextBlocks, findContentRoot, buildContentSummary, type TextBlock } from "./traversal"
-
-type ContentScope = "page" | "article"
+import { resolveTranslationSurfaceMode, type ContentScope, type TranslationSurfaceMode } from "@/types/config"
 
 export interface ExtractionPlan {
   root: HTMLElement
   blocks: TextBlock[]
-  scope: ContentScope
+  scope: TranslationSurfaceMode
   summary: string | null
 }
 
@@ -97,10 +96,18 @@ export const resolveArticleRoot = (doc: Document): HTMLElement | null => {
 }
 
 export const resolveExtractionPlan = (doc: Document, scope: ContentScope): ExtractionPlan => {
-  if (scope === "page") {
+  const surfaceMode = resolveTranslationSurfaceMode(scope)
+
+  if (surfaceMode === "full_page") {
+    const root = doc.body ?? findContentRoot(doc)
+    const blocks = collectTextBlocks(root, { includeLandmarkContent: true })
+    return { root, blocks, scope: "full_page", summary: buildContentSummary(blocks) }
+  }
+
+  if (surfaceMode === "immersive") {
     const root = doc.body ?? findContentRoot(doc)
     const blocks = collectTextBlocks(root)
-    return { root, blocks, scope: "page", summary: buildContentSummary(blocks) }
+    return { root, blocks, scope: "immersive", summary: buildContentSummary(blocks) }
   }
 
   const articleRoot = resolveArticleRoot(doc)
@@ -113,7 +120,7 @@ export const resolveExtractionPlan = (doc: Document, scope: ContentScope): Extra
 
   const root = doc.body ?? findContentRoot(doc)
   const blocks = collectTextBlocks(root)
-  return { root, blocks, scope: "page", summary: buildContentSummary(blocks) }
+  return { root, blocks, scope: "immersive", summary: buildContentSummary(blocks) }
 }
 
 export function extractReadableDocumentMetadata(doc: Document, fallbackUrl: string): ReadableDocumentMetadata {

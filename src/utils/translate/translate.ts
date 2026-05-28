@@ -26,7 +26,7 @@ import {
   type ExplanationQualityFailure,
   type ExplanationQualityGlossaryTerm,
 } from "./explanation-quality"
-import type { ExplainMode, LanguageLevel } from "@/types/config"
+import type { ExplainMode, LanguageLevel, ServiceMode } from "@/types/config"
 
 export interface TranslateRequest {
   texts: string[]
@@ -38,6 +38,7 @@ export interface TranslateRequest {
   placeholderFormat?: TranslationPlaceholderFormat
   languageLevel?: LanguageLevel
   explainMode?: ExplainMode
+  serviceMode?: ServiceMode
   explanationRepairInstruction?: string
 }
 
@@ -182,6 +183,7 @@ export async function translateTexts(
     placeholderFormat,
     languageLevel,
     explainMode,
+    serviceMode,
     explanationRepairInstruction,
   } = request
 
@@ -205,6 +207,7 @@ export async function translateTexts(
         ...(placeholderFormat ? { placeholderFormat } : {}),
         ...(task === "explain" && languageLevel ? { languageLevel } : {}),
         ...(task === "explain" && explainMode ? { explainMode } : {}),
+        ...(serviceMode ? { serviceMode } : {}),
         ...(task === "explain" && explanationRepairInstruction ? { explanationRepairInstruction } : {}),
       })
     } catch (error) {

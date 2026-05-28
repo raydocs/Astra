@@ -18,6 +18,12 @@ interface ImportReadableArticleOptions {
   platformBaseUrl?: string | null
 }
 
+type InternalExtractionScope = ReturnType<typeof resolveExtractionPlan>["scope"]
+
+function toPublicArticleScope(scope: InternalExtractionScope): ImportedReadableArticle["scope"] {
+  return scope === "article" ? "article" : "page"
+}
+
 class ServerArticleImportError extends Error {
   constructor(
     message: string,
@@ -135,7 +141,7 @@ async function importReadableArticleInBrowser(normalizedUrl: string): Promise<Im
     title: metadata.title,
     hostname: parsedUrl.hostname,
     byline: metadata.byline,
-    scope: plan.scope,
+    scope: toPublicArticleScope(plan.scope),
     summary: plan.summary,
     blocks,
   }

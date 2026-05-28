@@ -29,6 +29,8 @@ Astra 的定位是：**AI-powered language learning layer for the web**。
 - 不是第一阶段就做 Lingopie 式媒体平台
 - 不是模型配置面板换一层产品包装
 
+For the stage-specific non-goals table, issue-triage decision tree, public FAQ boundary, and support response macros, use [`docs/specs/strategic-non-goals.md`](./specs/strategic-non-goals.md).
+
 ### 核心战略判断
 
 - 先进入用户已经存在的浏览行为
@@ -60,6 +62,7 @@ Astra 的定位是：**AI-powered language learning layer for the web**。
 - **Asset accumulation over one-off sessions**：词汇、句子、历史、进度都应该持续积累
 - **BYOK is a bridge, not the center**：自带 key 可以存在，但不应该成为产品中心
 - **Protocol before claims**：任何“已经做成”的能力，都应该先经过 deterministic / live / holdout / proof 的验证
+- **Non-goals before expansion**：任何新默认面都必须先通过 Strategic Non-Goals 决策树，证明它强化理解 / 保存 / 复习 / Library 主闭环
 
 ## Phases
 

@@ -73,6 +73,33 @@ describe("fetchNodeRelay", () => {
     expect((init?.headers as Headers).get("x-astra-request-id")).toBe("req_proxy_test")
   })
 
+  it("preserves providerless translate serviceMode payloads when forwarding to the Node relay", async () => {
+    const fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response("ok"))
+    const translatePayload = {
+      texts: ["hello"],
+      targetLang: "zh-CN",
+      task: "translate",
+      serviceMode: "fast",
+    }
+    const request = new Request("https://platform.astra.example/v1/translate", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Host: "platform.astra.example",
+      },
+      body: JSON.stringify(translatePayload),
+    })
+
+    const response = await fetchNodeRelay(request, createContext())
+    const [, init] = fetchSpy.mock.calls[0]!
+    const forwarded = JSON.parse(new TextDecoder().decode(init?.body as ArrayBuffer)) as typeof translatePayload
+
+    expect(response.status).toBe(200)
+    expect(String(fetchSpy.mock.calls[0]![0])).toBe("https://relay.astra.example/v1/translate")
+    expect(forwarded).toEqual(translatePayload)
+    expect(forwarded.serviceMode).toBe("fast")
+  })
+
   it("fails deterministically when asked to proxy an already-consumed body", async () => {
     const fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response("ok"))
     const request = new Request("https://platform.astra.example/v1/auth/session", {

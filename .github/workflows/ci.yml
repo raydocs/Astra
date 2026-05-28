@@ -34,8 +34,14 @@ jobs:
       - name: Check repo knowledge guardrail
         run: pnpm check:repo-knowledge
 
+      - name: Check Strategic Non-Goals proposals
+        run: pnpm check:strategic-non-goals
+
       - name: Verify Zod entrypoints
         run: pnpm check:zod-entrypoints
+
+      - name: Check macro final completion evidence
+        run: pnpm check:macro-final-completion
 
       - name: Lint
         run: pnpm lint:ci
@@ -48,6 +54,57 @@ jobs:
 
       - name: Bench
         run: pnpm bench
+
+      - name: Publish quality gate summary
+        if: always()
+        run: |
+          echo "## Quality gate" >> $GITHUB_STEP_SUMMARY
+          echo "- repo knowledge: pnpm check:repo-knowledge" >> $GITHUB_STEP_SUMMARY
+          echo "- strategic non-goals: pnpm check:strategic-non-goals" >> $GITHUB_STEP_SUMMARY
+          echo "- zod entrypoints: pnpm check:zod-entrypoints" >> $GITHUB_STEP_SUMMARY
+          echo "- final completion evidence guardrail: pnpm check:macro-final-completion" >> $GITHUB_STEP_SUMMARY
+          echo "- lint: pnpm lint:ci" >> $GITHUB_STEP_SUMMARY
+          echo "- type-check: pnpm type-check" >> $GITHUB_STEP_SUMMARY
+          echo "- test: pnpm test" >> $GITHUB_STEP_SUMMARY
+          echo "- deterministic bench: pnpm bench" >> $GITHUB_STEP_SUMMARY
+          if [ -f data/bench-results/latest.json ]; then
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "Bench latest JSON: data/bench-results/latest.json" >> $GITHUB_STEP_SUMMARY
+          fi
+
+      - name: Write quality gate artifact manifest
+        if: always()
+        run: |
+          mkdir -p data/bench-results
+          cat > data/bench-results/quality-gate-manifest.json <<JSON
+          {
+            "schema": "astra.ci.quality-gate-results-manifest.v1",
+            "artifactName": "quality-gate-results",
+            "workflowName": "${GITHUB_WORKFLOW}",
+            "jobName": "quality",
+            "runId": "${GITHUB_RUN_ID}",
+            "runAttempt": "${GITHUB_RUN_ATTEMPT}",
+            "commitSha": "${GITHUB_SHA}",
+            "requiredCoverage": [
+              "pnpm check:repo-knowledge",
+              "pnpm check:zod-entrypoints",
+              "pnpm check:macro-final-completion",
+              "pnpm type-check",
+              "pnpm lint:ci",
+              "pnpm test",
+              "pnpm bench"
+            ],
+            "benchLatestJson": "data/bench-results/latest.json"
+          }
+          JSON
+
+      - name: Upload quality gate results
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: quality-gate-results
+          path: data/bench-results/
+          retention-days: 14
 
   live-browser:
     needs: quality
@@ -120,18 +177,86 @@ jobs:
             sleep 10
           done
 
+      - name: Run required live lane (document-proof)
+        run: |
+          for attempt in 1 2; do
+            xvfb-run -a pnpm bench:live:lane:document-proof && exit 0
+            status=$?
+            echo "document-proof live lane failed on attempt ${attempt} with status ${status}"
+            echo "- document-proof attempt ${attempt} failed with status ${status}" >> $GITHUB_STEP_SUMMARY
+            if [ "${attempt}" = "2" ]; then
+              exit "${status}"
+            fi
+            sleep 10
+          done
+
+      - name: Run required live lane (youtube-proof)
+        run: |
+          for attempt in 1 2; do
+            xvfb-run -a pnpm bench:live:lane:youtube-proof && exit 0
+            status=$?
+            echo "youtube-proof live lane failed on attempt ${attempt} with status ${status}"
+            echo "- youtube-proof attempt ${attempt} failed with status ${status}" >> $GITHUB_STEP_SUMMARY
+            if [ "${attempt}" = "2" ]; then
+              exit "${status}"
+            fi
+            sleep 10
+          done
+
+      - name: Run required live lane (youtube-holdout)
+        run: |
+          for attempt in 1 2; do
+            xvfb-run -a pnpm bench:live:lane:youtube-holdout && exit 0
+            status=$?
+            echo "youtube-holdout live lane failed on attempt ${attempt} with status ${status}"
+            echo "- youtube-holdout attempt ${attempt} failed with status ${status}" >> $GITHUB_STEP_SUMMARY
+            if [ "${attempt}" = "2" ]; then
+              exit "${status}"
+            fi
+            sleep 10
+          done
+
       - name: Publish live gate summary
         if: always()
         run: |
           echo "## Required live release-proof lanes" >> $GITHUB_STEP_SUMMARY
-          echo "- source-core: required (bench-live/page-translation-article-basic-source-bilingual, bench-live/article-extraction-proof, bench-live/dynamic-content-append)" >> $GITHUB_STEP_SUMMARY
+          echo "- source-core: required (bench-live/page-translation-article-basic-source-bilingual, bench-live/page-translation-full-page-title-shadow-source, bench-live/article-extraction-proof, bench-live/dynamic-content-append, bench-live/frame-coordination-basic, bench-live/frame-coordination-cross-origin-fallback)" >> $GITHUB_STEP_SUMMARY
           echo "- extension-core: required (bench-live/site-automation-autostart, bench-live/onboarding-smoke, bench-live/vocabulary-srs-smoke)" >> $GITHUB_STEP_SUMMARY
-          echo "- learning-loop: required (bench-live/popup-deep-read-proof, bench-live/vocabulary-srs-smoke, bench-live/learning-loop-revisit-smoke) — [m1-bf-01-popup-learning-loop-replay-2026-04-14.md](https://github.com/${GITHUB_REPOSITORY}/blob/${GITHUB_SHA}/docs/investigations/m1-bf-01-popup-learning-loop-replay-2026-04-14.md)" >> $GITHUB_STEP_SUMMARY
+          echo "- learning-loop: required (bench-live/popup-deep-read-proof, bench-live/vocabulary-srs-smoke, bench-live/selection-save-review-loop, bench-live/learning-loop-revisit-smoke) — [m1-bf-01-popup-learning-loop-replay-2026-04-14.md](https://github.com/${GITHUB_REPOSITORY}/blob/${GITHUB_SHA}/docs/investigations/m1-bf-01-popup-learning-loop-replay-2026-04-14.md)" >> $GITHUB_STEP_SUMMARY
+          echo "- document-proof: required (bench-live/document-intake-basic, bench-live/document-intake-local-file-handoff, bench-live/pdf-reader-basic, bench-live/epub-reader-basic, bench-live/subtitle-file-basic)" >> $GITHUB_STEP_SUMMARY
+          echo "- youtube-proof: required (bench-live/youtube-subtitle-player-button, bench-live/youtube-subtitle-in-player-settings, bench-live/youtube-subtitle-basic-bilingual, bench-live/youtube-subtitle-seek-recovery, bench-live/youtube-subtitle-track-switch, bench-live/youtube-transcript-panel, bench-live/youtube-transcript-search-jump, bench-live/youtube-save-sentence-review-loop, bench-live/youtube-video-note-create)" >> $GITHUB_STEP_SUMMARY
+          echo "- youtube-holdout: required (bench-live/holdout/youtube-subtitle-race, bench-live/holdout/youtube-no-captions, bench-live/holdout/youtube-asr-only, bench-live/holdout/youtube-long-video, bench-live/holdout/youtube-fullscreen, bench-live/holdout/youtube-spa-navigation)" >> $GITHUB_STEP_SUMMARY
           if [ -f data/bench-live-results/latest.result.md ]; then
             echo "" >> $GITHUB_STEP_SUMMARY
             echo "### Last scenario result (latest.result.md)" >> $GITHUB_STEP_SUMMARY
             sed -n '1,80p' data/bench-live-results/latest.result.md >> $GITHUB_STEP_SUMMARY
           fi
+
+      - name: Write live bench artifact manifest
+        if: always()
+        run: |
+          mkdir -p data/bench-live-results
+          cat > data/bench-live-results/live-bench-manifest.json <<JSON
+          {
+            "schema": "astra.ci.live-bench-results-manifest.v1",
+            "artifactName": "live-bench-results",
+            "workflowName": "${GITHUB_WORKFLOW}",
+            "jobName": "live-browser",
+            "runId": "${GITHUB_RUN_ID}",
+            "runAttempt": "${GITHUB_RUN_ATTEMPT}",
+            "commitSha": "${GITHUB_SHA}",
+            "requiredReleaseProofLanes": [
+              "source-core",
+              "extension-core",
+              "learning-loop",
+              "document-proof",
+              "youtube-proof",
+              "youtube-holdout"
+            ],
+            "latestResultMarkdown": "data/bench-live-results/latest.result.md",
+            "latestResultJson": "data/bench-live-results/latest.result.json"
+          }
+          JSON
 
       - name: Upload live bench results
         if: always()

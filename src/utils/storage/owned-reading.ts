@@ -24,6 +24,19 @@ export const OwnedReadingProgressSchema = z.object({
   sentenceIndex: z.number().int().nonnegative().optional(),
 }).optional()
 
+export const DEFAULT_OWNED_READING_USER_CONTROL = {
+  syncEnabled: true,
+  excludedFromDigest: false,
+  privacyModeAtCapture: false,
+} as const
+
+export const OwnedReadingUserControlSchema = z.object({
+  syncEnabled: z.boolean().default(DEFAULT_OWNED_READING_USER_CONTROL.syncEnabled),
+  excludedFromDigest: z.boolean().default(DEFAULT_OWNED_READING_USER_CONTROL.excludedFromDigest),
+  privacyModeAtCapture: z.boolean().default(DEFAULT_OWNED_READING_USER_CONTROL.privacyModeAtCapture),
+}).default(DEFAULT_OWNED_READING_USER_CONTROL)
+export type OwnedReadingUserControl = z.infer<typeof OwnedReadingUserControlSchema>
+
 export const OwnedReadingItemSchema = z.object({
   id: z.string().trim().min(1),
   sourceType: OwnedReadingSourceTypeSchema,
@@ -38,9 +51,11 @@ export const OwnedReadingItemSchema = z.object({
   status: OwnedReadingStatusSchema,
   readingHistoryRecordId: z.string().trim().min(1).nullable().optional(),
   studyProgressRecordId: z.string().trim().min(1).nullable().optional(),
+  userControl: OwnedReadingUserControlSchema.optional(),
 })
 
 export type OwnedReadingItem = z.infer<typeof OwnedReadingItemSchema>
+type NormalizedOwnedReadingItem = OwnedReadingItem & { userControl: OwnedReadingUserControl }
 
 export const SyncedOwnedReadingItemSchema = OwnedReadingItemSchema.extend({
   updatedAt: z.number(),
@@ -184,11 +199,12 @@ function emptyStore(): OwnedReadingStore {
   return { version: 1, items: [] }
 }
 
-function normalizeOwnedReadingItem(item: OwnedReadingItem): OwnedReadingItem {
+function normalizeOwnedReadingItem(item: OwnedReadingItem): NormalizedOwnedReadingItem {
   const parsed = OwnedReadingItemSchema.parse(item)
   return {
     ...parsed,
     updatedAt: parsed.updatedAt ?? parsed.openedAt,
+    userControl: OwnedReadingUserControlSchema.parse(parsed.userControl),
   }
 }
 
@@ -243,12 +259,15 @@ export function buildSyncSafeOwnedReadingItem(
     status: normalized.status,
     readingHistoryRecordId: normalized.readingHistoryRecordId ?? null,
     studyProgressRecordId: normalized.studyProgressRecordId ?? null,
+    userControl: normalized.userControl,
   })
 }
 
 export async function readSyncSafeOwnedReadingItems(): Promise<SyncedOwnedReadingItem[]> {
   const store = await readStore()
-  return store.items.map((item) => buildSyncSafeOwnedReadingItem(item))
+  return store.items
+    .filter((item) => normalizeOwnedReadingItem(item).userControl.syncEnabled)
+    .map((item) => buildSyncSafeOwnedReadingItem(item))
 }
 
 export function buildOwnedReadingSyncRecordMap(
@@ -481,6 +500,28 @@ function tryGetOwnedReadingHostname(value: string | null | undefined): string | 
   } catch {
     return null
   }
+}
+
+function buildReducedOwnedArticleUrl(url: string): string {
+  try {
+    const parsed = new URL(url)
+    return `${parsed.protocol}//${parsed.hostname}/`
+  } catch {
+    return "astra-private://source/"
+  }
+}
+
+function buildReducedOwnedArticleTitle(): string {
+  return "Private page"
+}
+
+async function resolveOwnedArticleWritePolicy(url: string) {
+  const { resolveLearningMemoryWritePolicy } = await import("./learning-memory")
+  return resolveLearningMemoryWritePolicy({
+    surface: "source_history",
+    hostname: tryGetOwnedReadingHostname(url),
+    url,
+  })
 }
 
 function buildOwnedReadingThemePackDescriptor(item: OwnedReadingItem): { id: string; themeKey: string; title: string } {
@@ -1054,7 +1095,10 @@ export async function upsertOwnedArticleFromUrl(params: {
   title: string
   status: OwnedReadingStatus
 }): Promise<OwnedReadingItem> {
-  const identity = buildOwnedReadingArticleIdentity(params.url)
+  const policy = await resolveOwnedArticleWritePolicy(params.url)
+  const writableUrl = policy.decision === "reduce" ? buildReducedOwnedArticleUrl(params.url) : params.url
+  const writableTitle = policy.decision === "reduce" ? buildReducedOwnedArticleTitle() : params.title.trim()
+  const identity = buildOwnedReadingArticleIdentity(writableUrl)
   const store = await readStore()
   const existing = store.items.find(
     (row) => row.sourceType === "article"
@@ -1064,16 +1108,21 @@ export async function upsertOwnedArticleFromUrl(params: {
   const item: OwnedReadingItem = OwnedReadingItemSchema.parse({
     id: existing?.id ?? identity.id,
     sourceType: "article",
-    title: params.title.trim(),
+    title: writableTitle,
     sourceUrl: identity.sourceUrl,
     openedAt: now,
     updatedAt: now,
     status: existing?.status === "in_progress" ? "in_progress" : params.status,
     readingHistoryRecordId: identity.readingHistoryRecordId,
     studyProgressRecordId: identity.studyProgressRecordId,
+    ...(policy.decision === "reduce"
+      ? { userControl: { syncEnabled: false, excludedFromDigest: true, privacyModeAtCapture: true } }
+      : {}),
   })
 
-  await upsertOwnedReadingItem(item)
+  if (policy.decision !== "suppress") {
+    await upsertOwnedReadingItem(item)
+  }
   return item
 }
 
@@ -1246,18 +1295,25 @@ export async function syncRecentReadingHistoryToOwnedQueue(maxEntries = 40): Pro
   }
 
   for (const entry of slice) {
-    const identity = buildOwnedReadingArticleIdentity(entry.url)
+    const policy = await resolveOwnedArticleWritePolicy(entry.url)
+    if (policy.decision === "suppress") continue
+    const writableUrl = policy.decision === "reduce" ? buildReducedOwnedArticleUrl(entry.url) : entry.url
+    const writableTitle = policy.decision === "reduce" ? buildReducedOwnedArticleTitle() : entry.title.trim()
+    const identity = buildOwnedReadingArticleIdentity(writableUrl)
     const existing = byUrl.get(identity.dedupeKey)
     const item: OwnedReadingItem = OwnedReadingItemSchema.parse({
       id: existing?.id ?? identity.id,
       sourceType: "article",
-      title: entry.title.trim(),
+      title: writableTitle,
       sourceUrl: identity.sourceUrl,
       openedAt: Math.max(entry.visitedAt, existing?.openedAt ?? 0),
       updatedAt: Math.max(entry.visitedAt, existing?.updatedAt ?? existing?.openedAt ?? 0),
       status: existing?.status === "in_progress" ? "in_progress" : (existing?.status ?? "saved"),
       readingHistoryRecordId: identity.readingHistoryRecordId,
       studyProgressRecordId: identity.studyProgressRecordId,
+      ...(policy.decision === "reduce"
+        ? { userControl: { syncEnabled: false, excludedFromDigest: true, privacyModeAtCapture: true } }
+        : {}),
     })
     byUrl.set(identity.dedupeKey, item)
   }
@@ -1287,6 +1343,21 @@ export async function setOwnedReadingStatus(id: string, status: OwnedReadingStat
     ...item,
     status,
     openedAt: Date.now(),
+    updatedAt: Date.now(),
+  })
+}
+
+export async function setOwnedReadingUserControl(id: string, patch: Partial<OwnedReadingUserControl>): Promise<void> {
+  const store = await readStore()
+  const item = store.items.find((row) => row.id === id)
+  if (!item) return
+  const normalized = normalizeOwnedReadingItem(item)
+  await upsertOwnedReadingItem({
+    ...normalized,
+    userControl: OwnedReadingUserControlSchema.parse({
+      ...normalized.userControl,
+      ...patch,
+    }),
     updatedAt: Date.now(),
   })
 }

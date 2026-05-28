@@ -13,8 +13,12 @@ const env: RelayEnv = {
   sessionPublicBaseURL: "https://platform.astra.example/v1",
   sessionSecret: "test-secret",
   platformMirrorSecret: "mirror-secret",
+  operatorPrincipals: [],
   userDbPath: "/tmp/astra-users.json",
   videoNoteStorePath: "/tmp/astra-video-notes.json",
+  supportReportInboxPath: "/tmp/astra-support-reports.json",
+  supportKnownIssueStorePath: "/tmp/astra-support-known-issues.json",
+  featureFlagRuntimePath: "/tmp/astra-feature-flags.json",
   loginEmail: "demo@astra.local",
   loginPassword: "astra-demo-pass",
   plan: "pro",
@@ -30,12 +34,17 @@ const env: RelayEnv = {
   freeDailyRequests: 200,
   freeDailyCharacters: 200_000,
   freeRpm: 20,
+  trialDailyRequests: 2000,
+  trialDailyCharacters: 500_000,
+  trialRpm: 120,
   proDailyRequests: 2000,
   proDailyCharacters: 500_000,
   proRpm: 120,
   sessionTtlMs: 30 * 24 * 60 * 60 * 1000,
   syncMaxMutationsPerRequest: 200,
   videoNoteMaxConcurrentJobs: 1,
+  emailSignInCodeDevelopmentEcho: false,
+  oauthIdentityDevelopmentRedeem: false,
 }
 
 const user: ServerUserRecord = {
@@ -61,11 +70,14 @@ const user: ServerUserRecord = {
     lastRequestAt: null,
     recentRequestTimestamps: [],
     recentEvents: [],
+    taskUsageMonth: "2026-03",
+    monthlyTaskRequests: {},
   },
   identityMode: "authenticated",
   syncPreferences: {
     reading_history: false,
     study_progress: false,
+    weekly_digest: false,
   },
 }
 

@@ -273,6 +273,7 @@ describe("InputTranslate", () => {
       text: "Hello",
       targetLang: "zh-CN",
       task: "translate",
+      serviceMode: "automatic",
     })
     expect(textInput.value).toBe("你好")
   })
@@ -404,6 +405,7 @@ describe("InputTranslate", () => {
       text: "Some text",
       targetLang: "zh-CN",
       task: "translate",
+      serviceMode: "automatic",
     })
     expect(textarea.value).toBe("你好")
     expect(textarea.selectionStart).toBe(2)
@@ -442,6 +444,7 @@ describe("InputTranslate", () => {
       text: "Editable text",
       targetLang: "zh-CN",
       task: "translate",
+      serviceMode: "automatic",
     })
     expect(editor.textContent).toBe("你好")
     expect(window.getSelection()?.rangeCount).toBe(1)

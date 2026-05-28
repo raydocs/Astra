@@ -1,0 +1,45 @@
+{
+  "schema": "astra-macro-ai-quality-human-scored-packet.v1",
+  "generatedAt": "2026-05-28T00:00:00.000Z",
+  "label": "Macro human-scored AI quality packet — 2026-05-28 placeholder",
+  "evidence": {
+    "reviewer": "",
+    "reviewedAt": "",
+    "environment": "",
+    "runId": "",
+    "rubricVersion": "",
+    "fixtureManifestPath": "",
+    "fixtureManifestVersion": "",
+    "providerSampleEvidenceLink": "",
+    "scoredSampleCount": 0,
+    "liveProviderSampleCount": 0,
+    "blockerTriageLink": "",
+    "trendDirection": null,
+    "releaseDecision": null,
+    "summary": {
+      "sampleCount": 0,
+      "p0SampleCount": 0,
+      "capabilityCount": 0,
+      "capabilityCounts": {
+        "translation": 0,
+        "explanation": 0,
+        "summary": 0,
+        "review_card": 0,
+        "personalized_terms": 0,
+        "writing_correction": 0
+      },
+      "capabilityAverages": {},
+      "averageScore": null,
+      "blockerSampleIds": [],
+      "blockerErrorCounts": {},
+      "reviewCardReusableRate": null,
+      "reviewCardReusableCount": 0,
+      "reviewCardEvaluatedCount": 0,
+      "safetyPassRate": null,
+      "safetyPassedCount": 0,
+      "safetyEvaluatedCount": 0,
+      "lowScoreBacklog": [],
+      "reproducible": false
+    }
+  }
+}

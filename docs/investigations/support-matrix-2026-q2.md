@@ -1,6 +1,6 @@
 # Astra Support Matrix — 2026 Q2 (Canonical)
 
-_Last updated: 2026-04-14 (Month 6 claim-boundary and release-audit sync)_
+_Last updated: 2026-05-27 (competitive-remediation proof-lane and claim-boundary sync)_
 
 ## Purpose
 
@@ -26,7 +26,7 @@ Platforms covered in this matrix:
 - `.github/workflows/firefox-release.yml`
 - `docs/investigations/month-6-privacy-routing-failure-inventory-2026-04-14.md`
 
-**Owned reading + reader surfaces (2026-04-14):** The unified v1 item model and vocabulary **Reading** queue (`src/utils/storage/owned-reading.ts`, Reading tab in `VocabularyApp`) are real for **schema + supported reopen guidance** across article / PDF / EPUB / subtitle-file items. Fresh browser-backed Month 3 proof exists for **PDF reader** (`bench-live/pdf-reader-basic` → `live-20260414T113547-e7a9ks`), **EPUB reader** (`bench-live/epub-reader-basic` → `live-20260414T113605-p0m6bj`), **subtitle-file ingest/preview/export** (`bench-live/subtitle-file-basic` → `live-20260414T113623-809nid`), and **article revisit from the Reading queue** (`bench-live/learning-loop-revisit-smoke` → `live-20260414T113647-9f8kwi`); see `month-3-evidence-registry-2026-04-14.md`. Do **not** claim full multi-reader parity or universal browser-backed queue reopen for every source type yet. **In-page** video/caption claims stay in `support-matrix-video-addendum-2026-04-15.md`: today **YouTube** is the only supported in-page tier, **Bilibili** is best-effort, **subtitle-file** is a separate experimental controlled surface, and the remaining repo adapters stay code-only.
+**Owned reading + reader surfaces (2026-05-27):** The unified v1 item model and vocabulary **Reading** queue (`src/utils/storage/owned-reading.ts`, Reading tab in `VocabularyApp`) are real for **schema + supported reopen guidance** across article / PDF / EPUB / subtitle-file items. The current required document proof lane is `pnpm bench:live:lane:document-proof`, covering `bench-live/document-intake-basic` (PDF + EPUB + VTT intake plus unsupported DOCX boundary), `bench-live/document-intake-local-file-handoff`, `bench-live/pdf-reader-basic`, `bench-live/epub-reader-basic`, and `bench-live/subtitle-file-basic`; `.github/workflows/ci.yml` runs that lane as release-critical evidence. Public reader/file claims should name **PDF, EPUB, and SRT/VTT subtitle-file** controlled flows. ASS/Markdown/TXT/HTML parsing in the subtitle reader is opportunistic convenience support until it receives separate proof. Do **not** claim PDF OCR, Docx layout preservation, comic/image translation, or universal browser-backed queue reopen for every source type yet. **In-page** video/caption claims stay in `support-matrix-video-addendum-2026-04-15.md`: today **YouTube** is the only supported in-page tier with the May 27 `bench:live:lane:youtube-proof`, **Bilibili** is best-effort/beta, **subtitle-file** is a separate controlled file-reader surface, and the remaining repo adapters stay code-only.
 
 ## Month 4 video / subtitle claim cross-check
 
@@ -34,9 +34,9 @@ The platform matrix above is still canonical for browser/platform support. For M
 
 | Surface class | Current status | Exact evidence anchor | Honest boundary |
 |---|---|---|---|
-| YouTube in-page subtitles | **Supported** (best-effort within supported tier) | `bench-live/youtube-subtitle-basic` → `live-20260414T115407-2i2tzo` | Primary in-page video path only; fixture-backed, not broad production-watch-page proof. |
-| Bilibili in-page subtitles | **Best-effort** | `bench-live/bilibili-subtitle-basic` → `live-20260414T115722-y40ya0` | Secondary adapter only; do not claim parity with YouTube. |
-| Subtitle-file reader / learning chain | **Experimental controlled surface** | `bench-live/subtitle-file-basic` → `live-20260414T121705-ndf283`; `bench-live/subtitle-learning-chain-smoke` → `live-20260414T121845-xe3mlf` | Separate from in-page video support; do not merge these claims. |
+| YouTube in-page subtitles + learning workspace | **Supported** (best-effort within supported tier) | `pnpm bench:live:lane:youtube-proof` covers player button, bilingual subtitles, seek recovery, track switch, transcript panel, transcript search/jump, save-to-Review, and video-note create. | Primary in-page video path only; proof is fixture-backed and does not imply every YouTube DOM variant or other video platforms. |
+| Bilibili in-page subtitles | **Best-effort / beta** | `bench-live/bilibili-subtitle-basic` plus adapter-level tests; see the video addendum for current evidence. | Secondary adapter only; do not claim parity with YouTube. |
+| Subtitle-file reader / learning chain | **Controlled supported file-reader surface** | `pnpm bench:live:lane:document-proof` includes `bench-live/subtitle-file-basic`; legacy learning-chain smoke remains supporting evidence. | Separate from in-page video support; public proof-backed wording should name SRT/VTT. ASS/Markdown/TXT/HTML parser acceptance is opportunistic and should not be merged into supported subtitle-file claims. |
 | Other repo adapters | **Code-only** | `docs/investigations/video-subtitle-adapter-inventory-2026-04-15.md` | Do not claim external support. |
 
 ## Validation State Legend
@@ -79,9 +79,9 @@ Plan Month 5 row **23–26** defers **「matrix 移动口径二次核对」** to
 
 Read this matrix together with `docs/investigations/month-6-privacy-routing-failure-inventory-2026-04-14.md` before making any privacy or routing claim:
 
-- translation requests can leave the device on both **direct provider** and **relay** paths
+- translation requests are processed by Astra-managed AI service paths and are not a claim of local-only translation
 - privacy mode sanitizes translation request context at the background transport boundary; it is **not** a claim of local-only translation
-- direct → relay fallback exists and can change which backend handles a request after a direct failure
+- service fallback/retry can change which backend route handles a request after a failure; keep this in operator diagnostics rather than ordinary user copy
 - glossary data now uses a canonical vocabulary-backed request-time contract, but that is still **not** the same as fully guaranteed terminology enforcement across all model behavior
 
 ## Open Validation Gaps to Close

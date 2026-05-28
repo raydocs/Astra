@@ -5,6 +5,8 @@ import type { PageDigestRecord } from "@/utils/storage/page-digests"
 import { buildLearningLoopAccountContinuityProofMoment, LEARNING_LOOP_COMMERCIAL_SURFACE_COPY, type LearningLoopAccountContinuityAuthState } from "@/utils/learning-loop-events"
 import { STUDY_STEPS_ORDER, type StudyLoopViewModel, type StudyStep, type WeeklyStudyProgressRoiSummary } from "@/utils/storage/study-progress"
 import type { WeeklyVocabularyRoiSummary } from "@/utils/storage/vocabulary"
+import type { WeeklyReviewableLearningMomentsSummary } from "@/utils/storage/learning-assets"
+import type { RetentionReminderStatus } from "@/utils/storage/retention-reminders"
 
 export type PopupSentenceExplainStatus = "idle" | "explaining" | "explained"
 export type PopupSentenceSaveStatus = "idle" | "saving" | "saved"
@@ -30,6 +32,7 @@ export interface PopupSentenceCardViewModel {
 export interface WeeklyLearningRoiViewModel {
   study: WeeklyStudyProgressRoiSummary
   vocabulary: WeeklyVocabularyRoiSummary
+  reviewableLearningMoments?: WeeklyReviewableLearningMomentsSummary
   generatedAt: number
 }
 
@@ -44,6 +47,7 @@ interface StudySectionProps {
   onOpenAccountContinuitySignIn: () => void
   studyLoop: StudyLoopViewModel | null
   weeklyRoi: WeeklyLearningRoiViewModel | null
+  retentionReminderStatus: RetentionReminderStatus | null
   pageSavedReviewSummary: { count: number } | null
   pageAssetSaveStatus: PopupPageAssetSaveStatus
   pageAssetSaveMessage: string | null
@@ -73,6 +77,9 @@ interface StudySectionProps {
   onOpenReview: () => void
   onOpenVocabulary: () => void
   onOpenReadingQueue: () => void
+  onDisableRetentionReminders: () => void
+  onPauseRetentionReminders: () => void
+  onEnableRetentionReminders: () => void
   onReadArticle: () => void
   onExplainSentence: (sentenceIndex?: number) => void
 }
@@ -252,11 +259,16 @@ function WeeklyRoiSummaryCard({ weeklyRoi }: { weeklyRoi: WeeklyLearningRoiViewM
   const hasActivity = weeklyRoi.study.activePageCount > 0
     || weeklyRoi.vocabulary.savedCount > 0
     || weeklyRoi.vocabulary.reviewedCount > 0
+    || (weeklyRoi.reviewableLearningMoments?.reviewableLearningMoments ?? 0) > 0
   if (!hasActivity) return null
 
   const masteredPerHour = weeklyRoi.study.inputMinutes > 0
     ? weeklyRoi.vocabulary.masteredCount / (weeklyRoi.study.inputMinutes / 60)
     : null
+  const reviewableMomentCount = weeklyRoi.reviewableLearningMoments?.reviewableLearningMoments ?? weeklyRoi.vocabulary.savedCount
+  const digestHeadline = reviewableMomentCount > 0
+    ? `You learned ${reviewableMomentCount} expression${reviewableMomentCount === 1 ? "" : "s"} from ${weeklyRoi.study.activePageCount} source${weeklyRoi.study.activePageCount === 1 ? "" : "s"} this week.`
+    : `You studied ${weeklyRoi.study.activePageCount} source${weeklyRoi.study.activePageCount === 1 ? "" : "s"} this week.`
 
   return (
     <div
@@ -268,15 +280,15 @@ function WeeklyRoiSummaryCard({ weeklyRoi }: { weeklyRoi: WeeklyLearningRoiViewM
         border: "1px solid var(--astra-info-border)",
         borderRadius: 10,
       }}
-    >
-      <div style={{ fontSize: 10, fontWeight: 800, color: "var(--astra-info)", textTransform: "uppercase", letterSpacing: 0.4 }}>
-        Weekly ROI
+      >
+        <div style={{ fontSize: 10, fontWeight: 800, color: "var(--astra-info)", textTransform: "uppercase", letterSpacing: 0.4 }}>
+        Weekly Digest
       </div>
       <div style={{ fontSize: 13, fontWeight: 800, color: "var(--astra-info)", marginTop: 4 }}>
-        {weeklyRoi.study.window.days}-day learning return
+        {digestHeadline}
       </div>
       <div style={{ fontSize: 11, color: "var(--astra-info)", lineHeight: 1.45, marginTop: 4 }}>
-        Input time → mastered vocabulary → review hit rate, derived from local study and SRS activity only.
+        A privacy-safe local summary of what you read, saved, reviewed, and can continue next.
       </div>
       <div style={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", gap: 8, marginTop: 8 }}>
         <div style={{ padding: "8px", background: "var(--astra-bg-card)", border: "1px solid var(--astra-info-border)", borderRadius: 8 }}>
@@ -284,8 +296,8 @@ function WeeklyRoiSummaryCard({ weeklyRoi }: { weeklyRoi: WeeklyLearningRoiViewM
           <div style={{ fontSize: 15, fontWeight: 800, color: "var(--astra-text-primary)" }}>{formatInputMinutes(weeklyRoi.study.inputMinutes)}</div>
         </div>
         <div style={{ padding: "8px", background: "var(--astra-bg-card)", border: "1px solid var(--astra-info-border)", borderRadius: 8 }}>
-          <div style={{ fontSize: 10, color: "var(--astra-text-muted)" }}>Mastered</div>
-          <div style={{ fontSize: 15, fontWeight: 800, color: "var(--astra-text-primary)" }}>{weeklyRoi.vocabulary.masteredCount}</div>
+          <div style={{ fontSize: 10, color: "var(--astra-text-muted)" }}>Reviewable</div>
+          <div style={{ fontSize: 15, fontWeight: 800, color: "var(--astra-text-primary)" }}>{reviewableMomentCount}</div>
         </div>
         <div style={{ padding: "8px", background: "var(--astra-bg-card)", border: "1px solid var(--astra-info-border)", borderRadius: 8 }}>
           <div style={{ fontSize: 10, color: "var(--astra-text-muted)" }}>Hit rate</div>
@@ -294,7 +306,88 @@ function WeeklyRoiSummaryCard({ weeklyRoi }: { weeklyRoi: WeeklyLearningRoiViewM
       </div>
       <div style={{ fontSize: 10, color: "var(--astra-text-muted)", lineHeight: 1.45, marginTop: 8 }}>
         {weeklyRoi.study.activePageCount} active page{weeklyRoi.study.activePageCount === 1 ? "" : "s"} · {weeklyRoi.study.completedLoopCount} loop{weeklyRoi.study.completedLoopCount === 1 ? "" : "s"} closed · {weeklyRoi.vocabulary.savedCount} saved · {weeklyRoi.vocabulary.reviewedCount} reviewed
+        {weeklyRoi.vocabulary.masteredCount > 0 ? ` · ${weeklyRoi.vocabulary.masteredCount} mastered` : ""}
+        {weeklyRoi.reviewableLearningMoments ? ` · reviewable moment score ${weeklyRoi.reviewableLearningMoments.weightedReviewableLearningMoments}` : ""}
         {masteredPerHour !== null ? ` · ${masteredPerHour.toFixed(1)} mastered/hour` : ""}
+      </div>
+    </div>
+  )
+}
+
+function RetentionReminderReadinessCard({
+  status,
+  onOpenReview,
+  onOpenReadingQueue,
+  onDisable,
+  onPause,
+  onEnable,
+}: {
+  status: RetentionReminderStatus
+  onOpenReview: () => void
+  onOpenReadingQueue: () => void
+  onDisable: () => void
+  onPause: () => void
+  onEnable: () => void
+}) {
+  const actionById: Record<string, () => void> = {
+    today_review: onOpenReview,
+    continue_reading: onOpenReadingQueue,
+    weekly_digest: () => {},
+  }
+  const isSuppressed = status.suppressedReason !== null
+
+  return (
+    <div
+      data-testid="retention-reminder-readiness-card"
+      style={{
+        marginTop: 10,
+        padding: "10px 12px",
+        background: "var(--astra-bg-subtle)",
+        border: "1px solid var(--astra-border)",
+        borderRadius: 10,
+      }}
+    >
+      <div style={{ fontSize: 10, fontWeight: 800, color: "var(--astra-text-muted)", textTransform: "uppercase", letterSpacing: 0.4 }}>
+        Calm reminders
+      </div>
+      <div style={{ fontSize: 13, fontWeight: 800, color: "var(--astra-text-primary)", marginTop: 4 }}>
+        {status.summary}
+      </div>
+      <div style={{ fontSize: 11, color: "var(--astra-text-secondary)", lineHeight: 1.45, marginTop: 4 }}>
+        Metadata-only readiness for review, reading continuity, and the local weekly digest. No emails, push notifications, pressure loops, page text, transcripts, or private URLs.
+      </div>
+      {status.items.length > 0 && (
+        <div style={{ display: "flex", flexDirection: "column", gap: 6, marginTop: 8 }}>
+          {status.items.map((item) => (
+            <button
+              key={item.id}
+              type="button"
+              onClick={actionById[item.id]}
+              disabled={item.id === "weekly_digest"}
+              style={{
+                border: "1px solid var(--astra-border)",
+                background: "var(--astra-bg-card)",
+                borderRadius: 8,
+                padding: "8px 10px",
+                textAlign: "left",
+                cursor: item.id === "weekly_digest" ? "default" : "pointer",
+              }}
+            >
+              <div style={{ fontSize: 12, fontWeight: 700, color: "var(--astra-text-primary)" }}>{item.label}</div>
+              <div style={{ fontSize: 11, color: "var(--astra-text-secondary)", marginTop: 2 }}>{item.detail}</div>
+            </button>
+          ))}
+        </div>
+      )}
+      <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 10 }}>
+        {isSuppressed ? (
+          <button type="button" style={secondaryActionButtonStyle} onClick={onEnable}>Enable reminders</button>
+        ) : (
+          <>
+            <button type="button" style={secondaryActionButtonStyle} onClick={onPause}>Pause 7 days</button>
+            <button type="button" style={secondaryActionButtonStyle} onClick={onDisable}>Turn off</button>
+          </>
+        )}
       </div>
     </div>
   )
@@ -470,6 +563,7 @@ export default function StudySection({
   onOpenAccountContinuitySignIn,
   studyLoop,
   weeklyRoi,
+  retentionReminderStatus,
   pageSavedReviewSummary,
   pageAssetSaveStatus,
   pageAssetSaveMessage,
@@ -499,6 +593,9 @@ export default function StudySection({
   onOpenReview,
   onOpenVocabulary,
   onOpenReadingQueue,
+  onDisableRetentionReminders,
+  onPauseRetentionReminders,
+  onEnableRetentionReminders,
   onReadArticle,
   onExplainSentence,
 }: StudySectionProps) {
@@ -1135,6 +1232,17 @@ export default function StudySection({
       )}
 
       {weeklyRoi && <WeeklyRoiSummaryCard weeklyRoi={weeklyRoi} />}
+
+      {retentionReminderStatus && (
+        <RetentionReminderReadinessCard
+          status={retentionReminderStatus}
+          onOpenReview={onOpenReview}
+          onOpenReadingQueue={onOpenReadingQueue}
+          onDisable={onDisableRetentionReminders}
+          onPause={onPauseRetentionReminders}
+          onEnable={onEnableRetentionReminders}
+        />
+      )}
 
       {studyLoop?.dailyStats && (
         <div

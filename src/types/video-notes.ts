@@ -27,11 +27,47 @@ export const VideoTranscriptSegmentSchema = z.object({
   path: ["endMs"],
 })
 
+export const VideoNoteBilingualTranscriptSegmentSchema = VideoTranscriptSegmentSchema.extend({
+  translation: z.string().trim().min(1).nullable().optional().default(null),
+})
+
+export const VideoNoteLearningItemSchema = z.object({
+  text: z.string().trim().min(1),
+  translation: z.string().trim().min(1).nullable().optional().default(null),
+  explanation: z.string().trim().min(1).nullable().optional().default(null),
+  timestampMs: z.number().int().nonnegative().nullable().optional().default(null),
+  sourceSentence: z.string().trim().min(1).nullable().optional().default(null),
+})
+
+export const VideoNoteLearningContextSchema = z.object({
+  videoMetadata: z.object({
+    title: z.string().trim().min(1).nullable().optional().default(null),
+    sourceUrl: z.string().trim().url().nullable().optional().default(null),
+    platform: VideoNotePlatformSchema.default("unknown"),
+    durationSec: z.number().nonnegative().nullable().optional().default(null),
+  }).optional(),
+  bilingualTranscriptSegments: z.array(VideoNoteBilingualTranscriptSegmentSchema).default([]),
+  summary: z.string().trim().min(1).nullable().optional().default(null),
+  savedSentences: z.array(VideoNoteLearningItemSchema).default([]),
+  savedWords: z.array(VideoNoteLearningItemSchema).default([]),
+  watchProgress: z.object({
+    currentTimeSec: z.number().nonnegative().default(0),
+    durationSec: z.number().nonnegative().nullable().optional().default(null),
+    percent: z.number().min(0).max(100).nullable().optional().default(null),
+  }).optional(),
+  reviewStatus: z.object({
+    savedSentenceCount: z.number().int().nonnegative().default(0),
+    savedWordCount: z.number().int().nonnegative().default(0),
+    reviewReady: z.boolean().default(false),
+  }).optional(),
+})
+
 export const VideoNoteTranscriptCaptureSchema = z.object({
   transcriptSegments: z.array(VideoTranscriptSegmentSchema).default([]),
   language: z.string().trim().min(1).nullable().optional().default(null),
   deepLinkTemplate: z.string().trim().min(1).nullable().optional().default(null),
   durationSec: z.number().nonnegative().nullable().optional().default(null),
+  learningContext: VideoNoteLearningContextSchema.optional(),
 })
 
 export const VideoNoteCreateRequestSchema = z.object({
@@ -74,6 +110,7 @@ export const VideoNoteArtifactSchema = z.object({
   transcriptSegments: z.array(VideoTranscriptSegmentSchema).default([]),
   deepLinkTemplate: z.string().trim().min(1).nullable().default(null),
   durationSec: z.number().nonnegative().nullable().default(null),
+  learningContext: VideoNoteLearningContextSchema.optional(),
   generatedAt: z.string().trim().min(1),
   updatedAt: z.string().trim().min(1),
 })
@@ -109,6 +146,9 @@ export type VideoNotePlatform = z.infer<typeof VideoNotePlatformSchema>
 export type VideoNoteJobStatus = z.infer<typeof VideoNoteJobStatusSchema>
 export type VideoNoteTranscriptSource = z.infer<typeof VideoNoteTranscriptSourceSchema>
 export type VideoTranscriptSegment = z.infer<typeof VideoTranscriptSegmentSchema>
+export type VideoNoteBilingualTranscriptSegment = z.infer<typeof VideoNoteBilingualTranscriptSegmentSchema>
+export type VideoNoteLearningItem = z.infer<typeof VideoNoteLearningItemSchema>
+export type VideoNoteLearningContext = z.infer<typeof VideoNoteLearningContextSchema>
 export type VideoNoteTranscriptCapture = z.infer<typeof VideoNoteTranscriptCaptureSchema>
 export type VideoNoteCreateRequest = z.infer<typeof VideoNoteCreateRequestSchema>
 export type VideoNoteJobError = z.infer<typeof VideoNoteJobErrorSchema>

@@ -8,6 +8,13 @@ function getMockBrowser(): ReturnType<typeof createMockBrowser> {
     .__ASTRA_TEST_BROWSER__
 }
 
+async function flushRuntimeResponse(): Promise<void> {
+  for (let i = 0; i < 10; i++) {
+    await Promise.resolve()
+  }
+  await new Promise((resolve) => setTimeout(resolve, 0))
+}
+
 const originalHistoryPushState = history.pushState.bind(history)
 const originalHistoryReplaceState = history.replaceState.bind(history)
 
@@ -32,6 +39,12 @@ const {
   startVideoSubtitleTranslationMock,
   stopVideoSubtitleTranslationMock,
   setupVideoNavigationHandlerMock,
+  runActionByIdMock,
+  copyTextToClipboardMock,
+  saveVocabularyEntryMock,
+  getDueVocabularyCountMock,
+  markSessionSaveMock,
+  commitLearningContinuitySyncMock,
   getMeetingCaptionQualitySnapshotMock,
   isMeetingPageMock,
   isMeetingCaptionTranslationActiveMock,
@@ -58,6 +71,12 @@ const {
   startVideoSubtitleTranslationMock: vi.fn(),
   stopVideoSubtitleTranslationMock: vi.fn(),
   setupVideoNavigationHandlerMock: vi.fn(),
+  runActionByIdMock: vi.fn(),
+  copyTextToClipboardMock: vi.fn(),
+  saveVocabularyEntryMock: vi.fn(),
+  getDueVocabularyCountMock: vi.fn(),
+  markSessionSaveMock: vi.fn(),
+  commitLearningContinuitySyncMock: vi.fn(),
   getMeetingCaptionQualitySnapshotMock: vi.fn(),
   isMeetingPageMock: vi.fn(),
   isMeetingCaptionTranslationActiveMock: vi.fn(),
@@ -122,6 +141,27 @@ vi.mock("./video-platforms", () => ({
   setupVideoNavigationHandler: setupVideoNavigationHandlerMock,
 }))
 
+vi.mock("./inline-actions", () => ({
+  runActionById: runActionByIdMock,
+}))
+
+vi.mock("@/utils/dom/clipboard", () => ({
+  copyTextToClipboard: copyTextToClipboardMock,
+}))
+
+vi.mock("@/utils/storage/vocabulary", () => ({
+  saveVocabularyEntry: saveVocabularyEntryMock,
+  getDueVocabularyCount: getDueVocabularyCountMock,
+}))
+
+vi.mock("./learning-state", () => ({
+  markSessionSave: markSessionSaveMock,
+}))
+
+vi.mock("@/utils/extension/messages", () => ({
+  commitLearningContinuitySync: commitLearningContinuitySyncMock,
+}))
+
 vi.mock("./meeting-captions", () => ({
   getMeetingCaptionQualitySnapshot: getMeetingCaptionQualitySnapshotMock,
   isMeetingPage: isMeetingPageMock,
@@ -152,6 +192,12 @@ describe("content entrypoint mounting", () => {
     startVideoSubtitleTranslationMock.mockReset()
     stopVideoSubtitleTranslationMock.mockReset()
     setupVideoNavigationHandlerMock.mockReset()
+    runActionByIdMock.mockReset()
+    copyTextToClipboardMock.mockReset()
+    saveVocabularyEntryMock.mockReset()
+    getDueVocabularyCountMock.mockReset()
+    markSessionSaveMock.mockReset()
+    commitLearningContinuitySyncMock.mockReset()
     getMeetingCaptionQualitySnapshotMock.mockReset()
     isMeetingPageMock.mockReset()
     isMeetingCaptionTranslationActiveMock.mockReset()
@@ -208,6 +254,11 @@ describe("content entrypoint mounting", () => {
     isVideoPageMock.mockReturnValue(false)
     isVideoSubtitleTranslationActiveMock.mockReturnValue(false)
     startVideoSubtitleTranslationMock.mockResolvedValue(undefined)
+    runActionByIdMock.mockResolvedValue({ ok: true, text: "你好，世界" })
+    copyTextToClipboardMock.mockResolvedValue(undefined)
+    saveVocabularyEntryMock.mockResolvedValue(undefined)
+    getDueVocabularyCountMock.mockResolvedValue(0)
+    commitLearningContinuitySyncMock.mockResolvedValue({ ok: true })
     getMeetingCaptionQualitySnapshotMock.mockReturnValue(null)
     isMeetingPageMock.mockReturnValue(false)
     isMeetingCaptionTranslationActiveMock.mockReturnValue(false)
@@ -377,6 +428,56 @@ describe("content entrypoint mounting", () => {
     expect(stopPageTranslationMock).toHaveBeenCalledTimes(1)
     expect(removeTranslatedSubtitlesMock).toHaveBeenCalledTimes(1)
     expect(startPageTranslationMock).not.toHaveBeenCalled()
+  })
+
+  it("runs selection context-menu actions and copies the result", async () => {
+    isTopFrameMock.mockReturnValue(true)
+    const browser = getMockBrowser()
+    const sendResponse = vi.fn()
+    const contentScript = (await import("./index")).default
+
+    await contentScript.main({} as never)
+    await browser.__emitRuntimeMessage(
+      { type: "content/run-selection-action", payload: { actionId: "translate", text: "Hello world" } },
+      { id: "sender" },
+      sendResponse,
+    )
+    await flushRuntimeResponse()
+
+    expect(runActionByIdMock).toHaveBeenCalledWith(expect.objectContaining({
+      actionId: "translate",
+      text: "Hello world",
+      targetLang: "zh-CN",
+      selectionContext: "Hello world",
+    }))
+    expect(copyTextToClipboardMock).toHaveBeenCalledWith("你好，世界")
+    expect(sendResponse).toHaveBeenCalledWith(expect.objectContaining({ ok: true }))
+  })
+
+  it("saves context-menu selections into vocabulary and review continuity", async () => {
+    isTopFrameMock.mockReturnValue(true)
+    const browser = getMockBrowser()
+    const sendResponse = vi.fn()
+    const contentScript = (await import("./index")).default
+
+    await contentScript.main({} as never)
+    await browser.__emitRuntimeMessage(
+      { type: "content/save-selection", payload: { text: "Hello world" } },
+      { id: "sender" },
+      sendResponse,
+    )
+    await flushRuntimeResponse()
+
+    expect(saveVocabularyEntryMock).toHaveBeenCalledWith(expect.objectContaining({
+      text: "Hello world",
+      sourceContext: expect.objectContaining({
+        surface: "selection_toolbar",
+        sentenceText: "Hello world",
+      }),
+    }))
+    expect(markSessionSaveMock).toHaveBeenCalledWith("selection_toolbar", 0)
+    expect(commitLearningContinuitySyncMock).toHaveBeenCalledWith("selection-save")
+    expect(sendResponse).toHaveBeenCalledWith(expect.objectContaining({ ok: true }))
   })
 
   it("auto-starts page translation when always translate is enabled and provider access is available", async () => {

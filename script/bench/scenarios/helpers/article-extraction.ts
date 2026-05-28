@@ -2,6 +2,12 @@ import { resolveExtractionPlan } from "@/utils/dom/extraction"
 
 import type { ArticleExtractionExecution } from "../../evaluators/article-extraction"
 
+type InternalExtractionScope = ReturnType<typeof resolveExtractionPlan>["scope"]
+
+function toPublicExtractionScope(scope: InternalExtractionScope): ArticleExtractionExecution["scope"] {
+  return scope === "article" ? "article" : "page"
+}
+
 function withDocumentGlobals<T>(doc: Document, callback: () => T): T {
   const view = doc.defaultView
   if (!view) {
@@ -42,7 +48,7 @@ export function buildArticleExtractionExecutionFromDocument(params: {
     const blockTexts = plan.blocks.map((block) => block.text)
 
     return {
-      scope: plan.scope,
+      scope: toPublicExtractionScope(plan.scope),
       rootId: plan.root.id || null,
       blockCount: plan.blocks.length,
       blockTexts,

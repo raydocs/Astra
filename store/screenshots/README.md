@@ -11,6 +11,20 @@ Capture guidelines for Chrome Web Store and Firefox AMO screenshots for the free
 
 Use 1280x800 for all screenshots so the same set works for both stores. Because Chrome's practical listing limit is 1--5, the launch packet should contain **no more than five primary screenshots**.
 
+## Current launch-candidate artifacts
+
+The root-level PNGs are present at 1280x800 so store packet assembly has stable filenames:
+
+| File | Source/evidence status |
+|---|---|
+| `01-page-translation.png` | Derived 2026-05-28 from `ui-parity-2026-05-13/production/page-translation-progress-errors.png`; recapture before final upload if page-translation chrome changes. |
+| `02-selection-toolbar.png` | Derived 2026-05-28 from `ui-parity-2026-05-13/production/selection-toolbar.png`; acceptable as a launch-candidate artifact for selection-toolbar claim review. |
+| `03-popup-control-center.png` | Derived 2026-05-28 from `ui-parity-2026-05-13/production/popup-empty-state.png`; recapture if the Study Hub/routing card should be emphasized in the final listing. |
+| `04-options-settings.png` | Temporary derived artifact from `ui-parity-2026-05-13/production/onboarding-permission-card.png`; **must be replaced with a real Options/Settings capture before store submission**. |
+| `05-pdf-reader.png` | Derived 2026-05-28 from `ui-parity-2026-05-13/production/web-files-pdf.png`; use only with beta-reader wording. |
+
+These files are claim-boundary artifacts, not proof that the store submission has been manually approved. Manual recapture remains required for any surface that changed after the source capture or where the table above marks the artifact temporary.
+
 ## Launch-safe primary screenshot set (1--5)
 
 ### 1. `01-page-translation.png` -- Full-page bilingual translation
@@ -36,9 +50,9 @@ Open the extension popup while on a translated page. The popup should show launc
 
 ### 4. `04-options-settings.png` -- Options / Settings page (privacy and provider boundary)
 
-Open the Options page and capture settings that explain provider configuration, Privacy Mode, or diagnostics without exposing secrets. This screenshot should support the truthful claim that Astra exposes provider/routing controls and request-context privacy settings.
+Open the Options page and capture settings that explain Astra service preferences, Privacy Mode, or diagnostics without exposing secrets. This screenshot should support the truthful claim that Astra exposes service status, reading preferences, and request-context privacy settings without making technical routing part of the ordinary user story.
 
-**Key elements visible:** provider status without keys, Privacy Mode or diagnostics controls, connection/route indication if available.
+**Key elements visible:** Astra service status without secrets, Privacy Mode or diagnostics controls, connection/service-path indication if available.
 
 ### 5. `05-pdf-reader.png` -- PDF reader with translation
 

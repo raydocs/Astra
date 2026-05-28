@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react"
+import { useEffect, useMemo, useRef, useState } from "react"
 import { browser } from "#imports"
 import type { VocabularyEntry, VocabularyThemePackImportPreview } from "@/utils/storage/vocabulary"
 import { buildLearningLoopAccountContinuityPopupSignInUrl, buildLearningLoopAccountContinuityProofMoment, LEARNING_LOOP_COMMERCIAL_SURFACE_COPY, recordLearningLoopEvent, type LearningLoopAccountContinuityAuthState } from "@/utils/learning-loop-events"
@@ -8,6 +8,7 @@ import {
   importVocabularyEntriesFromThemePackPayload,
   previewVocabularyEntriesFromThemePackPayload,
   removeVocabularyEntry,
+  removeVocabularyEntries,
   getDueVocabularyCount,
   updateVocabularyEntry,
 } from "@/utils/storage/vocabulary"
@@ -47,23 +48,51 @@ import {
   matchOwnedReadingItemForVocabularyEntry,
   removeOwnedReadingItem,
   setOwnedReadingStatus,
+  setOwnedReadingUserControl,
   syncRecentReadingHistoryToOwnedQueue,
   verifyOwnedReadingThemePackPackage,
 } from "@/utils/storage/owned-reading"
 import { isTtsSupported, speak, stopSpeaking } from "@/utils/tts"
 import { readConfig } from "@/utils/storage/config"
 import { readAstraSession } from "@/utils/storage/auth"
+import { buildLearningAssetProjection, buildLocalWeeklyDigestViewModel, type LocalWeeklyDigestViewModel } from "@/utils/storage/learning-assets"
+import { buildLearningDataExport, stringifyLearningDataExport } from "@/utils/storage/learning-data-export"
+import {
+  buildLearningMemoryLibraryView,
+  deleteLearningMemoryLibrarySources,
+  setLearningMemoryLibrarySourceControls,
+  type LearningMemoryLibraryDeleteMode,
+  type LearningMemoryLibrarySourceActionRef,
+  type LearningMemoryLibraryView,
+} from "@/utils/storage/learning-memory-library"
+import { forgetRememberedTerm, setPersonalizationEnabled, updateLearningProfile } from "@/utils/storage/learning-profile"
+import { ASTRA_LIBRARY_ASSET_TYPES, type AstraLibraryAssetTypeId } from "@/utils/learning-library-experience"
 import { translateTexts } from "@/utils/translate/translate"
 import type { ExplainMode } from "@/types/config"
 import { openPageInDeepRead, openVocabularyEntryInDeepRead } from "@/utils/deep-read-link"
 import { openFocusedReview, openPageReviewLoop } from "@/utils/review-link"
+import { buildSentenceShareCard, type AstraGrowthSharePayload } from "@/utils/share/sentence-card"
 import ReviewMode from "./ReviewMode"
 import { t } from "@/utils/i18n"
 
-type ActiveTab = "list" | "review" | "reading"
+type ActiveTab = "list" | "review" | "reading" | "memory"
 type ReadingSubTab = "recent" | "saved" | "in_progress"
 type SortMode = "time" | "alpha"
 type ReadingSortMode = "opened" | "title"
+type LibrarySourceFilter = "all" | OwnedReadingItem["sourceType"] | "video" | "sample" | "selection"
+type LibraryAssetCoverageStatus = "ready" | "empty" | "deferred"
+
+const USER_SELECTED_SHARE_SENTENCE_MAX_LENGTH = 180
+
+interface LibraryAssetCoverageRow {
+  id: AstraLibraryAssetTypeId
+  label: string
+  count: number
+  status: LibraryAssetCoverageStatus
+  statusLabel: string
+  hint: string
+  storageBoundary: string
+}
 
 function buildExplainModeSystemPrompt(explainMode: ExplainMode): string | undefined {
   switch (explainMode) {
@@ -101,6 +130,61 @@ function escapeCSV(value: string): string {
     return `"${value.replace(/"/g, '""')}"`
   }
   return value
+}
+
+function compactShareSentenceText(value?: string | null): string {
+  return (value ?? "").replace(/\s+/g, " ").trim()
+}
+
+function getUserSelectedShareSentence(entry: VocabularyEntry): string | null {
+  const sentence = compactShareSentenceText(entry.sourceContext?.sentenceText ?? entry.context)
+  if (!sentence || sentence.length > USER_SELECTED_SHARE_SENTENCE_MAX_LENGTH) return null
+  return sentence
+}
+
+function isLocalOrPrivateShareSource(entry: VocabularyEntry): boolean {
+  const sourceUrl = entry.sourceContext?.pageUrl ?? entry.url ?? ""
+  return /^(?:astra-local|file|blob|data|chrome-extension):/i.test(sourceUrl)
+}
+
+function getUserSelectedSentenceShareInput(entry: VocabularyEntry): { sentence: string; translation: string; sourceTitle?: string } | null {
+  if (isLocalOrPrivateShareSource(entry)) return null
+  const sentence = getUserSelectedShareSentence(entry)
+  const translation = compactShareSentenceText(entry.translation)
+  if (!sentence || !translation) return null
+  const sourceTitle = compactShareSentenceText(entry.sourceContext?.pageTitle ?? entry.sourceContext?.ownedReadingTitle)
+  return {
+    sentence,
+    translation,
+    ...(sourceTitle ? { sourceTitle } : {}),
+  }
+}
+
+async function shareGrowthPayload(payload: AstraGrowthSharePayload): Promise<"shared" | "copied" | "unavailable"> {
+  const shareApi = navigator as Navigator & {
+    share?: (data: ShareData) => Promise<void>
+    clipboard?: { writeText?: (value: string) => Promise<void> }
+  }
+  if (typeof shareApi.share === "function") {
+    await shareApi.share(payload)
+    return "shared"
+  }
+  if (typeof shareApi.clipboard?.writeText === "function") {
+    await shareApi.clipboard.writeText(`${payload.text}\n${payload.url}`)
+    return "copied"
+  }
+  return "unavailable"
+}
+
+function formatShareStatus(result: "shared" | "copied" | "unavailable"): string {
+  switch (result) {
+    case "shared":
+      return "Sentence card opened in your share sheet."
+    case "copied":
+      return "Sentence card copied to clipboard."
+    case "unavailable":
+      return "Sentence card ready, but sharing is not available in this browser."
+  }
 }
 
 function exportCSV(entries: VocabularyEntry[]): void {
@@ -167,6 +251,7 @@ function getInitialTab(): ActiveTab {
   const tab = params.get("tab")
   if (tab === "review") return "review"
   if (tab === "reading") return "reading"
+  if (tab === "memory") return "memory"
   return "list"
 }
 
@@ -290,6 +375,139 @@ function getReadingFormatBadgeLabel(sourceType: OwnedReadingItem["sourceType"]):
     case "subtitle-file":
       return "Subtitle"
   }
+}
+
+const LIBRARY_SOURCE_FILTERS: LibrarySourceFilter[] = [
+  "all",
+  "article",
+  "video",
+  "pdf",
+  "epub",
+  "subtitle-file",
+  "sample",
+  "selection",
+]
+
+function getVocabularySourceFilterKey(entry: VocabularyEntry): LibrarySourceFilter {
+  const ownedType = entry.sourceContext?.ownedReadingSourceType
+  if (ownedType) return ownedType
+
+  switch (entry.sourceContext?.surface) {
+    case "video_transcript":
+      return "video"
+    case "subtitle_reader":
+      return "subtitle-file"
+    case "sample_lesson":
+      return "sample"
+    case "selection_toolbar":
+    case "hover_translate":
+      return "selection"
+    case "popup_deep_read":
+    case undefined:
+      break
+  }
+
+  const url = entry.sourceContext?.pageUrl ?? entry.url ?? ""
+  if (/\.pdf(?:[?#]|$)/i.test(url)) return "pdf"
+  if (/\.epub(?:[?#]|$)/i.test(url)) return "epub"
+  if (/subtitle|\.srt(?:[?#]|$)|\.vtt(?:[?#]|$)/i.test(url)) return "subtitle-file"
+  if (/^https?:\/\//i.test(url) || entry.hostname || entry.sourceContext?.hostname) return "article"
+  return "selection"
+}
+
+function getLibrarySourceFilterLabel(filter: LibrarySourceFilter): string {
+  switch (filter) {
+    case "all":
+      return "All sources"
+    case "article":
+      return "Articles"
+    case "video":
+      return "Videos"
+    case "pdf":
+      return "PDFs"
+    case "epub":
+      return "EPUBs"
+    case "subtitle-file":
+      return "Subtitle files"
+    case "sample":
+      return "Sample lessons"
+    case "selection":
+      return "Selections"
+  }
+}
+
+function countVocabularyEntriesBySourceFilter(entries: VocabularyEntry[], filter: LibrarySourceFilter): number {
+  return entries.filter((entry) => getVocabularySourceFilterKey(entry) === filter).length
+}
+
+function countGlossaryBackedEntries(entries: VocabularyEntry[]): number {
+  return entries.filter((entry) => (
+    entry.glossaryEnabled
+    || Boolean(entry.glossaryTargetText?.trim())
+    || (entry.sourceContext?.matchedGlossaryTerms?.length ?? 0) > 0
+  )).length
+}
+
+function getLibraryAssetCoverageCountLabel(id: AstraLibraryAssetTypeId, count: number, status: LibraryAssetCoverageStatus): string {
+  if (status === "deferred") return "Planned"
+  if (status === "empty") return "Not yet added"
+
+  switch (id) {
+    case "saved_pages":
+    case "saved_videos":
+    case "saved_files":
+    case "reading_queue":
+      return `${count} ${count === 1 ? "source" : "sources"}`
+    case "saved_sentences":
+      return `${count} ${count === 1 ? "sentence" : "sentences"}`
+    case "saved_words":
+      return `${count} ${count === 1 ? "word" : "words"}`
+    case "video_notes":
+      return `${count} ${count === 1 ? "note" : "notes"}`
+    case "review_queue":
+      return `${count} due`
+    case "personal_glossary":
+      return `${count} ${count === 1 ? "term" : "terms"}`
+    case "learning_digest":
+      return `${count} ${count === 1 ? "moment" : "moments"}`
+  }
+}
+
+function buildLibraryAssetCoverageRows(params: {
+  entries: VocabularyEntry[]
+  readingItems: OwnedReadingItem[]
+  dueCount: number
+  weeklyDigest: LocalWeeklyDigestViewModel
+}): LibraryAssetCoverageRow[] {
+  const fileSourceCount = params.readingItems.filter((item) => item.sourceType === "pdf" || item.sourceType === "epub" || item.sourceType === "subtitle-file").length
+  const videoEntryCount = countVocabularyEntriesBySourceFilter(params.entries, "video")
+  const counts: Record<AstraLibraryAssetTypeId, number> = {
+    saved_pages: params.readingItems.filter((item) => item.sourceType === "article").length || countVocabularyEntriesBySourceFilter(params.entries, "article"),
+    saved_videos: videoEntryCount,
+    saved_files: fileSourceCount || countVocabularyEntriesBySourceFilter(params.entries, "pdf") + countVocabularyEntriesBySourceFilter(params.entries, "epub") + countVocabularyEntriesBySourceFilter(params.entries, "subtitle-file"),
+    saved_sentences: params.entries.filter((entry) => Boolean(entry.sourceContext?.sentenceText?.trim() || entry.context?.trim())).length,
+    saved_words: params.entries.length,
+    video_notes: params.entries.filter((entry) => entry.sourceContext?.surface === "video_transcript" && (entry.note?.trim() || typeof entry.sourceContext.videoTimestampMs === "number")).length,
+    reading_queue: params.readingItems.length,
+    review_queue: params.dueCount,
+    personal_glossary: countGlossaryBackedEntries(params.entries),
+    learning_digest: Math.max(params.weeklyDigest.reviewableLearningMoments, params.weeklyDigest.savedSnippetCount),
+  }
+  const deferredWhenEmpty = new Set<AstraLibraryAssetTypeId>(["saved_videos", "video_notes"])
+
+  return ASTRA_LIBRARY_ASSET_TYPES.map((asset) => {
+    const count = counts[asset.id]
+    const status: LibraryAssetCoverageStatus = count > 0 ? "ready" : deferredWhenEmpty.has(asset.id) ? "deferred" : "empty"
+    return {
+      id: asset.id,
+      label: asset.label,
+      count,
+      status,
+      statusLabel: getLibraryAssetCoverageCountLabel(asset.id, count, status),
+      hint: asset.userValue,
+      storageBoundary: asset.defaultStorageBoundary,
+    }
+  })
 }
 
 function sortVocabularyEntriesForDocumentReview(entries: VocabularyEntry[]): VocabularyEntry[] {
@@ -513,8 +731,42 @@ function getLearningDeskHint(params: {
   return "Use Astra while reading and this space will turn into your daily study desk."
 }
 
+function getLibraryHomeLatestEntryLabel(entries: Array<{ text: string; translation?: string; savedAt: number }>): string {
+  const latestEntry = [...entries].sort((a, b) => b.savedAt - a.savedAt)[0] ?? null
+  return latestEntry
+    ? `${latestEntry.text}${latestEntry.translation ? ` → ${latestEntry.translation}` : ""}`
+    : "Save a sentence from any article or supported video to start your library."
+}
+
+function getLibraryHomeSavedLabel(count: number): string {
+  return `${count} saved ${count === 1 ? "item" : "items"}`
+}
+
+function getLibraryHomeDueLabel(dueCount: number): string {
+  return dueCount > 0 ? `${dueCount} due today` : "All caught up"
+}
+
+function getLibraryHomeSourceLabel(recentCount: number): string {
+  return recentCount > 0
+    ? `${recentCount} learning ${recentCount === 1 ? "source" : "sources"}`
+    : "No sources yet"
+}
+
 function buildPopupSignInDeepLinkUrl(): string {
   return buildLearningLoopAccountContinuityPopupSignInUrl((path) => browser.runtime.getURL(path as "/popup.html"))
+}
+
+function getCurrentLocalWeekWindow(now = Date.now()): { weekStartAt: number; weekEndAt: number } {
+  const date = new Date(now)
+  const day = date.getDay()
+  const mondayOffset = (day + 6) % 7
+  const start = new Date(date)
+  start.setHours(0, 0, 0, 0)
+  start.setDate(start.getDate() - mondayOffset)
+  const end = new Date(start)
+  end.setDate(start.getDate() + 6)
+  end.setHours(23, 59, 59, 999)
+  return { weekStartAt: start.getTime(), weekEndAt: end.getTime() }
 }
 
 function formatLocalDayLabel(date: string): string {
@@ -539,10 +791,13 @@ export default function VocabularyApp() {
   const [search, setSearch] = useState("")
   const [sortMode, setSortMode] = useState<SortMode>("time")
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null)
+  const [pendingReadingDeleteId, setPendingReadingDeleteId] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
+  const [accountContinuityAuthState, setAccountContinuityAuthState] = useState<LearningLoopAccountContinuityAuthState | "unknown">("unknown")
   const [dueCount, setDueCount] = useState(0)
   const [expandedId, setExpandedId] = useState<string | null>(null)
   const [activeTagFilter, setActiveTagFilter] = useState<string | null>(null)
+  const [activeSourceFilter, setActiveSourceFilter] = useState<LibrarySourceFilter>("all")
   const [readingArticleSummaries, setReadingArticleSummaries] = useState<Record<string, ReadingArticleSummary>>({})
   const [dailyPagesStudied, setDailyPagesStudied] = useState(0)
   const [dailySentencesExplained, setDailySentencesExplained] = useState(0)
@@ -552,10 +807,18 @@ export default function VocabularyApp() {
   const [dailyStatsInfoOpen, setDailyStatsInfoOpen] = useState(false)
   const [speakingEntryId, setSpeakingEntryId] = useState<string | null>(null)
   const [explainingEntryId, setExplainingEntryId] = useState<string | null>(null)
-  const [accountContinuityAuthState, setAccountContinuityAuthState] = useState<LearningLoopAccountContinuityAuthState | "unknown">("unknown")
+  const [shareStatusByEntryId, setShareStatusByEntryId] = useState<Record<string, string>>({})
   const [themePackImportStatus, setThemePackImportStatus] = useState<string>("")
   const [pendingThemePackImport, setPendingThemePackImport] = useState<PendingThemePackImport | null>(null)
+  const [memoryLibraryView, setMemoryLibraryView] = useState<LearningMemoryLibraryView | null>(null)
+  const [selectedMemorySourceIds, setSelectedMemorySourceIds] = useState<string[]>([])
+  const [expandedMemorySourceIds, setExpandedMemorySourceIds] = useState<string[]>([])
+  const [memoryActionStatus, setMemoryActionStatus] = useState<string>("")
+  const [pendingMemoryDeleteMode, setPendingMemoryDeleteMode] = useState<LearningMemoryLibraryDeleteMode | null>(null)
+  const [confirmClearRememberedTerms, setConfirmClearRememberedTerms] = useState(false)
   const importInputRef = useRef<HTMLInputElement | null>(null)
+  const librarySearchInputRef = useRef<HTMLInputElement | null>(null)
+  const viewedWeeklyDigestKeysRef = useRef<Set<string>>(new Set())
 
   const refreshAccountContinuityAuthState = async () => {
     try {
@@ -601,6 +864,30 @@ export default function VocabularyApp() {
     setLoading(false)
   }
 
+  const loadMemoryLibrary = async () => {
+    setLoading(true)
+    const [data, due, progress, ownedItems, memoryView] = await Promise.all([
+      getVocabularyEntries(),
+      getDueVocabularyCount(),
+      getStudyProgress(),
+      listOwnedReadingItems(),
+      buildLearningMemoryLibraryView(),
+    ])
+    setEntries(data)
+    setReadingItems(ownedItems)
+    setLinkedOwnedReadingItems(ownedItems)
+    setDueCount(due)
+    setDailyPagesStudied(progress.dailyStats.pagesStudied)
+    setDailySentencesExplained(progress.dailyStats.sentencesExplained)
+    setDailyVocabSaved(progress.dailyStats.vocabSaved)
+    setDailyVocabReviewed(progress.dailyStats.vocabReviewed)
+    setDailyStatsDate(progress.dailyStats.date)
+    setMemoryLibraryView(memoryView)
+    setSelectedMemorySourceIds((current) => current.filter((id) => memoryView.sourceRows.some((row) => row.id === id)))
+    setExpandedMemorySourceIds((current) => current.filter((id) => memoryView.sourceRows.some((row) => row.id === id)))
+    setLoading(false)
+  }
+
   const loadReadingQueue = async () => {
     setReadingLoading(true)
     await syncRecentReadingHistoryToOwnedQueue()
@@ -642,6 +929,10 @@ export default function VocabularyApp() {
       void loadReadingQueue()
       return
     }
+    if (activeTab === "memory") {
+      void loadMemoryLibrary()
+      return
+    }
     void loadEntries()
   }, [activeTab])
 
@@ -652,6 +943,26 @@ export default function VocabularyApp() {
     }
     window.addEventListener("focus", refreshOnFocus)
     return () => window.removeEventListener("focus", refreshOnFocus)
+  }, [])
+
+  useEffect(() => {
+    const handleLibrarySearchShortcut = (event: KeyboardEvent) => {
+      if (event.key !== "/" || event.metaKey || event.ctrlKey || event.altKey) return
+
+      const target = event.target instanceof HTMLElement ? event.target : null
+      const tagName = target?.tagName.toLowerCase()
+      if (tagName === "input" || tagName === "textarea" || tagName === "select" || target?.isContentEditable) return
+
+      event.preventDefault()
+      setActiveTab("list")
+      window.setTimeout(() => {
+        librarySearchInputRef.current?.focus()
+        librarySearchInputRef.current?.select()
+      }, 0)
+    }
+
+    window.addEventListener("keydown", handleLibrarySearchShortcut)
+    return () => window.removeEventListener("keydown", handleLibrarySearchShortcut)
   }, [])
 
   useEffect(() => {
@@ -685,7 +996,19 @@ export default function VocabularyApp() {
     new Set(entries.flatMap((e) => e.tags ?? [])),
   ).sort()
 
+  const sourceFilterCounts = new Map<LibrarySourceFilter, number>()
+  sourceFilterCounts.set("all", entries.length)
+  for (const entry of entries) {
+    const key = getVocabularySourceFilterKey(entry)
+    sourceFilterCounts.set(key, (sourceFilterCounts.get(key) ?? 0) + 1)
+  }
+  const sourceFilterOptions = LIBRARY_SOURCE_FILTERS
+    .map((filter) => ({ filter, label: getLibrarySourceFilterLabel(filter), count: sourceFilterCounts.get(filter) ?? 0 }))
+    .filter((option) => option.filter === "all" || option.count > 0 || option.filter === activeSourceFilter)
+
   const filtered = entries.filter((e) => {
+    // Source filter
+    if (activeSourceFilter !== "all" && getVocabularySourceFilterKey(e) !== activeSourceFilter) return false
     // Tag filter
     if (activeTagFilter && !(e.tags ?? []).includes(activeTagFilter)) return false
     // Text search
@@ -777,6 +1100,57 @@ export default function VocabularyApp() {
     dueCount,
     inProgressCount: readingCounts.in_progress,
   })
+  const weeklyDigest = buildLocalWeeklyDigestViewModel(
+    buildLearningAssetProjection({
+      vocabularyEntries: entries,
+      ownedReadingItems: readingItems,
+    }),
+    getCurrentLocalWeekWindow(),
+  )
+  const libraryAssetCoverageRows = buildLibraryAssetCoverageRows({ entries, readingItems, dueCount, weeklyDigest })
+  const weeklyDigestHasValue = weeklyDigest.savedSnippetCount > 0
+    || weeklyDigest.reviewedCardCount > 0
+    || weeklyDigest.sourceCount > 0
+    || weeklyDigest.commonTopics.length > 0
+    || weeklyDigest.repeatedVocabulary.length > 0
+    || weeklyDigest.recommendedReviewCount > 0
+  const weeklyDigestTelemetryMetadata = useMemo(() => ({
+    reminderType: "weekly_digest",
+    surface: "vocabulary_library",
+    weekStartAt: weeklyDigest.weekStartAt,
+    weekEndAt: weeklyDigest.weekEndAt,
+    savedSnippetCount: weeklyDigest.savedSnippetCount,
+    reviewedCardCount: weeklyDigest.reviewedCardCount,
+    sourceCount: weeklyDigest.sourceCount,
+    reviewableLearningMoments: weeklyDigest.reviewableLearningMoments,
+    commonTopicCount: weeklyDigest.commonTopics.length,
+    repeatedVocabularyCount: weeklyDigest.repeatedVocabulary.length,
+    recommendedReviewCount: weeklyDigest.recommendedReviewCount,
+    continueSourceType: weeklyDigest.recommendedContinueTarget?.type ?? "none",
+  }), [
+    weeklyDigest.weekStartAt,
+    weeklyDigest.weekEndAt,
+    weeklyDigest.savedSnippetCount,
+    weeklyDigest.reviewedCardCount,
+    weeklyDigest.sourceCount,
+    weeklyDigest.reviewableLearningMoments,
+    weeklyDigest.commonTopics.length,
+    weeklyDigest.repeatedVocabulary.length,
+    weeklyDigest.recommendedReviewCount,
+    weeklyDigest.recommendedContinueTarget?.type,
+  ])
+  const weeklyDigestViewKey = [
+    "weekly_digest",
+    weeklyDigest.weekStartAt,
+    weeklyDigest.weekEndAt,
+  ].join(":")
+
+  useEffect(() => {
+    if (activeTab !== "list" || !weeklyDigestHasValue) return
+    if (viewedWeeklyDigestKeysRef.current.has(weeklyDigestViewKey)) return
+    viewedWeeklyDigestKeysRef.current.add(weeklyDigestViewKey)
+    recordLearningLoopEvent("digest_viewed", weeklyDigestTelemetryMetadata)
+  }, [activeTab, weeklyDigestHasValue, weeklyDigestTelemetryMetadata, weeklyDigestViewKey])
 
   const openAccountContinuitySignIn = () => {
     void browser.tabs.create({ url: buildPopupSignInDeepLinkUrl() })
@@ -834,9 +1208,34 @@ export default function VocabularyApp() {
     void loadReadingQueue()
   }
 
-  const handleRemoveReading = async (id: string) => {
+  const handleReadingUserControl = async (item: OwnedReadingItem, patch: Parameters<typeof setOwnedReadingUserControl>[1]) => {
+    const currentControls = item.userControl ?? { syncEnabled: true, excludedFromDigest: false, privacyModeAtCapture: false }
+    const newlyExcludedFromDigest = patch.excludedFromDigest === true && currentControls.excludedFromDigest !== true
+
+    await setOwnedReadingUserControl(item.id, patch)
+    if (newlyExcludedFromDigest) {
+      recordLearningLoopEvent("reminder_disabled", {
+        reminderType: "weekly_digest",
+        controlScope: "source",
+        surface: "vocabulary_reading_queue",
+        sourceType: item.sourceType,
+        status: item.status,
+        privacyModeAtCapture: currentControls.privacyModeAtCapture === true,
+      })
+    }
+    void commitLearningContinuitySync("vocabulary-owned-reading-user-control")
+    void loadReadingQueue()
+  }
+
+  const handleRemoveReading = async (id: string, options: { deleteSavedCards?: boolean } = {}) => {
+    const item = readingItems.find((row) => row.id === id)
+    const linkedEntries = item ? getVocabularyEntriesForReadingItem(item, entries) : []
+    if (options.deleteSavedCards) {
+      await removeVocabularyEntries(linkedEntries.map((entry) => entry.id))
+    }
     await removeOwnedReadingItem(id)
-    void commitLearningContinuitySync("vocabulary-owned-reading-remove")
+    setPendingReadingDeleteId(null)
+    void commitLearningContinuitySync(options.deleteSavedCards ? "vocabulary-owned-reading-remove-cascade" : "vocabulary-owned-reading-remove")
     void loadReadingQueue()
   }
 
@@ -902,6 +1301,69 @@ export default function VocabularyApp() {
     setThemePackImportStatus("Theme-pack package import canceled before local changes were applied.")
   }
 
+  const getSelectedMemorySourceRefs = (): LearningMemoryLibrarySourceActionRef[] => {
+    if (!memoryLibraryView) return []
+    const selected = new Set(selectedMemorySourceIds)
+    return memoryLibraryView.sourceRows
+      .filter((row) => selected.has(row.id))
+      .map((row) => row.actionRef)
+  }
+
+  const reloadMemoryLibrary = async (status?: string) => {
+    await loadMemoryLibrary()
+    if (status) setMemoryActionStatus(status)
+  }
+
+  const handleMemorySourceControl = async (patch: Parameters<typeof setLearningMemoryLibrarySourceControls>[1], status: string) => {
+    const refs = getSelectedMemorySourceRefs()
+    if (refs.length === 0) return
+    const result = await setLearningMemoryLibrarySourceControls(refs, patch)
+    await reloadMemoryLibrary(`${status} Updated ${result.updatedSourceControlCount} local source${result.updatedSourceControlCount === 1 ? "" : "s"}.`)
+  }
+
+  const handleMemoryDeleteSources = async (mode: LearningMemoryLibraryDeleteMode) => {
+    const refs = getSelectedMemorySourceRefs()
+    if (refs.length === 0) return
+    const result = await deleteLearningMemoryLibrarySources(refs, mode)
+    setPendingMemoryDeleteMode(null)
+    setSelectedMemorySourceIds([])
+    await reloadMemoryLibrary(
+      mode === "source_and_saved_cards"
+        ? `Deleted local source history and ${result.removedSavedCardCount} saved card${result.removedSavedCardCount === 1 ? "" : "s"}.`
+        : "Removed selected local source history. Saved cards were kept.",
+    )
+  }
+
+  const handleForgetRememberedTerm = async (termId: string) => {
+    await forgetRememberedTerm(termId)
+    await reloadMemoryLibrary("Forgot that remembered term on this device.")
+  }
+
+  const handleClearRememberedTerms = async () => {
+    await updateLearningProfile({ rememberedTerms: [] })
+    setConfirmClearRememberedTerms(false)
+    await reloadMemoryLibrary("Cleared remembered terms on this device.")
+  }
+
+  const handleTurnOffPersonalization = async () => {
+    await setPersonalizationEnabled(false)
+    await reloadMemoryLibrary("Personalization memory is off on this device.")
+  }
+
+  const handleExportLearningData = async () => {
+    try {
+      const payload = await buildLearningDataExport()
+      downloadFile(
+        stringifyLearningDataExport(payload),
+        `astra-learning-data-${new Date(payload.generatedAt).toISOString().slice(0, 10)}.json`,
+        "application/json;charset=utf-8",
+      )
+      setMemoryActionStatus(`Exported local learning data: ${payload.summary.savedSnippetCount} saved snippet${payload.summary.savedSnippetCount === 1 ? "" : "s"} and ${payload.summary.reviewCardCount} review card${payload.summary.reviewCardCount === 1 ? "" : "s"}.`)
+    } catch {
+      setMemoryActionStatus("Local learning data export failed.")
+    }
+  }
+
   const handleSpeakEntry = async (entry: VocabularyEntry) => {
     if (speakingEntryId === entry.id) {
       stopSpeaking()
@@ -931,6 +1393,27 @@ export default function VocabularyApp() {
     setSpeakingEntryId(started ? entry.id : null)
   }
 
+  const handleShareSentenceCard = async (entry: VocabularyEntry) => {
+    const input = getUserSelectedSentenceShareInput(entry)
+    if (!input) return
+
+    const card = buildSentenceShareCard({
+      ...input,
+      contentOrigin: "user_selected",
+    })
+    recordLearningLoopEvent("share_card_created", {
+      ...card.telemetry,
+      source: "vocabulary",
+      surface: "library",
+      contentOrigin: "user_selected",
+    })
+    const result = await shareGrowthPayload(card.payload)
+    setShareStatusByEntryId((current) => ({
+      ...current,
+      [entry.id]: formatShareStatus(result),
+    }))
+  }
+
   const handleExplainEntry = async (entry: VocabularyEntry) => {
     const text = entry.sourceContext?.sentenceText?.trim() || entry.context?.trim() || entry.text.trim()
     if (!text || explainingEntryId) return
@@ -941,6 +1424,7 @@ export default function VocabularyApp() {
       const result = await translateTexts({
         texts: [text],
         targetLang: config.targetLang,
+        serviceMode: config.serviceMode,
         context: {
           pageTitle: entry.sourceContext?.pageTitle,
           pageUrl: entry.sourceContext?.pageUrl ?? entry.url,
@@ -1260,6 +1744,11 @@ export default function VocabularyApp() {
       item.studyProgressRecordId,
     ].filter(Boolean).some((value) => value!.toLowerCase().includes(normalizedSearch))).slice(0, 5)
     : []
+  const librarySearchStatus = normalizedSearch
+    ? `Search active for “${search.trim()}”: ${sorted.length} saved word${sorted.length === 1 ? "" : "s"}, ${sentenceSearchResults.length} saved sentence match${sentenceSearchResults.length === 1 ? "" : "es"}, ${articleSearchResults.length} source title match${articleSearchResults.length === 1 ? "" : "es"}.`
+    : `Showing ${sorted.length} saved item${sorted.length === 1 ? "" : "s"}. Press slash to search saved words, sentences, notes, tags, and source titles.`
+  const selectedMemorySourceRows = memoryLibraryView?.sourceRows.filter((row) => selectedMemorySourceIds.includes(row.id)) ?? []
+  const selectedMemorySourceCount = selectedMemorySourceRows.length
 
   if (showListLoading || showReadingLoading) {
     return (
@@ -1310,10 +1799,11 @@ export default function VocabularyApp() {
           <button
             type="button"
             className="astra-library-side-link"
-            aria-selected={activeTab === "list" && !activeTagFilter}
+            aria-selected={activeTab === "list" && !activeTagFilter && activeSourceFilter === "all"}
             onClick={() => {
               setActiveTab("list")
               setActiveTagFilter(null)
+              setActiveSourceFilter("all")
             }}
           >
             <span className="astra-library-side-link__icon" aria-hidden>◫</span>
@@ -1393,6 +1883,19 @@ export default function VocabularyApp() {
             <span style={{ flex: 1 }}>Reading queue</span>
             <span className="astra-library-side-link__count">{readingCounts.recent}</span>
           </button>
+
+          <div className="astra-eyebrow" style={{ padding: "16px 10px 4px" }}>
+            Memory
+          </div>
+          <button
+            type="button"
+            className="astra-library-side-link"
+            aria-selected={activeTab === "memory"}
+            onClick={() => setActiveTab("memory")}
+          >
+            <span className="astra-library-side-link__icon" aria-hidden>◇</span>
+            <span style={{ flex: 1 }}>What Astra remembers</span>
+          </button>
         </aside>
 
         {/* ========== MAIN COLUMN ========== */}
@@ -1406,19 +1909,24 @@ export default function VocabularyApp() {
                 </>
               ) : activeTab === "review" ? (
                 t("vocabulary_tabReview")
-              ) : (
+              ) : activeTab === "reading" ? (
                 t("vocabulary_tabReading")
+              ) : (
+                "What Astra remembers"
               )}
               <span style={{ display: "none" }}>{t("vocabulary_title")}</span>
             </h1>
             <div className="astra-library-search">
               <span aria-hidden style={{ color: "var(--astra-style-ink-3)", fontSize: 13 }}>⌕</span>
               <input
+                ref={librarySearchInputRef}
                 type="text"
                 placeholder={t("vocabulary_searchPlaceholder")}
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
-                aria-label={t("vocabulary_searchPlaceholder")}
+                aria-label={`${t("vocabulary_searchPlaceholder")} Press slash to focus search.`}
+                aria-describedby="library-search-status"
+                data-testid="library-search-input"
               />
             </div>
             <div role="tablist" style={{ display: "inline-flex", gap: 6 }}>
@@ -1449,9 +1957,21 @@ export default function VocabularyApp() {
               >
                 {t("vocabulary_tabReading")}
               </button>
+              <button
+                type="button"
+                role="tab"
+                aria-selected={activeTab === "memory"}
+                className="astra-library-tab-pill"
+                onClick={() => setActiveTab("memory")}
+              >
+                What Astra remembers
+              </button>
             </div>
             <span style={{ display: "none" }}>
               {formatMessage(t("vocabulary_countBadge"), entries.length, entries.length === 1 ? t("vocabulary_countWordSingular") : t("vocabulary_countWordPlural"))}
+            </span>
+            <span id="library-search-status" role="status" aria-live="polite" data-testid="library-search-status" style={{ display: "none" }}>
+              {librarySearchStatus}
             </span>
           </header>
 
@@ -1466,6 +1986,262 @@ export default function VocabularyApp() {
 
       {activeTab === "list" && (
         <>
+          <section
+            data-testid="library-home-summary-card"
+            aria-label="Library home"
+            style={{
+              ...learningDeskCardStyle,
+              background: "linear-gradient(135deg, var(--astra-style-bg-surface), var(--astra-bg-elevated))",
+            }}
+          >
+            <div style={{ display: "flex", justifyContent: "space-between", gap: 16, flexWrap: "wrap", marginBottom: 14 }}>
+              <div>
+                <div style={{ fontSize: 12, fontWeight: 800, letterSpacing: 0.4, textTransform: "uppercase", color: "var(--astra-info)", marginBottom: 6 }}>
+                  Library home
+                </div>
+                <div style={{ fontSize: 18, lineHeight: 1.35, fontWeight: 800, color: "var(--astra-text-primary)", marginBottom: 4 }}>
+                  Pick up the loop: learn, save, review.
+                </div>
+                <div style={{ fontSize: 13, color: "var(--astra-text-secondary)", lineHeight: 1.5 }}>
+                  Your library now answers what you learned recently, what needs review, and where to continue next.
+                </div>
+              </div>
+              <button type="button" style={{ ...learningDeskActionStyle, alignSelf: "flex-start" }} onClick={() => setActiveTab("reading")}>
+                Continue learning
+              </button>
+            </div>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: 10 }}>
+              <div style={{ background: "var(--astra-bg-card)", border: "1px solid var(--astra-info-border)", borderRadius: 12, padding: "12px 14px" }}>
+                <div style={{ fontSize: 11, fontWeight: 800, color: "var(--astra-text-muted)", textTransform: "uppercase", letterSpacing: "0.04em", marginBottom: 6 }}>
+                  Recently learned
+                </div>
+                <div style={{ fontSize: 20, fontWeight: 850, color: "var(--astra-text-primary)", marginBottom: 4 }}>
+                  {getLibraryHomeSavedLabel(entries.length)}
+                </div>
+                <div style={{ fontSize: 12, color: "var(--astra-text-secondary)", lineHeight: 1.45 }}>
+                  {getLibraryHomeLatestEntryLabel(entries)}
+                </div>
+              </div>
+              <div style={{ background: "var(--astra-bg-card)", border: "1px solid var(--astra-info-border)", borderRadius: 12, padding: "12px 14px" }}>
+                <div style={{ fontSize: 11, fontWeight: 800, color: "var(--astra-text-muted)", textTransform: "uppercase", letterSpacing: "0.04em", marginBottom: 6 }}>
+                  Review today
+                </div>
+                <div style={{ fontSize: 20, fontWeight: 850, color: dueCount > 0 ? "var(--astra-warning)" : "var(--astra-text-primary)", marginBottom: 4 }}>
+                  {getLibraryHomeDueLabel(dueCount)}
+                </div>
+                <button type="button" style={learningDeskActionStyle} onClick={() => setActiveTab("review")}>
+                  {dueCount > 0 ? "Review now" : "Open review"}
+                </button>
+              </div>
+              <div style={{ background: "var(--astra-bg-card)", border: "1px solid var(--astra-info-border)", borderRadius: 12, padding: "12px 14px" }}>
+                <div style={{ fontSize: 11, fontWeight: 800, color: "var(--astra-text-muted)", textTransform: "uppercase", letterSpacing: "0.04em", marginBottom: 6 }}>
+                  Continue learning
+                </div>
+                <div style={{ fontSize: 20, fontWeight: 850, color: "var(--astra-text-primary)", marginBottom: 4 }}>
+                  {getLibraryHomeSourceLabel(readingCounts.recent)}
+                </div>
+                <div style={{ fontSize: 12, color: "var(--astra-text-secondary)", lineHeight: 1.45, marginBottom: 8 }}>
+                  {featuredReadingItem?.title ?? (readingRows[0]?.item.title ?? "Add a reading source to continue learning.")}
+                </div>
+                <button type="button" style={learningDeskActionStyle} onClick={() => setActiveTab("reading")}>
+                  Open reading queue
+                </button>
+              </div>
+            </div>
+          </section>
+          <section
+            data-testid="library-weekly-digest-card"
+            aria-label="Local weekly learning digest"
+            style={{ ...learningDeskCardStyle, marginTop: 12 }}
+          >
+            <div style={{ display: "flex", justifyContent: "space-between", gap: 12, flexWrap: "wrap", marginBottom: 10 }}>
+              <div>
+                <div style={{ fontSize: 12, fontWeight: 800, letterSpacing: 0.4, textTransform: "uppercase", color: "var(--astra-info)", marginBottom: 6 }}>
+                  Weekly digest · local
+                </div>
+                <div style={{ fontSize: 17, lineHeight: 1.35, fontWeight: 800, color: "var(--astra-text-primary)", marginBottom: 4 }}>
+                  {weeklyDigest.headline}
+                </div>
+                <div style={{ fontSize: 13, color: "var(--astra-text-secondary)", lineHeight: 1.5 }}>
+                  {weeklyDigest.detail}
+                </div>
+              </div>
+              <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "flex-start" }}>
+                <button
+                  type="button"
+                  style={{ ...learningDeskActionStyle, alignSelf: "flex-start" }}
+                  onClick={() => {
+                    recordLearningLoopEvent("digest_opened", weeklyDigestTelemetryMetadata)
+                    setActiveTab("review")
+                  }}
+                >
+                  {weeklyDigest.recommendedReviewCount > 0 ? `Review ${weeklyDigest.recommendedReviewCount}` : "Open review"}
+                </button>
+                {weeklyDigest.recommendedContinueTarget && (
+                  <button
+                    type="button"
+                    style={{ ...learningDeskActionStyle, alignSelf: "flex-start", color: "var(--astra-text-secondary)" }}
+                    onClick={() => {
+                      recordLearningLoopEvent("continue_clicked", {
+                        reminderType: "weekly_digest",
+                        surface: "vocabulary_library",
+                        sourceType: weeklyDigest.recommendedContinueTarget?.type ?? "unknown",
+                      })
+                      setActiveTab("reading")
+                    }}
+                  >
+                    Continue source
+                  </button>
+                )}
+              </div>
+            </div>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))", gap: 10 }}>
+              <div style={{ background: "var(--astra-bg-card)", border: "1px solid var(--astra-info-border)", borderRadius: 12, padding: "10px 12px" }}>
+                <div style={{ fontSize: 11, color: "var(--astra-text-muted)", fontWeight: 800, textTransform: "uppercase", marginBottom: 4 }}>Saved</div>
+                <div style={{ fontSize: 20, fontWeight: 850 }}>{weeklyDigest.savedSnippetCount}</div>
+              </div>
+              <div style={{ background: "var(--astra-bg-card)", border: "1px solid var(--astra-info-border)", borderRadius: 12, padding: "10px 12px" }}>
+                <div style={{ fontSize: 11, color: "var(--astra-text-muted)", fontWeight: 800, textTransform: "uppercase", marginBottom: 4 }}>Reviewed</div>
+                <div style={{ fontSize: 20, fontWeight: 850 }}>{weeklyDigest.reviewedCardCount}</div>
+              </div>
+              <div style={{ background: "var(--astra-bg-card)", border: "1px solid var(--astra-info-border)", borderRadius: 12, padding: "10px 12px" }}>
+                <div style={{ fontSize: 11, color: "var(--astra-text-muted)", fontWeight: 800, textTransform: "uppercase", marginBottom: 4 }}>Sources</div>
+                <div style={{ fontSize: 20, fontWeight: 850 }}>{weeklyDigest.sourceCount}</div>
+              </div>
+            </div>
+            {weeklyDigest.sourceBreakdown.length > 0 && (
+              <div data-testid="library-weekly-digest-sources" style={{ marginTop: 10, display: "grid", gap: 6 }}>
+                {weeklyDigest.sourceBreakdown.map((source) => (
+                  <div key={source.sourceContentId} style={{ fontSize: 12, color: "var(--astra-text-secondary)", lineHeight: 1.45 }}>
+                    {source.title} · {source.savedSnippetCount} saved · {source.reviewedCardCount} reviewed
+                  </div>
+                ))}
+              </div>
+            )}
+            {(weeklyDigest.commonTopics.length > 0 || weeklyDigest.repeatedVocabulary.length > 0 || weeklyDigest.recommendedContinueTarget) && (
+              <div data-testid="library-weekly-digest-insights" style={{ marginTop: 10, display: "grid", gap: 6 }}>
+                {weeklyDigest.commonTopics.length > 0 && (
+                  <div style={{ fontSize: 12, color: "var(--astra-text-secondary)", lineHeight: 1.45 }}>
+                    Common topics: {weeklyDigest.commonTopics.map((topic) => `${topic.label} (${topic.sourceCount})`).join(", ")}
+                  </div>
+                )}
+                {weeklyDigest.repeatedVocabulary.length > 0 && (
+                  <div style={{ fontSize: 12, color: "var(--astra-text-secondary)", lineHeight: 1.45 }}>
+                    Repeated vocabulary: {weeklyDigest.repeatedVocabulary.map((item) => `${item.surfaceText} across ${item.sourceCount} sources`).join(", ")}
+                  </div>
+                )}
+                {weeklyDigest.recommendedContinueTarget && (
+                  <div style={{ fontSize: 12, color: "var(--astra-text-secondary)", lineHeight: 1.45 }}>
+                    Continue: {weeklyDigest.recommendedContinueTarget.title} · {weeklyDigest.recommendedContinueTarget.lastPositionLabel}
+                  </div>
+                )}
+              </div>
+            )}
+            <div style={{ fontSize: 11, color: "var(--astra-text-muted)", lineHeight: 1.45, marginTop: 10 }}>
+              Privacy: this digest uses counts, source titles/types, coarse topics, and confirmed saved terms only — not page text, transcripts, or saved snippets.
+            </div>
+          </section>
+          <section
+            data-testid="library-asset-coverage-card"
+            aria-label="Learning asset coverage"
+            style={{ ...learningDeskCardStyle, marginTop: 12 }}
+          >
+            <div style={{ display: "flex", justifyContent: "space-between", gap: 12, flexWrap: "wrap", marginBottom: 10 }}>
+              <div>
+                <div style={{ fontSize: 12, fontWeight: 800, letterSpacing: 0.4, textTransform: "uppercase", color: "var(--astra-info)", marginBottom: 6 }}>
+                  Learning asset coverage
+                </div>
+                <div style={{ fontSize: 14, color: "var(--astra-text-secondary)", lineHeight: 1.5 }}>
+                  All macro asset types are visible here, including not-yet-added or planned assets, so the Library feels like a learning trail instead of hidden storage.
+                </div>
+              </div>
+              <button type="button" style={{ ...learningDeskActionStyle, alignSelf: "flex-start" }} onClick={() => setActiveTab("reading")}>
+                Manage sources
+              </button>
+            </div>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(210px, 1fr))", gap: 10 }}>
+              {libraryAssetCoverageRows.map((row) => (
+                <div
+                  key={row.id}
+                  data-testid={`library-asset-coverage-${row.id}`}
+                  data-status={row.status}
+                  style={{
+                    background: "var(--astra-bg-card)",
+                    border: row.status === "ready" ? "1px solid var(--astra-success-border)" : "1px solid var(--astra-border)",
+                    borderRadius: 12,
+                    padding: "12px 14px",
+                    minHeight: 116,
+                  }}
+                >
+                  <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 8, marginBottom: 6 }}>
+                    <div style={{ fontSize: 13, fontWeight: 850, color: "var(--astra-text-primary)" }}>{row.label}</div>
+                    <div style={{ fontSize: 11, fontWeight: 800, color: row.status === "ready" ? "var(--astra-success)" : "var(--astra-text-muted)", whiteSpace: "nowrap" }}>
+                      {row.statusLabel}
+                    </div>
+                  </div>
+                  <div style={{ fontSize: 12, color: "var(--astra-text-secondary)", lineHeight: 1.45, marginBottom: 8 }}>
+                    {row.hint}
+                  </div>
+                  <div style={{ fontSize: 11, color: "var(--astra-text-muted)", lineHeight: 1.4 }}>
+                    {row.storageBoundary}
+                  </div>
+                </div>
+              ))}
+            </div>
+            <div style={{ fontSize: 11, color: "var(--astra-text-muted)", lineHeight: 1.45, marginTop: 10 }}>
+              Empty rows do not store content; they only explain what will appear when you save it.
+            </div>
+          </section>
+          <section
+            data-testid="library-source-map-card"
+            aria-label="Library source organization"
+            style={{ ...learningDeskCardStyle, marginTop: 12 }}
+          >
+            <div style={{ display: "flex", justifyContent: "space-between", gap: 12, flexWrap: "wrap", marginBottom: 10 }}>
+              <div>
+                <div style={{ fontSize: 12, fontWeight: 800, letterSpacing: 0.4, textTransform: "uppercase", color: "var(--astra-info)", marginBottom: 6 }}>
+                  Source map
+                </div>
+                <div style={{ fontSize: 14, color: "var(--astra-text-secondary)", lineHeight: 1.5 }}>
+                  Astra automatically groups saved learning by source type so every card can stay connected to where it came from.
+                </div>
+              </div>
+              {activeSourceFilter !== "all" && (
+                <button type="button" style={sortButtonStyle(false)} onClick={() => setActiveSourceFilter("all")}>
+                  Clear source filter
+                </button>
+              )}
+            </div>
+            <div role="group" aria-label="Filter saved items by source type" style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+              {sourceFilterOptions.map((option) => (
+                <button
+                  key={option.filter}
+                  type="button"
+                  data-testid={`library-source-filter-${option.filter}`}
+                  aria-pressed={activeSourceFilter === option.filter}
+                  aria-label={`${option.label}: ${option.count} saved item${option.count === 1 ? "" : "s"}`}
+                  style={{
+                    ...sortButtonStyle(activeSourceFilter === option.filter),
+                    display: "inline-flex",
+                    gap: 6,
+                    alignItems: "center",
+                  }}
+                  onClick={() => {
+                    setActiveTab("list")
+                    setActiveSourceFilter(option.filter)
+                  }}
+                >
+                  <span>{option.label}</span>
+                  <span aria-label={`${option.count} saved item${option.count === 1 ? "" : "s"}`}>{option.count}</span>
+                </button>
+              ))}
+            </div>
+            {activeSourceFilter !== "all" && (
+              <div data-testid="library-active-source-filter" style={{ fontSize: 12, color: "var(--astra-text-muted)", lineHeight: 1.45, marginTop: 10 }}>
+                Showing {sourceFilterCounts.get(activeSourceFilter) ?? 0} saved item{(sourceFilterCounts.get(activeSourceFilter) ?? 0) === 1 ? "" : "s"} from {getLibrarySourceFilterLabel(activeSourceFilter).toLowerCase()}.
+              </div>
+            )}
+          </section>
           <div style={learningDeskCardStyle}>
             <div style={{ fontSize: 12, fontWeight: 800, letterSpacing: 0.4, textTransform: "uppercase", color: "var(--astra-info)", marginBottom: 6 }}>
               {t("vocabulary_learningDeskTitle")}
@@ -1686,11 +2462,12 @@ export default function VocabularyApp() {
           </div>
 
           {allTags.length > 0 && (
-            <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 12 }}>
+            <div role="group" aria-label="Filter saved items by tag" style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 12 }}>
               {allTags.map((tag) => (
                 <button
                   type="button"
                   key={tag}
+                  aria-pressed={activeTagFilter === tag}
                   className="astra-cursor-pointer"
                   style={{
                     border: "1px solid",
@@ -1777,8 +2554,10 @@ export default function VocabularyApp() {
             </div>
           )}
 
-          {sorted.map((entry) => (
-            <div key={entry.id} className="astra-library-saved-card" style={cardStyle}>
+          {sorted.length > 0 && (
+            <div role="list" aria-label="Saved vocabulary items" data-testid="library-saved-items-list">
+              {sorted.map((entry) => (
+            <div key={entry.id} role="listitem" className="astra-library-saved-card" style={cardStyle}>
               {(() => {
                 const sourceDisplay = deriveVocabularySourceDisplay(entry)
                 const linkedReadingItem = matchOwnedReadingItemForVocabularyEntry(linkedOwnedReadingItems, entry)
@@ -1790,6 +2569,8 @@ export default function VocabularyApp() {
                 const visibleSnippet = snippetLong && !isContextExpanded
                   ? `${snippet.slice(0, 200)}...`
                   : snippet
+                const sentenceShareInput = getUserSelectedSentenceShareInput(entry)
+                const shareStatus = shareStatusByEntryId[entry.id]
 
                 return (
                   <>
@@ -1977,7 +2758,25 @@ export default function VocabularyApp() {
                         ? t("vocabulary_actionStopListening")
                         : (entry.sourceContext?.sentenceText ? t("vocabulary_actionListenSentence") : t("vocabulary_actionListenWord"))}
                     </button>
+                    {sentenceShareInput && (
+                      <button
+                        type="button"
+                        data-testid={`vocab-share-sentence-card-${entry.id}`}
+                        style={learningActionButtonStyle}
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          void handleShareSentenceCard(entry)
+                        }}
+                      >
+                        Share sentence card
+                      </button>
+                    )}
                   </div>
+                  {shareStatus && (
+                    <div data-testid={`vocab-share-sentence-card-status-${entry.id}`} style={{ fontSize: 12, color: "var(--astra-text-muted)", marginBottom: 10 }}>
+                      {shareStatus}
+                    </div>
+                  )}
                   <div style={{ marginBottom: 8 }}>
                     <label htmlFor={`vocabulary-entry-${entry.id}-note`} style={{ fontSize: 12, fontWeight: 600, color: "var(--astra-text-secondary)", display: "block", marginBottom: 4 }}>
                       {t("vocabulary_noteLabel")}
@@ -2118,7 +2917,216 @@ export default function VocabularyApp() {
                 )
               })()}
             </div>
-          ))}
+              ))}
+            </div>
+          )}
+        </>
+      )}
+
+      {activeTab === "memory" && memoryLibraryView && (
+        <>
+          <section data-testid="memory-local-trust-card" style={{ ...learningDeskCardStyle, marginTop: 0 }}>
+            <div style={{ fontSize: 12, fontWeight: 800, letterSpacing: 0.4, textTransform: "uppercase", color: "var(--astra-info)", marginBottom: 6 }}>
+              Local-only memory
+            </div>
+            <div style={{ fontSize: 18, lineHeight: 1.35, fontWeight: 800, color: "var(--astra-text-primary)", marginBottom: 6 }}>
+              What Astra remembers on this device
+            </div>
+            <div style={{ fontSize: 13, color: "var(--astra-text-secondary)", lineHeight: 1.5 }}>
+              This Library view is local-only and user-owned. It shows titles, source types, hostnames, counts, coarse progress, and controls — not full page text, transcripts, prompts, model output, URL query strings, URL hashes, or sensitive URL parameters.
+            </div>
+            <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 12 }}>
+              <button type="button" data-testid="memory-export-learning-data" style={learningDeskActionStyle} onClick={() => void handleExportLearningData()}>
+                Export local learning data
+              </button>
+              <button type="button" data-testid="memory-turn-off-personalization" style={sortButtonStyle(false)} onClick={() => void handleTurnOffPersonalization()}>
+                Turn off personalization
+              </button>
+            </div>
+            {memoryActionStatus && (
+              <div role="status" data-testid="memory-action-status" style={{ ...metaStyle, marginTop: 10 }}>
+                {memoryActionStatus}
+              </div>
+            )}
+          </section>
+
+          <section data-testid="memory-inventory-sections" aria-label="Local memory inventory" style={{ ...learningDeskCardStyle, marginTop: 12 }}>
+            <div style={{ fontSize: 12, fontWeight: 800, letterSpacing: 0.4, textTransform: "uppercase", color: "var(--astra-info)", marginBottom: 10 }}>
+              Memory inventory
+            </div>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(210px, 1fr))", gap: 10 }}>
+              {memoryLibraryView.inventory.sections.map((section) => (
+                <div key={section.id} data-testid={`memory-inventory-${section.id}`} style={{ background: "var(--astra-bg-card)", border: "1px solid var(--astra-info-border)", borderRadius: 12, padding: "12px 14px" }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", gap: 8, marginBottom: 5 }}>
+                    <strong style={{ fontSize: 13 }}>{section.label}</strong>
+                    <span style={{ fontSize: 12, fontWeight: 800, color: "var(--astra-info)" }}>{section.count}</span>
+                  </div>
+                  <div style={{ fontSize: 12, color: "var(--astra-text-secondary)", lineHeight: 1.45, marginBottom: 6 }}>
+                    {section.description}
+                  </div>
+                  <div style={{ fontSize: 11, color: "var(--astra-text-muted)", lineHeight: 1.4 }}>
+                    {section.contentPolicy}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </section>
+
+          <section data-testid="memory-remembered-terms" aria-label="Remembered terms" style={{ ...learningDeskCardStyle, marginTop: 12 }}>
+            <div style={{ display: "flex", justifyContent: "space-between", gap: 12, flexWrap: "wrap", marginBottom: 10 }}>
+              <div>
+                <div style={{ fontSize: 12, fontWeight: 800, letterSpacing: 0.4, textTransform: "uppercase", color: "var(--astra-info)", marginBottom: 6 }}>
+                  Remembered terms
+                </div>
+                <div style={{ fontSize: 13, color: "var(--astra-text-secondary)", lineHeight: 1.5 }}>
+                  Explicit term preferences saved locally for translation consistency.
+                </div>
+              </div>
+              {memoryLibraryView.rememberedTerms.length > 0 && (
+                confirmClearRememberedTerms ? (
+                  <div style={{ display: "flex", gap: 6, alignItems: "flex-start" }}>
+                    <button type="button" data-testid="memory-clear-terms-confirm" style={confirmBtnStyle} onClick={() => void handleClearRememberedTerms()}>
+                      Confirm clear terms
+                    </button>
+                    <button type="button" style={sortButtonStyle(false)} onClick={() => setConfirmClearRememberedTerms(false)}>
+                      Cancel
+                    </button>
+                  </div>
+                ) : (
+                  <button type="button" data-testid="memory-clear-terms" style={deleteBtnStyle} onClick={() => setConfirmClearRememberedTerms(true)}>
+                    Clear terms
+                  </button>
+                )
+              )}
+            </div>
+            {memoryLibraryView.rememberedTerms.length === 0 ? (
+              <div style={metaStyle}>No remembered terms on this device.</div>
+            ) : (
+              <div style={{ display: "grid", gap: 8 }}>
+                {memoryLibraryView.rememberedTerms.map((term) => (
+                  <div key={term.id} data-testid={`memory-term-${term.id}`} style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "center", background: "var(--astra-bg-card)", border: "1px solid var(--astra-border)", borderRadius: 10, padding: "10px 12px" }}>
+                    <div>
+                      <div style={{ fontSize: 13, fontWeight: 800, color: "var(--astra-text-primary)" }}>{term.sourceTerm} → {term.preferredTerm}</div>
+                      <div style={metaStyle}>{term.hostname ?? "global"} · {term.source}</div>
+                    </div>
+                    <button type="button" data-testid={`memory-forget-term-${term.id}`} style={deleteBtnStyle} onClick={() => void handleForgetRememberedTerm(term.id)}>
+                      Forget term
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </section>
+
+          <section data-testid="memory-source-timeline" aria-label="Per-source memory timeline" style={{ ...learningDeskCardStyle, marginTop: 12 }}>
+            <div style={{ display: "flex", justifyContent: "space-between", gap: 12, flexWrap: "wrap", marginBottom: 10 }}>
+              <div>
+                <div style={{ fontSize: 12, fontWeight: 800, letterSpacing: 0.4, textTransform: "uppercase", color: "var(--astra-info)", marginBottom: 6 }}>
+                  Per-source timeline
+                </div>
+                <div style={{ fontSize: 13, color: "var(--astra-text-secondary)", lineHeight: 1.5 }}>
+                  Select sources for local-only controls. Timeline events are coarse counts and states only.
+                </div>
+              </div>
+              <div style={{ fontSize: 12, color: "var(--astra-text-muted)", alignSelf: "center" }}>
+                {selectedMemorySourceCount} selected
+              </div>
+            </div>
+
+            <div data-testid="memory-bulk-actions" style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 12 }}>
+              <button type="button" data-testid="memory-bulk-exclude-digest" style={sortButtonStyle(false)} disabled={selectedMemorySourceCount === 0} onClick={() => void handleMemorySourceControl({ excludedFromDigest: true }, "Excluded selected from digest.")}>
+                Exclude selected from digest
+              </button>
+              <button type="button" data-testid="memory-bulk-disable-sync" style={sortButtonStyle(false)} disabled={selectedMemorySourceCount === 0} onClick={() => void handleMemorySourceControl({ syncEnabled: false }, "Disabled sync for selected.")}>
+                Disable sync for selected
+              </button>
+              <button type="button" data-testid="memory-bulk-remove-history" style={deleteBtnStyle} disabled={selectedMemorySourceCount === 0} onClick={() => setPendingMemoryDeleteMode("source_history_only")}>
+                Remove selected source history
+              </button>
+              <button type="button" data-testid="memory-bulk-delete-source-cards" style={deleteBtnStyle} disabled={selectedMemorySourceCount === 0} onClick={() => setPendingMemoryDeleteMode("source_and_saved_cards")}>
+                Delete selected source + saved cards
+              </button>
+            </div>
+
+            {pendingMemoryDeleteMode && (
+              <div data-testid="memory-delete-confirmation" style={{ marginBottom: 12, padding: "10px 12px", background: "var(--astra-danger-bg)", border: "1px solid var(--astra-danger)", borderRadius: 8 }}>
+                <div style={{ fontSize: 12, color: "var(--astra-danger)", fontWeight: 800, marginBottom: 4 }}>
+                  Confirm local deletion
+                </div>
+                <div style={{ fontSize: 11, color: "var(--astra-text-secondary)", lineHeight: 1.45, marginBottom: 8 }}>
+                  {pendingMemoryDeleteMode === "source_and_saved_cards"
+                    ? `This deletes selected local source history plus saved cards linked to ${selectedMemorySourceCount} source${selectedMemorySourceCount === 1 ? "" : "s"}.`
+                    : `This removes selected local source history for ${selectedMemorySourceCount} source${selectedMemorySourceCount === 1 ? "" : "s"}; saved cards stay.`}
+                </div>
+                <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                  <button type="button" data-testid="memory-confirm-delete" style={confirmBtnStyle} onClick={() => void handleMemoryDeleteSources(pendingMemoryDeleteMode)}>
+                    Confirm
+                  </button>
+                  <button type="button" data-testid="memory-cancel-delete" style={sortButtonStyle(false)} onClick={() => setPendingMemoryDeleteMode(null)}>
+                    Cancel
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {memoryLibraryView.sourceRows.length === 0 ? (
+              <div style={emptyStyle}>No local source memory yet.</div>
+            ) : (
+              <div role="list" aria-label="Local source memory rows" style={{ display: "grid", gap: 10 }}>
+                {memoryLibraryView.sourceRows.map((row) => {
+                  const selected = selectedMemorySourceIds.includes(row.id)
+                  const expanded = expandedMemorySourceIds.includes(row.id)
+                  const controlText = `Sync: ${row.syncEnabled === null ? "not applicable" : row.syncEnabled ? "included" : "disabled"} · Digest: ${row.excludedFromDigest ? "excluded" : "included"}`
+                  return (
+                    <div key={row.id} role="listitem" data-testid={`memory-source-row-${row.id}`} style={{ background: "var(--astra-bg-card)", border: selected ? "1px solid var(--astra-brand)" : "1px solid var(--astra-border)", borderRadius: 12, padding: "12px 14px" }}>
+                      <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "flex-start" }}>
+                        <label style={{ display: "flex", gap: 8, alignItems: "flex-start", flex: 1 }}>
+                          <input
+                            type="checkbox"
+                            data-testid={`memory-select-source-${row.id}`}
+                            checked={selected}
+                            onChange={(event) => {
+                              const checked = event.currentTarget.checked
+                              setSelectedMemorySourceIds((current) => checked
+                                ? Array.from(new Set([...current, row.id]))
+                                : current.filter((id) => id !== row.id))
+                            }}
+                          />
+                          <span>
+                            <span style={{ display: "block", fontSize: 14, fontWeight: 850, color: "var(--astra-text-primary)" }}>{row.title}</span>
+                            <span style={{ display: "block", fontSize: 11, color: "var(--astra-text-muted)", marginTop: 3 }}>{row.sourceTypeLabel}{row.hostname ? ` · ${row.hostname}` : ""} · {row.progressStatus.replace("_", " ")}</span>
+                          </span>
+                        </label>
+                        <button type="button" data-testid={`memory-toggle-source-${row.id}`} style={sortButtonStyle(expanded)} onClick={() => {
+                          setExpandedMemorySourceIds((current) => expanded ? current.filter((id) => id !== row.id) : [...current, row.id])
+                        }}>
+                          {expanded ? "Hide timeline" : "Show timeline"}
+                        </button>
+                      </div>
+                      <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginTop: 8, fontSize: 11, color: "var(--astra-text-secondary)" }}>
+                        <span>{row.savedCardCount} saved cards</span>
+                        <span>{row.readingHistoryCount} history records</span>
+                        <span>{row.sentencesExplained} explained</span>
+                        <span>{row.vocabSaved} saved</span>
+                        <span>{row.vocabReviewed} reviewed</span>
+                        <span>{controlText}</span>
+                      </div>
+                      {expanded && (
+                        <div data-testid={`memory-source-events-${row.id}`} style={{ marginTop: 10, padding: "8px 10px", background: "var(--astra-bg-elevated)", border: "1px solid var(--astra-border)", borderRadius: 8 }}>
+                          {row.timeline.map((event) => (
+                            <div key={event.id} style={{ fontSize: 11, color: "var(--astra-text-secondary)", lineHeight: 1.5, marginBottom: 4 }}>
+                              <strong>{event.label}</strong>{event.occurredAt ? ` · ${formatDate(event.occurredAt)}` : ""}<br />
+                              <span>{event.detail}</span>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  )
+                })}
+              </div>
+            )}
+          </section>
         </>
       )}
 
@@ -2279,6 +3287,9 @@ export default function VocabularyApp() {
               const progressLabel = row.progressLabel
               const reviewTarget = row.reviewTarget
               const deepReadNextStepTarget = row.deepReadNextStepTarget
+              const sourceControls = item.userControl ?? { syncEnabled: true, excludedFromDigest: false, privacyModeAtCapture: false }
+              const linkedEntries = getVocabularyEntriesForReadingItem(item, entries)
+              const pendingDelete = pendingReadingDeleteId === item.id
 
               return (
             <div key={item.id} className="astra-library-reading-row" style={cardStyle} data-testid={`reading-row-${item.id}`}>
@@ -2357,6 +3368,66 @@ export default function VocabularyApp() {
                     </div>
                   </div>
                 )}
+                <div
+                  data-testid={`reading-source-detail-${item.id}`}
+                  style={{
+                    marginBottom: 8,
+                    padding: "8px 10px",
+                    background: "var(--astra-bg-primary)",
+                    border: "1px solid var(--astra-border)",
+                    borderRadius: 8,
+                  }}
+                >
+                  <div style={{ fontSize: 11, fontWeight: 800, color: "var(--astra-text-secondary)", marginBottom: 4 }}>
+                    Source detail
+                  </div>
+                  <div style={{ fontSize: 11, color: "var(--astra-text-muted)", lineHeight: 1.45 }}>
+                    Source type: {getOwnedReadingSourceTypeLabel(item.sourceType)} · Saved cards linked to this source: {linkedEntries.length}. Deleting a source can either keep those cards or remove them explicitly.
+                  </div>
+                  {linkedEntries.length > 0 && (
+                    <ul data-testid={`reading-source-derived-cards-${item.id}`} style={{ margin: "6px 0 0", paddingLeft: 18, fontSize: 11, color: "var(--astra-text-secondary)" }}>
+                      {linkedEntries.slice(0, 3).map((entry) => (
+                        <li key={entry.id}>{entry.text}{entry.translation ? ` — ${entry.translation}` : ""}</li>
+                      ))}
+                      {linkedEntries.length > 3 && <li>+{linkedEntries.length - 3} more saved card(s)</li>}
+                    </ul>
+                  )}
+                </div>
+                <div
+                  data-testid={`reading-source-controls-${item.id}`}
+                  style={{
+                    marginBottom: 8,
+                    padding: "8px 10px",
+                    background: "var(--astra-bg-elevated)",
+                    border: "1px solid var(--astra-border)",
+                    borderRadius: 8,
+                  }}
+                >
+                  <div style={{ fontSize: 11, fontWeight: 800, color: "var(--astra-text-secondary)", marginBottom: 4 }}>
+                    Source controls
+                  </div>
+                  <div style={{ fontSize: 11, color: "var(--astra-text-muted)", lineHeight: 1.45, marginBottom: 8 }}>
+                    Sync: {sourceControls.syncEnabled ? "included" : "disabled"} · Digest: {sourceControls.excludedFromDigest ? "excluded" : "included"}. Delete source removes this queue row; saved cards stay until deleted from Saved words.
+                  </div>
+                  <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                    <button
+                      type="button"
+                      data-testid={`reading-toggle-sync-${item.id}`}
+                      style={sortButtonStyle(!sourceControls.syncEnabled)}
+                      onClick={() => void handleReadingUserControl(item, { syncEnabled: !sourceControls.syncEnabled })}
+                    >
+                      {sourceControls.syncEnabled ? "Disable sync" : "Enable sync"}
+                    </button>
+                    <button
+                      type="button"
+                      data-testid={`reading-toggle-digest-${item.id}`}
+                      style={sortButtonStyle(sourceControls.excludedFromDigest)}
+                      onClick={() => void handleReadingUserControl(item, { excludedFromDigest: !sourceControls.excludedFromDigest })}
+                    >
+                      {sourceControls.excludedFromDigest ? "Include in digest" : "Exclude from digest"}
+                    </button>
+                  </div>
+                </div>
                 <div style={{ ...metaRowStyle, marginTop: 8 }}>
                   <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
                     <button
@@ -2410,10 +3481,55 @@ export default function VocabularyApp() {
                       Archive
                     </button>
                   </div>
-                  <button type="button" style={deleteBtnStyle} onClick={() => void handleRemoveReading(item.id)}>
-                    Remove
+                  <button type="button" data-testid={`reading-delete-source-${item.id}`} style={deleteBtnStyle} onClick={() => setPendingReadingDeleteId(item.id)}>
+                    Delete source
                   </button>
                 </div>
+                {pendingDelete && (
+                  <div
+                    data-testid={`reading-delete-source-confirm-${item.id}`}
+                    style={{
+                      marginTop: 10,
+                      padding: "10px 12px",
+                      background: "var(--astra-danger-bg)",
+                      border: "1px solid var(--astra-danger)",
+                      borderRadius: 8,
+                    }}
+                  >
+                    <div style={{ fontSize: 12, color: "var(--astra-danger)", fontWeight: 800, marginBottom: 4 }}>
+                      Delete source metadata?
+                    </div>
+                    <div style={{ fontSize: 11, color: "var(--astra-text-secondary)", lineHeight: 1.45, marginBottom: 8 }}>
+                      Choose whether to keep {linkedEntries.length} saved card{linkedEntries.length === 1 ? "" : "s"} linked to this source, or delete the source and its saved cards together.
+                    </div>
+                    <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                      <button
+                        type="button"
+                        data-testid={`reading-confirm-delete-source-only-${item.id}`}
+                        style={sortButtonStyle(false)}
+                        onClick={() => void handleRemoveReading(item.id)}
+                      >
+                        Delete source only
+                      </button>
+                      <button
+                        type="button"
+                        data-testid={`reading-confirm-delete-source-cascade-${item.id}`}
+                        style={confirmBtnStyle}
+                        onClick={() => void handleRemoveReading(item.id, { deleteSavedCards: true })}
+                      >
+                        Delete source + saved cards
+                      </button>
+                      <button
+                        type="button"
+                        data-testid={`reading-cancel-delete-source-${item.id}`}
+                        style={sortButtonStyle(false)}
+                        onClick={() => setPendingReadingDeleteId(null)}
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                  </div>
+                )}
               </div>
             )})
           )}

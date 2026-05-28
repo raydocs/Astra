@@ -9,19 +9,19 @@
     "message": "全局设置"
   },
   "providerLabel": {
-    "message": "模型提供方"
+    "message": "Astra 服务"
   },
   "apiKeyLabel": {
-    "message": "API Key"
+    "message": "服务访问"
   },
   "baseUrlLabel": {
-    "message": "Base URL (可选)"
+    "message": "服务端点（高级）"
   },
   "relayUrlLabel": {
-    "message": "Astra Relay URL（托管模式，选填）"
+    "message": "Astra 服务端点（高级）"
   },
   "modelLabel": {
-    "message": "模型"
+    "message": "AI 风格"
   },
   "targetLangLabel": {
     "message": "目标语言"
@@ -192,10 +192,10 @@
     "message": "复习"
   },
   "learningSavedTitle": {
-    "message": "已加入你的学习队列"
+    "message": "已保存，今晚可复习"
   },
   "learningSavedHint": {
-    "message": "打开词汇表或直接进入复习，让这条表达继续留在学习循环里。"
+    "message": "已加入你的学习队列。约 1 分钟后可复习，也可以稍后从词汇表回到来源。"
   },
   "popup_studyPageSavedReviewTitle": {
     "message": "本页已保存的句子"
@@ -515,7 +515,7 @@
     "message": "深度理解"
   },
   "popup_usageTitle": {
-    "message": "用量与路由"
+    "message": "阅读活动"
   },
   "popup_usageEmpty": {
     "message": "本次会话里还没有真实发出的 AI 请求。"
@@ -530,7 +530,7 @@
     "message": "请求"
   },
   "popup_usageApproxTokens": {
-    "message": "估算 tokens"
+    "message": "阅读工作量"
   },
   "popup_usageFallbacks": {
     "message": "回退"
@@ -542,19 +542,19 @@
     "message": "最近一次"
   },
   "popup_usageViaDirect": {
-    "message": "直连"
+    "message": "Astra 服务"
   },
   "popup_usageViaRelay": {
-    "message": "relay"
+    "message": "Astra 云服务"
   },
   "popup_usageFallbackRoute": {
-    "message": "direct → relay"
+    "message": "Astra 已恢复"
   },
   "popup_usageNoRoute": {
-    "message": "无路由信息"
+    "message": "服务信息不可用"
   },
   "popup_usageLiveOnly": {
-    "message": "这里只显示当前设备上的翻译活动；它不会改变你的 Astra 账户配额，命中缓存的内容也不会出现在这里。"
+    "message": "这里只显示当前设备上的阅读活动；每日阅读已包含，已保存翻译的复用记录也只保留在本地。"
   },
   "label_targetLanguage": {
     "message": "目标语言"
@@ -587,7 +587,7 @@
     "message": "高级"
   },
   "label_apiKeyDirectConnect": {
-    "message": "填写后直连 $1 API，无需 Astra 账号",
+    "message": "连接 $1 服务，无需 Astra 账号",
     "placeholders": {
       "1": { "content": "$1" }
     }
@@ -647,7 +647,7 @@
     }
   },
   "popup_quotaToday": {
-    "message": "今日：$1% 已用（$2 / $3 tokens）",
+    "message": "今日阅读额度已包含：已用 $1%（$2 / $3 词）",
     "placeholders": {
       "1": { "content": "$1" },
       "2": { "content": "$2" },
@@ -931,6 +931,9 @@
   "review_returnToDeepReadSentence": {
     "message": "回到深读中的这一句"
   },
+  "review_returnToVideoTimestamp": {
+    "message": "回到视频时间点"
+  },
   "review_resumeReadingThisPage": {
     "message": "继续阅读这一页"
   },
@@ -1112,13 +1115,13 @@
     "message": "请求数"
   },
   "popup_usageMetricTokensIn": {
-    "message": "输入 tokens"
+    "message": "阅读工作量"
   },
   "popup_usageMetricEstCost": {
-    "message": "预估费用"
+    "message": "已包含"
   },
   "popup_usageMetricChars": {
-    "message": "字符数"
+    "message": "词数"
   },
   "popup_usageMetricFallbacks": {
     "message": "回退次数"
@@ -1157,38 +1160,38 @@
     }
   },
   "popup_usageCostFree": {
-    "message": "免费"
+    "message": "已包含"
   },
 
   "options_diagProviderStatus": {
-    "message": "提供方状态"
+    "message": "Astra 服务状态"
   },
   "options_diagDirectApi": {
-    "message": "直连 API"
+    "message": "本地服务路径"
   },
   "options_diagAstraRelay": {
-    "message": "Astra 中继"
+    "message": "Astra 云服务"
   },
   "options_diagApiKeyConfigured": {
-    "message": "已为 $1 配置 API 密钥",
+    "message": "已为 $1 配置服务访问",
     "placeholders": {
       "1": { "content": "$1" }
     }
   },
   "options_diagNoApiKey": {
-    "message": "未设置 API 密钥"
+    "message": "未配置服务访问"
   },
   "options_diagRelayActive": {
-    "message": "已连接到中继服务器"
+    "message": "Astra 云会话已连接"
   },
   "options_diagNoRelay": {
-    "message": "未连接中继"
+    "message": "Astra 云服务未连接"
   },
   "options_diagTransportRoutes": {
-    "message": "传输路由"
+    "message": "服务路径"
   },
   "options_diagDirect": {
-    "message": "直连："
+    "message": "本地路径："
   },
   "options_diagYes": {
     "message": "是"
@@ -1197,22 +1200,22 @@
     "message": "否"
   },
   "options_diagRelay": {
-    "message": "中继："
+    "message": "云路径："
   },
   "options_diagCostPerPage": {
-    "message": "单页费用："
+    "message": "阅读估算："
   },
   "options_diagProviderCapabilities": {
-    "message": "提供方能力"
+    "message": "服务能力"
   },
   "options_diagColModel": {
-    "message": "模型"
+    "message": "服务档位"
   },
   "options_diagColInputCost": {
-    "message": "输入 $/1k"
+    "message": "阅读输入"
   },
   "options_diagColOutputCost": {
-    "message": "输出 $/1k"
+    "message": "阅读输出"
   },
   "options_diagColContext": {
     "message": "上下文"

@@ -1,0 +1,38 @@
+{
+  "cli": {
+    "version": ">= 19.1.0"
+  },
+  "build": {
+    "development": {
+      "developmentClient": true,
+      "distribution": "internal",
+      "ios": {
+        "simulator": true
+      },
+      "android": {
+        "buildType": "apk"
+      }
+    },
+    "preview": {
+      "distribution": "internal",
+      "env": {
+        "EXPO_PUBLIC_ASTRA_BUILD_PROFILE": "preview"
+      },
+      "ios": {
+        "simulator": false
+      },
+      "android": {
+        "buildType": "apk"
+      }
+    },
+    "production": {
+      "autoIncrement": true,
+      "env": {
+        "EXPO_PUBLIC_ASTRA_BUILD_PROFILE": "production"
+      }
+    }
+  },
+  "submit": {
+    "production": {}
+  }
+}

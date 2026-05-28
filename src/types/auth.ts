@@ -1,8 +1,18 @@
 import { z } from "zod"
 
-import { AstraSyncCollectionSchema, ProviderIdSchema } from "./config"
+import { AstraSyncCollectionSchema, ProviderIdSchema, ServiceModeSchema } from "./config"
+import {
+  AstraCacheStatusSchema,
+  AstraContentLengthBucketSchema,
+  AstraCostBucketSchema,
+  AstraFallbackReasonSchema,
+  AstraFeatureSurfaceSchema,
+  AstraLatencyBucketSchema,
+  AstraOperatingTierSchema,
+  AstraTaskClassSchema,
+} from "./operating-model"
 
-export const AstraPlanSchema = z.enum(["free", "pro"])
+export const AstraPlanSchema = z.enum(["free", "trial", "pro"])
 export const AstraSubscriptionStatusSchema = z.enum(["active", "past_due", "canceled"])
 export const AstraIdentityModeSchema = z.enum(["anonymous", "authenticated"])
 export const AstraDevicePlatformSchema = z.enum(["macos", "windows", "linux", "ios", "android", "unknown"])
@@ -27,8 +37,34 @@ export const AstraQuotaSchema = z.object({
 export const AstraUsageEventSchema = z.object({
   timestamp: z.string().trim().min(1),
   provider: ProviderIdSchema,
-  requestCount: z.number().int().positive().default(1),
+  serviceMode: ServiceModeSchema.default("automatic"),
+  requestCount: z.number().int().nonnegative().default(1),
   characterCount: z.number().int().nonnegative().default(0),
+  model: z.string().trim().min(1).optional(),
+  task: z.enum(["translate", "explain", "custom"]).optional(),
+  textCount: z.number().int().nonnegative().optional(),
+  durationMs: z.number().int().nonnegative().optional(),
+  taskClass: AstraTaskClassSchema.optional(),
+  costBucket: AstraCostBucketSchema.optional(),
+  latencyBucket: AstraLatencyBucketSchema.optional(),
+  cacheStatus: AstraCacheStatusSchema.optional(),
+  fallbackReason: AstraFallbackReasonSchema.optional(),
+  tier: AstraOperatingTierSchema.optional(),
+  surface: AstraFeatureSurfaceSchema.optional(),
+  contentLengthBucket: AstraContentLengthBucketSchema.optional(),
+  providerRoute: z.enum(["direct", "openrouter"]).optional(),
+  fallbackUsed: z.boolean().optional(),
+  success: z.boolean().optional(),
+  errorCode: z.enum([
+    "CONFIG_MISSING",
+    "CONTENT_UNAVAILABLE",
+    "PROVIDER_REQUEST_FAILED",
+    "PROVIDER_PARSE_FAILED",
+    "INVALID_RESPONSE",
+    "SITE_DISABLED",
+    "QUOTA_EXCEEDED",
+    "UNKNOWN",
+  ]).optional(),
 })
 
 export const AstraUsageSchema = z.object({
@@ -62,6 +98,39 @@ export const AstraBillingLinkSchema = z.object({
   url: z.string().trim().min(1),
   generatedAt: z.string().trim().min(1),
   plan: AstraPlanSchema.nullable().default(null),
+})
+
+export const AstraTrialLifecycleContractSchema = z.object({
+  schema: z.literal("astra-beta-trial-lifecycle.v1"),
+  generatedAt: z.string().trim().min(1),
+  account: z.object({
+    plan: AstraPlanSchema,
+    subscriptionStatus: AstraSubscriptionStatusSchema,
+  }),
+  explicitActionRequired: z.boolean(),
+  eligibility: z.object({
+    eligible: z.boolean(),
+    reason: z.enum(["eligible_free_account", "already_trial", "already_pro", "billing_beta_unavailable"]),
+  }),
+  trial: z.object({
+    status: z.enum(["not_started", "intent_recorded", "started", "expired"]),
+    startedAt: z.string().trim().min(1).nullable().default(null),
+    expiresAt: z.string().trim().min(1).nullable().default(null),
+  }),
+  conversion: z.object({
+    nextStep: z.enum(["record_trial_interest", "wait_for_beta_billing", "manage_existing_plan"]),
+    checkoutAvailable: z.boolean(),
+    portalAvailable: z.boolean(),
+  }),
+  betaBoundary: z.object({
+    billingUnavailable: z.boolean(),
+    betaBoundary: z.boolean(),
+    noPaymentCollected: z.boolean(),
+    paymentCollected: z.boolean(),
+    subscriptionMutation: z.boolean(),
+    proEntitlementGranted: z.boolean(),
+    trialEntitlementGranted: z.boolean(),
+  }),
 })
 
 export const AstraDeviceIdentitySchema = z.object({
@@ -330,6 +399,102 @@ export const AstraCloudDataDeleteJobSchema = z.object({
   policy: AstraContinuityLifecyclePolicySchema,
 })
 
+export const AstraWeeklyDigestSourceTypeSchema = z.enum(["page", "video", "pdf", "doc", "book", "writing", "saved"])
+
+export const AstraWeeklyDigestSnapshotSchema = z.object({
+  digestId: z.string().trim().min(1),
+  periodStart: z.string().trim().min(1),
+  periodEnd: z.string().trim().min(1),
+  reviewedCount: z.number().int().nonnegative().default(0),
+  savedCount: z.number().int().nonnegative().default(0),
+  sourceBreakdown: z.array(z.object({
+    type: AstraWeeklyDigestSourceTypeSchema,
+    count: z.number().int().nonnegative(),
+  })).default([]),
+  highlightedWords: z.array(z.string().trim().min(1)).default([]),
+  highlightedSentences: z.array(z.string().trim().min(1)).default([]),
+  nextReviewCount: z.number().int().nonnegative().default(0),
+  generatedAt: z.string().trim().min(1),
+})
+
+export const AstraWeeklyDigestPreferenceResponseSchema = z.object({
+  preference: z.object({
+    weekly_digest: z.boolean(),
+  }),
+  serverTime: z.string().trim().min(1),
+})
+
+export const AstraCloudLearningMemoryPreferenceSchema = z.object({
+  reading_history: z.boolean().default(false),
+  study_progress: z.boolean().default(false),
+  weekly_digest: z.boolean().default(true),
+})
+
+export const AstraCloudLearningMemoryCollectionSchema = z.union([
+  AstraSyncCollectionSchema,
+  z.literal("weekly_digest_archive"),
+])
+
+export const AstraCloudLearningMemoryCollectionInventorySchema = z.object({
+  collection: AstraCloudLearningMemoryCollectionSchema,
+  enabled: z.boolean(),
+  defaultEnabled: z.boolean(),
+  mutationCount: z.number().int().nonnegative().default(0),
+  activeCount: z.number().int().nonnegative().default(0),
+  cursor: z.string().trim().min(1).nullable().default(null),
+  lastUpdatedAt: z.string().trim().min(1).nullable().default(null),
+})
+
+export const AstraCloudLearningMemoryInventorySchema = z.object({
+  schema: z.literal("astra-cloud-learning-memory-inventory.v1"),
+  generatedAt: z.string().trim().min(1),
+  account: z.object({
+    userId: z.string().trim().min(1),
+    identityMode: AstraIdentityModeSchema,
+  }),
+  collections: z.array(AstraCloudLearningMemoryCollectionInventorySchema).default([]),
+  preferences: AstraCloudLearningMemoryPreferenceSchema,
+  privacy: z.object({
+    metadataOnly: z.literal(true),
+    rawContentIncluded: z.literal(false),
+    rawUrlsIncluded: z.literal(false),
+    emailsIncluded: z.literal(false),
+    deviceSessionIdsIncluded: z.literal(false),
+    syncPayloadBodiesIncluded: z.literal(false),
+    promptModelOutputsIncluded: z.literal(false),
+    externalProviderReceiptsIncluded: z.literal(false),
+    localBrowserDeletionIncluded: z.literal(false),
+  }),
+})
+
+export const AstraCloudLearningMemoryDeletionCollectionReceiptSchema = z.object({
+  collection: AstraCloudLearningMemoryCollectionSchema,
+  clearedMutationCount: z.number().int().nonnegative().default(0),
+  clearedActiveCount: z.number().int().nonnegative().default(0),
+  previousCursor: z.string().trim().min(1).nullable().default(null),
+})
+
+export const AstraCloudLearningMemoryDeletionReceiptSchema = z.object({
+  schema: z.literal("astra-cloud-learning-memory-deletion-receipt.v1"),
+  deletedAt: z.string().trim().min(1),
+  account: z.object({
+    userId: z.string().trim().min(1),
+    identityMode: AstraIdentityModeSchema,
+  }),
+  collections: z.array(AstraCloudLearningMemoryDeletionCollectionReceiptSchema).default([]),
+  totals: z.object({
+    clearedMutationCount: z.number().int().nonnegative().default(0),
+    clearedActiveCount: z.number().int().nonnegative().default(0),
+  }),
+  boundary: z.object({
+    metadataOnly: z.literal(true),
+    cloudServerSideOnly: z.literal(true),
+    rawContentIncluded: z.literal(false),
+    externalProviderDeletionIncluded: z.literal(false),
+    localBrowserDeletionIncluded: z.literal(false),
+  }),
+})
+
 export type AstraPlan = z.infer<typeof AstraPlanSchema>
 export type AstraSubscriptionStatus = z.infer<typeof AstraSubscriptionStatusSchema>
 export type AstraIdentityMode = z.infer<typeof AstraIdentityModeSchema>
@@ -349,6 +514,7 @@ export type AstraUsageEvent = z.infer<typeof AstraUsageEventSchema>
 export type AstraAccount = z.infer<typeof AstraAccountSchema>
 export type AstraUsageSnapshot = z.infer<typeof AstraUsageSnapshotSchema>
 export type AstraBillingLink = z.infer<typeof AstraBillingLinkSchema>
+export type AstraTrialLifecycleContract = z.infer<typeof AstraTrialLifecycleContractSchema>
 export type AstraDeviceIdentity = z.infer<typeof AstraDeviceIdentitySchema>
 export type AstraDeviceListEntry = z.infer<typeof AstraDeviceListEntrySchema>
 export type AstraDevicesResponse = z.infer<typeof AstraDevicesResponseSchema>
@@ -372,3 +538,12 @@ export type AstraAccountExportRequest = z.infer<typeof AstraAccountExportRequest
 export type AstraCloudDataDeleteRequest = z.infer<typeof AstraCloudDataDeleteRequestSchema>
 export type AstraAccountExportJob = z.infer<typeof AstraAccountExportJobSchema>
 export type AstraCloudDataDeleteJob = z.infer<typeof AstraCloudDataDeleteJobSchema>
+export type AstraWeeklyDigestSourceType = z.infer<typeof AstraWeeklyDigestSourceTypeSchema>
+export type AstraWeeklyDigestSnapshot = z.infer<typeof AstraWeeklyDigestSnapshotSchema>
+export type AstraWeeklyDigestPreferenceResponse = z.infer<typeof AstraWeeklyDigestPreferenceResponseSchema>
+export type AstraCloudLearningMemoryPreference = z.infer<typeof AstraCloudLearningMemoryPreferenceSchema>
+export type AstraCloudLearningMemoryCollection = z.infer<typeof AstraCloudLearningMemoryCollectionSchema>
+export type AstraCloudLearningMemoryCollectionInventory = z.infer<typeof AstraCloudLearningMemoryCollectionInventorySchema>
+export type AstraCloudLearningMemoryInventory = z.infer<typeof AstraCloudLearningMemoryInventorySchema>
+export type AstraCloudLearningMemoryDeletionCollectionReceipt = z.infer<typeof AstraCloudLearningMemoryDeletionCollectionReceiptSchema>
+export type AstraCloudLearningMemoryDeletionReceipt = z.infer<typeof AstraCloudLearningMemoryDeletionReceiptSchema>

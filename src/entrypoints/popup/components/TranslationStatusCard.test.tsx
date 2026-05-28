@@ -68,6 +68,26 @@ describe("TranslationStatusCard", () => {
     }, 1000, controls).name).toBe("saver")
   })
 
+  it("renders membership-safe copy for translation errors", async () => {
+    await act(async () => {
+      root.render(
+        <TranslationStatusCard
+          phase="idle"
+          targetLang="zh-CN"
+          presentation={{ mode: "bilingual", theme: "default" }}
+          hostname="example.com"
+          progress={progress}
+          lastError={{ code: "PROVIDER_REQUEST_FAILED", message: "Relay unavailable" }}
+          siteEnabled
+        />,
+      )
+      await Promise.resolve()
+    })
+
+    expect(container.textContent).toContain("Your membership is active. Astra is reconnecting.")
+    expect(container.textContent).not.toContain("Relay unavailable")
+  })
+
   it("renders configurable subtitle QC details", async () => {
     const onSubtitleQualityControlsChange = vi.fn()
     const onSubtitleDiagnosticsExport = vi.fn()

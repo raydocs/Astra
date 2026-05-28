@@ -276,6 +276,7 @@ function compareUsers(value: ShadowUserSnapshot | ShadowUserRow): ComparableReco
     syncPreferences: {
       reading_history: value.syncPreferences.reading_history,
       study_progress: value.syncPreferences.study_progress,
+      weekly_digest: value.syncPreferences.weekly_digest,
     },
   }
 }

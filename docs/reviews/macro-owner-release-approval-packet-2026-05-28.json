@@ -1,0 +1,15 @@
+{
+  "schema": "astra-macro-owner-release-approval-packet.v1",
+  "generatedAt": "2026-05-28T00:00:00.000Z",
+  "label": "Macro owner release approval packet — 2026-05-28 placeholder",
+  "approval": {
+    "approver": "",
+    "approvalDate": "",
+    "approvalRecordLink": "",
+    "targetCommitSha": "",
+    "decision": "rejected",
+    "reviewedArtifacts": [],
+    "acknowledgesRemainingFinalBlockers": false,
+    "acknowledgesDowngradeCopy": false
+  }
+}

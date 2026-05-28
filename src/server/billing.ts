@@ -1,4 +1,10 @@
-import { AstraBillingLinkSchema, type AstraBillingLink, type AstraPlan } from "../types/auth"
+import {
+  AstraBillingLinkSchema,
+  AstraTrialLifecycleContractSchema,
+  type AstraBillingLink,
+  type AstraPlan,
+  type AstraTrialLifecycleContract,
+} from "../types/auth"
 
 import type { RelayEnv, ServerUserRecord } from "./types"
 
@@ -43,5 +49,56 @@ export function createPortalLink(
     }),
     generatedAt: new Date().toISOString(),
     plan: user.plan,
+  })
+}
+
+export function createBetaTrialLifecycleContract(
+  user: Pick<ServerUserRecord, "plan" | "subscriptionStatus">,
+  options: { intentRecordedAt?: string | null; generatedAt?: string } = {},
+): AstraTrialLifecycleContract {
+  const generatedAt = options.generatedAt ?? new Date().toISOString()
+  const intentRecorded = Boolean(options.intentRecordedAt)
+  const trialStatus = user.plan === "trial" ? "started" : intentRecorded ? "intent_recorded" : "not_started"
+  const eligibilityReason = user.plan === "pro"
+    ? "already_pro"
+    : user.plan === "trial"
+      ? "already_trial"
+      : "eligible_free_account"
+
+  return AstraTrialLifecycleContractSchema.parse({
+    schema: "astra-beta-trial-lifecycle.v1",
+    generatedAt,
+    account: {
+      plan: user.plan,
+      subscriptionStatus: user.subscriptionStatus,
+    },
+    explicitActionRequired: true,
+    eligibility: {
+      eligible: user.plan === "free",
+      reason: eligibilityReason,
+    },
+    trial: {
+      status: trialStatus,
+      startedAt: user.plan === "trial" ? options.intentRecordedAt ?? null : null,
+      expiresAt: null,
+    },
+    conversion: {
+      nextStep: user.plan === "pro" || user.plan === "trial"
+        ? "manage_existing_plan"
+        : intentRecorded
+          ? "wait_for_beta_billing"
+          : "record_trial_interest",
+      checkoutAvailable: false,
+      portalAvailable: false,
+    },
+    betaBoundary: {
+      billingUnavailable: true,
+      betaBoundary: true,
+      noPaymentCollected: true,
+      paymentCollected: false,
+      subscriptionMutation: false,
+      proEntitlementGranted: false,
+      trialEntitlementGranted: false,
+    },
   })
 }

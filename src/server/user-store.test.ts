@@ -149,6 +149,8 @@ async function createEnv(overrides: Partial<RelayEnv> = {}) {
     platformMirrorSecret: "mirror-secret",
     userDbPath,
     videoNoteStorePath: join(dir, "video-notes.json"),
+    supportReportInboxPath: join(dir, "support-reports.json"),
+    featureFlagRuntimePath: join(dir, "feature-flags.json"),
     loginEmail: "demo@astra.local",
     loginPassword: "astra-demo-pass",
     plan: "pro",
@@ -164,13 +166,20 @@ async function createEnv(overrides: Partial<RelayEnv> = {}) {
     freeDailyRequests: 200,
     freeDailyCharacters: 200_000,
     freeRpm: 20,
+    trialDailyRequests: 2000,
+    trialDailyCharacters: 500_000,
+    trialRpm: 120,
     proDailyRequests: 2000,
     proDailyCharacters: 500_000,
     proRpm: 120,
     sessionTtlMs: 30 * 24 * 60 * 60 * 1000,
     syncMaxMutationsPerRequest: 200,
     videoNoteMaxConcurrentJobs: 1,
+    emailSignInCodeDevelopmentEcho: false,
     ...overrides,
+    operatorPrincipals: overrides.operatorPrincipals ?? [],
+    oauthIdentityDevelopmentRedeem: overrides.oauthIdentityDevelopmentRedeem ?? false,
+    supportKnownIssueStorePath: overrides.supportKnownIssueStorePath ?? join(dir, "support-known-issues.json"),
   }
 
   await writeFile(userDbPath, JSON.stringify({
@@ -212,6 +221,81 @@ describe("file user store", () => {
     const user = await store.validateCredentials("demo@astra.local", "astra-demo-pass")
 
     expect(user?.email).toBe("demo@astra.local")
+  })
+
+  it("adds weekly digest sync preference default and updates it", async () => {
+    const env = await createEnv()
+    const store = new FileUserStore(env)
+
+    const user = await store.findUserByEmail("demo@astra.local")
+    expect(user?.syncPreferences.weekly_digest).toBe(true)
+
+    const updated = await store.updateWeeklyDigestPreference("demo@astra.local", false)
+    expect(updated).toMatchObject({
+      reading_history: false,
+      study_progress: false,
+      weekly_digest: false,
+    })
+
+    const persisted = JSON.parse(await readFile(env.userDbPath, "utf8")) as { users: Array<{ syncPreferences: { weekly_digest: boolean } }> }
+    expect(persisted.users[0]?.syncPreferences.weekly_digest).toBe(false)
+  })
+
+  it("lists opted-in weekly digest recipients and supports non-archiving digest previews", async () => {
+    const env = await createEnv()
+    const store = new FileUserStore(env)
+
+    expect(await store.listWeeklyDigestRecipients()).toEqual([{ userId: "usr_demo", email: "demo@astra.local" }])
+    await store.updateWeeklyDigestPreference("demo@astra.local", false)
+    expect(await store.listWeeklyDigestRecipients()).toEqual([])
+    await store.updateWeeklyDigestPreference("demo@astra.local", true)
+
+    const digest = await store.getWeeklyDigest("demo@astra.local", new Date("2026-05-29T12:00:00.000Z"), { archive: false })
+    expect(digest?.digestId).toBe("digest_2026-05-25")
+    const persisted = JSON.parse(await readFile(env.userDbPath, "utf8")) as { weeklyDigests?: unknown[] }
+    expect(persisted.weeklyDigests ?? []).toEqual([])
+  })
+
+  it("stores and clears current device Expo push token metadata", async () => {
+    const env = await createEnv()
+    const store = new FileUserStore(env)
+    const user = await store.validateCredentials("demo@astra.local", "astra-demo-pass")
+    if (!user) throw new Error("Expected seeded user.")
+
+    await store.issueBoundSession({
+      user,
+      device: {
+        deviceId: "device-push",
+        platform: "ios",
+        appKind: "mobile",
+      },
+      identityMode: "authenticated",
+      now: new Date("2026-05-29T12:00:00.000Z"),
+    })
+
+    const stored = await store.updateCurrentDevicePushToken({
+      email: "demo@astra.local",
+      deviceId: "device-push",
+      expoPushToken: "ExponentPushToken[test]",
+      platform: "ios",
+      now: new Date("2026-05-29T12:01:00.000Z"),
+    })
+    expect(stored).toMatchObject({
+      deviceId: "device-push",
+      expoPushToken: "ExponentPushToken[test]",
+      expoPushTokenUpdatedAt: "2026-05-29T12:01:00.000Z",
+      expoPushTokenPlatform: "ios",
+    })
+    expect(await store.listWeeklyDigestPushRecipients()).toEqual([{ userId: "usr_demo", email: "demo@astra.local", deviceId: "device-push", expoPushToken: "ExponentPushToken[test]" }])
+
+    const cleared = await store.updateCurrentDevicePushToken({
+      email: "demo@astra.local",
+      deviceId: "device-push",
+      expoPushToken: null,
+      now: new Date("2026-05-29T12:02:00.000Z"),
+    })
+    expect(cleared).toMatchObject({ expoPushToken: null, expoPushTokenUpdatedAt: null, expoPushTokenPlatform: null })
+    expect(await store.listWeeklyDigestPushRecipients()).toEqual([])
   })
 
   it("migrates the legacy user database and persists durable session/device records", async () => {
@@ -283,6 +367,21 @@ describe("file user store", () => {
       provider: "openai",
       characterCount: 5,
       timestamp: now,
+      metadata: {
+        model: "gpt-5.4-nano",
+        task: "translate",
+        textCount: 1,
+        taskClass: "paragraph_understanding",
+        costBucket: "medium",
+        latencyBucket: "fast",
+        cacheStatus: "disabled",
+        fallbackReason: "none",
+        tier: "pro",
+        surface: "page",
+        contentLengthBucket: "short",
+        providerRoute: "direct",
+        fallbackUsed: false,
+      },
     })
 
     const user = await store.validateCredentials("demo@astra.local", "astra-demo-pass")
@@ -295,6 +394,119 @@ describe("file user store", () => {
     const session = await store.getSession("demo@astra.local", issued.token)
     expect(session?.usage.totalCharacters).toBe(5)
     expect(session?.quota.remainingDailyRequests).toBe(1)
+    expect(session?.usage.recentEvents[0]).toMatchObject({
+      requestCount: 1,
+      characterCount: 5,
+      model: "gpt-5.4-nano",
+      taskClass: "paragraph_understanding",
+      costBucket: "medium",
+      providerRoute: "direct",
+      success: true,
+    })
+    const db = JSON.parse(await readFile(env.userDbPath, "utf8")) as {
+      users: Array<{ usage: { monthlyTaskRequests: Record<string, number> } }>
+    }
+    expect(db.users[0]?.usage.monthlyTaskRequests).toEqual({})
+  })
+
+  it("enforces monthly metered task allowances by plan", async () => {
+    const cases = [
+      { plan: "free", allowance: 1 },
+      { plan: "trial", allowance: 5 },
+      { plan: "pro", allowance: 100 },
+    ] as const
+
+    for (const { plan, allowance } of cases) {
+      const env = await createEnv()
+      const db = JSON.parse(await readFile(env.userDbPath, "utf8")) as { users: Array<Record<string, unknown>> }
+      db.users[0] = {
+        ...db.users[0],
+        plan,
+        limits: { dailyRequests: 2000, dailyCharacters: 500_000, requestsPerMinute: 120 },
+        usage: {
+          usageDay: "2026-05-27",
+          requestsToday: 0,
+          charactersToday: 0,
+          totalRequests: 0,
+          totalCharacters: 0,
+          lastRequestAt: null,
+          recentRequestTimestamps: [],
+          recentEvents: [],
+          taskUsageMonth: "2026-05",
+          monthlyTaskRequests: { deep_reading: allowance - 1 },
+        },
+      }
+      await writeFile(env.userDbPath, JSON.stringify(db, null, 2))
+      const store = new FileUserStore(env)
+
+      await store.recordTranslationDecisionFailure({
+        email: "demo@astra.local",
+        provider: "openai",
+        characterCount: 12_000,
+        timestamp: new Date("2026-05-27T00:00:00.000Z"),
+        metadata: { taskClass: "deep_reading", success: false, errorCode: "PROVIDER_REQUEST_FAILED" },
+      })
+      await expect(store.assertCanTranslate({
+        email: "demo@astra.local",
+        characterCount: 12_000,
+        taskClass: "deep_reading",
+        timestamp: new Date("2026-05-27T00:01:00.000Z"),
+      })).resolves.toBeUndefined()
+
+      await store.recordTranslationUsage({
+        email: "demo@astra.local",
+        provider: "openai",
+        characterCount: 12_000,
+        timestamp: new Date("2026-05-27T00:01:00.000Z"),
+        metadata: { taskClass: "deep_reading", costBucket: "high", success: true },
+      })
+
+      await expect(store.assertCanTranslate({
+        email: "demo@astra.local",
+        characterCount: 12_000,
+        taskClass: "deep_reading",
+        timestamp: new Date("2026-05-27T00:02:00.000Z"),
+      })).rejects.toMatchObject({ code: "QUOTA_EXCEEDED" })
+
+      const persisted = JSON.parse(await readFile(env.userDbPath, "utf8")) as {
+        users: Array<{ usage: { monthlyTaskRequests: Record<string, number> } }>
+      }
+      expect(persisted.users[0]?.usage.monthlyTaskRequests.deep_reading).toBe(allowance)
+    }
+  })
+
+  it("records failed decision events without incrementing quota counters", async () => {
+    const env = await createEnv()
+    const store = new FileUserStore(env)
+
+    await store.recordTranslationDecisionFailure({
+      email: "demo@astra.local",
+      provider: "openai",
+      characterCount: 5,
+      timestamp: new Date("2026-05-27T00:00:00.000Z"),
+      metadata: {
+        model: "gpt-5.4-nano",
+        taskClass: "paragraph_understanding",
+        costBucket: "medium",
+        fallbackReason: "timeout",
+        tier: "pro",
+        success: false,
+        errorCode: "PROVIDER_REQUEST_FAILED",
+      },
+    })
+
+    const usage = await store.getUsageSnapshot("demo@astra.local")
+    expect(usage?.usage.totalRequests).toBe(0)
+    expect(usage?.usage.totalCharacters).toBe(0)
+    expect(usage?.usage.lastRequestAt).toBeNull()
+    expect(usage?.usage.recentEvents[0]).toMatchObject({
+      requestCount: 0,
+      characterCount: 5,
+      model: "gpt-5.4-nano",
+      fallbackReason: "timeout",
+      success: false,
+      errorCode: "PROVIDER_REQUEST_FAILED",
+    })
   })
 
   it("returns account and usage snapshots independently from the session", async () => {
@@ -706,6 +918,7 @@ describe("file user store", () => {
           inputTranslationMode: "replace",
           languageLevel: "intermediate",
           explainMode: "deep",
+          serviceMode: "automatic",
           explanationGlossary: [],
           privacyMode: false,
           provider: {
@@ -770,6 +983,104 @@ describe("file user store", () => {
       "sync_pull",
     ]))
     expect(events.every((event) => event.outcome === "mismatch")).toBe(true)
+  })
+
+  it("returns null for unmatched ops user lookup queries", async () => {
+    const store = new FileUserStore(await createEnv())
+
+    await expect(store.lookupOpsUser("missing@astra.local")).resolves.toBeNull()
+    await expect(store.lookupOpsUser("  ")).resolves.toBeNull()
+  })
+
+  it("classifies ops user usage at request, character, and recent-event boundaries", async () => {
+    const env = await createEnv()
+    const db = JSON.parse(await readFile(env.userDbPath, "utf8")) as {
+      users: Array<Record<string, unknown> & { usage: Record<string, unknown> }>
+    }
+    const baseUser = db.users[0]
+    if (!baseUser) throw new Error("Expected seeded user.")
+
+    const usageEvent = (index: number) => ({
+      timestamp: `2026-05-27T00:00:0${index}.000Z`,
+      provider: "openai",
+      serviceMode: "automatic",
+      requestCount: 1,
+      characterCount: 1,
+    })
+    db.users = [
+      { ...baseUser, id: "usr_light", email: "light@astra.local", usage: { ...baseUser.usage, requestsToday: 9, charactersToday: 4_999, recentEvents: [usageEvent(1), usageEvent(2)] } },
+      { ...baseUser, id: "usr_normal_requests", email: "normal-requests@astra.local", usage: { ...baseUser.usage, requestsToday: 10, charactersToday: 0, recentEvents: [] } },
+      { ...baseUser, id: "usr_normal_chars", email: "normal-chars@astra.local", usage: { ...baseUser.usage, requestsToday: 0, charactersToday: 5_000, recentEvents: [] } },
+      { ...baseUser, id: "usr_normal_events", email: "normal-events@astra.local", usage: { ...baseUser.usage, requestsToday: 0, charactersToday: 0, recentEvents: [usageEvent(1), usageEvent(2), usageEvent(3)] } },
+      { ...baseUser, id: "usr_heavy", email: "heavy@astra.local", usage: { ...baseUser.usage, requestsToday: 100, charactersToday: 0, recentEvents: [] } },
+      { ...baseUser, id: "usr_extreme", email: "extreme@astra.local", usage: { ...baseUser.usage, requestsToday: 500, charactersToday: 0, recentEvents: [] } },
+    ]
+    await writeFile(env.userDbPath, JSON.stringify(db, null, 2))
+
+    const store = new FileUserStore(env)
+    await expect(store.lookupOpsUser("light@astra.local")).resolves.toMatchObject({ user: { usage: { usageCategory: "light" } } })
+    await expect(store.lookupOpsUser("normal-requests@astra.local")).resolves.toMatchObject({ user: { usage: { usageCategory: "normal" } } })
+    await expect(store.lookupOpsUser("normal-chars@astra.local")).resolves.toMatchObject({ user: { usage: { usageCategory: "normal" } } })
+    await expect(store.lookupOpsUser("normal-events@astra.local")).resolves.toMatchObject({ user: { usage: { usageCategory: "normal" } } })
+    await expect(store.lookupOpsUser("heavy@astra.local")).resolves.toMatchObject({ user: { usage: { usageCategory: "heavy" } } })
+    await expect(store.lookupOpsUser("extreme@astra.local")).resolves.toMatchObject({ user: { usage: { usageCategory: "extreme" } } })
+  })
+
+  it("summarizes recent ops lookup tasks without raw private fields", async () => {
+    const env = await createEnv()
+    const db = JSON.parse(await readFile(env.userDbPath, "utf8")) as {
+      users: Array<Record<string, unknown> & { usage: Record<string, unknown> }>
+    }
+    const user = db.users[0]
+    if (!user) throw new Error("Expected seeded user.")
+    user.usage = {
+      ...user.usage,
+      recentEvents: [{
+        timestamp: "2026-05-27T00:00:00.000Z",
+        provider: "openai",
+        serviceMode: "automatic",
+        requestCount: 0,
+        characterCount: 42,
+        model: "gpt-private",
+        text: "Hello private text",
+        taskClass: "paragraph_understanding",
+        success: false,
+        fallbackUsed: true,
+        durationMs: 241,
+        errorCode: "PROVIDER_REQUEST_FAILED",
+      }, {
+        timestamp: "2026-05-27T00:00:01.000Z",
+        provider: "gemini",
+        serviceMode: "automatic",
+        requestCount: 1,
+        characterCount: 42,
+        model: "gemini-private",
+        prompt: "Private prompt",
+        taskClass: "paragraph_understanding",
+        success: true,
+        fallbackUsed: false,
+        durationMs: 90,
+      }],
+    }
+    await writeFile(env.userDbPath, JSON.stringify(db, null, 2))
+
+    const summary = await new FileUserStore(env).lookupOpsUser("demo@astra.local")
+
+    expect(summary?.user.recentTaskSummary).toEqual([expect.objectContaining({
+      taskClass: "paragraph_understanding",
+      eventCount: 2,
+      successCount: 1,
+      failureCount: 1,
+      fallbackCount: 1,
+      latencySampleCount: 2,
+      latencyP95Ms: 241,
+    })])
+    const serialized = JSON.stringify(summary)
+    expect(serialized).not.toContain("demo@astra.local")
+    expect(serialized).not.toContain("billing@astra.local")
+    expect(serialized).not.toContain("gpt-private")
+    expect(serialized).not.toContain("Hello private text")
+    expect(serialized).not.toContain("Private prompt")
   })
 
   it("emits no parity events when shadow reads match the Node authoritative state", async () => {
@@ -1031,6 +1342,7 @@ describe("file user store", () => {
           inputTranslationMode: "replace",
           languageLevel: "intermediate",
           explainMode: "deep",
+          serviceMode: "automatic",
           explanationGlossary: [],
           privacyMode: false,
           provider: {

@@ -226,12 +226,12 @@ export async function getPageAccessState(tab?: { id: number; url: string } | nul
 }
 
 function buildChangeMessage(params: {
-  action: PageAccessAction
-  scope: PageAccessScope
-  state: PageAccessState
-  granted: boolean
-  browserPermissionChanged: boolean
-  reason?: string
+  action: PageAccessAction;
+  scope: PageAccessScope;
+  state: PageAccessState;
+  granted: boolean;
+  browserPermissionChanged: boolean;
+  reason?: string;
 }): PageAccessChangeMessage {
   return {
     type: "astra/page-access-changed",
@@ -296,7 +296,7 @@ export async function requestPageAccess(scope: PageAccessScope, tab?: { id: numb
     return {
       ok: false,
       state: initialState,
-      message: "Open Astra on an http(s) page to change page access.",
+      message: "Open Astra on a webpage to change page choices.",
       browserPermissionChanged: false,
     }
   }
@@ -317,13 +317,13 @@ export async function requestPageAccess(scope: PageAccessScope, tab?: { id: numb
       state: nextState,
       granted: true,
       browserPermissionChanged: false,
-      reason: "activeTab is temporary and does not persist host grants.",
+      reason: "Page access is temporary and is not remembered for later.",
     })
     await broadcastPageAccessChange(message)
     return {
       ok: true,
       state: nextState,
-      message: "Page access is available for this invocation. No host permission was persisted.",
+      message: "Astra can help on this page once.",
       browserPermissionChanged: false,
     }
   }
@@ -338,8 +338,8 @@ export async function requestPageAccess(scope: PageAccessScope, tab?: { id: numb
       ok: false,
       state: initialState,
       message: permissionsApiAvailable()
-        ? "The browser did not grant the requested optional host permission."
-        : "This browser/runtime does not expose browser.permissions for optional host grants.",
+        ? "Your browser did not confirm the site choice."
+        : "This browser cannot show the site confirmation here.",
       browserPermissionChanged: false,
     }
   }
@@ -374,10 +374,10 @@ export async function requestPageAccess(scope: PageAccessScope, tab?: { id: numb
     ok: true,
     state: nextState,
     message: scope === "all-sites"
-      ? "All-sites access was enabled where the browser supports optional host permissions."
+      ? "Astra can help on all supported sites."
       : granted
-        ? "This-site access was enabled for the current origin only."
-        : "This site was restored in Astra's runtime access policy.",
+        ? "Astra will remember this site."
+        : "Astra will help on this site again.",
     browserPermissionChanged: requestedGrant,
   }
 }
@@ -388,7 +388,7 @@ export async function revokePageAccess(scope: Exclude<PageAccessScope, "page">, 
     return {
       ok: false,
       state: initialState,
-      message: "Open Astra on an http(s) page to change page access.",
+      message: "Open Astra on a webpage to change page choices.",
       browserPermissionChanged: false,
     }
   }
@@ -425,8 +425,8 @@ export async function revokePageAccess(scope: Exclude<PageAccessScope, "page">, 
     ok: true,
     state: nextState,
     message: scope === "all-sites"
-      ? "All-sites access was revoked where the browser allowed it."
-      : "This site was revoked in Astra and active page automation was stopped.",
+      ? "Astra is paused on supported sites."
+      : "Astra is paused on this site.",
     browserPermissionChanged,
   }
 }

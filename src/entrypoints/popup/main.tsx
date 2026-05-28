@@ -19,7 +19,7 @@ function PopupErrorFallback() {
     >
       <div style={{ fontWeight: 700, marginBottom: 6 }}>Astra popup hit an error.</div>
       <div style={{ color: "var(--astra-text-muted)", fontSize: 12, lineHeight: 1.45 }}>
-        Reload the popup to try again, or open settings if you need to adjust provider or site configuration.
+        Reload the popup to try again, or open settings if you need to adjust site or reading preferences.
       </div>
       <div style={{ display: "flex", gap: 8, marginTop: 12, flexWrap: "wrap" }}>
         <button

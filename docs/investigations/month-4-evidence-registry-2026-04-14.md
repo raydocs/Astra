@@ -15,8 +15,8 @@ This file is the Month 4 evidence index for video / subtitle work. It answers fo
 |------|--------|---------|
 | `implemented` | **Yes** | Month 4 inventory/claim boundaries, YouTube hardening, Bilibili hardening, and subtitle-reader learning-chain continuity are landed in repo/docs. |
 | `proved` | **Yes** | Fresh browser-backed artifacts exist for YouTube, Bilibili, subtitle-file, and the subtitle learning chain. |
-| `gate-ready` | **No** | Video/subtitle proofs remain optional scenario evidence, not required Gate 2 CI lanes. |
-| `closeout verdict` | **`pass-with-carry`** | Month 4 is real and replayable, but release policy and production-site breadth still stay explicitly narrow. |
+| `gate-ready` | **Superseded by current release policy for YouTube** | This historical 2026-04-14 registry predates the current `youtube-proof` and `youtube-holdout` required lanes. YouTube proof is now required; Bilibili, generic video, production-watch-page breadth, and non-YouTube adapters remain scoped. |
+| `closeout verdict` | **`pass-with-scoped-claims` under current policy** | Month 4 YouTube proof is release-critical now, but release policy and production-site/platform breadth still stay explicitly narrow. |
 
 ## Fresh live evidence (exact commands + artifacts)
 
@@ -31,8 +31,8 @@ This file is the Month 4 evidence index for video / subtitle work. It answers fo
 
 | Area | Implemented pointers | Proof pointers | Gate-ready today? | Notes |
 |------|----------------------|----------------|-------------------|-------|
-| Video adapter inventory / claim boundaries | `docs/investigations/video-subtitle-adapter-inventory-2026-04-15.md`, `docs/investigations/support-matrix-video-addendum-2026-04-15.md` | linked Month 4 docs + artifacts below | **No** | Canonical classification now distinguishes supported / best-effort / experimental / code-only. |
-| YouTube in-page subtitle path | `src/entrypoints/content/video-platforms/youtube.ts` | `src/entrypoints/content/video-platforms/video-platforms.test.ts`, `bench-live/youtube-subtitle-basic`, artifact `live-20260414T115407-2i2tzo` | **No** | Supported best-effort primary video path only; fixture-backed, not universal production-watch-page proof. |
+| Video adapter inventory / claim boundaries | `docs/investigations/video-subtitle-adapter-inventory-2026-04-15.md`, `docs/investigations/support-matrix-video-addendum-2026-04-15.md` | linked Month 4 docs + artifacts below plus current YouTube proof/holdout lane artifacts | **Yes for YouTube; no for broad video parity** | Canonical classification now distinguishes supported / best-effort / controlled file-reader / code-only. |
+| YouTube in-page subtitle path | `src/entrypoints/content/video-platforms/youtube.ts` | `src/entrypoints/content/video-platforms/video-platforms.test.ts`, `bench-live/youtube-subtitle-basic`, current `youtube-proof` and `youtube-holdout` lanes | **Yes** | Supported best-effort primary video path only; fixture-backed/holdout-backed, not universal production-watch-page proof. |
 | Bilibili in-page subtitle path | `src/entrypoints/content/video-platforms/bilibili.ts` | `video-platforms.test.ts`, `bench-live/bilibili-subtitle-basic`, artifact `live-20260414T115722-y40ya0` | **No** | Best-effort secondary adapter only; stronger than code-only, weaker than YouTube. |
 | Subtitle-file reader surface | `src/entrypoints/subtitle-reader/SubtitleReaderApp.tsx`, `docs/investigations/subtitle-reader-learning-chain-2026-04-14.md` | `bench-live/subtitle-file-basic`, artifact `live-20260414T121705-ndf283` | **No** | Separate controlled reader path, not evidence of in-page adapter breadth. |
 | Subtitle-file learning chain | `src/entrypoints/subtitle-reader/SubtitleReaderApp.tsx`, `src/entrypoints/vocabulary/VocabularyApp.tsx`, `src/entrypoints/vocabulary/ReviewMode.tsx`, `bench-live/scenarios/subtitle-learning-chain-smoke.ts` | `SubtitleReaderApp.test.tsx`, vocabulary/review tests, `bench-live/subtitle-learning-chain-smoke`, artifact `live-20260414T121845-xe3mlf` | **No** | Browser-backed proof now exists for explain/save/review/revisit continuity on the controlled file path. |
@@ -44,14 +44,14 @@ This file is the Month 4 evidence index for video / subtitle work. It answers fo
 |---|---|---|
 | YouTube in-page subtitles | **Supported** (best-effort within supported tier) | Primary Month 4 in-page video path with fixture-backed smoke + unit coverage. |
 | Bilibili in-page subtitles | **Best-effort** | Secondary adapter with replayable fixture smoke, but not parity with YouTube or broad production-site guarantees. |
-| Subtitle-file reader / learning chain | **Experimental controlled surface** | Replayable controlled file-reader path with learning-loop continuity; separate from in-page video support. |
+| Subtitle-file reader / learning chain | **Controlled supported file-reader surface for SRT/VTT** | Replayable controlled file-reader path with learning-loop continuity; separate from in-page video support and not evidence for parser conveniences. |
 | Netflix / Prime Video / Disney+ / Udemy / Coursera adapters | **Code-only** | Do not claim external support. |
 
 ## What remains carry, not new feature scope
 
 Primary Month 4 carries:
 
-- **No required Month 4 video/subtitle live lane** in CI yet.
+- **No broad Month 4 video-platform parity lane** in CI; current required lanes are scoped to YouTube proof/holdouts and controlled subtitle-file proof through document-proof.
 - **Production watch-page regression remains manual** (`month-4-video-production-regression-playbook-2026-04-17.md`) and is not replaced by fixture smokes.
 - **Subtitle-file scope stays separate** from in-page video claims.
 - **Support language must stay narrow**: no generic “supports video” statement without classification.

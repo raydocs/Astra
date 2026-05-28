@@ -56,6 +56,7 @@ const ENABLED_CONFIG = {
   contentScope: "page" as const,
   inputTranslation: "enabled" as const,
   privacyMode: false,
+  serviceMode: "automatic" as const,
   provider: {
     id: "openai" as const,
     accessToken: "astra-token",
@@ -139,8 +140,10 @@ function appendVideoWithTracks(tracks: TextTrack[]): HTMLVideoElement {
 
 describe("translatePageSubtitles", () => {
   beforeEach(() => {
+    vi.clearAllMocks()
     readConfigMock.mockResolvedValue(ENABLED_CONFIG)
     readAstraSessionMock.mockResolvedValue(null)
+    getDocumentTranslationContextMock.mockReturnValue({ pageTitle: "test" })
     translateTextsMock.mockResolvedValue({ ok: true, translations: [] })
     vi.useFakeTimers()
   })
@@ -218,6 +221,72 @@ describe("translatePageSubtitles", () => {
     expect(translateTextsMock).not.toHaveBeenCalled()
   })
 
+  it("skips an existing Astra DOM track only when service mode also matches", async () => {
+    const sourceTrack = makeTextTrack({ kind: "subtitles", cues: { length: 5 } })
+    const video = appendVideoWithTracks([sourceTrack])
+    const astraTrack = document.createElement("track")
+    astraTrack.label = "Astra: zh-CN"
+    astraTrack.dataset.astraServiceMode = "automatic"
+    video.appendChild(astraTrack)
+
+    const promise = translatePageSubtitles()
+    await vi.runAllTimersAsync()
+    await promise
+
+    expect(translateTextsMock).not.toHaveBeenCalled()
+    expect(video.querySelectorAll("track")).toHaveLength(1)
+  })
+
+  it("removes stale Astra subtitle tracks when service mode changes", async () => {
+    const OriginalVTTCue = (globalThis as Record<string, unknown>).VTTCue
+    ;(globalThis as Record<string, unknown>).VTTCue = class VTTCue {
+      startTime: number; endTime: number; text: string
+      constructor(start: number, end: number, text: string) {
+        this.startTime = start; this.endTime = end; this.text = text
+      }
+    }
+
+    try {
+      readConfigMock.mockResolvedValue({
+        ...ENABLED_CONFIG,
+        serviceMode: "balanced",
+      })
+      translateTextsMock.mockResolvedValue({ ok: true, translations: ["你好"] })
+
+      const sourceTrack = makeTextTrack({ kind: "subtitles", mode: "showing" })
+      const cueList = Object.assign([
+        new (globalThis as { VTTCue: typeof VTTCue }).VTTCue(0, 1, "hello"),
+      ], { length: 1 })
+      Object.assign(sourceTrack, { cues: cueList, addCue: vi.fn() })
+      const video = appendVideoWithTracks([sourceTrack])
+      const staleTrack = document.createElement("track")
+      staleTrack.label = "Astra: zh-CN"
+      staleTrack.dataset.astraServiceMode = "fast"
+      video.appendChild(staleTrack)
+
+      const promise = translatePageSubtitles()
+      await vi.runAllTimersAsync()
+      await promise
+
+      expect(staleTrack.isConnected).toBe(false)
+      expect(translateTextsMock).toHaveBeenCalledWith(expect.objectContaining({
+        texts: ["hello"],
+        targetLang: "zh-CN",
+        serviceMode: "balanced",
+      }))
+      const astraTracks = Array.from(video.querySelectorAll("track"))
+        .filter((track) => track.label === "Astra: zh-CN")
+      expect(astraTracks).toHaveLength(1)
+      expect(astraTracks[0].dataset.astraServiceMode).toBe("balanced")
+    } finally {
+      if (OriginalVTTCue === undefined) {
+        delete (globalThis as Record<string, unknown>).VTTCue
+      } else {
+        ;(globalThis as Record<string, unknown>).VTTCue = OriginalVTTCue
+      }
+    }
+  })
+
   it("returns early when the site is disabled in config", async () => {
     readConfigMock.mockResolvedValue(DISABLED_SITE_CONFIG)
 
@@ -293,6 +362,7 @@ describe("translatePageSubtitles", () => {
       expect(translateTextsMock).toHaveBeenCalledWith({
         texts: ["hello"],
         targetLang: "zh-CN",
+        serviceMode: "automatic",
         context: {
           hostname: "example.com",
           pageUrl: "https://example.com/watch",

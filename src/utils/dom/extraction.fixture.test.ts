@@ -53,7 +53,7 @@ describe("resolveExtractionPlan with fixtures", () => {
     expect(allText).not.toContain("@tina")
   })
 
-  it("resolveExtractionPlan falls back to page scope when no strong article root exists", () => {
+  it("resolveExtractionPlan falls back to immersive body extraction when no strong article root exists", () => {
     // Build a page with no article/role=article/.post-content elements
     document.body.innerHTML = `
       <div>
@@ -64,7 +64,7 @@ describe("resolveExtractionPlan with fixtures", () => {
 
     const plan = resolveExtractionPlan(document, "article")
 
-    expect(plan.scope).toBe("page")
+    expect(plan.scope).toBe("immersive")
     expect(plan.root.tagName).toBe("BODY")
   })
 

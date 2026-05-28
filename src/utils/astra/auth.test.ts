@@ -45,6 +45,7 @@ import {
   createAstraSession,
   parseAstraSessionPayload,
   refreshAstraSession,
+  requestAstraMobileLink,
   revokeAstraSession,
 } from "./auth"
 
@@ -268,6 +269,38 @@ describe("Astra auth client", () => {
         Authorization: "Bearer astra-session",
         "X-Astra-Device-Id": "device-123",
       },
+    }))
+  })
+
+  it("requests a desktop-to-mobile link code with bearer auth and device header", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({
+      code: "123456",
+      expiresAt: "2026-05-28T00:10:00.000Z",
+      link: "astra-review://link?code=123456",
+    }), {
+      status: 200,
+      headers: { "Content-Type": "application/json" },
+    }))
+    vi.stubGlobal("fetch", fetchMock)
+
+    const challenge = await requestAstraMobileLink({
+      baseURL: "https://astra.example/v1",
+      sessionToken: "astra-session",
+    })
+
+    expect(challenge).toEqual({
+      code: "123456",
+      expiresAt: "2026-05-28T00:10:00.000Z",
+      link: "astra-review://link?code=123456",
+    })
+    expect(fetchMock).toHaveBeenCalledWith("https://astra.example/v1/auth/mobile-link", expect.objectContaining({
+      method: "POST",
+      headers: {
+        Authorization: "Bearer astra-session",
+        "Content-Type": "application/json",
+        "X-Astra-Device-Id": "device-123",
+      },
+      body: "{}",
     }))
   })
 

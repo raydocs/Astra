@@ -11,6 +11,7 @@ const readAstraSessionMock = vi.fn()
 const saveAstraSessionMock = vi.fn()
 const translateWithProviderDetailedMock = vi.fn()
 const executeTabCommandMock = vi.fn()
+const initializeFrameCoordinatorMock = vi.fn()
 const getProviderRoutingMetadataFromErrorMock = vi.fn()
 const runPhaseOneCollectionSyncMock = vi.fn()
 const readPhaseOneCollectionSyncStatusMock = vi.fn()
@@ -55,6 +56,7 @@ vi.mock("@/utils/storage/translation-usage", () => ({
 
 vi.mock("./frame-coordinator", () => ({
   executeTabCommand: executeTabCommandMock,
+  initializeFrameCoordinator: initializeFrameCoordinatorMock,
 }))
 
 vi.mock("@/entrypoints/image-translate/handoff", () => ({
@@ -85,6 +87,7 @@ describe("background runtime translation routing", () => {
     saveAstraSessionMock.mockReset()
     translateWithProviderDetailedMock.mockReset()
     executeTabCommandMock.mockReset()
+    initializeFrameCoordinatorMock.mockReset()
     getProviderRoutingMetadataFromErrorMock.mockReset()
     runPhaseOneCollectionSyncMock.mockReset()
     readPhaseOneCollectionSyncStatusMock.mockReset()
@@ -157,6 +160,156 @@ describe("background runtime translation routing", () => {
       title: "Translate image with Astra",
       contexts: ["image"],
     })
+  })
+
+  it("registers page and selection context menu shortcuts", async () => {
+    const browser = getMockBrowser()
+    const background = (await import("./index")).default
+    background.main()
+
+    await browser.__emitInstalled({ reason: "install" })
+
+    expect(browser.contextMenus.create).toHaveBeenCalledWith({
+      id: "astra-translate-page",
+      title: "Translate page with Astra",
+      contexts: ["page"],
+    })
+    expect(browser.contextMenus.create).toHaveBeenCalledWith({
+      id: "astra-translate-selection",
+      title: "Translate selection with Astra",
+      contexts: ["selection"],
+    })
+    expect(browser.contextMenus.create).toHaveBeenCalledWith({
+      id: "astra-explain-selection",
+      title: "Explain selection with Astra",
+      contexts: ["selection"],
+    })
+    expect(browser.contextMenus.create).toHaveBeenCalledWith({
+      id: "astra-save-selection",
+      title: "Save selection to Astra Review",
+      contexts: ["selection"],
+    })
+  })
+
+  it("routes page and selection context-menu clicks to content commands", async () => {
+    const browser = getMockBrowser()
+    const background = (await import("./index")).default
+    background.main()
+
+    await browser.__emitContextMenuClicked(
+      { menuItemId: "astra-translate-page" },
+      { id: 7, url: "https://example.com/article", title: "Example Article" },
+    )
+    await browser.__emitContextMenuClicked(
+      { menuItemId: "astra-translate-selection", selectionText: "Hello world" },
+      { id: 7, url: "https://example.com/article", title: "Example Article" },
+    )
+    await browser.__emitContextMenuClicked(
+      { menuItemId: "astra-explain-selection", selectionText: "Hello world" },
+      { id: 7, url: "https://example.com/article", title: "Example Article" },
+    )
+    await browser.__emitContextMenuClicked(
+      { menuItemId: "astra-save-selection", selectionText: "Hello world" },
+      { id: 7, url: "https://example.com/article", title: "Example Article" },
+    )
+
+    expect(executeTabCommandMock).toHaveBeenCalledWith(7, {
+      type: "content/start-translation",
+      payload: { contentScope: "page" },
+    })
+    expect(browser.tabs.sendMessage).toHaveBeenNthCalledWith(1, 7, {
+      type: "content/run-selection-action",
+      payload: { actionId: "translate", text: "Hello world" },
+    })
+    expect(browser.tabs.sendMessage).toHaveBeenNthCalledWith(2, 7, {
+      type: "content/run-selection-action",
+      payload: { actionId: "explain", text: "Hello world" },
+    })
+    expect(browser.tabs.sendMessage).toHaveBeenNthCalledWith(3, 7, {
+      type: "content/save-selection",
+      payload: { text: "Hello world" },
+    })
+  })
+
+  it("routes selection context-menu clicks to the originating frame", async () => {
+    const browser = getMockBrowser()
+    const background = (await import("./index")).default
+    background.main()
+
+    await browser.__emitContextMenuClicked(
+      { menuItemId: "astra-translate-selection", selectionText: "Frame text", frameId: 4 },
+      { id: 7, url: "https://example.com/article", title: "Example Article" },
+    )
+    await browser.__emitContextMenuClicked(
+      { menuItemId: "astra-save-selection", selectionText: "Frame text", frameId: 4 },
+      { id: 7, url: "https://example.com/article", title: "Example Article" },
+    )
+
+    expect(browser.tabs.sendMessage).toHaveBeenNthCalledWith(1, 7, {
+      type: "content/run-selection-action",
+      payload: { actionId: "translate", text: "Frame text" },
+    }, { frameId: 4 })
+    expect(browser.tabs.sendMessage).toHaveBeenNthCalledWith(2, 7, {
+      type: "content/save-selection",
+      payload: { text: "Frame text" },
+    }, { frameId: 4 })
+  })
+
+  it("routes translate-page keyboard shortcuts through the frame coordinator", async () => {
+    const browser = getMockBrowser()
+    browser.tabs.query.mockResolvedValue([{ id: 7, url: "https://example.com/article", active: true }])
+    const background = (await import("./index")).default
+    background.main()
+
+    await browser.__emitCommand("translatePage")
+    await flushRuntimeResponse()
+
+    expect(executeTabCommandMock).toHaveBeenCalledWith(7, {
+      type: "content/start-translation",
+      payload: { contentScope: "page" },
+    })
+    expect(browser.tabs.sendMessage).not.toHaveBeenCalledWith(7, expect.objectContaining({
+      type: "content/start-translation",
+    }))
+  })
+
+  it("routes omnibox auto-translate through the frame coordinator after tab load", async () => {
+    const baseBrowser = createMockBrowser()
+    const inputListeners: Array<(text: string) => void> = []
+    const browser = {
+      ...baseBrowser,
+      omnibox: {
+        setDefaultSuggestion: vi.fn(),
+        onInputEntered: {
+          addListener: vi.fn((listener: (text: string) => void) => {
+            inputListeners.push(listener)
+          }),
+          removeListener: vi.fn(),
+        },
+      },
+    }
+    setMockBrowser(browser)
+    ;(browser.tabs.create as unknown as {
+      mockResolvedValueOnce: (value: { id: number; url: string }) => void
+    }).mockResolvedValueOnce({ id: 11, url: "https://example.com/article" })
+
+    const background = (await import("./index")).default
+    background.main()
+
+    expect(inputListeners).toHaveLength(1)
+    inputListeners[0]?.("example.com/article")
+    await flushRuntimeResponse()
+    await browser.__emitTabUpdated(11, { status: "complete" }, { id: 11 })
+    await flushRuntimeResponse()
+
+    expect(browser.tabs.create).toHaveBeenCalledWith({ url: "https://example.com/article" })
+    expect(executeTabCommandMock).toHaveBeenCalledWith(11, {
+      type: "content/start-translation",
+      payload: { contentScope: "page" },
+    })
+    expect(browser.tabs.sendMessage).not.toHaveBeenCalledWith(11, expect.objectContaining({
+      type: "content/start-translation",
+    }))
   })
 
   it("continues registering new context-menu items when existing IDs already exist", async () => {
@@ -543,8 +696,246 @@ describe("background runtime translation routing", () => {
       finalTransport: "direct",
       fallbackUsed: false,
       route: "direct",
+      cacheStatus: "miss",
+      tier: "pro",
       success: true,
     }))
+  })
+
+  it("routes automatic short translation batches through the Fast service style", async () => {
+    const browser = getMockBrowser()
+    const sendResponse = vi.fn()
+
+    readConfigMock.mockResolvedValue({
+      connectionMode: "astra",
+      languageLevel: "intermediate",
+      serviceMode: "automatic",
+      provider: {
+        id: "openai",
+        accessToken: "",
+        relayBaseURL: "https://astra.example/v1",
+        model: "gpt-5.4-nano",
+      },
+    })
+    translateWithProviderDetailedMock.mockResolvedValue({
+      translations: ["短标题"],
+      metadata: {
+        attemptedTransports: ["direct"],
+        finalTransport: "direct",
+        fallbackUsed: false,
+      },
+    })
+
+    const background = (await import("./index")).default
+    background.main()
+
+    await browser.__emitRuntimeMessage(
+      {
+        type: "runtime/translate-batch",
+        payload: {
+          texts: ["Short headline"],
+          targetLang: "zh-CN",
+          context: { pageTitle: "Fixture" },
+        },
+      },
+      { id: "sender" },
+      sendResponse,
+    )
+
+    await flushRuntimeResponse()
+
+    expect(translateWithProviderDetailedMock).toHaveBeenCalledWith(
+      expect.any(Object),
+      expect.objectContaining({
+        texts: ["Short headline"],
+        serviceMode: "fast",
+      }),
+    )
+    const cacheLookupCall = getCachedTranslationsMock.mock.calls[0] as [Array<{
+      cacheContext?: { serviceMode?: string }
+    }>]
+    expect(cacheLookupCall[0][0]?.cacheContext?.serviceMode).toBe("fast")
+    expect(recordTranslationUsageMock).toHaveBeenCalledWith(expect.objectContaining({
+      serviceMode: "fast",
+    }))
+  })
+
+  it("routes medium automatic reading batches through Balanced service style", async () => {
+    const browser = getMockBrowser()
+    const sendResponse = vi.fn()
+    const mediumParagraph = "This is a moderate reading passage with enough surrounding detail to favor stable quality over the shortest-latency path. ".repeat(4)
+
+    readConfigMock.mockResolvedValue({
+      connectionMode: "astra",
+      languageLevel: "intermediate",
+      serviceMode: "automatic",
+      privacyMode: false,
+      provider: {
+        id: "openai",
+        accessToken: "",
+        relayBaseURL: "https://astra.example/v1",
+        model: "gpt-5.4-nano",
+      },
+    })
+    translateWithProviderDetailedMock.mockResolvedValue({
+      translations: ["平衡模式翻译"],
+      metadata: {
+        attemptedTransports: ["direct"],
+        finalTransport: "direct",
+        fallbackUsed: false,
+      },
+    })
+
+    const background = (await import("./index")).default
+    background.main()
+
+    await browser.__emitRuntimeMessage(
+      {
+        type: "runtime/translate-batch",
+        payload: {
+          texts: [mediumParagraph],
+          targetLang: "zh-CN",
+          context: { pageTitle: "Medium article" },
+        },
+      },
+      { id: "sender" },
+      sendResponse,
+    )
+
+    await flushRuntimeResponse()
+
+    expect(translateWithProviderDetailedMock).toHaveBeenCalledWith(
+      expect.any(Object),
+      expect.objectContaining({
+        texts: [mediumParagraph],
+        serviceMode: "balanced",
+      }),
+    )
+    expect(recordTranslationUsageMock).toHaveBeenCalledWith(expect.objectContaining({
+      serviceMode: "balanced",
+    }))
+  })
+
+  it("routes automatic learning tasks through Best quality", async () => {
+    const browser = getMockBrowser()
+    const sendResponse = vi.fn()
+
+    readConfigMock.mockResolvedValue({
+      connectionMode: "astra",
+      languageLevel: "intermediate",
+      serviceMode: "automatic",
+      provider: {
+        id: "openai",
+        accessToken: "",
+        relayBaseURL: "https://astra.example/v1",
+        model: "gpt-5.4-nano",
+      },
+    })
+    translateWithProviderDetailedMock.mockResolvedValue({
+      translations: ["解释输出"],
+      metadata: {
+        attemptedTransports: ["direct"],
+        finalTransport: "direct",
+        fallbackUsed: false,
+      },
+    })
+
+    const background = (await import("./index")).default
+    background.main()
+
+    await browser.__emitRuntimeMessage(
+      {
+        type: "runtime/translate-batch",
+        payload: {
+          texts: ["Explain this sentence."],
+          targetLang: "zh-CN",
+          task: "explain",
+          context: { selectionContext: "Explain this sentence." },
+        },
+      },
+      { id: "sender" },
+      sendResponse,
+    )
+
+    await flushRuntimeResponse()
+
+    expect(translateWithProviderDetailedMock).toHaveBeenCalledWith(
+      expect.any(Object),
+      expect.objectContaining({
+        texts: ["Explain this sentence."],
+        serviceMode: "best_quality",
+      }),
+    )
+  })
+
+  it("routes long or terminology-sensitive automatic batches through Best quality", async () => {
+    const { saveVocabularyEntry } = await import("@/utils/storage/vocabulary")
+    await saveVocabularyEntry({
+      text: "Astra Router",
+      glossaryTargetText: "阿斯特拉路由",
+      hostname: "example.com",
+      glossaryEnabled: true,
+      glossaryScope: "hostname",
+    })
+
+    const browser = getMockBrowser()
+    const sendResponse = vi.fn()
+    const longParagraph = `${"Astra Router coordinates provider selection for long contextual passages. ".repeat(12)}End.`
+
+    readConfigMock.mockResolvedValue({
+      connectionMode: "astra",
+      languageLevel: "intermediate",
+      serviceMode: "balanced",
+      privacyMode: false,
+      provider: {
+        id: "openai",
+        accessToken: "",
+        relayBaseURL: "https://astra.example/v1",
+        model: "gpt-5.4-nano",
+      },
+    })
+    translateWithProviderDetailedMock.mockResolvedValue({
+      translations: ["高质量长段翻译"],
+      metadata: {
+        attemptedTransports: ["direct"],
+        finalTransport: "direct",
+        fallbackUsed: false,
+      },
+    })
+
+    const background = (await import("./index")).default
+    background.main()
+
+    await browser.__emitRuntimeMessage(
+      {
+        type: "runtime/translate-batch",
+        payload: {
+          texts: [longParagraph],
+          targetLang: "zh-CN",
+          context: { hostname: "example.com", contentSummary: "Provider routing article" },
+        },
+      },
+      { id: "sender" },
+      sendResponse,
+    )
+
+    await flushRuntimeResponse()
+
+    expect(translateWithProviderDetailedMock).toHaveBeenCalledWith(
+      expect.any(Object),
+      expect.objectContaining({
+        texts: [longParagraph],
+        serviceMode: "best_quality",
+        context: expect.objectContaining({
+          terminologyGlossary: "Astra Router => 阿斯特拉路由",
+        }),
+      }),
+    )
+    const cacheLookupCall = getCachedTranslationsMock.mock.calls[0] as [Array<{
+      cacheContext?: { serviceMode?: string; requestContextKey?: string }
+    }>]
+    expect(cacheLookupCall[0][0]?.cacheContext?.serviceMode).toBe("best_quality")
+    expect(cacheLookupCall[0][0]?.cacheContext?.requestContextKey).toContain("Astra Router => 阿斯特拉路由")
   })
 
   it("uses sender hostname, not caller payload hostname, for site provider routing", async () => {
@@ -694,6 +1085,7 @@ describe("background runtime translation routing", () => {
         attemptedTransports: ["direct", "relay"],
         finalTransport: "relay",
         fallbackUsed: true,
+        fallbackReason: "outage",
         route: "fallback",
       },
     })
@@ -719,7 +1111,9 @@ describe("background runtime translation routing", () => {
       attemptedTransports: ["direct", "relay"],
       finalTransport: "relay",
       fallbackUsed: true,
+      fallbackReason: "outage",
       route: "fallback",
+      cacheStatus: "miss",
       success: true,
     }))
   })
@@ -820,6 +1214,7 @@ describe("background runtime translation routing", () => {
       selectionContext: "",
       terminologyGlossary: "Astra => 阿斯特拉\nrouter => 路由器",
       explanationGlossary: "",
+      translationMemory: "",
     }))
     expect(sendResponse).toHaveBeenCalledWith({
       type: "runtime/translate-batch:success",
@@ -912,6 +1307,7 @@ describe("background runtime translation routing", () => {
       selectionContext: "",
       terminologyGlossary: "",
       explanationGlossary: "",
+      translationMemory: "",
     }))
   })
 
@@ -1000,6 +1396,7 @@ describe("background runtime translation routing", () => {
       selectionContext: "",
       terminologyGlossary: "",
       explanationGlossary: "",
+      translationMemory: "",
     }))
     expect(sendResponse).toHaveBeenCalledWith({
       type: "runtime/translate-batch:success",
@@ -1055,6 +1452,65 @@ describe("background runtime translation routing", () => {
         translations: ["你好"],
       },
     })
+    expect(recordTranslationUsageMock).toHaveBeenCalledWith(expect.objectContaining({
+      texts: ["hello"],
+      attemptedTransports: [],
+      finalTransport: null,
+      fallbackUsed: false,
+      route: null,
+      cacheStatus: "hit",
+      tier: "unknown",
+      success: true,
+    }))
+  })
+
+  it("records disabled cache status for uncacheable translate requests", async () => {
+    const browser = getMockBrowser()
+    const sendResponse = vi.fn()
+
+    readConfigMock.mockResolvedValue({
+      connectionMode: "astra",
+      languageLevel: "intermediate",
+      provider: {
+        id: "openai",
+        accessToken: "",
+        relayBaseURL: "https://astra.example/v1",
+        model: "gpt-5.4-nano",
+      },
+    })
+    translateWithProviderDetailedMock.mockResolvedValue({
+      translations: ["自定义"],
+      metadata: {
+        attemptedTransports: ["direct"],
+        finalTransport: "direct",
+        fallbackUsed: false,
+      },
+    })
+
+    const background = (await import("./index")).default
+    background.main()
+
+    await browser.__emitRuntimeMessage(
+      {
+        type: "runtime/translate-batch",
+        payload: {
+          texts: ["custom"],
+          targetLang: "zh-CN",
+          task: "custom",
+          customSystemPrompt: "Return a short result.",
+        },
+      },
+      { id: "sender" },
+      sendResponse,
+    )
+
+    await flushRuntimeResponse()
+
+    expect(getCachedTranslationsMock).not.toHaveBeenCalled()
+    expect(recordTranslationUsageMock).toHaveBeenCalledWith(expect.objectContaining({
+      cacheStatus: "disabled",
+      success: true,
+    }))
   })
 
   it("merges cached and fresh translations in the original order", async () => {
@@ -1136,6 +1592,11 @@ describe("background runtime translation routing", () => {
         },
       },
     })
+    expect(recordTranslationUsageMock).toHaveBeenCalledWith(expect.objectContaining({
+      texts: ["fresh"],
+      cacheStatus: "partial",
+      success: true,
+    }))
   })
 
   it("maps provider errors to runtime error responses", async () => {

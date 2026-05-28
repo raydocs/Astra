@@ -12,6 +12,8 @@
  */
 
 import { translateTexts } from "@/utils/translate/translate"
+import { getSafeAiUnavailableCopy } from "@/utils/copy-dictionary"
+import type { ServiceMode } from "@/types/config"
 
 const MIN_DIMENSION = 100
 
@@ -46,6 +48,7 @@ export function isTranslatableImage(element: HTMLImageElement): boolean {
 export async function extractTextFromImage(
   imageUrl: string,
   targetLang: string,
+  serviceMode?: ServiceMode,
 ): Promise<{ ok: true; text: string } | { ok: false; message: string }> {
   const systemPrompt = [
     "You are an AI assistant that describes visible text in images.",
@@ -71,24 +74,25 @@ export async function extractTextFromImage(
     const result = await translateTexts({
       texts: [userText],
       targetLang,
+      serviceMode,
       task: "custom",
       customSystemPrompt: systemPrompt,
     })
 
     if (!result.ok) {
-      return { ok: false, message: result.error.message }
+      return { ok: false, message: getSafeAiUnavailableCopy(result.error) }
     }
 
     const text = result.translations[0]?.trim()
     if (!text) {
-      return { ok: false, message: "Empty response from provider." }
+      return { ok: false, message: getSafeAiUnavailableCopy({ code: "INVALID_RESPONSE", message: "Empty response from provider." }) }
     }
 
     return { ok: true, text }
   } catch (error) {
     return {
       ok: false,
-      message: error instanceof Error ? error.message : "Image text extraction failed.",
+      message: getSafeAiUnavailableCopy({ code: "UNKNOWN", message: error instanceof Error ? error.message : "Image text extraction failed." }),
     }
   }
 }

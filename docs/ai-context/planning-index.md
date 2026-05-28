@@ -12,6 +12,7 @@ Use the smallest planning context that answers the task. Add source bundles from
 | Research, support matrices, classification, gap analysis | [`../investigations/`](../investigations/) | Use the classification boundary for read-priority decisions. |
 | Critiques, reviews, certification notes | [`../reviews/`](../reviews/) | Pair with source only when verifying a current claim. |
 | Product/API/architecture contracts | [`../specs/`](../specs/), [`../adr/`](../adr/) | Use when behavior or architecture decisions are in scope. |
+| Product expansion, issue triage, public claims, or support refusal boundaries | [`../specs/strategic-non-goals.md`](../specs/strategic-non-goals.md), [`../product-roadmap.md`](../product-roadmap.md) | Apply the non-goals decision tree before proposing new default surfaces or broader claims. |
 | Older planning history | [`../plans/history/`](../plans/history/) | Historical; read only when explicitly referenced or clearly relevant. |
 
 ## Four-bucket planning lens
@@ -22,5 +23,7 @@ The `data/script/docs/src` model is conceptual, not physical:
 - `src/` context comes from source-bearing roots only when an implementation task needs it.
 - `script/` context comes from automation, CI, bench, deploy, or verification roots.
 - `data/` context is generated evidence, local runtime state, screenshots, or reference artifacts and is not default planning context.
+
+Before proposing product expansion, apply [`../specs/strategic-non-goals.md`](../specs/strategic-non-goals.md): identify the core-loop benefit, default-vs-advanced boundary, claim proof, data/privacy implication, and support response.
 
 Do not include generated result directories unless the task asks about run evidence, screenshots, release verification, or artifact analysis.

@@ -9,6 +9,8 @@ import {
   AstraBillingLinkSchema,
   AstraCloudDataDeleteJobSchema,
   AstraCloudDataDeleteRequestSchema,
+  AstraCloudLearningMemoryDeletionReceiptSchema,
+  AstraCloudLearningMemoryInventorySchema,
   AstraDevicesResponseSchema,
   AstraSyncBootstrapSchema,
   AstraSyncMutationInputSchema,
@@ -16,7 +18,10 @@ import {
   AstraSyncPushResponseSchema,
   AstraSyncRepairRequestSchema,
   AstraSyncRepairResponseSchema,
+  AstraTrialLifecycleContractSchema,
   AstraUsageSnapshotSchema,
+  AstraWeeklyDigestPreferenceResponseSchema,
+  AstraWeeklyDigestSnapshotSchema,
   type AstraAccount,
   type AstraAccountExportJob,
   type AstraAccountExportRequest,
@@ -24,6 +29,8 @@ import {
   type AstraBillingLink,
   type AstraCloudDataDeleteJob,
   type AstraCloudDataDeleteRequest,
+  type AstraCloudLearningMemoryDeletionReceipt,
+  type AstraCloudLearningMemoryInventory,
   type AstraDeviceListEntry,
   type AstraPlan,
   type AstraSyncBootstrap,
@@ -32,7 +39,10 @@ import {
   type AstraSyncPushResponse,
   type AstraSyncRepairRequest,
   type AstraSyncRepairResponse,
+  type AstraTrialLifecycleContract,
   type AstraUsageSnapshot,
+  type AstraWeeklyDigestPreferenceResponse,
+  type AstraWeeklyDigestSnapshot,
 } from "@/types/auth"
 
 function requireBaseURL(baseURL: string): string {
@@ -79,8 +89,28 @@ function buildCloudDataDeleteStatusUrl(baseURL: string, jobId: string): string {
   return `${buildCloudDataDeleteUrl(baseURL)}/${encodeURIComponent(jobId)}`
 }
 
+function buildCloudLearningMemoryInventoryUrl(baseURL: string): string {
+  return `${requireBaseURL(baseURL)}/account/learning-memory/inventory`
+}
+
+function buildCloudLearningMemoryUrl(baseURL: string): string {
+  return `${requireBaseURL(baseURL)}/account/learning-memory`
+}
+
+function buildWeeklyDigestUrl(baseURL: string): string {
+  return `${requireBaseURL(baseURL)}/account/weekly-digest`
+}
+
+function buildWeeklyDigestPreferenceUrl(baseURL: string): string {
+  return `${requireBaseURL(baseURL)}/account/preferences/weekly-digest`
+}
+
 function buildBillingCheckoutUrl(baseURL: string): string {
   return `${requireBaseURL(baseURL)}/billing/checkout`
+}
+
+function buildTrialIntentUrl(baseURL: string): string {
+  return `${requireBaseURL(baseURL)}/account/trial-intent`
 }
 
 function buildBillingPortalUrl(baseURL: string): string {
@@ -230,6 +260,32 @@ async function sendAstraPayload<T>(
   return schema.parse(await response.json())
 }
 
+async function deleteAstraPayload<T>(
+  url: string,
+  sessionToken: string,
+  schema: z.ZodType<T>,
+  options: {
+    deviceId?: string
+  } = {},
+): Promise<T> {
+  const response = await fetch(url, {
+    method: "DELETE",
+    headers: buildAuthHeaders(sessionToken, options),
+  })
+
+  if (!response.ok) {
+    const payload = await readErrorPayload(response)
+    throw new AstraApiError({
+      message: payload.message,
+      status: response.status,
+      code: payload.code,
+      details: payload.details,
+    })
+  }
+
+  return schema.parse(await response.json())
+}
+
 export async function fetchAstraAccount(params: {
   baseURL: string
   sessionToken: string
@@ -332,6 +388,61 @@ export async function fetchAstraCloudDataDeleteJob(params: {
   )
 }
 
+export async function fetchAstraCloudLearningMemoryInventory(params: {
+  baseURL: string
+  sessionToken: string
+  deviceId: string
+}): Promise<AstraCloudLearningMemoryInventory> {
+  return fetchAstraPayload(
+    buildCloudLearningMemoryInventoryUrl(params.baseURL),
+    params.sessionToken,
+    AstraCloudLearningMemoryInventorySchema,
+    { deviceId: params.deviceId },
+  )
+}
+
+export async function deleteAstraCloudLearningMemory(params: {
+  baseURL: string
+  sessionToken: string
+  deviceId: string
+}): Promise<AstraCloudLearningMemoryDeletionReceipt> {
+  return deleteAstraPayload(
+    buildCloudLearningMemoryUrl(params.baseURL),
+    params.sessionToken,
+    AstraCloudLearningMemoryDeletionReceiptSchema,
+    { deviceId: params.deviceId },
+  )
+}
+
+export async function fetchAstraWeeklyDigest(params: {
+  baseURL: string
+  sessionToken: string
+  deviceId: string
+}): Promise<AstraWeeklyDigestSnapshot> {
+  return fetchAstraPayload(
+    buildWeeklyDigestUrl(params.baseURL),
+    params.sessionToken,
+    AstraWeeklyDigestSnapshotSchema,
+    { deviceId: params.deviceId },
+  )
+}
+
+export async function updateAstraWeeklyDigestPreference(params: {
+  baseURL: string
+  sessionToken: string
+  deviceId: string
+  enabled: boolean
+}): Promise<AstraWeeklyDigestPreferenceResponse> {
+  return sendAstraPayload(
+    buildWeeklyDigestPreferenceUrl(params.baseURL),
+    "PATCH",
+    params.sessionToken,
+    { enabled: params.enabled },
+    AstraWeeklyDigestPreferenceResponseSchema,
+    { deviceId: params.deviceId },
+  )
+}
+
 export async function updateAstraPlan(params: {
   baseURL: string
   sessionToken: string
@@ -343,6 +454,34 @@ export async function updateAstraPlan(params: {
     params.sessionToken,
     { plan: AstraPlanSchema.parse(params.plan) },
     AstraAccountSchema,
+  )
+}
+
+export async function createAstraTrialIntent(params: {
+  baseURL: string
+  sessionToken: string
+  deviceId: string
+}): Promise<AstraTrialLifecycleContract> {
+  return sendAstraPayload(
+    buildTrialIntentUrl(params.baseURL),
+    "POST",
+    params.sessionToken,
+    {},
+    AstraTrialLifecycleContractSchema,
+    { deviceId: params.deviceId },
+  )
+}
+
+export async function fetchAstraTrialIntent(params: {
+  baseURL: string
+  sessionToken: string
+  deviceId: string
+}): Promise<AstraTrialLifecycleContract> {
+  return fetchAstraPayload(
+    buildTrialIntentUrl(params.baseURL),
+    params.sessionToken,
+    AstraTrialLifecycleContractSchema,
+    { deviceId: params.deviceId },
   )
 }
 

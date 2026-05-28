@@ -17,6 +17,28 @@ interface QueryRecord {
 
 const SESSION_SECRET = "test-session-secret"
 const SESSION_TOKEN = "eyJlbWFpbCI6ImRlbW9AYXN0cmEubG9jYWwiLCJyZWxheUJhc2VVUkwiOiJodHRwczovL3JlbGF5LmFzdHJhLmV4YW1wbGUvdjEiLCJpc3N1ZWRBdCI6IjIwMjYtMDQtMTBUMDA6MDA6MDAuMDAwWiIsImV4cGlyZXNBdCI6IjIwMjYtMDQtMTJUMDA6MDA6MDAuMDAwWiIsInNlc3Npb25JZCI6InNlc3NfZGVtbyIsImRldmljZUlkIjoiZGV2aWNlLWN1cnJlbnQiLCJpZGVudGl0eU1vZGUiOiJhdXRoZW50aWNhdGVkIn0.HQInEhUDwUBGgxZAdkUoM0sOjTxQlPSDx9hP1ALSciE"
+const MIRRORED_USAGE_EVENT = {
+  timestamp: "2026-04-11T11:54:00.000Z",
+  provider: "openai",
+  serviceMode: "fast",
+  requestCount: 1,
+  characterCount: 42,
+  model: "gpt-4.1-nano",
+  task: "translate",
+  textCount: 1,
+  durationMs: 180,
+  taskClass: "paragraph_understanding",
+  costBucket: "medium",
+  latencyBucket: "fast",
+  cacheStatus: "disabled",
+  fallbackReason: "none",
+  tier: "pro",
+  surface: "page",
+  contentLengthBucket: "short",
+  providerRoute: "direct",
+  fallbackUsed: false,
+  success: true,
+}
 
 function normalizeSql(value: string): string {
   return value.replace(/\s+/g, " ").trim()
@@ -332,7 +354,7 @@ function enqueueShadowState(mockDb: ReturnType<typeof createMockDb>, options: { 
       total_requests: 50,
       total_characters: 500,
       last_request_at: null,
-      recent_events_json: "[]",
+      recent_events_json: JSON.stringify([MIRRORED_USAGE_EVENT]),
       shadow_updated_at: "2026-04-11T11:55:00.000Z",
     })
   }
@@ -396,6 +418,18 @@ describe("handleAuthSession", () => {
     expect(response.headers.get("x-astra-platform-route")).toBe("native")
     expect(payload.plan).toBe("pro")
     expect(payload.usage.totalRequests).toBe(50)
+    const mirroredEvent = payload.usage.recentEvents[0] as Record<string, unknown> | undefined
+    expect(mirroredEvent).toMatchObject({
+      serviceMode: "fast",
+      model: "gpt-4.1-nano",
+      taskClass: "paragraph_understanding",
+      costBucket: "medium",
+      providerRoute: "direct",
+      fallbackUsed: false,
+      success: true,
+      durationMs: 180,
+    })
+    expect(JSON.stringify(mirroredEvent)).not.toContain("hello")
     expect(fetchSpy).toHaveBeenCalledTimes(1)
   })
 

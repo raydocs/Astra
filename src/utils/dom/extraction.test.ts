@@ -7,7 +7,7 @@ describe("resolveExtractionPlan", () => {
     document.body.innerHTML = ""
   })
 
-  it("page scope returns findContentRoot result", () => {
+  it("legacy page scope resolves to immersive body extraction", () => {
     document.body.innerHTML = `
       <main><p>Hello</p></main>
     `
@@ -15,8 +15,32 @@ describe("resolveExtractionPlan", () => {
     const plan = resolveExtractionPlan(document, "page")
 
     expect(plan.root.tagName).toBe("BODY")
-    expect(plan.scope).toBe("page")
+    expect(plan.scope).toBe("immersive")
     expect(plan.blocks.length).toBeGreaterThan(0)
+  })
+
+  it("immersive scope skips page chrome while full_page includes it", () => {
+    document.body.innerHTML = `
+      <header><h1>Site masthead</h1></header>
+      <nav><ul><li><a href="/">Home link</a></li></ul></nav>
+      <main><p>Main story paragraph.</p></main>
+      <aside><p>Sidebar explainer.</p></aside>
+      <footer><p>Footer legal copy.</p></footer>
+    `
+
+    const immersive = resolveExtractionPlan(document, "immersive")
+    const fullPage = resolveExtractionPlan(document, "full_page")
+
+    expect(immersive.scope).toBe("immersive")
+    expect(immersive.blocks.map((block) => block.text)).toEqual(["Main story paragraph."])
+    expect(fullPage.scope).toBe("full_page")
+    expect(fullPage.blocks.map((block) => block.text)).toEqual([
+      "Site masthead",
+      "Home link",
+      "Main story paragraph.",
+      "Sidebar explainer.",
+      "Footer legal copy.",
+    ])
   })
 
   it("article scope finds article element", () => {
@@ -46,7 +70,7 @@ describe("resolveExtractionPlan", () => {
 
     const plan = resolveExtractionPlan(document, "article")
 
-    expect(plan.scope).toBe("page")
+    expect(plan.scope).toBe("immersive")
   })
 
   it("article scope rejects thin candidates", () => {
@@ -61,7 +85,7 @@ describe("resolveExtractionPlan", () => {
 
     const plan = resolveExtractionPlan(document, "article")
 
-    expect(plan.scope).toBe("page")
+    expect(plan.scope).toBe("immersive")
     expect(plan.root.tagName).toBe("BODY")
   })
 })

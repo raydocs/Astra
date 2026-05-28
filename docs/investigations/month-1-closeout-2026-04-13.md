@@ -74,7 +74,7 @@ Score: `69 / 100`
   - Astra can now honestly claim browser-backed optional popup deep-read proof exists in repo.
   - Astra can now honestly claim hover and selection-explain have browser-backed optional proof with an explicit Month 1 policy decision.
 - unchanged:
-  - Required release-proof gates remain `source-core` and `extension-core` only.
+  - Historical Month 1 note: required release-proof gates were `source-core` and `extension-core` only at that time. Current release policy is superseded by `docs/release-readiness-checklist.md` and includes additional required lanes.
   - Platform support claims stay unchanged; no `support-matrix-2026-q2.md` change is required from this close-out.
 - downgraded:
   - none

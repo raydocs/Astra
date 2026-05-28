@@ -1,20 +1,32 @@
 import { translateTexts } from "@/utils/translate/translate"
 import { runInlineAction } from "../inline-actions"
 import type { VideoNoteTranscriptCapture, VideoTranscriptSegment } from "@/types/video-notes"
+import type { ServiceMode } from "@/types/config"
 import { nativeCaptionLineRenderingRule } from "./rendering-rules"
 import type { VideoPlatformConfig } from "./types"
 
 const YOUTUBE_RENDER_TARGET_SELECTOR = ".ytp-caption-window-bottom, .ytp-caption-window-top"
-const CUE_BATCH_SIZE = 20
+const DEFAULT_CUE_BATCH_SIZE = 20
+const FAST_CUE_BATCH_SIZE = 40
+const BEST_QUALITY_CUE_BATCH_SIZE = 12
 const DUPLICATE_CUE_WINDOW_MS = 1_500
 const DELAYED_TRACK_TIMEOUT_MS = 1_500
 const ACTIVE_CUE_TOLERANCE_SECONDS = 0.35
+const MIN_LOOKAHEAD_SECONDS = 15
+const MAX_LOOKAHEAD_SECONDS = 120
+const DEFAULT_LOOKAHEAD_SECONDS = 45
+const FAST_LOOKAHEAD_SECONDS = 90
+const BEST_QUALITY_LOOKAHEAD_SECONDS = 30
+const DEFAULT_WINDOW_SECONDS = 300
+const BEST_QUALITY_WINDOW_SECONDS = 180
 
 export type YouTubeCaptionAnomaly =
   | "missing-track"
   | "delayed-track"
   | "duplicated-cue"
   | "stale-cue-race"
+  | "translation-downgraded"
+  | "translation-failed"
 
 interface YouTubeCaptionTrack {
   baseUrl?: string
@@ -22,6 +34,10 @@ interface YouTubeCaptionTrack {
   languageCode?: string
   kind?: string
   isTranslatable?: boolean
+  name?: {
+    simpleText?: string
+    runs?: Array<{ text?: string }>
+  }
 }
 
 interface TimedTextEvent {
@@ -43,15 +59,80 @@ interface YouTubeTimedCue {
 
 interface YouTubeHybridSessionDeps {
   targetLang: string
+  serviceMode: ServiceMode
   rootContainer: HTMLElement
   cacheGet: (key: string) => string | undefined
   cachePut: (key: string, value: string) => void
   getDomCaptionText: (container: HTMLElement) => string
   injectTranslation: (container: HTMLElement, text: string, sourceText: string) => void
+  onStatusChange?: () => void
+}
+
+interface YouTubeSubtitleStrategy {
+  batchSize: number
+  baseLookaheadSeconds: number
+  windowSeconds: number
+  segmentation: "cue" | "sentence-window"
+}
+
+interface YouTubeSubtitleTranslationUnit {
+  text: string
+  cues: YouTubeTimedCue[]
+}
+
+interface YouTubeCueCacheContext {
+  videoId: string
+  trackHash: string
+}
+
+interface YouTubeSubtitleTranslationContext {
+  pageTitle: string
+  pageUrl: string
+  contentSummary: string
 }
 
 export interface YouTubeHybridSession {
   stop: () => void
+}
+
+export interface YouTubeTranscriptCueSnapshot {
+  id: string
+  startMs: number
+  endMs: number
+  text: string
+  translation?: string
+}
+
+export interface YouTubeTranscriptSnapshot {
+  available: boolean
+  title: string | null
+  pageUrl: string
+  language: string | null
+  currentTime: number
+  activeIndex: number
+  cues: YouTubeTranscriptCueSnapshot[]
+}
+
+const transcriptListeners = new Set<(snapshot: YouTubeTranscriptSnapshot | null) => void>()
+let activeTranscriptSnapshotReader: (() => YouTubeTranscriptSnapshot | null) | null = null
+
+export function getYouTubeTranscriptSnapshot(): YouTubeTranscriptSnapshot | null {
+  return activeTranscriptSnapshotReader?.() ?? null
+}
+
+export function subscribeYouTubeTranscriptSnapshot(
+  listener: (snapshot: YouTubeTranscriptSnapshot | null) => void,
+): () => void {
+  transcriptListeners.add(listener)
+  listener(getYouTubeTranscriptSnapshot())
+  return () => {
+    transcriptListeners.delete(listener)
+  }
+}
+
+function notifyTranscriptListeners(): void {
+  const snapshot = getYouTubeTranscriptSnapshot()
+  transcriptListeners.forEach((listener) => listener(snapshot))
 }
 
 function normalizeYouTubeCaptionText(text: string): string {
@@ -129,21 +210,171 @@ function normalizeLanguageCode(languageCode?: string): string {
     .replace(/_/g, "-")
 }
 
+function resolveSubtitleStrategy(serviceMode: ServiceMode): YouTubeSubtitleStrategy {
+  switch (serviceMode) {
+    case "fast":
+      return {
+        batchSize: FAST_CUE_BATCH_SIZE,
+        baseLookaheadSeconds: FAST_LOOKAHEAD_SECONDS,
+        windowSeconds: DEFAULT_WINDOW_SECONDS,
+        segmentation: "cue",
+      }
+    case "best_quality":
+      return {
+        batchSize: BEST_QUALITY_CUE_BATCH_SIZE,
+        baseLookaheadSeconds: BEST_QUALITY_LOOKAHEAD_SECONDS,
+        windowSeconds: BEST_QUALITY_WINDOW_SECONDS,
+        segmentation: "sentence-window",
+      }
+    case "automatic":
+    case "balanced":
+      return {
+        batchSize: DEFAULT_CUE_BATCH_SIZE,
+        baseLookaheadSeconds: DEFAULT_LOOKAHEAD_SECONDS,
+        windowSeconds: DEFAULT_WINDOW_SECONDS,
+        segmentation: "cue",
+      }
+  }
+}
+
+function getCurrentYouTubeVideoId(): string {
+  try {
+    const url = new URL(window.location.href)
+    const watchId = url.searchParams.get("v")?.trim()
+    if (watchId) return watchId
+
+    const [kind, id] = url.pathname.split("/").filter(Boolean)
+    if ((kind === "shorts" || kind === "embed") && id) return id
+  } catch {
+    // Fall through to unknown video namespace.
+  }
+
+  return "unknown-video"
+}
+
+function stableHash(value: string): string {
+  let hash = 5381
+  for (let index = 0; index < value.length; index += 1) {
+    hash = ((hash << 5) + hash) ^ value.charCodeAt(index)
+  }
+  return (hash >>> 0).toString(36)
+}
+
+function buildTrackCacheContext(track: YouTubeCaptionTrack): YouTubeCueCacheContext {
+  const parts = [
+    getCurrentYouTubeVideoId(),
+    track.vssId ?? "",
+    track.languageCode ?? "",
+    track.kind ?? "",
+    String(track.isTranslatable ?? false),
+  ]
+
+  if (track.baseUrl) {
+    try {
+      const url = new URL(track.baseUrl, window.location.origin)
+      parts.push(
+        url.searchParams.get("v") ?? "",
+        url.searchParams.get("lang") ?? "",
+        url.searchParams.get("name") ?? "",
+        url.searchParams.get("kind") ?? "",
+        url.pathname,
+      )
+    } catch {
+      parts.push(track.baseUrl)
+    }
+  }
+
+  return {
+    videoId: getCurrentYouTubeVideoId(),
+    trackHash: stableHash(parts.join("|")),
+  }
+}
+
+function makeYouTubeCueCacheKey(
+  text: string,
+  targetLang: string,
+  serviceMode: ServiceMode,
+  context: YouTubeCueCacheContext | null,
+): string {
+  const videoId = context?.videoId ?? getCurrentYouTubeVideoId()
+  const trackHash = context?.trackHash ?? "dom"
+  return ["youtube", videoId, trackHash, targetLang, serviceMode, text].join("|")
+}
+
+function buildSubtitleTranslationContext(
+  cues: YouTubeTimedCue[],
+  track: YouTubeCaptionTrack | null,
+): YouTubeSubtitleTranslationContext {
+  const transcriptSample = cues
+    .slice(0, 12)
+    .map((cue) => cue.text)
+    .join(" / ")
+    .slice(0, 900)
+  const language = normalizeLanguageCode(track?.languageCode) || "unknown"
+  const title = normalizeYouTubeVideoTitle(document.title) ?? "YouTube video"
+
+  return {
+    pageTitle: title,
+    pageUrl: window.location.href,
+    contentSummary: `YouTube subtitle translation. Source caption language: ${language}. Preserve timing-friendly line breaks while restructuring subtitle fragments into natural ${track?.kind === "asr" ? "ASR-aware" : "human-caption"} sentences. Transcript sample: ${transcriptSample}`,
+  }
+}
+
+function normalizeCaptionTrackHint(value: string): string {
+  return value
+    .trim()
+    .toLowerCase()
+    .replace(/[_-]/g, " ")
+    .replace(/\s+/g, " ")
+}
+
+function getCaptionTrackDisplayName(track: YouTubeCaptionTrack): string {
+  return track.name?.simpleText
+    ?? track.name?.runs?.map((run) => run.text ?? "").join("")
+    ?? ""
+}
+
+function getSelectedCaptionTrackHint(): string | null {
+  const selectedMenuItem = document.querySelector<HTMLElement>([
+    ".ytp-caption-menuitem[aria-checked='true'] .ytp-menuitem-label",
+    ".ytp-caption-menuitem[aria-selected='true'] .ytp-menuitem-label",
+    ".ytp-menuitem[aria-checked='true'][role='menuitemradio'] .ytp-menuitem-label",
+  ].join(", "))
+  const hint = normalizeCaptionTrackHint(selectedMenuItem?.textContent ?? "")
+  return hint || null
+}
+
+function scoreSelectedCaptionTrack(track: YouTubeCaptionTrack, selectedHint: string | null): number {
+  if (!selectedHint) return 0
+  const candidates = [
+    normalizeLanguageCode(track.languageCode),
+    normalizeCaptionTrackHint(track.vssId ?? ""),
+    normalizeCaptionTrackHint(getCaptionTrackDisplayName(track)),
+  ].filter(Boolean)
+
+  return candidates.some((candidate) => candidate === selectedHint || candidate.includes(selectedHint))
+    ? 100
+    : 0
+}
+
 function selectPreferredTrack(
   tracks: YouTubeCaptionTrack[],
   targetLang: string,
 ): YouTubeCaptionTrack | null {
   const normalizedTarget = normalizeLanguageCode(targetLang)
+  const selectedHint = getSelectedCaptionTrackHint()
 
   return [...tracks]
     .filter((track) => typeof track.baseUrl === "string")
     .sort((left, right) => {
       const leftScore
-        = (left.kind !== "asr" ? 40 : 5)
+        = scoreSelectedCaptionTrack(left, selectedHint)
+          + (left.kind !== "asr" ? 40 : 5)
           + (normalizeLanguageCode(left.languageCode) !== normalizedTarget ? 20 : -15)
           + (left.isTranslatable ? 10 : 0)
       const rightScore
-        = (right.kind !== "asr" ? 40 : 5)
+        = scoreSelectedCaptionTrack(right, selectedHint)
+          + (right.kind !== "asr" ? 40 : 5)
           + (normalizeLanguageCode(right.languageCode) !== normalizedTarget ? 20 : -15)
           + (right.isTranslatable ? 10 : 0)
       return rightScore - leftScore
@@ -389,6 +620,79 @@ function getActiveTimedCues(cues: YouTubeTimedCue[], currentTime: number): YouTu
   return nearest ? [nearest] : []
 }
 
+function clampLookaheadSeconds(value: number): number {
+  return Math.max(MIN_LOOKAHEAD_SECONDS, Math.min(MAX_LOOKAHEAD_SECONDS, Math.round(value)))
+}
+
+function getCueDensityPerSecond(cues: YouTubeTimedCue[], currentTime: number): number {
+  const sampleStart = Math.max(0, currentTime - 5)
+  const sampleEnd = currentTime + 60
+  const cueCount = cues.filter((cue) => cue.endTime >= sampleStart && cue.startTime <= sampleEnd).length
+  return cueCount / Math.max(1, sampleEnd - sampleStart)
+}
+
+function getNetworkLookaheadMultiplier(): number {
+  const connection = (navigator as Navigator & {
+    connection?: { effectiveType?: string; downlink?: number }
+  }).connection
+  const effectiveType = connection?.effectiveType ?? ""
+  const downlink = typeof connection?.downlink === "number" ? connection.downlink : null
+
+  if (/slow-2g|2g/.test(effectiveType) || downlink !== null && downlink < 1.2) {
+    return 0.65
+  }
+  if (/4g/.test(effectiveType) || downlink !== null && downlink >= 8) {
+    return 1.2
+  }
+  return 1
+}
+
+function resolveAdaptiveLookaheadSeconds(
+  video: HTMLVideoElement,
+  cues: YouTubeTimedCue[],
+  strategy: YouTubeSubtitleStrategy,
+): number {
+  const playbackRate = Number.isFinite(video.playbackRate) && video.playbackRate > 0
+    ? video.playbackRate
+    : 1
+  const density = getCueDensityPerSecond(cues, video.currentTime)
+  const playbackMultiplier = playbackRate >= 1.25 ? 1.4 : playbackRate <= 0.75 ? 0.8 : 1
+  const densityMultiplier = density >= 0.8 ? 0.7 : density <= 0.18 ? 1.25 : 1
+
+  return clampLookaheadSeconds(
+    strategy.baseLookaheadSeconds
+    * playbackMultiplier
+    * densityMultiplier
+    * getNetworkLookaheadMultiplier(),
+  )
+}
+
+function getTimedCueWindowIndex(cue: YouTubeTimedCue, strategy: YouTubeSubtitleStrategy): number {
+  return Math.max(0, Math.floor(cue.startTime / strategy.windowSeconds))
+}
+
+function makeTimedCueWindowKey(
+  cue: YouTubeTimedCue,
+  targetLang: string,
+  serviceMode: ServiceMode,
+  context: YouTubeCueCacheContext | null,
+  strategy: YouTubeSubtitleStrategy,
+): string {
+  const videoId = context?.videoId ?? getCurrentYouTubeVideoId()
+  const trackHash = context?.trackHash ?? "dom"
+  return ["youtube-window", videoId, trackHash, targetLang, serviceMode, getTimedCueWindowIndex(cue, strategy)].join("|")
+}
+
+function getLookaheadWindowCues(
+  cues: YouTubeTimedCue[],
+  currentTime: number,
+  lookaheadSeconds: number,
+): YouTubeTimedCue[] {
+  const start = Math.max(0, currentTime - ACTIVE_CUE_TOLERANCE_SECONDS)
+  const end = currentTime + lookaheadSeconds
+  return cues.filter((cue) => cue.endTime >= start && cue.startTime <= end)
+}
+
 function updateRootDataset(
   rootContainer: HTMLElement,
   options: {
@@ -408,43 +712,168 @@ function updateRootDataset(
   }
 }
 
+function hasSentenceBoundary(text: string): boolean {
+  return /[.!?。！？…][\]})'"”’»）】》]*$/.test(text.trim())
+}
+
+function buildCueTranslationUnits(cues: YouTubeTimedCue[]): YouTubeSubtitleTranslationUnit[] {
+  const units = new Map<string, YouTubeTimedCue[]>()
+  cues.forEach((cue) => {
+    const existing = units.get(cue.text)
+    if (existing) {
+      existing.push(cue)
+    } else {
+      units.set(cue.text, [cue])
+    }
+  })
+  return Array.from(units.entries()).map(([text, unitCues]) => ({ text, cues: unitCues }))
+}
+
+function buildSentenceWindowTranslationUnits(cues: YouTubeTimedCue[]): YouTubeSubtitleTranslationUnit[] {
+  const sortedCues = [...cues].sort((left, right) => left.startTime - right.startTime)
+  const units: YouTubeSubtitleTranslationUnit[] = []
+  let currentCues: YouTubeTimedCue[] = []
+  let currentText = ""
+
+  const flush = () => {
+    const text = normalizeYouTubeCaptionText(currentText)
+    if (text && currentCues.length > 0) {
+      units.push({ text, cues: currentCues })
+    }
+    currentCues = []
+    currentText = ""
+  }
+
+  for (const cue of sortedCues) {
+    const normalized = normalizeYouTubeCaptionText(cue.text)
+    if (!normalized) continue
+
+    const previousCue = currentCues.at(-1)
+    const gapSeconds = previousCue ? cue.startTime - previousCue.endTime : 0
+    const nextText = currentText ? `${currentText} ${normalized}` : normalized
+    const shouldStartNewUnit = currentCues.length > 0 && (
+      gapSeconds > 1.2
+      || currentCues.length >= 4
+      || nextText.length > 180
+      || hasSentenceBoundary(currentText)
+    )
+
+    if (shouldStartNewUnit) {
+      flush()
+    }
+
+    currentCues.push(cue)
+    currentText = currentText ? `${currentText} ${normalized}` : normalized
+
+    if (hasSentenceBoundary(currentText)) {
+      flush()
+    }
+  }
+
+  flush()
+  return units
+}
+
+function buildSubtitleTranslationUnits(
+  cues: YouTubeTimedCue[],
+  strategy: YouTubeSubtitleStrategy,
+): YouTubeSubtitleTranslationUnit[] {
+  return strategy.segmentation === "sentence-window"
+    ? buildSentenceWindowTranslationUnits(cues)
+    : buildCueTranslationUnits(cues)
+}
+
+async function translateCueBatch(
+  texts: string[],
+  targetLang: string,
+  serviceMode: ServiceMode,
+  context?: YouTubeSubtitleTranslationContext,
+): Promise<string[] | null> {
+  try {
+    const result = await translateTexts({
+      texts,
+      targetLang,
+      serviceMode,
+      task: "translate",
+      ...(serviceMode === "best_quality" && context ? { context } : {}),
+      ...(serviceMode === "best_quality"
+        ? { customSystemPrompt: "Translate YouTube subtitles naturally for learners. Reconstruct fragmented captions into fluent target-language subtitle lines while preserving timing alignment and avoiding extra commentary." }
+        : {}),
+    })
+
+    return result.ok ? result.translations : null
+  } catch {
+    return null
+  }
+}
+
 async function translateCueBatches(
   cues: YouTubeTimedCue[],
   targetLang: string,
+  serviceMode: ServiceMode,
+  cacheContext: YouTubeCueCacheContext | null,
+  translationContext: YouTubeSubtitleTranslationContext,
   cacheGet: YouTubeHybridSessionDeps["cacheGet"],
   cachePut: YouTubeHybridSessionDeps["cachePut"],
-): Promise<void> {
-  const uniqueTexts = Array.from(new Set(cues.map((cue) => cue.text)))
+): Promise<"ready" | "downgraded" | "failed"> {
+  const strategy = resolveSubtitleStrategy(serviceMode)
+  const translationUnits = buildSubtitleTranslationUnits(cues, strategy)
+  let downgraded = false
 
-  for (let index = 0; index < uniqueTexts.length; index += CUE_BATCH_SIZE) {
-    const batch = uniqueTexts.slice(index, index + CUE_BATCH_SIZE)
-    const uncached = batch.filter((text) => !cacheGet(`${text}|${targetLang}`))
-    if (uncached.length === 0) continue
-
-    const result = await translateTexts({
-      texts: uncached,
+  for (let index = 0; index < translationUnits.length; index += strategy.batchSize) {
+    const batch = translationUnits.slice(index, index + strategy.batchSize)
+    const uncachedUnits = batch.filter((unit) => unit.cues.some((cue) => !cacheGet(makeYouTubeCueCacheKey(
+      cue.text,
       targetLang,
-      task: "translate",
-    })
+      serviceMode,
+      cacheContext,
+    ))))
+    if (uncachedUnits.length === 0) continue
 
-    if (!result.ok) {
-      return
+    const uncachedTexts = uncachedUnits.map((unit) => unit.text)
+    let translations = await translateCueBatch(uncachedTexts, targetLang, serviceMode, translationContext)
+    if (!translations && serviceMode !== "fast") {
+      translations = await translateCueBatch(uncachedTexts, targetLang, "fast")
+      downgraded = translations !== null
     }
 
-    uncached.forEach((text, translationIndex) => {
-      const translation = result.translations[translationIndex]
+    if (!translations || translations.length < uncachedUnits.length) {
+      const recoveredTranslations: string[] = []
+      let recoveredWithDowngrade = false
+      for (const unit of uncachedUnits) {
+        let singleCueTranslation = await translateCueBatch([unit.text], targetLang, serviceMode, translationContext)
+        if (!singleCueTranslation && serviceMode !== "fast") {
+          singleCueTranslation = await translateCueBatch([unit.text], targetLang, "fast")
+          recoveredWithDowngrade = recoveredWithDowngrade || singleCueTranslation !== null
+        }
+        const translatedText = singleCueTranslation?.[0]
+        if (!translatedText) {
+          return "failed"
+        }
+        recoveredTranslations.push(translatedText)
+      }
+      translations = recoveredTranslations
+      downgraded = downgraded || recoveredWithDowngrade
+    }
+
+    uncachedUnits.forEach((unit, translationIndex) => {
+      const translation = translations[translationIndex]
       if (translation) {
-        cachePut(`${text}|${targetLang}`, translation)
+        unit.cues.forEach((cue) => {
+          cachePut(makeYouTubeCueCacheKey(cue.text, targetLang, serviceMode, cacheContext), translation)
+        })
       }
     })
   }
 
   cues.forEach((cue) => {
-    const translation = cacheGet(`${cue.text}|${targetLang}`)
+    const translation = cacheGet(makeYouTubeCueCacheKey(cue.text, targetLang, serviceMode, cacheContext))
     if (translation) {
       cue.translation = translation
     }
   })
+
+  return downgraded ? "downgraded" : "ready"
 }
 
 export function startYouTubeHybridSubtitleSession(
@@ -456,6 +885,7 @@ export function startYouTubeHybridSubtitleSession(
   }
 
   const anomalies = new Set<YouTubeCaptionAnomaly>()
+  const subtitleStrategy = resolveSubtitleStrategy(deps.serviceMode)
   const abortController = new AbortController()
   const pendingFallbackTranslations = new Set<string>()
   let cues: YouTubeTimedCue[] = []
@@ -465,6 +895,7 @@ export function startYouTubeHybridSubtitleSession(
   let lastDomText = ""
   let lastDomTextTimestamp = -Infinity
   let lastFallbackToken = 0
+  let activeTrackCacheContext: YouTubeCueCacheContext | null = null
 
   const recordAnomaly = (anomaly: YouTubeCaptionAnomaly) => {
     anomalies.add(anomaly)
@@ -472,6 +903,8 @@ export function startYouTubeHybridSubtitleSession(
 
   const refreshRootDataset = (status: string, source?: "timedtext" | "dom") => {
     updateRootDataset(deps.rootContainer, { anomalies, status, source })
+    deps.onStatusChange?.()
+    notifyTranscriptListeners()
   }
 
   const renderTimedTextCue = (): boolean => {
@@ -483,7 +916,12 @@ export function startYouTubeHybridSubtitleSession(
     }
 
     const translations = activeCues
-      .map((cue) => cue.translation ?? deps.cacheGet(`${cue.text}|${deps.targetLang}`))
+      .map((cue) => cue.translation ?? deps.cacheGet(makeYouTubeCueCacheKey(
+        cue.text,
+        deps.targetLang,
+        deps.serviceMode,
+        activeTrackCacheContext,
+      )))
       .filter((translation): translation is string => typeof translation === "string" && translation.trim().length > 0)
 
     if (translations.length !== activeCues.length) {
@@ -515,7 +953,7 @@ export function startYouTubeHybridSubtitleSession(
     lastDomText = sourceText
     lastDomTextTimestamp = now
 
-    const cacheKey = `${sourceText}|${deps.targetLang}`
+    const cacheKey = makeYouTubeCueCacheKey(sourceText, deps.targetLang, deps.serviceMode, null)
     const cached = deps.cacheGet(cacheKey)
     if (cached) {
       if (!hasMatchingTranslation(renderTarget, sourceText, cached)) {
@@ -538,6 +976,7 @@ export function startYouTubeHybridSubtitleSession(
       const result = await runInlineAction({
         text: sourceText,
         targetLang: deps.targetLang,
+        serviceMode: deps.serviceMode,
         task: "translate",
       })
 
@@ -571,23 +1010,155 @@ export function startYouTubeHybridSubtitleSession(
       return
     }
 
+    const activeTimedCues = getActiveTimedCues(cues, video.currentTime)
+    if (activeTimedCues.length > 0) {
+      void ensureLookaheadTranslation(activeTrack).then((status) => {
+        if (!stopped && status === "ready") {
+          renderCurrentCue()
+        }
+      })
+      refreshRootDataset("prefetching", "timedtext")
+      return
+    }
+
+    if (cues.length > 0) {
+      void ensureLookaheadTranslation(activeTrack)
+    }
+
     const fallbackSourceText = deps.getDomCaptionText(getRenderTarget(deps.rootContainer)).trim()
     if (!fallbackSourceText || fallbackSourceText.length < 2) {
       clearRenderedTranslation(deps.rootContainer)
-      refreshRootDataset(cues.length > 0 ? "ready" : "dom-fallback")
+      refreshRootDataset(cues.length > 0 ? "ready" : anomalies.has("missing-track") ? "no-captions" : "dom-fallback")
       return
     }
 
     void renderDomFallback()
   }
 
+  let activeTrackBaseUrl: string | null = null
+  let activeTrack: YouTubeCaptionTrack | null = null
+  let trackRefreshInFlight: Promise<void> | null = null
+  const translatedWindowKeys = new Set<string>()
+  const pendingWindowKeys = new Set<string>()
+
+  const readTranscriptSnapshot = (): YouTubeTranscriptSnapshot => {
+    const activeIndex = cues.findIndex((cue) =>
+      cue.startTime - ACTIVE_CUE_TOLERANCE_SECONDS <= video.currentTime
+      && video.currentTime <= cue.endTime + ACTIVE_CUE_TOLERANCE_SECONDS,
+    )
+
+    return {
+      available: cues.length > 0,
+      title: getYouTubeVideoNoteTitle(),
+      pageUrl: window.location.href,
+      language: normalizeLanguageCode(activeTrack?.languageCode) || null,
+      currentTime: video.currentTime,
+      activeIndex,
+      cues: cues.map((cue, index) => ({
+        id: `${Math.round(cue.startTime * 1000)}-${index}`,
+        startMs: Math.max(0, Math.round(cue.startTime * 1000)),
+        endMs: Math.max(0, Math.round(cue.endTime * 1000)),
+        text: cue.text,
+        ...(cue.translation ?? deps.cacheGet(makeYouTubeCueCacheKey(
+          cue.text,
+          deps.targetLang,
+          deps.serviceMode,
+          activeTrackCacheContext,
+        )) ? {
+            translation: cue.translation ?? deps.cacheGet(makeYouTubeCueCacheKey(
+              cue.text,
+              deps.targetLang,
+              deps.serviceMode,
+              activeTrackCacheContext,
+            )),
+          } : {}),
+      })),
+    }
+  }
+
+  activeTranscriptSnapshotReader = readTranscriptSnapshot
   refreshRootDataset("starting")
 
-  let activeTrackBaseUrl: string | null = null
-  let trackRefreshInFlight: Promise<void> | null = null
+  const ensureLookaheadTranslation = async (track: YouTubeCaptionTrack | null): Promise<"ready" | "pending" | "failed"> => {
+    if (stopped || cues.length === 0 || !activeTrackCacheContext) return "ready"
+
+    const lookaheadSeconds = resolveAdaptiveLookaheadSeconds(video, cues, subtitleStrategy)
+    deps.rootContainer.dataset.astraCaptionLookaheadSeconds = String(lookaheadSeconds)
+    deps.rootContainer.dataset.astraCaptionWindowSeconds = String(subtitleStrategy.windowSeconds)
+
+    const windowCues = getLookaheadWindowCues(cues, video.currentTime, lookaheadSeconds)
+    if (windowCues.length === 0) return "ready"
+
+    const windowKeys = Array.from(new Set(windowCues.map((cue) => makeTimedCueWindowKey(
+      cue,
+      deps.targetLang,
+      deps.serviceMode,
+      activeTrackCacheContext,
+      subtitleStrategy,
+    ))))
+
+    const translationCues = cues.filter((cue) => windowKeys.includes(makeTimedCueWindowKey(
+      cue,
+      deps.targetLang,
+      deps.serviceMode,
+      activeTrackCacheContext,
+      subtitleStrategy,
+    )))
+    const uncachedCues = translationCues.filter((cue) => !deps.cacheGet(makeYouTubeCueCacheKey(
+      cue.text,
+      deps.targetLang,
+      deps.serviceMode,
+      activeTrackCacheContext,
+    )))
+
+    if (uncachedCues.length === 0) {
+      windowKeys.forEach((key) => translatedWindowKeys.add(key))
+      deps.rootContainer.dataset.astraCaptionCachedWindows = String(translatedWindowKeys.size)
+      return "ready"
+    }
+
+    const pendingKey = windowKeys.join("::")
+    if (pendingWindowKeys.has(pendingKey)) {
+      return "pending"
+    }
+
+    const expectedTrackBaseUrl = activeTrackBaseUrl
+    pendingWindowKeys.add(pendingKey)
+    refreshRootDataset("prefetching", "timedtext")
+
+    try {
+      const translationStatus = await translateCueBatches(
+        uncachedCues,
+        deps.targetLang,
+        deps.serviceMode,
+        activeTrackCacheContext,
+        buildSubtitleTranslationContext(translationCues, track),
+        deps.cacheGet,
+        deps.cachePut,
+      )
+
+      if (stopped || expectedTrackBaseUrl !== activeTrackBaseUrl) return "pending"
+      if (translationStatus === "failed") {
+        recordAnomaly("translation-failed")
+        refreshRootDataset("translation-failed", "timedtext")
+        return "failed"
+      }
+      if (translationStatus === "downgraded") {
+        recordAnomaly("translation-downgraded")
+      }
+
+      windowKeys.forEach((key) => translatedWindowKeys.add(key))
+      deps.rootContainer.dataset.astraCaptionCachedWindows = String(translatedWindowKeys.size)
+      return "ready"
+    } finally {
+      pendingWindowKeys.delete(pendingKey)
+    }
+  }
 
   const loadTimedTextTrack = async (track: YouTubeCaptionTrack): Promise<void> => {
     activeTrackBaseUrl = track.baseUrl ?? null
+    activeTrack = track
+    activeTrackCacheContext = buildTrackCacheContext(track)
 
     if (delayedTrackTimer) {
       clearTimeout(delayedTrackTimer)
@@ -621,9 +1192,10 @@ export function startYouTubeHybridSubtitleSession(
       cues = nextCues
       lastFallbackToken += 1
       refreshRootDataset("prefetching")
-      await translateCueBatches(cues, deps.targetLang, deps.cacheGet, deps.cachePut)
+      const translationStatus = await ensureLookaheadTranslation(track)
 
       if (stopped || activeTrackBaseUrl !== track.baseUrl) return
+      if (translationStatus === "failed") return
       renderCurrentCue()
     } catch (error) {
       if (stopped || abortController.signal.aborted || error instanceof DOMException && error.name === "AbortError") {
@@ -639,6 +1211,8 @@ export function startYouTubeHybridSubtitleSession(
     if (!nextTrack?.baseUrl) {
       if (activeTrackBaseUrl !== null || cues.length > 0) {
         activeTrackBaseUrl = null
+        activeTrack = null
+        activeTrackCacheContext = null
         cues = []
         lastFallbackToken += 1
         clearRenderedTranslation(deps.rootContainer)
@@ -688,6 +1262,10 @@ export function startYouTubeHybridSubtitleSession(
       }
       mutationObserver?.disconnect()
       mutationObserver = null
+      if (activeTranscriptSnapshotReader === readTranscriptSnapshot) {
+        activeTranscriptSnapshotReader = null
+        notifyTranscriptListeners()
+      }
       video.removeEventListener("timeupdate", playbackListener)
       video.removeEventListener("seeking", playbackListener)
       video.removeEventListener("seeked", playbackListener)
@@ -697,7 +1275,7 @@ export function startYouTubeHybridSubtitleSession(
 
 export const youtubePlatform: VideoPlatformConfig = {
   id: "youtube",
-  hostnames: ["www.youtube.com", "m.youtube.com"],
+  hostnames: ["www.youtube.com", "m.youtube.com", "www.youtube-nocookie.com", "youtube-nocookie.com"],
   subtitleRendering: nativeCaptionLineRenderingRule("youtube"),
   captionContainerSelector: [
     ".ytp-caption-window-container",
@@ -709,6 +1287,7 @@ export const youtubePlatform: VideoPlatformConfig = {
   navigationEvent: "yt-navigate-finish",
   isVideoPage: () =>
     window.location.pathname === "/watch"
-    || window.location.pathname.startsWith("/shorts/"),
+    || window.location.pathname.startsWith("/shorts/")
+    || window.location.pathname.startsWith("/embed/"),
   extractCaptionText: extractYouTubeCaptionText,
 }

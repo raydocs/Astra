@@ -110,12 +110,28 @@ function extractScriptStringValue(scriptText: string, marker: string): string | 
   return null
 }
 
+function extractYtcfgPlayerResponse(config: unknown): unknown {
+  const ytcfg = config as {
+    PLAYER_RESPONSE?: unknown
+    player_response?: string
+    PLAYER_VARS?: { player_response?: string }
+  } | null
+
+  if (ytcfg?.PLAYER_RESPONSE) return ytcfg.PLAYER_RESPONSE
+
+  const rawPlayerResponse = ytcfg?.PLAYER_VARS?.player_response ?? ytcfg?.player_response
+  return parseYouTubePlayerResponseJson(rawPlayerResponse)
+}
+
 function readScriptPlayerResponse(document: Document): unknown {
   for (const script of Array.from(document.scripts)) {
     const text = script.textContent ?? ""
 
     const initialResponse = extractScriptJsonObject(text, "ytInitialPlayerResponse")
     if (initialResponse) return initialResponse
+
+    const ytcfgResponse = extractYtcfgPlayerResponse(extractScriptJsonObject(text, "ytcfg.set"))
+    if (ytcfgResponse) return ytcfgResponse
 
     const rawPlayerResponse = extractScriptStringValue(text, "player_response:")
     const parsed = parseYouTubePlayerResponseJson(rawPlayerResponse ?? undefined)
@@ -128,10 +144,17 @@ function readScriptPlayerResponse(document: Document): unknown {
 function readYouTubePlayerResponse(): unknown {
   const win = window as Window & {
     ytInitialPlayerResponse?: unknown
+    ytcfg?: { data_?: unknown, get?: (key: string) => unknown }
     ytplayer?: { config?: { args?: { player_response?: string } } }
   }
 
   if (win.ytInitialPlayerResponse) return win.ytInitialPlayerResponse
+
+  const globalPlayerResponse = win.ytcfg?.get?.("PLAYER_RESPONSE")
+  if (globalPlayerResponse) return globalPlayerResponse
+
+  const globalYtcfgResponse = extractYtcfgPlayerResponse(win.ytcfg?.data_)
+  if (globalYtcfgResponse) return globalYtcfgResponse
 
   const parsedGlobalResponse = parseYouTubePlayerResponseJson(win.ytplayer?.config?.args?.player_response)
   if (parsedGlobalResponse) return parsedGlobalResponse

@@ -225,7 +225,7 @@ describe("runInlineAction", () => {
     expect(translateTextsMock).toHaveBeenCalledTimes(2)
   })
 
-  it("returns an inline error when the provider reports a typed failure", async () => {
+  it("returns membership-safe copy when the provider reports a typed failure", async () => {
     buildInlineTranslationContextMock.mockReturnValue({
       pageTitle: "Astra Docs",
     })
@@ -245,11 +245,11 @@ describe("runInlineAction", () => {
 
     expect(result).toEqual({
       ok: false,
-      message: "rate limit",
+      message: "Astra is temporarily busy. Retry in a moment.",
     })
   })
 
-  it("returns an inline error when the provider returns an empty translations array", async () => {
+  it("returns membership-safe copy when the provider returns an empty translations array", async () => {
     buildInlineTranslationContextMock.mockReturnValue({
       pageTitle: "Astra Docs",
     })
@@ -266,11 +266,11 @@ describe("runInlineAction", () => {
 
     expect(result).toEqual({
       ok: false,
-      message: "Empty response from provider.",
+      message: "Astra is temporarily busy. Retry in a moment.",
     })
   })
 
-  it("surfaces thrown provider errors as inline action failures", async () => {
+  it("surfaces thrown provider errors as membership-safe inline action failures", async () => {
     buildInlineTranslationContextMock.mockReturnValue({
       pageTitle: "Astra Docs",
     })
@@ -284,7 +284,7 @@ describe("runInlineAction", () => {
 
     expect(result).toEqual({
       ok: false,
-      message: "network down",
+      message: "Your membership is active. Astra is reconnecting.",
     })
   })
 

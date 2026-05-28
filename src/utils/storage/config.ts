@@ -174,6 +174,9 @@ export async function saveConfig(input: AstraConfigInput): Promise<AstraConfig> 
     ...(parsedInput.explainMode !== undefined
       ? { explainMode: parsedInput.explainMode }
       : {}),
+    ...(parsedInput.serviceMode !== undefined
+      ? { serviceMode: parsedInput.serviceMode }
+      : {}),
     ...(parsedInput.explanationGlossary !== undefined
       ? { explanationGlossary: parsedInput.explanationGlossary }
       : {}),

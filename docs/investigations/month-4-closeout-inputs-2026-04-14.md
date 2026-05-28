@@ -10,8 +10,8 @@ This file is the closeout-ready Month 4 summary for video / subtitle work. It sh
 |------|--------|---------|
 | `implemented` | **Yes** | Inventory/claim boundaries, YouTube+Bilibili hardening, and subtitle-file learning-chain continuity are landed. |
 | `proved` | **Yes** | Fresh browser-backed artifacts exist for YouTube, Bilibili, subtitle-file, and subtitle-learning-chain continuity. |
-| `gate-ready` | **No** | Month 4 proofs are still optional evidence, not required Gate 2 release lanes. |
-| `closeout verdict` | **`pass-with-carry`** | Month 4 is real and replayable, but proof breadth and release policy stay intentionally narrow. |
+| `gate-ready` | **Superseded by current release policy for YouTube** | This historical closeout predates the current `youtube-proof` and `youtube-holdout` required lanes. YouTube proof is now required; Bilibili, generic video, production-watch-page breadth, and non-YouTube adapters remain scoped. |
+| `closeout verdict` | **`pass-with-scoped-claims` under current policy** | Month 4 YouTube proof is release-critical now, but proof breadth and release policy stay intentionally narrow. |
 
 ## Fresh replayable artifacts (minimum set satisfied)
 
@@ -45,21 +45,21 @@ These four artifacts satisfy the Month 4 requirement that the repo can point to 
 
 Safe Month 4 statement:
 
-> Astra has a supported best-effort YouTube subtitle path, a narrower best-effort Bilibili adapter, and a separate experimental subtitle-file reader path with replayable learning-loop continuity. Other in-repo video adapters remain code-only and should not be claimed as supported.
+> Astra has a supported best-effort YouTube subtitle path, a narrower best-effort Bilibili adapter, and a separate controlled SRT/VTT subtitle-file reader path with replayable learning-loop continuity. Other in-repo video adapters remain code-only and should not be claimed as supported.
 
 Do not say:
 
 - “Astra supports video broadly.”
 - “All major video platforms are supported.”
 - “Subtitle-file proof means in-page video parity.”
-- “Month 4 video/subtitle proofs are required release gates.”
+- “Bilibili, generic video, or all in-repo adapters are required release gates / supported with YouTube-level confidence.”
 
 ## Recommended closeout language
 
 - Month 4 video / subtitle work is **implemented**.
 - Month 4 video / subtitle work is **proved enough for sequencing**.
-- Month 4 video / subtitle work is **not gate-ready as required release policy**.
-- Closeout should remain **`pass-with-carry`** until / unless a required CI-owned video/subtitle lane exists and production-watch-page validation is stronger than fixture-only proof.
+- Month 4 YouTube proof/holdout work is **gate-ready under current release policy**.
+- Closeout should remain **`pass-with-scoped-claims`** until / unless broader adapter lanes exist and production-watch-page validation is stronger than fixture-only proof.
 
 ## Pointers
 

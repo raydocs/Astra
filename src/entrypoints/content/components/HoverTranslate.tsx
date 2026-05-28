@@ -11,6 +11,11 @@ import { findClosestTextBlock, findContentRoot } from "@/utils/dom/traversal"
 import { readConfig } from "@/utils/storage/config"
 import { getDueVocabularyCount, hasVocabularyEntryByText, saveVocabularyEntry } from "@/utils/storage/vocabulary"
 import { isPageAccessAllowedForUrl } from "@/utils/extension/page-permissions"
+import { ensureAstraDeviceIdentity, readAstraSession } from "@/utils/storage/auth"
+import { submitAstraSupportReport } from "@/utils/astra/support"
+import { buildSupportBundle } from "@/utils/support-bundle"
+import { buildErrorRecoveryCardViewModel } from "@/utils/error-recovery"
+import { recordLearningLoopEvent } from "@/utils/learning-loop-events"
 
 import {
   getInteractionSuppressionState,
@@ -68,6 +73,31 @@ function getSelectionContext(text: string): string {
     : text
 }
 
+function buildHoverReportFileName(generatedAt: string): string {
+  const stamp = generatedAt
+    .replace(/[:.]/g, "-")
+    .replace(/Z$/, "z")
+  return `astra-hover-report-${stamp}.json`
+}
+
+function downloadLocalJsonFile(fileName: string, payload: unknown): void {
+  if (typeof URL.createObjectURL !== "function") {
+    throw new Error("Local JSON export is unavailable in this browser.")
+  }
+
+  const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json;charset=utf-8" })
+  const url = URL.createObjectURL(blob)
+
+  try {
+    const anchor = document.createElement("a")
+    anchor.href = url
+    anchor.download = fileName
+    anchor.click()
+  } finally {
+    URL.revokeObjectURL?.(url)
+  }
+}
+
 function isEventInsideHoverOverlay(event: Event): boolean {
   const host = document.getElementById(HOST_ID)
   if (!host) return false
@@ -112,6 +142,7 @@ function HoverTranslateApp() {
   const [saveStatus, setSaveStatus] = useState<SaveStatus>("idle")
   const [dueCount, setDueCount] = useState<number | null>(null)
   const [existingSaved, setExistingSaved] = useState(false)
+  const [supportReportStatus, setSupportReportStatus] = useState<string | null>(null)
   const savedLookupSeq = useRef(0)
 
   overlayVisibleRef.current = overlay.visible
@@ -134,6 +165,7 @@ function HoverTranslateApp() {
       setSaveStatus("idle")
       setDueCount(null)
       setExistingSaved(false)
+      setSupportReportStatus(null)
       setOverlay((current) => ({
         ...current,
         visible: false,
@@ -337,6 +369,7 @@ function HoverTranslateApp() {
           savedLookupSeq.current += 1
           setExistingSaved(false)
           setDueCount(null)
+          setSupportReportStatus(null)
           setOverlay({
             visible: true,
             ...getOverlayPosition(rect),
@@ -357,6 +390,7 @@ function HoverTranslateApp() {
           const result = await runInlineAction({
             text: block.text,
             targetLang: resolved.targetLang,
+            serviceMode: config.serviceMode,
             task: "translate",
             selectionContext: getSelectionContext(block.text),
             contextElement: block.element,
@@ -532,6 +566,83 @@ function HoverTranslateApp() {
     }))
   }
 
+  const handleReportHoverIssue = async () => {
+    if (overlay.status !== "error") return
+
+    setSupportReportStatus("Preparing metadata-only report…")
+    try {
+      const generatedAt = new Date().toISOString()
+      const [session, device, config] = await Promise.all([
+        readAstraSession(),
+        ensureAstraDeviceIdentity(),
+        readConfig(),
+      ])
+      const bundle = buildSupportBundle({
+        extensionVersion: browser.runtime.getManifest?.()?.version ?? "0.1.0",
+        browser: device.browserFamily,
+        os: device.platform,
+        locale: typeof navigator === "undefined" ? "unknown" : navigator.language,
+        featureSurface: "selection",
+        action: "report_hover_translation_error",
+        issueCategory: "translation_quality",
+        errorCategory: "hover_translation_failed",
+        lastErrorCategory: "hover_translation_failed",
+        runtimeSurface: "content_hover_translate",
+        timestamp: generatedAt,
+        hostname: window.location.hostname,
+        privacyMode: config.privacyMode,
+        membershipState: session?.plan ?? "unknown",
+        userConsent: true,
+        userMessageIncluded: false,
+        contactIncluded: false,
+      })
+      const deviceId = session?.deviceId ?? device.deviceId
+      const remoteSession = session?.identityMode === "authenticated"
+        && session.sessionToken
+        && session.relayBaseURL
+        && deviceId
+        ? session
+        : null
+
+      if (remoteSession) {
+        try {
+          const result = await submitAstraSupportReport({
+            baseURL: remoteSession.relayBaseURL,
+            sessionToken: remoteSession.sessionToken,
+            deviceId,
+            bundle,
+          })
+          recordLearningLoopEvent("support_report_submitted", {
+            source: "content_hover_translate",
+            reportId: result.report.reportId,
+            issueCategory: "translation_quality",
+            featureSurface: "selection",
+            knownIssueMatched: Boolean(result.report.knownIssue),
+          })
+          if (result.report.knownIssue) {
+            recordLearningLoopEvent("known_issue_viewed", {
+              source: "content_hover_translate",
+              issueId: result.report.knownIssue.issueId,
+              status: result.report.knownIssue.status,
+              surface: result.report.knownIssue.featureSurface,
+            })
+          }
+          setSupportReportStatus("Metadata report submitted. No selected text, page text, or URL path was included.")
+          return
+        } catch {
+          downloadLocalJsonFile(buildHoverReportFileName(generatedAt), bundle)
+          setSupportReportStatus("Support report submission failed; downloaded metadata-only JSON instead. No selected text, page text, or URL path was included.")
+          return
+        }
+      }
+
+      downloadLocalJsonFile(buildHoverReportFileName(generatedAt), bundle)
+      setSupportReportStatus("Downloaded metadata-only report JSON. No selected text, page text, or URL path was included.")
+    } catch (error) {
+      setSupportReportStatus(error instanceof Error ? error.message : "Report export failed.")
+    }
+  }
+
   const handleSave = async () => {
     if (!currentSourceText.current || !overlay.translation) return
     if (saveStatus === "saving") return
@@ -579,6 +690,9 @@ function HoverTranslateApp() {
 
   if (!overlay.visible) return null
 
+  const errorRecovery = overlay.status === "error"
+    ? buildErrorRecoveryCardViewModel("network_offline")
+    : null
   const fontScale = overlay.fontScale
   const panelStyle: React.CSSProperties = {
     ...createOverlayCardStyle(fontScale),
@@ -687,7 +801,49 @@ function HoverTranslateApp() {
         </div>
       )}
       {overlay.status === "pending" && <span style={{ color: OVERLAY_STYLE_TOKENS.textHint, marginTop: Number.parseFloat(overlayPx(4, fontScale)), display: "inline-block" }}>⋯</span>}
-      {overlay.status === "error" && <span style={{ color: OVERLAY_STYLE_TOKENS.warning }}>⚠ {overlay.error}</span>}
+      {overlay.status === "error" && (
+        <div style={{ marginTop: Number.parseFloat(overlayPx(6, fontScale)) }}>
+          {errorRecovery ? (
+            <div data-testid="hover-error-recovery-card" style={{ border: `1px solid ${OVERLAY_STYLE_TOKENS.warning}`, borderRadius: Number.parseFloat(overlayPx(10, fontScale)), padding: Number.parseFloat(overlayPx(10, fontScale)), background: OVERLAY_STYLE_TOKENS.surfaceSubtle }}>
+              <div style={{ color: OVERLAY_STYLE_TOKENS.warning, fontWeight: 700 }}>⚠ {errorRecovery.whatHappenedCopy}</div>
+              <div style={{ color: OVERLAY_STYLE_TOKENS.textSecondary, fontSize: Number.parseFloat(overlayPx(11, fontScale)), marginTop: Number.parseFloat(overlayPx(6, fontScale)) }}>
+                Next step: {errorRecovery.nextActionLabels.join(" or ") || "Try again"}. You can also report this hover.
+              </div>
+              <div style={{ color: OVERLAY_STYLE_TOKENS.textHint, fontSize: Number.parseFloat(overlayPx(11, fontScale)), marginTop: Number.parseFloat(overlayPx(4, fontScale)) }}>
+                {errorRecovery.progressCopy}
+              </div>
+            </div>
+          ) : null}
+          <button
+            type="button"
+            data-testid="hover-report-error-button"
+            style={{
+              ...actionButtonStyle,
+              display: "block",
+              marginTop: Number.parseFloat(overlayPx(8, fontScale)),
+              background: OVERLAY_STYLE_TOKENS.surfaceSubtle,
+              color: OVERLAY_STYLE_TOKENS.textSecondary,
+              borderColor: OVERLAY_STYLE_TOKENS.borderStrong,
+            }}
+            onClick={() => void handleReportHoverIssue()}
+          >
+            Report this hover
+          </button>
+          {supportReportStatus ? (
+            <div
+              role="status"
+              data-testid="hover-report-status"
+              style={{
+                marginTop: Number.parseFloat(overlayPx(6, fontScale)),
+                color: OVERLAY_STYLE_TOKENS.textHint,
+                fontSize: Number.parseFloat(overlayPx(11, fontScale)),
+              }}
+            >
+              {supportReportStatus}
+            </div>
+          ) : null}
+        </div>
+      )}
       {overlay.status === "success" && (
         <>
           <div style={{

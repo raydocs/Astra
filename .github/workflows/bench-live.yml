@@ -17,6 +17,9 @@ on:
           - source-core
           - extension-core
           - learning-loop
+          - document-proof
+          - youtube-proof
+          - youtube-holdout
           - hover-selection
           - smoke
           - source
@@ -74,6 +77,12 @@ jobs:
             xvfb-run -a pnpm bench:live:lane:extension-core
           elif [ "$ASTRA_LIVE_LANE" = "learning-loop" ]; then
             xvfb-run -a pnpm bench:live:lane:learning-loop
+          elif [ "$ASTRA_LIVE_LANE" = "document-proof" ]; then
+            xvfb-run -a pnpm bench:live:lane:document-proof
+          elif [ "$ASTRA_LIVE_LANE" = "youtube-proof" ]; then
+            xvfb-run -a pnpm bench:live:lane:youtube-proof
+          elif [ "$ASTRA_LIVE_LANE" = "youtube-holdout" ]; then
+            xvfb-run -a pnpm bench:live:lane:youtube-holdout
           elif [ "$ASTRA_LIVE_LANE" = "hover-selection" ]; then
             xvfb-run -a pnpm bench:live:lane:hover-selection
           else

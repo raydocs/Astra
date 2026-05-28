@@ -36,6 +36,7 @@ describe("config storage", () => {
       inputTranslationMode: "replace",
       languageLevel: "intermediate",
       explainMode: "deep",
+      serviceMode: "automatic",
       explanationGlossary: [],
       privacyMode: false,
       provider: {
@@ -400,6 +401,7 @@ describe("config storage", () => {
       inputTranslationMode: "replace",
       languageLevel: "advanced",
       explainMode: "deep",
+      serviceMode: "automatic",
       explanationGlossary: [],
       privacyMode: true,
       provider: {
@@ -440,9 +442,9 @@ describe("config storage", () => {
 
     expect(summary.localOnlyFields).toEqual([
       "provider.apiKey",
-      "provider.relayBaseURL",
       "tts.voiceName",
     ])
+    expect(summary.hasCustomRelayBaseURL).toBe(false)
   })
 
   it("clears site overrides back to inheritance when saving an empty site snapshot", async () => {

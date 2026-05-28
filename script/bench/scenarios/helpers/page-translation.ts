@@ -59,15 +59,25 @@ function withDocumentGlobals<T>(doc: Document, callback: () => T): T {
   }
 }
 
+function collectElementsIncludingOpenShadowRoots(root: ParentNode, selector: string): Element[] {
+  const matches = Array.from(root.querySelectorAll(selector))
+  for (const element of Array.from(root.querySelectorAll("*"))) {
+    if (element.shadowRoot) {
+      matches.push(...collectElementsIncludingOpenShadowRoots(element.shadowRoot, selector))
+    }
+  }
+  return matches
+}
+
 export function collectTranslatedTextsFromDocument(root: ParentNode): string[] {
-  return Array.from(root.querySelectorAll(TRANSLATED_TEXT_SELECTOR))
+  return collectElementsIncludingOpenShadowRoots(root, TRANSLATED_TEXT_SELECTOR)
     .map((element) => element.textContent?.trim() ?? "")
     .filter(Boolean)
 }
 
 export function buildExpectedPageTranslationTexts(
   doc: Document,
-  contentScope: "page" | "article" = "page",
+  contentScope: "page" | "immersive" | "full_page" | "article" = "page",
 ) {
   return withDocumentGlobals(doc, () => {
     const plan = resolveExtractionPlan(doc, contentScope)
@@ -88,14 +98,15 @@ export function buildPageTranslationExecutionFromDocument(params: {
   requestTexts?: string[]
   notes?: string[]
 }): PageTranslationExecution {
-  const translatedHtmlSnippets = Array.from(params.doc.querySelectorAll(`${TRANSLATED_SELECTOR} .astra-translation-inner`))
+  const translatedElements = collectElementsIncludingOpenShadowRoots(params.doc, TRANSLATED_SELECTOR)
+  const translatedHtmlSnippets = collectElementsIncludingOpenShadowRoots(params.doc, `${TRANSLATED_SELECTOR} .astra-translation-inner`)
     .map((element) => (element instanceof HTMLElement ? element.innerHTML : ""))
 
   return {
-    translatedNodeCount: params.doc.querySelectorAll(TRANSLATED_SELECTOR).length,
+    translatedNodeCount: translatedElements.length,
     expectedNodeCount: params.expectedTexts.length,
-    translationMarkerCount: params.doc.querySelectorAll(TRANSLATED_SELECTOR).length,
-    hiddenSourceCount: params.doc.querySelectorAll(`[${ASTRA_SOURCE_HIDDEN_ATTR}]`).length,
+    translationMarkerCount: translatedElements.length,
+    hiddenSourceCount: collectElementsIncludingOpenShadowRoots(params.doc, `[${ASTRA_SOURCE_HIDDEN_ATTR}]`).length,
     requestCount: params.requestCount,
     skippedInteractiveTranslations: params.doc.querySelectorAll(INTERACTIVE_TRANSLATION_SELECTOR).length,
     translatedTexts: collectTranslatedTextsFromDocument(params.doc),
@@ -107,7 +118,7 @@ export function buildPageTranslationExecutionFromDocument(params: {
     requestPlaceholderCount: (params.requestTexts ?? []).reduce((sum, text) => sum + countRichTextPlaceholders(text), 0),
     translatedHtmlSnippets,
     placeholderLeakCount: translatedHtmlSnippets.reduce((sum, html) => sum + countRichTextPlaceholders(html), 0),
-    restoredRichTextTagCount: params.doc.querySelectorAll(RICH_TEXT_TAG_SELECTOR).length,
+    restoredRichTextTagCount: collectElementsIncludingOpenShadowRoots(params.doc, RICH_TEXT_TAG_SELECTOR).length,
     notes: params.notes ?? [],
   } satisfies PageTranslationExecution
 }

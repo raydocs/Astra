@@ -14,17 +14,14 @@ function formatCompactCount(value: number): string {
   return value.toString()
 }
 
-function formatCost(usd: number): string {
-  if (usd <= 0) return t("popup_usageCostFree")
-  if (usd < 0.01) return `<$0.01`
-  return `$${usd.toFixed(2)}`
+function formatIncludedWork(_usd: number): string {
+  return t("popup_usageCostFree")
 }
 
 function formatRoute(event: TranslationUsageEvent): string {
-  if (event.route === "fallback") return t("popup_usageFallbackRoute")
-  if (event.route === "direct") return t("popup_usageViaDirect")
-  if (event.route === "relay") return t("popup_usageViaRelay")
-  return t("popup_usageNoRoute")
+  if (event.route === "fallback") return "Astra automatic retry"
+  if (event.route === "direct" || event.route === "relay") return "Astra automatic"
+  return "Astra managed"
 }
 
 function getSourceLabel(source: RequestSource): string {
@@ -47,9 +44,9 @@ function MetricGrid({ aggregate, label }: { aggregate: TranslationUsageAggregate
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(80px, 1fr))", gap: 6 }}>
         <MetricCell label={t("popup_usageMetricRequests")} value={aggregate.requests.toString()} />
         <MetricCell label={t("popup_usageMetricTokensIn")} value={formatCompactCount(aggregate.estimatedInputTokens)} />
-        <MetricCell label={t("popup_usageMetricEstCost")} value={formatCost(aggregate.estimatedCostUsd)} />
-        <MetricCell label={t("popup_usageMetricChars")} value={formatCompactCount(aggregate.chars)} />
-        <MetricCell label={t("popup_usageMetricFallbacks")} value={aggregate.fallbackRequests.toString()} color={aggregate.fallbackRequests > 0 ? "var(--astra-warning)" : undefined} />
+        <MetricCell label={t("popup_usageMetricEstCost")} value={formatIncludedWork(aggregate.estimatedCostUsd)} />
+        <MetricCell label={t("popup_usageMetricChars")} value={formatCompactCount(Math.round(aggregate.chars / 5))} />
+        <MetricCell label="Auto retries" value={aggregate.fallbackRequests.toString()} color={aggregate.fallbackRequests > 0 ? "var(--astra-warning)" : undefined} />
         <MetricCell label={t("popup_usageMetricFailed")} value={aggregate.failedRequests.toString()} color={aggregate.failedRequests > 0 ? "var(--astra-danger)" : undefined} />
       </div>
     </div>
@@ -89,19 +86,19 @@ function CacheDiagnostics({ stats }: { stats: TranslationCacheStats }) {
       }}
     >
       <div style={{ fontSize: 12, fontWeight: 700, color: "var(--astra-text-primary)" }}>
-        Translation cache
+        Saved translations
       </div>
       {!hasActivity ? (
         <div style={{ marginTop: 6, fontSize: 11, color: "var(--astra-text-muted)", lineHeight: 1.45 }}>
-          No cached translations yet. Astra will reuse matching page translation requests for up to 30 days.
+          Astra will save matching translations for faster reuse once you translate a page.
         </div>
       ) : (
         <>
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(80px, 1fr))", gap: 6, marginTop: 6 }}>
-            <MetricCell label="entries" value={formatCompactCount(stats.count)} />
-            <MetricCell label="hit rate" value={formatPercent(stats.hitRate)} color={stats.hitRate > 0 ? "var(--astra-success)" : undefined} />
-            <MetricCell label="hits / lookups" value={`${formatCompactCount(stats.hits)} / ${formatCompactCount(stats.lookups)}`} />
-            <MetricCell label="writes" value={formatCompactCount(stats.writes)} />
+            <MetricCell label="saved" value={formatCompactCount(stats.count)} />
+            <MetricCell label="reuse rate" value={formatPercent(stats.hitRate)} color={stats.hitRate > 0 ? "var(--astra-success)" : undefined} />
+            <MetricCell label="reused" value={`${formatCompactCount(stats.hits)} / ${formatCompactCount(stats.lookups)}`} />
+            <MetricCell label="new saves" value={formatCompactCount(stats.writes)} />
           </div>
           {topBuckets.length > 0 && (
             <div style={{ marginTop: 8, display: "flex", flexDirection: "column", gap: 4 }}>
@@ -116,7 +113,7 @@ function CacheDiagnostics({ stats }: { stats: TranslationCacheStats }) {
                     color: "var(--astra-text-muted)",
                   }}
                 >
-                  <span>{bucket.providerId} / {bucket.model} · {formatBucketLabel(bucket.bucketKey)}</span>
+                  <span>{formatBucketLabel(bucket.bucketKey)}</span>
                   <span className="astra-tabular">{formatPercent(bucket.hitRate)} · {bucket.hits}/{bucket.lookups}</span>
                 </div>
               ))}
@@ -125,7 +122,7 @@ function CacheDiagnostics({ stats }: { stats: TranslationCacheStats }) {
         </>
       )}
       <div style={{ marginTop: 6, fontSize: 10, color: "var(--astra-text-hint)", lineHeight: 1.4 }}>
-        Cache diagnostics show counts only; source text is not displayed here.
+        Astra saved this translation for faster reuse. Reuse counts stay local and your original text is not displayed.
       </div>
     </div>
   )
@@ -180,7 +177,7 @@ export default function UsageInsightsCard({ summary, cacheStats }: UsageInsights
     }}
     >
       <div style={{ fontSize: 14, fontWeight: 700, color: "var(--astra-text-primary)" }}>
-        {t("popup_usageTitle")}
+        Astra activity
       </div>
 
       {noUsage ? (
@@ -211,10 +208,7 @@ export default function UsageInsightsCard({ summary, cacheStats }: UsageInsights
             }}
             >
               <strong style={{ color: "var(--astra-text-secondary)" }}>{t("popup_usageLastLabel")}:</strong>{" "}
-              {summary.lastEvent.providerId} / {summary.lastEvent.model} · {formatRoute(summary.lastEvent)}
-              {summary.lastEvent.estimatedCostUsd != null && summary.lastEvent.estimatedCostUsd > 0
-                ? <> · <span className="astra-tabular">{formatCost(summary.lastEvent.estimatedCostUsd)}</span></>
-                : ""}
+              {formatRoute(summary.lastEvent)}
               {!summary.lastEvent.success && summary.lastEvent.errorCode
                 ? ` · ${summary.lastEvent.errorCode}`
                 : ""}
@@ -224,7 +218,7 @@ export default function UsageInsightsCard({ summary, cacheStats }: UsageInsights
       )}
 
       <div style={{ marginTop: 8, fontSize: 11, color: "var(--astra-text-hint)", lineHeight: 1.45 }}>
-        {t("popup_usageLiveOnly")}
+        These are local reading activity counts for this device. Daily reading is included while Astra handles the service path automatically.
       </div>
 
       {cacheStats && <CacheDiagnostics stats={cacheStats} />}

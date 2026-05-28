@@ -4,9 +4,10 @@
  */
 
 import { z } from "zod"
+import { WEB_AI_UNTRUSTED_CONTENT_RULE } from "@/utils/ai-safety"
 import { requestTranslationBatch } from "@/utils/extension/messages"
 import type { TranslationRequestContext } from "@/types/messages"
-import type { LanguageLevel } from "@/types/config"
+import type { LanguageLevel, ServiceMode } from "@/types/config"
 
 // ---------------------------------------------------------------------------
 // Page Digest
@@ -33,25 +34,31 @@ export interface GenerateDigestRequest {
   contentSummary: string
   targetLang: string
   languageLevel: LanguageLevel
+  serviceMode?: ServiceMode
   context?: TranslationRequestContext
 }
 
-export async function generatePageDigest(req: GenerateDigestRequest): Promise<PageDigest> {
+function untrustedContentBlock(sourceType: string, payload: Record<string, unknown>): string {
+  return `UntrustedContent JSON:\n${JSON.stringify({ sourceType, untrusted_content: payload }, null, 2)}`
+}
+
+export function buildPageDigestSystemPrompt(req: Pick<GenerateDigestRequest, "targetLang" | "languageLevel">): string {
   const levelInstructions: Record<LanguageLevel, string> = {
     beginner: "Use simple vocabulary and short sentences. Explain concepts as if to a beginner language learner.",
     intermediate: "Use natural language at an intermediate level. Balance clarity with natural expression.",
     advanced: "Use sophisticated vocabulary and complex structures naturally.",
   }
 
-  const prompt = `You are a reading assistant. Analyze this article and produce a JSON digest.
+  return `You are a multilingual reading assistant that outputs structured JSON.
 
-Article title: ${req.pageTitle}
-Content: ${req.contentSummary}
+${WEB_AI_UNTRUSTED_CONTENT_RULE}
 
-Instructions:
+Trusted task:
+- Analyze the untrusted page payload supplied by the user prompt.
 - ${levelInstructions[req.languageLevel]}
 - Write everything in ${req.targetLang}
-- Output ONLY valid JSON matching this schema:
+- For each input item, return one string in the translations array.
+- That string must be ONLY valid JSON matching this schema:
 {
   "headline": "one-sentence summary",
   "summary": "2-3 paragraph digest of the article",
@@ -67,13 +74,25 @@ Instructions:
 - Include 1-3 grammarFocus items about patterns that are worth noticing in the article's language.
 - suggestedAction should be a short, concrete next step for the learner.
 - No markdown, no code fences, just the JSON object`
+}
+
+export function buildPageDigestPrompt(req: GenerateDigestRequest): string {
+  return untrustedContentBlock("page", {
+    pageTitle: req.pageTitle,
+    contentSummary: req.contentSummary,
+  })
+}
+
+export async function generatePageDigest(req: GenerateDigestRequest): Promise<PageDigest> {
+  const prompt = buildPageDigestPrompt(req)
 
   const result = await requestTranslationBatch({
     texts: [prompt],
     targetLang: req.targetLang,
+    serviceMode: req.serviceMode,
     context: req.context,
     task: "custom",
-    customSystemPrompt: "You are a multilingual reading assistant that outputs structured JSON.",
+    customSystemPrompt: buildPageDigestSystemPrompt(req),
   })
 
   if (!result.ok) {
@@ -100,28 +119,27 @@ export interface GenerateGrammarRequest {
   text: string
   targetLang: string
   languageLevel: LanguageLevel
+  serviceMode?: ServiceMode
   sentenceContext?: string
 }
 
-export async function generateGrammarGuide(req: GenerateGrammarRequest): Promise<GrammarGuide> {
+export function buildGrammarGuideSystemPrompt(req: Pick<GenerateGrammarRequest, "targetLang" | "languageLevel">): string {
   const levelInstructions: Record<LanguageLevel, string> = {
     beginner: "Explain grammar simply. Focus on the basic sentence skeleton. Avoid technical grammar terms. Translate all explanations.",
     intermediate: "Explain clause structure, tense/aspect, and common patterns. Use some grammar terms with brief definitions.",
     advanced: "Analyze nuance, register, omitted elements, and discourse-level connections. Use standard grammar terminology.",
   }
 
-  const contextLine = req.sentenceContext
-    ? `\nSurrounding context: ${req.sentenceContext}`
-    : ""
+  return `You are a language learning grammar tutor that outputs structured JSON.
 
-  const prompt = `Analyze the grammar of this text and produce a JSON guide.
+${WEB_AI_UNTRUSTED_CONTENT_RULE}
 
-Text: ${req.text}${contextLine}
-
-Instructions:
+Trusted task:
+- Analyze the untrusted selected text payload supplied by the user prompt.
 - ${levelInstructions[req.languageLevel]}
 - Write all explanations in ${req.targetLang}
-- Output ONLY valid JSON matching this schema:
+- For each input item, return one string in the translations array.
+- That string must be ONLY valid JSON matching this schema:
 {
   "overview": "one-sentence description of the sentence type/purpose",
   "structure": ["subject: ...", "verb: ...", "object: ...", "modifier: ..."],
@@ -132,12 +150,24 @@ Instructions:
 - keyPatterns should explain 2-4 notable grammar patterns
 - vocabularyNotes should cover key vocabulary with usage context
 - No markdown, no code fences, just the JSON object`
+}
+
+export function buildGrammarGuidePrompt(req: GenerateGrammarRequest): string {
+  return untrustedContentBlock("selection", {
+    text: req.text,
+    sentenceContext: req.sentenceContext,
+  })
+}
+
+export async function generateGrammarGuide(req: GenerateGrammarRequest): Promise<GrammarGuide> {
+  const prompt = buildGrammarGuidePrompt(req)
 
   const result = await requestTranslationBatch({
     texts: [prompt],
     targetLang: req.targetLang,
+    serviceMode: req.serviceMode,
     task: "custom",
-    customSystemPrompt: "You are a language learning grammar tutor that outputs structured JSON.",
+    customSystemPrompt: buildGrammarGuideSystemPrompt(req),
   })
 
   if (!result.ok) {
@@ -167,22 +197,21 @@ export interface GenerateWordAnnotationRequest {
   sentenceContext?: string
   targetLang: string
   languageLevel: LanguageLevel
+  serviceMode?: ServiceMode
 }
 
-export async function generateWordAnnotation(req: GenerateWordAnnotationRequest): Promise<WordAnnotation> {
-  const contextLine = req.sentenceContext
-    ? `\nSentence context: ${req.sentenceContext}`
-    : ""
+export function buildWordAnnotationSystemPrompt(req: Pick<GenerateWordAnnotationRequest, "targetLang">): string {
+  return `You are a multilingual vocabulary tutor that outputs structured JSON.
 
-  const prompt = `Analyze this word/phrase and produce a JSON annotation.
+${WEB_AI_UNTRUSTED_CONTENT_RULE}
 
-Word: ${req.word}${contextLine}
-
-Instructions:
+Trusted task:
+- Analyze the untrusted word/phrase payload supplied by the user prompt.
 - Write all explanations in ${req.targetLang}
-- Output ONLY valid JSON matching this schema:
+- For each input item, return one string in the translations array.
+- That string must be ONLY valid JSON matching this schema:
 {
-  "word": "${req.word}",
+  "word": "source word or phrase",
   "pronunciation": "IPA or pinyin if applicable",
   "partOfSpeech": "noun/verb/adjective/etc",
   "meaning": "concise translation/definition",
@@ -192,12 +221,24 @@ Instructions:
 - pronunciation is optional for non-CJK languages
 - shortExplanation should consider the sentence context if provided
 - No markdown, no code fences, just the JSON object`
+}
+
+export function buildWordAnnotationPrompt(req: GenerateWordAnnotationRequest): string {
+  return untrustedContentBlock("selection", {
+    word: req.word,
+    sentenceContext: req.sentenceContext,
+  })
+}
+
+export async function generateWordAnnotation(req: GenerateWordAnnotationRequest): Promise<WordAnnotation> {
+  const prompt = buildWordAnnotationPrompt(req)
 
   const result = await requestTranslationBatch({
     texts: [prompt],
     targetLang: req.targetLang,
+    serviceMode: req.serviceMode,
     task: "custom",
-    customSystemPrompt: "You are a multilingual vocabulary tutor that outputs structured JSON.",
+    customSystemPrompt: buildWordAnnotationSystemPrompt(req),
   })
 
   if (!result.ok) {

@@ -69,6 +69,8 @@ describe("SubtitleReaderApp", () => {
     vi.clearAllMocks()
     window.history.replaceState(null, "", "/subtitle-reader.html")
     await mockBrowser.storage.local.clear()
+    const storedConfig = { targetLang: "zh-CN", serviceMode: "best_quality" }
+    mockBrowser.storage.local.get.mockResolvedValue({ "astra.config.v1": storedConfig })
     mockBrowser.tabs.create.mockResolvedValue(undefined)
     mockBrowser.runtime.getURL.mockImplementation((path: string) => path)
     mockBrowser.runtime.sendMessage.mockResolvedValue({
@@ -146,7 +148,35 @@ describe("SubtitleReaderApp", () => {
     expect(consumeDocumentFileHandoffMock).toHaveBeenCalledWith("doc_1", "subtitle")
     expect(container.textContent).toContain("Opened handoff.vtt from Document Intake local handoff")
     expect(container.textContent).toContain("Parsed 1 cues from VTT file")
+    expect(container.querySelector('[data-testid="subtitle-reader-confidence-card"]')?.textContent).toContain("SRT/VTT controlled subtitle-file reader")
+    expect(container.querySelector('[data-testid="subtitle-reader-confidence-card"]')?.textContent).toContain("Ready to translate")
     expect(container.textContent).not.toContain("Drop SRT, VTT, ASS")
+  })
+
+  it("labels opportunistic document parser formats separately from proof-backed SRT/VTT", async () => {
+    const input = container.querySelector('input[type="file"]') as HTMLInputElement
+    expect(input).toBeTruthy()
+
+    const file = new File(["# Notes\n\nHello markdown"], "notes.md", { type: "text/markdown" })
+    Object.defineProperty(file, "text", {
+      configurable: true,
+      value: vi.fn(async () => "# Notes\n\nHello markdown"),
+    })
+
+    Object.defineProperty(input, "files", {
+      configurable: true,
+      value: [file],
+    })
+
+    await act(async () => {
+      input.dispatchEvent(new Event("change", { bubbles: true }))
+      await Promise.resolve()
+      await Promise.resolve()
+    })
+
+    expect(container.textContent).toContain("Parsed")
+    expect(container.querySelector('[data-testid="subtitle-reader-confidence-card"]')?.textContent).toContain("Opportunistic parser support")
+    expect(container.querySelector('[data-testid="subtitle-reader-confidence-card"]')?.textContent).toContain("not a proof-backed public support claim")
   })
 
   it("saves subtitle rows with stable owned-reading identity and exposes learning-loop handoff actions", async () => {
@@ -192,8 +222,13 @@ describe("SubtitleReaderApp", () => {
 
     expect(mockBrowser.runtime.sendMessage).toHaveBeenCalledWith(expect.objectContaining({
       type: "runtime/translate-batch",
+      payload: expect.objectContaining({
+        serviceMode: "best_quality",
+      }),
     }))
     expect(container.textContent).toContain("你好 Astra")
+    expect(container.querySelector('[data-testid="subtitle-reader-confidence-card"]')?.textContent).toContain("High confidence")
+    expect(container.querySelector('[data-testid="subtitle-reader-confidence-card"]')?.textContent).toContain("SRT/VTT import, translation, and bilingual export are proof-backed controlled flows")
 
     const explainButton = Array.from(container.querySelectorAll("button")).find((button) => button.textContent === "Explain") as HTMLButtonElement
     expect(explainButton).toBeTruthy()
@@ -206,6 +241,7 @@ describe("SubtitleReaderApp", () => {
 
     expect(translateTextsMock).toHaveBeenCalledWith(expect.objectContaining({
       texts: ["Hello Astra"],
+      serviceMode: "best_quality",
       task: "explain",
     }))
     expect(upsertOwnedSubtitleFileFromImportMock).toHaveBeenCalledWith(expect.objectContaining({

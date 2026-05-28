@@ -6,6 +6,7 @@ import {
   ContentScopeSchema,
   ExplainModeSchema,
   LanguageLevelSchema,
+  ServiceModeSchema,
   TranslationModeSchema,
   TranslationThemeSchema,
 } from "./config"
@@ -28,6 +29,8 @@ export const TranslationRequestContextSchema = z.object({
   terminologyGlossary: z.string().trim().min(1).optional(),
   /** Explanation glossary: required source => preferred terms for learner-facing explanations. */
   explanationGlossary: z.string().trim().min(1).optional(),
+  /** Ephemeral same-page memory for source => translation consistency across progressive batches. */
+  translationMemory: z.string().trim().min(1).optional(),
 })
 
 export const ContentTranslationOverridesSchema = z.object({
@@ -50,6 +53,7 @@ export const TranslateBatchPayloadSchema = z.object({
   placeholderFormat: TranslationPlaceholderFormatSchema.optional(),
   languageLevel: LanguageLevelSchema.optional(),
   explainMode: ExplainModeSchema.optional(),
+  serviceMode: ServiceModeSchema.optional(),
   explanationRepairInstruction: z.string().trim().min(1).max(1600).optional(),
 })
 
@@ -267,6 +271,7 @@ const TranslationCacheBucketStatsSchema = z.object({
   providerId: z.string(),
   model: z.string(),
   connectionMode: z.string(),
+  serviceMode: z.string().optional(),
   lookups: z.number().int().nonnegative(),
   hits: z.number().int().nonnegative(),
   misses: z.number().int().nonnegative(),
@@ -587,12 +592,29 @@ export interface ContentRetryFailedCommand {
   type: "content/retry-failed"
 }
 
+export interface ContentRunSelectionActionCommand {
+  type: "content/run-selection-action"
+  payload: {
+    actionId: "translate" | "explain"
+    text: string
+  }
+}
+
+export interface ContentSaveSelectionCommand {
+  type: "content/save-selection"
+  payload: {
+    text: string
+  }
+}
+
 export type ContentCommand =
   | ContentGetTranslationStateCommand
   | ContentStartTranslationCommand
   | ContentStopTranslationCommand
   | ContentToggleTranslationCommand
   | ContentRetryFailedCommand
+  | ContentRunSelectionActionCommand
+  | ContentSaveSelectionCommand
 
 export type ContentCommandResponse =
   | { ok: true; state: TranslationSnapshot }
@@ -732,6 +754,16 @@ export function isContentCommand(value: unknown): value is ContentCommand {
     case "content/toggle-translation":
       return candidate.payload === undefined
         || ContentTranslationOverridesSchema.safeParse(candidate.payload).success
+    case "content/run-selection-action": {
+      const payload = candidate.payload as { actionId?: unknown; text?: unknown } | undefined
+      return (payload?.actionId === "translate" || payload?.actionId === "explain")
+        && typeof payload.text === "string"
+        && payload.text.trim().length > 0
+    }
+    case "content/save-selection": {
+      const payload = candidate.payload as { text?: unknown } | undefined
+      return typeof payload?.text === "string" && payload.text.trim().length > 0
+    }
     default:
       return false
   }

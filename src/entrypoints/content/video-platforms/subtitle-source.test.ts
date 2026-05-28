@@ -166,6 +166,39 @@ describe("platform subtitle source parsers", () => {
     }))
   })
 
+  it("loads YouTube timedtext tracks from ytcfg player_response payloads", async () => {
+    setLocation("www.youtube.com", "/watch")
+    const playerResponse = {
+      captions: {
+        playerCaptionsTracklistRenderer: {
+          captionTracks: [{ baseUrl: "https://www.youtube.com/api/timedtext?v=3&lang=en", languageCode: "en" }],
+        },
+      },
+    }
+    const script = document.createElement("script")
+    script.textContent = `var ytcfg={set:function(){}}; ytcfg.set({"PLAYER_VARS":{"player_response":${JSON.stringify(JSON.stringify(playerResponse))}}});`
+    document.body.appendChild(script)
+
+    globalThis.fetch = vi.fn(() => Promise.resolve({
+      ok: true,
+      text: () => Promise.resolve(YOUTUBE_JSON3_FIXTURE),
+    })) as unknown as typeof fetch
+
+    const video = appendVideoWithTracks([])
+    const tracks = await youtubeTimedTextSubtitleSource.loadTracks(video, {
+      targetLang: "zh-CN",
+      astraTrackLabelPrefix: "Astra: ",
+    })
+
+    expect(globalThis.fetch).toHaveBeenCalledWith(expect.stringContaining("v=3"), { credentials: "include" })
+    expect(tracks[0]).toEqual(expect.objectContaining({
+      platform: "youtube",
+      source: "youtube-timedtext",
+      language: "en",
+      cues: parseYouTubeJson3TimedText(YOUTUBE_JSON3_FIXTURE),
+    }))
+  })
+
   it("supports YouTube host variants in canLoad", () => {
     expect(youtubeTimedTextSubtitleSource.canLoad(new URL("https://www.youtube.com/watch?v=1"), document)).toBe(true)
     expect(youtubeTimedTextSubtitleSource.canLoad(new URL("https://m.youtube.com/watch?v=1"), document)).toBe(true)

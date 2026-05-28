@@ -63,6 +63,7 @@ describe("DocumentIntakeApp", () => {
     await upload(new File(["%PDF-1.4"], "paper.pdf", { type: "application/pdf" }))
 
     expect(container.querySelector('[data-testid="document-intake-quality-tier-note"]')?.textContent).toContain("Quality Tier v1")
+    expect(container.querySelector('[data-testid="document-intake-quality-tier-note"]')?.textContent).toContain("SRT/VTT are proof-backed subtitle-file flows")
     expect(container.querySelector('[data-testid="document-intake-ready"]')?.textContent).toContain("paper.pdf")
     expect(container.textContent).toContain("Saved to Reading queue")
     expect(container.textContent).toContain("Short-lived local handoff ready")

@@ -10,8 +10,8 @@ This is the final Month 6 index for release-facing evidence. It is not a new pro
 
 ## Release-facing bottom line
 
-- **Required live lanes remain unchanged**: `source-core` + `extension-core`.
-- **Optional confidence lanes remain optional**: `hover-selection`, `popup-proof`, `learning-loop`, reader/revisit slices, video/subtitle slices.
+- **Current release-policy update:** required live lanes are now `source-core`, `extension-core`, `learning-loop`, `document-proof`, `youtube-proof`, and `youtube-holdout` per `docs/release-readiness-checklist.md` and `docs/investigations/workstream-f-live-lane-conventions.md`.
+- **Optional confidence lanes remain optional only for non-required surfaces:** `hover-selection`, standalone `popup-proof`, Bilibili/generic video smokes, and broader reader/revisit slices outside controlled PDF / EPUB / SRT/VTT document-proof.
 - **Month 6 did not close privacy/routing/glossary into a release-grade guarantee**.
 - **Any RC that strengthens privacy/routing/glossary wording must attach fresh privacy artifacts or downgrade the wording back to the Month 6 inventory boundary.**
 
@@ -20,7 +20,7 @@ This is the final Month 6 index for release-facing evidence. It is not a new pro
 | Gate | Canonical source | Current Month 6 reading |
 |---|---|---|
 | Gate 1 — deterministic quality | `docs/release-readiness-checklist.md` | Required. No Month 6 exception. |
-| Gate 2 — required live lanes | `docs/release-readiness-checklist.md`, `docs/investigations/workstream-f-live-lane-conventions.md` | Required lanes are still only `source-core` and `extension-core`. |
+| Gate 2 — required live lanes | `docs/release-readiness-checklist.md`, `docs/investigations/workstream-f-live-lane-conventions.md` | Required lanes are currently `source-core`, `extension-core`, `learning-loop`, `document-proof`, `youtube-proof`, and `youtube-holdout`. |
 | Gate 3 — artifact clarity | `docs/release-readiness-checklist.md`, `docs/investigations/workstream-f-live-flaky-inventory.md` | Required. Evidence docs must stay current for the RC. |
 | Gate 4A — core claim alignment | `docs/release-readiness-checklist.md`, `docs/investigations/support-matrix-2026-q2.md`, `docs/capability-matrix-v2.md`, `README.md` | Required for every RC. |
 | Gate 4B — conditional evidence reviews | `docs/release-readiness-checklist.md` | Becomes blocking only when the RC touches that surface/claim family. |
@@ -30,7 +30,7 @@ This is the final Month 6 index for release-facing evidence. It is not a new pro
 1. **Background/router is still not the authoritative privacy guardrail.**
 2. **Month 6 closed with glossary/terminology still at plumbing-only status; next-window work has since established one canonical request-time contract, but not blanket guaranteed enforcement.**
 3. **Month 6 closed with fallback disclosure weaker than the routing behavior itself; next-window work has since added one canonical popup-backed local last-event support/operator path for the most recent uncached request on the current device, but broader observability still remains partial.**
-4. **Optional live slices remain optional** until they have required-lane ownership and flaky discipline.
+4. **Optional live slices remain optional** until they have required-lane ownership and flaky discipline; current required additions are limited to `learning-loop`, `document-proof`, `youtube-proof`, and `youtube-holdout`.
 5. **Mobile/iOS shell parity is still unproven** and must stay outside parity language.
 
 ## Claim diff carried into the final state
@@ -55,9 +55,9 @@ This is the final Month 6 index for release-facing evidence. It is not a new pro
 | Month | Best current evidence anchor | Scoped closeout reading | Release-facing status |
 |---|---|---|---|
 | 1 | `docs/investigations/month-1-closeout-2026-04-13.md`; `docs/investigations/m1-bf-01-popup-learning-loop-replay-2026-04-14.md` | Core proof baseline exists; popup proof is credible but still outside required lanes | **Partial** |
-| 2 | `docs/investigations/month-2-closeout-2026-04-14.md`; `docs/investigations/month-2-evidence-registry-2026-04-14.md` | Learning-loop is implemented and proved in scoped slices | **Pass-with-carry at subsystem level; partial at release-gate level** |
-| 3 | `docs/investigations/month-3-closeout-inputs-2026-04-14.md`; `docs/investigations/month-3-evidence-registry-2026-04-14.md` | Owned-reading schema/queue/reopen baseline exists with replayable reader artifacts | **Pass-with-carry at subsystem level; partial at release-gate level** |
-| 4 | `docs/investigations/month-4-evidence-registry-2026-04-14.md`; `docs/investigations/month-4-video-subtitle-evidence-sync-2026-04-14.md` | YouTube/Bilibili/subtitle-file paths are documented honestly with bounded tiers | **Pass-with-carry at subsystem level; partial at release-gate level** |
+| 2 | `docs/investigations/month-2-closeout-2026-04-14.md`; `docs/investigations/month-2-evidence-registry-2026-04-14.md` | Learning-loop is implemented and now required via the current `learning-loop` lane | **Pass with current required-lane proof; broader learning claims remain scoped** |
+| 3 | `docs/investigations/month-3-closeout-inputs-2026-04-14.md`; `docs/investigations/month-3-evidence-registry-2026-04-14.md` | Owned-reading schema/queue/reopen baseline exists; controlled document/file flows are now required via `document-proof` | **Pass-with-scoped-claims; universal reopen remains partial** |
+| 4 | `docs/investigations/month-4-evidence-registry-2026-04-14.md`; `docs/investigations/month-4-video-subtitle-evidence-sync-2026-04-14.md` | YouTube proof/holdouts are now required; Bilibili/subtitle-file/other video boundaries remain bounded by support docs | **Pass-with-scoped-claims; broad platform parity remains partial** |
 | 5 | `docs/investigations/control-plane-surface-inventory-2026-04-15.md`; `docs/investigations/lifecycle-operations-runbook-month5-2026-04-15.md`; `docs/investigations/month-5-lifecycle-proof-2026-04-14.md` | Account/lifecycle wording and operator guidance are materially better; mobile/iOS remains carry | **Carry-but-acceptable / partial** |
 | 6 | `docs/investigations/month-6-privacy-routing-failure-inventory-2026-04-14.md`; `docs/investigations/month-6-release-claim-audit-2026-04-14.md`; `docs/investigations/month-6-closeout-handoff-2026-04-14.md` | Inventory, claim audit, checklist tightening, and final handoff are complete | **Partial by design** |
 

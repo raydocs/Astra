@@ -47,7 +47,7 @@ These were intentionally left for the next window rather than hidden under stron
 1. **Authoritative privacy guardrail at the background/router boundary**
 2. **Canonical glossary / terminology request-time wiring**
 3. **User/operator-visible transport and fallback disclosure improvements**
-4. **Promotion of optional live slices into required lanes**
+4. **Promotion of any remaining optional live slices into required lanes beyond the current `learning-loop`, `document-proof`, `youtube-proof`, and `youtube-holdout` set**
 5. **Any stronger privacy live-evidence bundle beyond the already-documented proof paths**
 
 ## Unproven / must stay bounded
@@ -57,7 +57,7 @@ These were intentionally left for the next window rather than hidden under stron
 3. **Release-grade glossary enforcement**
 4. **Broad in-page video parity**
 5. **Mobile web or iOS parity with desktop**
-6. **Learning-loop / reader / video optional lanes as required release gates**
+6. **Unscoped learning / reader / video optional lanes as required release gates beyond the current scoped required lanes**
 
 ## Blocked / release constraints
 

@@ -97,6 +97,7 @@ describe("Cloudflare shadow repositories", () => {
       syncPreferences: {
         reading_history: true,
         study_progress: false,
+        weekly_digest: true,
       },
       shadowUpdatedAt: "2026-04-09T00:05:00.000Z",
     })
@@ -123,6 +124,7 @@ describe("Cloudflare shadow repositories", () => {
       provider_entitlements_json: "[\"openai\",\"gemini\"]",
       reading_history_sync_enabled: 1,
       study_progress_sync_enabled: 0,
+      weekly_digest_sync_enabled: 1,
       shadow_updated_at: "2026-04-09T00:05:00.000Z",
     })
 
@@ -130,6 +132,7 @@ describe("Cloudflare shadow repositories", () => {
     expect(readRow?.syncPreferences).toEqual({
       reading_history: true,
       study_progress: false,
+      weekly_digest: true,
     })
   })
 
@@ -292,6 +295,7 @@ describe("Cloudflare shadow repositories", () => {
       syncPreferences: {
         reading_history: true,
         study_progress: false,
+        weekly_digest: true,
       },
       shadowUpdatedAt: "2026-04-09T00:00:00.000Z",
     })

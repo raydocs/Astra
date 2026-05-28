@@ -12,19 +12,34 @@ This checklist defines the **blocking release decision**. A release candidate is
 
 - **Block** the RC if any required row below fails.
 - **Block** the RC if a touched surface is marketed more strongly than its documented proof depth.
+- **Block or downgrade** the RC if a touched feature violates the Strategic Non-Goals decision tree without an explicit Advanced/Beta/Experimental boundary.
 - **Do not** use optional live lanes as substitutes for required lanes.
 - **Do not** promote a claim because “the code exists” when the proof/evidence bundle is still partial.
+
+## Macro stage gate helper
+
+Macro-plan release stages are also encoded in `src/utils/release-stage-gate.ts`:
+
+- `internal_alpha` — team/agent testing may tolerate rough UI, but not safety failure, data loss, or missing rollback.
+- `private_beta` — requires support, privacy, quality, safety, rollback, and beta feedback evidence.
+- `public_beta` — additionally requires known limitations and paywall/public-copy review so beta claims do not imply paid launch.
+- `paid_launch` — additionally requires cancel/refund/account-management paths, paid billing blockers cleared, and legal/trust compliance evidence.
+
+Use `evaluateAstraReleaseStageGate()` when preparing launch notes or claim reviews; it does not replace Gate 1–4 evidence, but makes the stage-specific blockers inspectable.
+
+Macro-plan operational evidence gaps are also tracked in `src/utils/macro-operational-evidence.ts` / `docs/specs/macro-operational-evidence.md`. Run `evaluateAstraMacroOperationalEvidence()` when a release note touches first-success activation targets, Library asset coverage, personalization behavior, membership value, metrics, Digest, brand, support, pricing/paywall, learning-science claims, data controls, GTM/store packets, operations-console roles, or accessibility claims. If `strongerClaimBlocked` is true, the RC note must either attach the required evidence or use the helper's downgrade copy. The current generated macro RC note is `docs/reviews/macro-operational-evidence-rc-note-2026-05-28.md`; regenerate it with `renderAstraMacroOperationalEvidenceRcNote()` when validation markers or evidence status change.
 
 ## Gate 1 — Deterministic quality gate (required)
 
 | Check | How to verify | Artifact | Required |
 |---|---|---|---|
 | Repo knowledge guardrail is green | `pnpm check:repo-knowledge` | `CI / quality` job logs | Yes |
+| Strategic Non-Goals proposal fixture is green | `pnpm check:strategic-non-goals` | `CI / quality` job logs | Yes |
 | Zod entrypoint verification is green | `pnpm check:zod-entrypoints` | `CI / quality` job logs | Yes |
-| Lint is green | `pnpm lint:ci` | `CI / quality` job logs | Yes |
+| Lint is green | `pnpm lint:ci` | `CI / quality` job logs; includes `pnpm check:macro-final-completion` | Yes |
 | Type check is green | `pnpm type-check` | `CI / quality` job logs | Yes |
 | Unit/integration tests are green | `pnpm test` | `CI / quality` job logs | Yes |
-| Deterministic bench is green | `pnpm bench` | `bench-results/latest.json` + CI logs | Yes |
+| Deterministic bench is green | `pnpm bench` | `bench-results/latest.json` + CI `quality-gate-results` artifact | Yes |
 
 **Block if:** any check fails.
 
@@ -37,6 +52,9 @@ Canonical lane names are defined in `docs/investigations/workstream-f-live-lane-
 | `source-core` | `pnpm bench:live:lane:source-core` | `bench-live-results/<run-id>/` | Yes |
 | `extension-core` | `pnpm bench:live:lane:extension-core` | `bench-live-results/<run-id>/` | Yes |
 | `learning-loop` | `pnpm bench:live:lane:learning-loop` | `bench-live-results/<run-id>/` | Yes |
+| `document-proof` | `pnpm bench:live:lane:document-proof` | `bench-live-results/<run-id>/` | Yes |
+| `youtube-proof` | `pnpm bench:live:lane:youtube-proof` | `bench-live-results/<run-id>/` | Yes |
+| `youtube-holdout` | `pnpm bench:live:lane:youtube-holdout` | `bench-live-results/<run-id>/` | Yes |
 
 CI enforces these in `.github/workflows/ci.yml` (`live-browser` job).
 
@@ -46,6 +64,7 @@ CI enforces these in `.github/workflows/ci.yml` (`live-browser` job).
 
 | Check | How to verify | Artifact | Required |
 |---|---|---|---|
+| Quality artifacts uploaded by CI | `CI / quality` uploads `quality-gate-results` | GitHub Actions artifact | Yes |
 | Live artifacts uploaded by CI | `CI / live-browser` uploads `live-bench-results` | GitHub Actions artifact | Yes |
 | Required lane inventory is documented | Confirm lane names and required scenarios | `docs/investigations/workstream-f-live-lane-conventions.md` | Yes |
 | Flaky inventory exists and is current | Confirm open items or explicit `None` | `docs/investigations/workstream-f-live-flaky-inventory.md` | Yes |
@@ -62,6 +81,7 @@ CI enforces these in `.github/workflows/ci.yml` (`live-browser` job).
 | Unsupported/unproven surfaces are marked as gaps | Manual review | Same matrix + RC notes | Yes |
 | Platform support wording matches actual proof depth | Manual review against current support matrix and README | `docs/investigations/support-matrix-2026-q2.md`, `README.md` | Yes |
 | Capability/status wording does not outrun proof | Manual review against capability matrix and task-specific evidence docs | `docs/capability-matrix-v2.md`, month evidence registries, `docs/investigations/month-6-release-claim-audit-2026-04-14.md` | Yes |
+| Strategic Non-Goals review is satisfied | Manual review against the core-loop decision tree and public/support claim boundaries. `pnpm check:strategic-non-goals` verifies represented JSON fixtures only; it does not replace manual review for unrepresented surfaces. | `docs/specs/strategic-non-goals.md`, `docs/product-roadmap.md`, `docs/analysis/strategic-non-goals-proposals.json`, RC notes | Yes |
 
 **Block if:** these docs disagree with each other or claim more than the attached proof supports.
 
@@ -100,23 +120,24 @@ CI enforces these in `.github/workflows/ci.yml` (`live-browser` job).
 
 ## Month 3 — Reader / owned-reading policy (2026-04-14)
 
-- **Historical note:** Month 3 added no dedicated reader / revisit lane. Current Gate 2 authority remains the table above: `source-core`, `extension-core`, and `learning-loop` are required.
-- **Fresh optional proof exists** for the Month 3 reader / revisit baseline:
+- **Current policy:** controlled reader/file workflows now have the required `document-proof` lane in Gate 2. This promotes proof-backed PDF, EPUB, and SRT/VTT subtitle-file flows; it does **not** promote universal reopen, OCR, DOCX layout, comic/image, or parser-convenience claims.
+- **Historical optional proof retained** for the Month 3 reader / revisit baseline:
   - PDF reader: `CI=true pnpm bench:live -- --scenario bench-live/pdf-reader-basic` → `live-20260414T113547-e7a9ks`
   - EPUB reader: `CI=true pnpm bench:live -- --scenario bench-live/epub-reader-basic` → `live-20260414T113605-p0m6bj`
   - subtitle-file reader: `CI=true pnpm bench:live -- --scenario bench-live/subtitle-file-basic` → `live-20260414T113623-809nid`
   - article revisit: `CI=true pnpm bench:live -- --scenario bench-live/learning-loop-revisit-smoke` → `live-20260414T113647-9f8kwi`
 - **Month 3 status language must stay explicit**:
   - implemented: **yes**
-  - proved: **yes**
-  - gate-ready as a required release lane: **no**
-  - closeout verdict: **`pass-with-carry`**
+  - controlled PDF / EPUB / SRT/VTT flows proved: **yes**
+  - gate-ready as a required release lane for controlled document/file proof: **yes** via `document-proof`
+  - universal reopen / OCR / DOCX / image / comic / parser-convenience claims: **no**
+  - closeout verdict: **`pass-with-scoped-claims`**
 - **Claim boundary**: browser-backed proof is strongest for the PDF / EPUB / subtitle-file reader surfaces themselves and the article queue reopen path. Non-article queue reopen paths remain implemented/test-covered, but not separately proved end to end as dedicated browser-backed smokes.
 - **Evidence bundle**: `docs/investigations/month-3-evidence-registry-2026-04-14.md`, `docs/investigations/month-3-closeout-inputs-2026-04-14.md`, `docs/investigations/month-3-pdf-reader-closeout-memo-2026-04-16.md`, `docs/investigations/month-3-epub-reader-closeout-memo-2026-04-16.md`, `docs/investigations/owned-reading-schema-v1-2026-04-14.md`, `docs/investigations/saved-reading-queue-spec-2026-04-15.md`, `docs/investigations/support-matrix-2026-q2.md`.
 
 ## Month 4 — Video / subtitle policy (2026-04-14)
 
-- **Historical note:** Month 4 added no video/subtitle adapter lane. Current Gate 2 authority remains the table above: `source-core`, `extension-core`, and `learning-loop` are required.
+- **Current policy:** YouTube in-page subtitle/workspace proof now has required Gate 2 lanes via `youtube-proof` and `youtube-holdout`. Bilibili remains beta/best-effort, subtitle-file remains a separate controlled file-reader surface, and other repo adapters remain code-only unless separately proved.
 - **Current honest Month 4 classification**:
   - YouTube: **supported** (best-effort within supported tier)
   - Bilibili: **best-effort / secondary adapter**
@@ -124,9 +145,9 @@ CI enforces these in `.github/workflows/ci.yml` (`live-browser` job).
   - Netflix / Prime Video / Disney+ / Udemy / Coursera: **code-only**
 - **Month 4 status language must stay explicit**:
   - implemented: **yes**
-  - proved: **yes**
-  - gate-ready as a required release lane: **no**
-  - closeout verdict: **`pass-with-carry`**
+  - YouTube proved: **yes** via required `youtube-proof` and `youtube-holdout`
+  - Bilibili and other adapters promoted to required release lane: **no**
+  - closeout verdict: **`pass-with-scoped-claims`**
 - **Current proof depth**:
   - `bench-live/youtube-subtitle-basic` and `bench-live/bilibili-subtitle-basic` are fixture-backed browser smokes
   - fresh `M4-D-02` replays: YouTube `live-20260414T115407-2i2tzo`, Bilibili `live-20260414T115722-y40ya0`
@@ -142,7 +163,7 @@ CI enforces these in `.github/workflows/ci.yml` (`live-browser` job).
 
 ## Month 5 — Mobile web / iOS bridge policy (2026-04-14)
 
-- **Historical note:** Month 5 added no mobile-web or iOS-shell lane. Current Gate 2 authority remains the table above: `source-core`, `extension-core`, and `learning-loop` are required.
+- **Historical note:** Month 5 added no mobile-web or iOS-shell lane. Current Gate 2 authority remains the table above; required live lanes do not promote iOS/mobile support tiers.
 - **Current honest Month 5 classification**:
   - mobile web: **portable control-plane surface only**
   - iOS Safari shell / bridge: **experimental**
@@ -172,7 +193,7 @@ CI enforces these in `.github/workflows/ci.yml` (`live-browser` job).
 
 ## Current Month 1 reality notes (not a pass override)
 
-- Required release-proof lanes now cover: page-translation (source-backed), article-extraction (`bench-live/article-extraction-proof`), dynamic-content (source-contract), site-automation (extension-loaded), onboarding (extension-loaded), vocabulary (extension-loaded), and the learning-loop chain (`popup-proof` + vocabulary/review + article revisit).
+- Required release-proof lanes now cover: source-core page/document extraction behavior, extension-core bootstrap/owned surfaces, learning-loop (`popup-proof` + vocabulary/review + article revisit), controlled document/file proof (PDF, EPUB, SRT/VTT subtitle-file), and YouTube proof/holdout subtitle-workspace paths.
 - Month 1 policy decision: hover and selection-explain remain **optional** (`pnpm bench:live:lane:hover-selection`) rather than required release gates. Rationale: current evidence is credible, but the lane is still modeled as a combined UX proof lane, does not yet have separate required-lane semantics in CI, and Month 1 release discipline should not over-promote non-core UX proof before that structure exists.
 - Popup deep-read has credible optional standalone proof via `bench-live/popup-deep-read-proof` / `pnpm bench:live:lane:popup-proof`; it is also exercised as part of the required current `learning-loop` lane. **Replay note:** `docs/investigations/m1-bf-01-popup-learning-loop-replay-2026-04-14.md` preserves fresh **green** 2026-04-14 reruns for standalone `popup-proof` (`live-20260414T095344-ol5adc`) and the then-optional learning-loop chain (`live-20260414T095422-yqripy` / `live-20260414T095427-992iaf` / `live-20260414T095429-kahn2o`), plus the earlier pre-fix baseline for archaeology.
 - Month 1 gate close-out is recorded in `docs/investigations/month-1-closeout-2026-04-13.md`; the close-out verdict does not by itself override required lane failures.
@@ -180,25 +201,27 @@ CI enforces these in `.github/workflows/ci.yml` (`live-browser` job).
 ## Pre-release execution order
 
 1. `pnpm check:repo-knowledge`
-2. `pnpm check:zod-entrypoints`
-3. `pnpm lint:ci`
-4. `pnpm type-check`
-5. `pnpm test`
-6. `pnpm bench`
-7. `pnpm bench:live:lane:release-proof`
-8. `pnpm bench:live:lane:learning-loop`
-9. Confirm CI `quality` + `live-browser` jobs are green
+2. `pnpm check:strategic-non-goals`
+3. `pnpm check:zod-entrypoints`
+4. `pnpm lint:ci`
+5. `pnpm type-check`
+6. `pnpm test`
+7. `pnpm bench`
+8. `pnpm bench:live:lane:release-proof` (aggregate source-core, extension-core, learning-loop, document-proof, youtube-proof, and youtube-holdout)
+9. Confirm CI `quality` + `live-browser` jobs are green and attach/download `quality-gate-results` + `live-bench-results` artifacts
 10. Review Gate 4 core docs:
    - `docs/investigations/workstream-a-live-coverage-matrix.md`
    - `docs/investigations/workstream-f-live-lane-conventions.md`
    - `docs/investigations/workstream-f-live-flaky-inventory.md`
    - `docs/investigations/support-matrix-2026-q2.md`
    - `docs/capability-matrix-v2.md`
+   - `docs/specs/strategic-non-goals.md`
    - `README.md`
-11. If the RC touches a conditional surface, review the matching Month 3/4/5/6 evidence bundle before approving the RC
-12. (Optional confidence boost) Run `pnpm bench:live:lane:hover-selection`
-13. (Optional confidence boost) Run `pnpm bench:live:lane:popup-proof`
-14. Only then tag the release candidate
+11. Apply the Strategic Non-Goals decision tree to any new default UI, public claim, support promise, provider/platform expansion, file-format promise, or autonomous-action proposal not already represented in the JSON fixture
+12. If the RC touches a conditional surface, review the matching Month 3/4/5/6 evidence bundle before approving the RC
+13. (Optional confidence boost) Run `pnpm bench:live:lane:hover-selection`
+14. (Optional confidence boost) Run `pnpm bench:live:lane:popup-proof`
+15. Only then tag the release candidate
 
 ## Escalation rule
 

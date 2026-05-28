@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react"
 import { browser } from "#imports"
 import { t } from "@/utils/i18n"
+import { getSafeAiUnavailableCopy } from "@/utils/copy-dictionary"
 import { recordLearningLoopEvent } from "@/utils/learning-loop-events"
 import { readConfig } from "@/utils/storage/config"
 import { getActiveTabStudyContext, resolveActiveHttpTab } from "@/utils/extension/messages"
@@ -301,7 +302,7 @@ export default function DeepReadApp() {
       }
       if (!contextResponse.ok) {
         if (!savedSession) {
-          setErrorMessage(contextResponse.error.message)
+          setErrorMessage(getSafeAiUnavailableCopy(contextResponse.error))
         } else {
           recordLearningLoopEvent("deep_read_opened", {
             source: "saved_session",
@@ -491,6 +492,7 @@ export default function DeepReadApp() {
         contentSummary: buildStudyDigestContentSummary(studyContext),
         targetLang: config.targetLang,
         languageLevel: config.languageLevel,
+        serviceMode: config.serviceMode,
       })
       const activeHttp = await resolveActiveHttpTab()
       const url = activeHttp?.url ?? studyContext.pageUrl ?? ""
@@ -516,13 +518,14 @@ export default function DeepReadApp() {
       const result = await translateTexts({
         texts: [sentences[index]],
         targetLang: config.targetLang,
+        serviceMode: config.serviceMode,
         context: studyContext ? { ...studyContext, selectionContext: sentences[index] } : { selectionContext: sentences[index] },
         task: "explain",
         customSystemPrompt: buildExplainModeSystemPrompt(config.explainMode),
       })
       setExplanations((current) => ({
         ...current,
-        [index]: result.ok ? (result.translations[0] ?? "") : `Warning: ${result.error.message}`,
+        [index]: result.ok ? (result.translations[0] ?? "") : `Warning: ${getSafeAiUnavailableCopy(result.error)}`,
       }))
       if (result.ok) {
         recordLearningLoopEvent("sentence_explained", {
@@ -579,6 +582,9 @@ export default function DeepReadApp() {
         pageUrl,
         sentenceIndex: index,
         sentenceHash: buildSentenceAnchor(sentences[index], index)?.sentenceHash,
+        source: "deep_read",
+        sourceType: "article",
+        hasReviewCard: true,
         ...buildPersonalizedStrategyTelemetry(studyLoop?.personalizedStrategy),
       })
       await recordDeepReadStudyStep("vocab_save")

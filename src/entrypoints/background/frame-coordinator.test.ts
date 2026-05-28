@@ -3,9 +3,13 @@ import { DEFAULT_TRANSLATION_PRESENTATION } from "@/types/translation"
 
 const {
   getAllFramesMock,
+  onCompletedAddListenerMock,
+  onRemovedAddListenerMock,
   sendMessageMock,
 } = vi.hoisted(() => ({
   getAllFramesMock: vi.fn(),
+  onCompletedAddListenerMock: vi.fn(),
+  onRemovedAddListenerMock: vi.fn(),
   sendMessageMock: vi.fn(),
 }))
 
@@ -13,15 +17,21 @@ vi.mock("#imports", () => ({
   browser: {
     webNavigation: {
       getAllFrames: getAllFramesMock,
+      onCompleted: {
+        addListener: onCompletedAddListenerMock,
+      },
     },
     tabs: {
       sendMessage: sendMessageMock,
+      onRemoved: {
+        addListener: onRemovedAddListenerMock,
+      },
     },
   },
   defineBackground: vi.fn(),
 }))
 
-import { executeTabCommand } from "./frame-coordinator"
+import { __resetFrameCoordinatorForTests, executeTabCommand, initializeFrameCoordinator } from "./frame-coordinator"
 
 function createSnapshot(overrides: Record<string, unknown> = {}) {
   return {
@@ -44,10 +54,12 @@ function createSnapshot(overrides: Record<string, unknown> = {}) {
 
 describe("frame-coordinator", () => {
   beforeEach(() => {
+    __resetFrameCoordinatorForTests()
     vi.clearAllMocks()
   })
 
   afterEach(() => {
+    __resetFrameCoordinatorForTests()
     vi.restoreAllMocks()
   })
 
@@ -152,8 +164,35 @@ describe("frame-coordinator", () => {
     expect(result.ok).toBe(true)
     if (result.ok) {
       expect(result.state.framesTotal).toBe(2)
-      // Only top frame reported
+      expect(result.state.framesTranslating).toBe(1)
+      // Only top frame reported; unreachable child remains visible via frame boundary count.
       expect(result.state.phase).toBe("running")
+    }
+  })
+
+  it("keeps cross-origin unreachable frames as visible boundaries without failing the tab", async () => {
+    const topSnapshot = createSnapshot({
+      phase: "running",
+      progress: { totalBlocks: 4, queuedBlocks: 0, inFlightBlocks: 1, translatedBlocks: 3, failedBlocks: 0 },
+    })
+
+    getAllFramesMock.mockResolvedValue([
+      { frameId: 0, parentFrameId: -1, url: "https://example.com/article" },
+      { frameId: 7, parentFrameId: 0, url: "https://cross-origin.example/frame" },
+    ])
+    sendMessageMock
+      .mockResolvedValueOnce({ ok: true, state: topSnapshot })
+      .mockRejectedValueOnce(new Error("Frame is cross-origin or not injected"))
+
+    const result = await executeTabCommand(99, { type: "content/start-translation" })
+
+    expect(sendMessageMock).toHaveBeenCalledWith(99, { type: "content/start-translation" }, { frameId: 7 })
+    expect(result.ok).toBe(true)
+    if (result.ok) {
+      expect(result.state.framesTotal).toBe(2)
+      expect(result.state.framesTranslating).toBe(1)
+      expect(result.state.progress).toEqual(topSnapshot.progress)
+      expect(result.state.site.hostname).toBe("example.com")
     }
   })
 
@@ -242,5 +281,67 @@ describe("frame-coordinator", () => {
       expect(result.state.progress.totalBlocks).toBe(0)
       expect(result.state.phase).toBe("running")
     }
+  })
+
+  it("starts late-arriving child frames while a tab translation is active", async () => {
+    initializeFrameCoordinator()
+    const command = { type: "content/start-translation", payload: { contentScope: "page" } } as const
+    getAllFramesMock.mockResolvedValue([
+      { frameId: 0, parentFrameId: -1, url: "https://example.com/page" },
+    ])
+    sendMessageMock.mockResolvedValue({ ok: true, state: createSnapshot({ phase: "running" }) })
+
+    await executeTabCommand(12, command)
+    expect(onCompletedAddListenerMock).toHaveBeenCalledTimes(1)
+
+    sendMessageMock.mockClear()
+    const [listener] = onCompletedAddListenerMock.mock.calls[0] as [
+      (details: { tabId: number; frameId: number; parentFrameId: number; url?: string }) => void,
+    ]
+    listener({ tabId: 12, frameId: 4, parentFrameId: 0, url: "https://embed.example.com/late" })
+    await Promise.resolve()
+
+    expect(sendMessageMock).toHaveBeenCalledTimes(1)
+    expect(sendMessageMock).toHaveBeenCalledWith(12, command, { frameId: 4 })
+
+    listener({ tabId: 12, frameId: 4, parentFrameId: 0, url: "https://embed.example.com/late" })
+    await Promise.resolve()
+    expect(sendMessageMock).toHaveBeenCalledTimes(1)
+  })
+
+  it("clears active tab translation tracking on stop, top-frame navigation, and tab removal", async () => {
+    initializeFrameCoordinator()
+    const startCommand = { type: "content/start-translation", payload: { contentScope: "page" } } as const
+    getAllFramesMock.mockResolvedValue([
+      { frameId: 0, parentFrameId: -1, url: "https://example.com/page" },
+    ])
+    sendMessageMock.mockResolvedValue({ ok: true, state: createSnapshot({ phase: "running" }) })
+
+    await executeTabCommand(21, startCommand)
+    const [navigationListener] = onCompletedAddListenerMock.mock.calls[0] as [
+      (details: { tabId: number; frameId: number; parentFrameId: number; url?: string }) => void,
+    ]
+    const [tabRemovedListener] = onRemovedAddListenerMock.mock.calls[0] as [(tabId: number) => void]
+
+    sendMessageMock.mockClear()
+    await executeTabCommand(21, { type: "content/stop-translation" })
+    navigationListener({ tabId: 21, frameId: 9, parentFrameId: 0, url: "https://embed.example.com/late" })
+    await Promise.resolve()
+    expect(sendMessageMock).toHaveBeenCalledTimes(1)
+    expect(sendMessageMock).toHaveBeenCalledWith(21, { type: "content/stop-translation" }, { frameId: 0 })
+
+    await executeTabCommand(21, startCommand)
+    sendMessageMock.mockClear()
+    navigationListener({ tabId: 21, frameId: 0, parentFrameId: -1, url: "https://example.com/next" })
+    navigationListener({ tabId: 21, frameId: 10, parentFrameId: 0, url: "https://embed.example.com/after-nav" })
+    await Promise.resolve()
+    expect(sendMessageMock).not.toHaveBeenCalled()
+
+    await executeTabCommand(21, startCommand)
+    sendMessageMock.mockClear()
+    tabRemovedListener(21)
+    navigationListener({ tabId: 21, frameId: 11, parentFrameId: 0, url: "https://embed.example.com/after-close" })
+    await Promise.resolve()
+    expect(sendMessageMock).not.toHaveBeenCalled()
   })
 })

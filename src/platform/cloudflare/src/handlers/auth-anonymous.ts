@@ -283,6 +283,7 @@ async function buildAnonymousUserSnapshot(params: {
     syncPreferences: {
       reading_history: false,
       study_progress: false,
+      weekly_digest: true,
     },
     shadowUpdatedAt: params.nowIso,
   }

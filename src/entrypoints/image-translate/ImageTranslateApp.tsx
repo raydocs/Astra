@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState } from "react"
 import { readConfig } from "@/utils/storage/config"
+import { DEFAULT_ASTRA_CONFIG, type ServiceMode } from "@/types/config"
 import { translateTexts } from "@/utils/translate/translate"
+import { getSafeAiUnavailableCopy } from "@/utils/copy-dictionary"
 import type { TranslationPathSummary } from "@/utils/providers/routing-metadata"
 import {
   consumeImageTranslateHandoff,
@@ -317,6 +319,7 @@ function CompareRows({ rows, showReasons = false }: { rows: TranslationRow[], sh
 export function ImageTranslateApp() {
   const { astraTheme, astraDirection } = useAstraTheme()
   const [targetLang, setTargetLang] = useState("zh-CN")
+  const [serviceMode, setServiceMode] = useState<ServiceMode>(DEFAULT_ASTRA_CONFIG.serviceMode)
   const [phase, setPhase] = useState<PagePhase>("idle")
   const [previewMode, setPreviewMode] = useState<PreviewMode>("overlay")
   const [errorReason, setErrorReason] = useState<ImageTranslationOcrFailureReason | "translation_failed" | HandoffFailureReason | null>(null)
@@ -327,7 +330,10 @@ export function ImageTranslateApp() {
   const fileInputRef = useRef<HTMLInputElement | null>(null)
 
   useEffect(() => {
-    void readConfig().then((config) => setTargetLang(config.targetLang)).catch(() => undefined)
+    void readConfig().then((config) => {
+      setTargetLang(config.targetLang)
+      setServiceMode(config.serviceMode)
+    }).catch(() => undefined)
   }, [])
 
   useEffect(() => () => {
@@ -344,7 +350,7 @@ export function ImageTranslateApp() {
     }
   }
 
-  const processFile = async (file: File, targetLangOverride = targetLang) => {
+  const processFile = async (file: File, targetLangOverride = targetLang, serviceModeOverride = serviceMode) => {
     setNextPreview(file)
     setTranslation(null)
     setPreviewMode("overlay")
@@ -365,6 +371,7 @@ export function ImageTranslateApp() {
     const translated = await translateTexts({
       texts: sourceLines.map((line) => line.text),
       targetLang: targetLangOverride,
+      serviceMode: serviceModeOverride,
       task: "translate",
       context: {
         selectionContext: extraction.text,
@@ -374,7 +381,7 @@ export function ImageTranslateApp() {
     if (!translated.ok) {
       setPhase("error")
       setErrorReason("translation_failed")
-      setErrorMessage(translated.error.message)
+      setErrorMessage(getSafeAiUnavailableCopy(translated.error))
       return
     }
 
@@ -411,7 +418,9 @@ export function ImageTranslateApp() {
 
       const config = await readConfig().catch(() => null)
       const handoffTargetLang = config?.targetLang ?? targetLang
+      const handoffServiceMode = config?.serviceMode ?? serviceMode
       if (config?.targetLang) setTargetLang(config.targetLang)
+      if (config?.serviceMode) setServiceMode(config.serviceMode)
 
       const handoff = await consumeImageTranslateHandoff(handoffToken)
       if (cancelled) return
@@ -426,7 +435,7 @@ export function ImageTranslateApp() {
 
       try {
         const file = await loadHandoffImageFile(handoff.handoff)
-        if (!cancelled) await processFile(file, handoffTargetLang)
+        if (!cancelled) await processFile(file, handoffTargetLang, handoffServiceMode)
       } catch {
         if (cancelled) return
         setPhase("error")

@@ -14,7 +14,7 @@ This repo now includes a minimal Astra-managed backend for local development and
 - `POST /v1/billing/portal`
 - `POST /v1/translate`
 
-The popup login flow and relay client in the extension are designed against these endpoints.
+The popup login flow and relay client in the extension are designed against these endpoints. For ordinary managed-service translation calls, `/v1/translate` accepts `texts`, `targetLang`, optional `task`, `context`, and `serviceMode`; the relay resolves provider/model server-side from session entitlements and service mode. Legacy/advanced calls may still include `provider` and `model` for compatibility, but normal clients should not need to know or send them.
 
 ## Current Server Capabilities
 

@@ -1,4 +1,4 @@
-import type { ExplainMode, LanguageLevel, TranslationMode } from "@/types/config"
+import type { ExplainMode, LanguageLevel, ServiceMode, TranslationMode } from "@/types/config"
 import { t } from "@/utils/i18n"
 import { PopupGroupCard, PopupSegmentedControl, PopupSettingRow } from "./PopupDesignPrimitives"
 
@@ -16,11 +16,13 @@ const LANGUAGE_OPTIONS = [
 export interface SimpleControlsProps {
   targetLang: string
   translationMode: "bilingual" | "translation-only"
+  serviceMode: ServiceMode
   languageLevel: LanguageLevel
   explainMode: ExplainMode
   explanationGlossaryText: string
   onTargetLangChange: (lang: string) => void
   onModeChange: (mode: "bilingual" | "translation-only") => void
+  onServiceModeChange: (mode: ServiceMode) => void
   onLanguageLevelChange: (level: LanguageLevel) => void
   onExplainModeChange: (mode: ExplainMode) => void
   onExplanationGlossaryChange: (value: string) => void
@@ -29,11 +31,13 @@ export interface SimpleControlsProps {
 export default function SimpleControls({
   targetLang,
   translationMode,
+  serviceMode,
   languageLevel,
   explainMode,
   explanationGlossaryText,
   onTargetLangChange,
   onModeChange,
+  onServiceModeChange,
   onLanguageLevelChange,
   onExplainModeChange,
   onExplanationGlossaryChange,
@@ -71,6 +75,26 @@ export default function SimpleControls({
               { value: "translation-only", label: t("modeTranslationOnly") },
             ]}
           />
+        }
+      />
+
+      <PopupSettingRow
+        icon="★"
+        title="Astra AI style"
+        accessory={
+          <select
+            id="popup-simple-service-mode"
+            data-testid="popup-service-mode-select"
+            aria-label="Astra AI style"
+            value={serviceMode}
+            onChange={(e) => onServiceModeChange(e.target.value as ServiceMode)}
+            className="astra-input"
+          >
+            <option value="automatic">Automatic</option>
+            <option value="fast">Fast</option>
+            <option value="balanced">Balanced</option>
+            <option value="best_quality">Best quality</option>
+          </select>
         }
       />
 

@@ -34,6 +34,7 @@ export type ShadowNodeMirrorStatus = "pending" | "completed" | "failed"
 export interface ShadowUserSyncPreferences {
   reading_history: boolean
   study_progress: boolean
+  weekly_digest: boolean
 }
 
 export interface ShadowUserSnapshot {

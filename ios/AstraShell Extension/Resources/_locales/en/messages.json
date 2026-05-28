@@ -9,19 +9,19 @@
     "message": "Global Settings"
   },
   "providerLabel": {
-    "message": "Provider"
+    "message": "Astra service"
   },
   "apiKeyLabel": {
-    "message": "API Key"
+    "message": "Service access"
   },
   "baseUrlLabel": {
-    "message": "Base URL (optional)"
+    "message": "Service endpoint (advanced)"
   },
   "relayUrlLabel": {
-    "message": "Astra Relay URL (managed mode, optional)"
+    "message": "Astra service endpoint (advanced)"
   },
   "modelLabel": {
-    "message": "Model"
+    "message": "AI style"
   },
   "targetLangLabel": {
     "message": "Target Language"
@@ -482,7 +482,7 @@
     "message": "Delete"
   },
   "vocabulary_readingIntro": {
-    "message": "Revisit reading items from one queue. Articles and remote PDFs resume directly; local PDF / EPUB / subtitle files reopen the right reader and ask for the same file again."
+    "message": "Revisit reading items from one queue. Articles and remote PDFs resume from their saved links; local PDF / EPUB / subtitle files reopen the right reader and are kept on this device only."
   },
   "vocabulary_viewLabel": {
     "message": "View:"
@@ -515,7 +515,7 @@
     "message": "Deep reading"
   },
   "popup_usageTitle": {
-    "message": "Usage & routing"
+    "message": "Reading activity"
   },
   "popup_usageEmpty": {
     "message": "No live AI requests have been sent in this session yet."
@@ -530,7 +530,7 @@
     "message": "req"
   },
   "popup_usageApproxTokens": {
-    "message": "est. tokens"
+    "message": "reading work"
   },
   "popup_usageFallbacks": {
     "message": "fallback"
@@ -542,19 +542,19 @@
     "message": "Last"
   },
   "popup_usageViaDirect": {
-    "message": "direct"
+    "message": "Astra service"
   },
   "popup_usageViaRelay": {
-    "message": "relay"
+    "message": "Astra cloud"
   },
   "popup_usageFallbackRoute": {
-    "message": "direct → relay"
+    "message": "Astra recovered"
   },
   "popup_usageNoRoute": {
-    "message": "no route info"
+    "message": "service info unavailable"
   },
   "popup_usageLiveOnly": {
-    "message": "Local device translation activity only. This does not change your Astra account quota, and cache hits stay invisible here."
+    "message": "Local device reading activity only. Daily reading stays included, and saved-translation reuse stays local here."
   },
   "label_targetLanguage": {
     "message": "Target Language"
@@ -587,7 +587,7 @@
     "message": "Advanced"
   },
   "label_apiKeyDirectConnect": {
-    "message": "Connects directly to $1 API, no Astra account needed",
+    "message": "Connects to the $1 service, no Astra account needed",
     "placeholders": {
       "1": { "content": "$1" }
     }
@@ -647,7 +647,7 @@
     }
   },
   "popup_quotaToday": {
-    "message": "Today: $1% used ($2 / $3 tokens)",
+    "message": "Daily reading included: $1% used ($2 / $3 words)",
     "placeholders": {
       "1": { "content": "$1" },
       "2": { "content": "$2" },
@@ -931,6 +931,9 @@
   "review_returnToDeepReadSentence": {
     "message": "Return to this sentence in Deep Read"
   },
+  "review_returnToVideoTimestamp": {
+    "message": "Return to video timestamp"
+  },
   "review_resumeReadingThisPage": {
     "message": "Resume reading this page"
   },
@@ -1113,13 +1116,13 @@
     "message": "Requests"
   },
   "popup_usageMetricTokensIn": {
-    "message": "Tokens in"
+    "message": "Reading work"
   },
   "popup_usageMetricEstCost": {
-    "message": "Est. cost"
+    "message": "Included"
   },
   "popup_usageMetricChars": {
-    "message": "Chars"
+    "message": "Words"
   },
   "popup_usageMetricFallbacks": {
     "message": "Fallbacks"
@@ -1158,38 +1161,38 @@
     }
   },
   "popup_usageCostFree": {
-    "message": "Free"
+    "message": "Included"
   },
 
   "options_diagProviderStatus": {
-    "message": "Provider Status"
+    "message": "Astra service status"
   },
   "options_diagDirectApi": {
-    "message": "Direct API"
+    "message": "Local service path"
   },
   "options_diagAstraRelay": {
-    "message": "Astra Relay"
+    "message": "Astra cloud service"
   },
   "options_diagApiKeyConfigured": {
-    "message": "API key configured for $1",
+    "message": "Service access configured for $1",
     "placeholders": {
       "1": { "content": "$1" }
     }
   },
   "options_diagNoApiKey": {
-    "message": "No API key set"
+    "message": "Service access not configured"
   },
   "options_diagRelayActive": {
-    "message": "Session active with relay server"
+    "message": "Astra cloud session active"
   },
   "options_diagNoRelay": {
-    "message": "No relay connection"
+    "message": "Astra cloud not connected"
   },
   "options_diagTransportRoutes": {
-    "message": "Transport Routes"
+    "message": "Service paths"
   },
   "options_diagDirect": {
-    "message": "Direct:"
+    "message": "Device path:"
   },
   "options_diagYes": {
     "message": "Yes"
@@ -1198,22 +1201,22 @@
     "message": "No"
   },
   "options_diagRelay": {
-    "message": "Relay:"
+    "message": "Cloud path:"
   },
   "options_diagCostPerPage": {
-    "message": "Cost/page:"
+    "message": "Reading estimate:"
   },
   "options_diagProviderCapabilities": {
-    "message": "Provider Capabilities"
+    "message": "Service capabilities"
   },
   "options_diagColModel": {
-    "message": "Model"
+    "message": "Service tier"
   },
   "options_diagColInputCost": {
-    "message": "Input $/1k"
+    "message": "Reading in"
   },
   "options_diagColOutputCost": {
-    "message": "Output $/1k"
+    "message": "Reading out"
   },
   "options_diagColContext": {
     "message": "Context"

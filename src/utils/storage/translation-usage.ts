@@ -3,16 +3,33 @@ import { z } from "zod"
 
 import type { TranslationTask } from "@/types/messages"
 import type { TranslationErrorCode } from "@/types/translation"
-import type { ProviderId } from "@/types/config"
-import { summarizeProviderRoute, type ProviderRoute, type ProviderTransport } from "@/utils/providers/routing-metadata"
+import type { ProviderId, ServiceMode } from "@/types/config"
+import { summarizeProviderRoute, type ProviderFallbackReason, type ProviderRoute, type ProviderTransport } from "@/utils/providers/routing-metadata"
+import { getCostBucketForTask, getLatencyBucket, getTaskClassForTranslationRequest, normalizeOperatingTier } from "@/utils/operating-model"
+import {
+  AstraCacheStatusSchema,
+  AstraCostBucketSchema,
+  AstraLatencyBucketSchema,
+  AstraOperatingTierSchema,
+  AstraTaskClassSchema,
+  AstraFeatureSurfaceSchema,
+  type AstraCacheStatus,
+  type AstraCostBucket,
+  type AstraLatencyBucket,
+  type AstraOperatingTier,
+  type AstraTaskClass,
+  type AstraFeatureSurface,
+} from "@/types/operating-model"
 
 const TranslationRouteSchema = z.enum(["direct", "relay", "fallback"])
+const ProviderFallbackReasonSchema = z.enum(["none", "timeout", "outage", "cost", "length", "quality", "unknown"])
 
 const StoredTranslationUsageEventSchema = z.object({
   id: z.string(),
   timestamp: z.number(),
   providerId: z.enum(["google_translate", "openai", "gemini"]),
   model: z.string(),
+  serviceMode: z.enum(["automatic", "fast", "balanced", "best_quality"]).default("automatic"),
   task: z.enum(["translate", "explain", "custom"]),
   textCount: z.number().int().nonnegative(),
   charCount: z.number().int().nonnegative(),
@@ -25,6 +42,13 @@ const StoredTranslationUsageEventSchema = z.object({
   finalTransport: z.enum(["direct", "relay"]).nullable(),
   fallbackUsed: z.boolean(),
   route: TranslationRouteSchema.nullable().optional(),
+  taskClass: AstraTaskClassSchema.optional(),
+  surface: AstraFeatureSurfaceSchema.optional(),
+  costBucket: AstraCostBucketSchema.optional(),
+  latencyBucket: AstraLatencyBucketSchema.optional(),
+  cacheStatus: AstraCacheStatusSchema.optional(),
+  fallbackReason: ProviderFallbackReasonSchema.optional(),
+  tier: AstraOperatingTierSchema.optional(),
   success: z.boolean(),
   errorCode: z.enum([
     "CONFIG_MISSING",
@@ -69,6 +93,14 @@ export interface TranslationUsageAggregate {
   failedRequests: number
   avgDurationMs: number
   bySource: Partial<Record<RequestSource, number>>
+  byServiceMode?: Partial<Record<ServiceMode, number>>
+  byTaskClass: Partial<Record<AstraTaskClass, number>>
+  bySurface: Partial<Record<AstraFeatureSurface, number>>
+  byCostBucket: Partial<Record<AstraCostBucket, number>>
+  byLatencyBucket: Partial<Record<AstraLatencyBucket, number>>
+  byCacheStatus: Partial<Record<AstraCacheStatus, number>>
+  byFallbackReason: Partial<Record<ProviderFallbackReason, number>>
+  byTier: Partial<Record<AstraOperatingTier, number>>
 }
 
 export interface TranslationUsageSummary {
@@ -82,12 +114,18 @@ export interface RecordTranslationUsageInput {
   timestamp?: number
   providerId: ProviderId
   model: string
+  serviceMode?: ServiceMode
   task?: TranslationTask
   texts: string[]
   attemptedTransports?: ProviderTransport[]
   finalTransport?: ProviderTransport | null
   fallbackUsed?: boolean
   route?: ProviderRoute | null
+  taskClass?: AstraTaskClass
+  surface?: AstraFeatureSurface
+  cacheStatus?: AstraCacheStatus
+  fallbackReason?: ProviderFallbackReason
+  tier?: string | null
   success: boolean
   errorCode?: TranslationErrorCode
   estimatedOutputTokens?: number
@@ -114,6 +152,14 @@ function createEmptyAggregate(): TranslationUsageAggregate {
     failedRequests: 0,
     avgDurationMs: 0,
     bySource: {},
+    byServiceMode: {},
+    byTaskClass: {},
+    bySurface: {},
+    byCostBucket: {},
+    byLatencyBucket: {},
+    byCacheStatus: {},
+    byFallbackReason: {},
+    byTier: {},
   }
 }
 
@@ -126,10 +172,30 @@ function createEventId(timestamp: number): string {
   return `${timestamp}-${Math.random().toString(36).slice(2, 8)}`
 }
 
+function getSurfaceForRequestSource(source: RequestSource | undefined): AstraFeatureSurface {
+  if (source === "selection" || source === "hover") return "selection"
+  if (source === "input") return "writing"
+  if (source === "pdf" || source === "epub" || source === "subtitle") return "file"
+  return "page"
+}
+
 function normalizeEvent(event: StoredTranslationUsageEvent): TranslationUsageEvent {
+  const surface = event.surface ?? getSurfaceForRequestSource(event.requestSource)
+  const taskClass = event.taskClass ?? getTaskClassForTranslationRequest({
+    task: event.task,
+    surface,
+    characterCount: event.charCount,
+  })
   return {
     ...event,
     route: event.route ?? summarizeProviderRoute(event.attemptedTransports, event.finalTransport),
+    taskClass,
+    surface,
+    costBucket: event.costBucket ?? getCostBucketForTask(taskClass),
+    latencyBucket: event.latencyBucket ?? getLatencyBucket(event.durationMs),
+    cacheStatus: event.cacheStatus ?? "unknown",
+    fallbackReason: event.fallbackReason ?? (event.fallbackUsed ? "unknown" : "none"),
+    tier: event.tier ?? "unknown",
   }
 }
 
@@ -188,6 +254,26 @@ function accumulate(aggregate: TranslationUsageAggregate, event: TranslationUsag
   if (event.requestSource) {
     aggregate.bySource[event.requestSource] = (aggregate.bySource[event.requestSource] ?? 0) + 1
   }
+  aggregate.byServiceMode ??= {}
+  aggregate.byServiceMode[event.serviceMode] = (aggregate.byServiceMode[event.serviceMode] ?? 0) + 1
+  const surface = event.surface ?? getSurfaceForRequestSource(event.requestSource)
+  const taskClass = event.taskClass ?? getTaskClassForTranslationRequest({
+    task: event.task,
+    surface,
+    characterCount: event.charCount,
+  })
+  const costBucket = event.costBucket ?? getCostBucketForTask(taskClass)
+  const latencyBucket = event.latencyBucket ?? getLatencyBucket(event.durationMs)
+  const cacheStatus = event.cacheStatus ?? "unknown"
+  const fallbackReason = event.fallbackReason ?? (event.fallbackUsed ? "unknown" : "none")
+  const tier = event.tier ?? "unknown"
+  aggregate.byTaskClass[taskClass] = (aggregate.byTaskClass[taskClass] ?? 0) + 1
+  aggregate.bySurface[surface] = (aggregate.bySurface[surface] ?? 0) + 1
+  aggregate.byCostBucket[costBucket] = (aggregate.byCostBucket[costBucket] ?? 0) + 1
+  aggregate.byLatencyBucket[latencyBucket] = (aggregate.byLatencyBucket[latencyBucket] ?? 0) + 1
+  aggregate.byCacheStatus[cacheStatus] = (aggregate.byCacheStatus[cacheStatus] ?? 0) + 1
+  aggregate.byFallbackReason[fallbackReason] = (aggregate.byFallbackReason[fallbackReason] ?? 0) + 1
+  aggregate.byTier[tier] = (aggregate.byTier[tier] ?? 0) + 1
   if (event.finalTransport === "direct") {
     aggregate.directRequests += 1
   }
@@ -223,13 +309,24 @@ export async function recordTranslationUsage(input: RecordTranslationUsageInput)
   const attemptedTransports = input.attemptedTransports ?? []
   const finalTransport = input.finalTransport ?? null
   const route = input.route ?? summarizeProviderRoute(attemptedTransports, finalTransport)
+  const task = input.task ?? "translate"
+  const surface = input.surface ?? (task === "custom" ? "writing" : getSurfaceForRequestSource(input.requestSource))
+  const taskClass = input.taskClass ?? getTaskClassForTranslationRequest({
+    task,
+    surface,
+    characterCount: charCount,
+    maxTextLength: input.texts.reduce((max, text) => Math.max(max, text.length), 0),
+  })
+  const durationMs = input.durationMs
+  const fallbackReason = input.fallbackReason ?? (input.fallbackUsed ? "unknown" : "none")
 
   const event: TranslationUsageEvent = {
     id: createEventId(timestamp),
     timestamp,
     providerId: input.providerId,
     model: input.model,
-    task: input.task ?? "translate",
+    serviceMode: input.serviceMode ?? "automatic",
+    task,
     textCount: input.texts.length,
     charCount,
     estimatedInputTokens: estimateInputTokens(charCount),
@@ -237,11 +334,18 @@ export async function recordTranslationUsage(input: RecordTranslationUsageInput)
     finalTransport,
     fallbackUsed: input.fallbackUsed ?? false,
     route,
+    taskClass,
+    surface,
+    costBucket: getCostBucketForTask(taskClass),
+    latencyBucket: getLatencyBucket(durationMs),
+    cacheStatus: input.cacheStatus ?? "unknown",
+    fallbackReason,
+    tier: normalizeOperatingTier(input.tier),
     success: input.success,
     ...(input.errorCode ? { errorCode: input.errorCode } : {}),
     ...(input.estimatedOutputTokens != null ? { estimatedOutputTokens: input.estimatedOutputTokens } : {}),
     ...(input.estimatedCostUsd != null ? { estimatedCostUsd: input.estimatedCostUsd } : {}),
-    ...(input.durationMs != null ? { durationMs: input.durationMs } : {}),
+    ...(durationMs != null ? { durationMs } : {}),
     ...(input.requestSource ? { requestSource: input.requestSource } : {}),
   }
 

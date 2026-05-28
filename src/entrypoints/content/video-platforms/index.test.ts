@@ -1,8 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 
-const { runInlineActionMock, readConfigMock, translateTextsMock } = vi.hoisted(() => ({
+const { runInlineActionMock, readConfigMock, saveConfigMock, translateTextsMock } = vi.hoisted(() => ({
   runInlineActionMock: vi.fn(),
   readConfigMock: vi.fn(),
+  saveConfigMock: vi.fn(),
   translateTextsMock: vi.fn(),
 }))
 
@@ -12,6 +13,7 @@ vi.mock("../inline-actions", () => ({
 
 vi.mock("@/utils/storage/config", () => ({
   readConfig: readConfigMock,
+  saveConfig: saveConfigMock,
 }))
 
 vi.mock("@/utils/translate/translate", () => ({
@@ -47,6 +49,7 @@ async function flushPromises(count = 6) {
 describe("video subtitle QC snapshot", () => {
   beforeEach(() => {
     readConfigMock.mockResolvedValue(DEFAULT_ASTRA_CONFIG)
+    saveConfigMock.mockResolvedValue(DEFAULT_ASTRA_CONFIG)
     runInlineActionMock.mockResolvedValue({ ok: true, text: "翻译结果" })
     translateTextsMock.mockResolvedValue({ ok: true, translations: [] })
     document.body.innerHTML = ""

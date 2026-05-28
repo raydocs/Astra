@@ -13,8 +13,20 @@ import {
 
 const AuthResponseSchema = AstraSessionSchema
 
+export const AstraMobileLinkChallengeSchema = z.object({
+  code: z.string().trim().min(1),
+  expiresAt: z.string().trim().min(1),
+  link: z.string().trim().min(1).nullable().default(null),
+})
+
+export type AstraMobileLinkChallenge = z.infer<typeof AstraMobileLinkChallengeSchema>
+
 function buildAuthUrl(baseURL: string): string {
   return `${baseURL.trim().replace(/\/+$/, "")}/auth/session`
+}
+
+function buildMobileLinkUrl(baseURL: string): string {
+  return `${baseURL.trim().replace(/\/+$/, "")}/auth/mobile-link`
 }
 
 function buildAnonymousAuthUrl(baseURL: string): string {
@@ -223,6 +235,34 @@ export async function revokeAstraSession(params: {
   if (!response.ok) {
     throw new Error(await readErrorMessage(response))
   }
+}
+
+export async function requestAstraMobileLink(params: {
+  baseURL: string
+  sessionToken: string
+}): Promise<AstraMobileLinkChallenge> {
+  const device = await ensureAstraDeviceIdentity()
+  const response = await fetch(buildMobileLinkUrl(requireBaseURL(params.baseURL)), {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${params.sessionToken}`,
+      "Content-Type": "application/json",
+      "X-Astra-Device-Id": device.deviceId,
+    },
+    body: JSON.stringify({}),
+  })
+
+  if (!response.ok) {
+    const error = await readErrorPayload(response)
+    throw new AstraAuthRequestError({
+      status: response.status,
+      code: error.code,
+      message: error.message,
+      fallbackReason: error.fallbackReason,
+    })
+  }
+
+  return AstraMobileLinkChallengeSchema.parse(await response.json())
 }
 
 export async function createAnonymousAstraSession(params: {

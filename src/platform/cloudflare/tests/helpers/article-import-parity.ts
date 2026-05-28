@@ -31,6 +31,12 @@ interface ArticleImportParityView {
   sampleBlocks: string[]
 }
 
+type InternalExtractionScope = ReturnType<typeof resolveExtractionPlan>["scope"]
+
+function toPublicArticleScope(scope: InternalExtractionScope): ImportedReadableArticle["scope"] {
+  return scope === "article" ? "article" : "page"
+}
+
 function normalizeWhitespace(value: string): string {
   return value.replace(/\s+/g, " ").trim()
 }
@@ -91,7 +97,7 @@ export function extractRelayArticleFromHtml(url: string, html: string): Imported
       title: metadata.title,
       hostname: finalUrl.hostname,
       byline: metadata.byline,
-      scope: plan.scope,
+      scope: toPublicArticleScope(plan.scope),
       summary: plan.summary,
       blocks,
     }

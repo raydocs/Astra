@@ -15,6 +15,10 @@ const {
   getDueVocabularyCountMock,
   hasVocabularyEntryByTextMock,
   markSessionSaveMock,
+  readAstraSessionMock,
+  ensureAstraDeviceIdentityMock,
+  submitAstraSupportReportMock,
+  recordLearningLoopEventMock,
 } = vi.hoisted(() => ({
   readConfigMock: vi.fn(),
   translateTextsMock: vi.fn(),
@@ -29,6 +33,10 @@ const {
   getDueVocabularyCountMock: vi.fn(),
   hasVocabularyEntryByTextMock: vi.fn(),
   markSessionSaveMock: vi.fn(),
+  readAstraSessionMock: vi.fn(),
+  ensureAstraDeviceIdentityMock: vi.fn(),
+  submitAstraSupportReportMock: vi.fn(),
+  recordLearningLoopEventMock: vi.fn(),
 }))
 
 vi.mock("@/utils/storage/config", () => ({
@@ -61,6 +69,19 @@ vi.mock("@/utils/storage/vocabulary", () => ({
 
 vi.mock("../learning-state", () => ({
   markSessionSave: markSessionSaveMock,
+}))
+
+vi.mock("@/utils/storage/auth", () => ({
+  readAstraSession: readAstraSessionMock,
+  ensureAstraDeviceIdentity: ensureAstraDeviceIdentityMock,
+}))
+
+vi.mock("@/utils/astra/support", () => ({
+  submitAstraSupportReport: submitAstraSupportReportMock,
+}))
+
+vi.mock("@/utils/learning-loop-events", () => ({
+  recordLearningLoopEvent: recordLearningLoopEventMock,
 }))
 
 vi.mock("../translation-context", () => ({
@@ -136,6 +157,30 @@ describe("HoverTranslate", () => {
     saveVocabularyEntryMock.mockResolvedValue(undefined)
     getDueVocabularyCountMock.mockResolvedValue(0)
     hasVocabularyEntryByTextMock.mockResolvedValue(false)
+    readAstraSessionMock.mockResolvedValue(null)
+    ensureAstraDeviceIdentityMock.mockResolvedValue({
+      version: 1,
+      deviceId: "device-123",
+      label: "Chrome on macOS",
+      platform: "macos",
+      browserFamily: "chrome",
+      appKind: "extension",
+      appVersion: "0.1.0",
+      createdAt: "2026-05-27T00:00:00.000Z",
+      updatedAt: "2026-05-27T00:00:00.000Z",
+    })
+    submitAstraSupportReportMock.mockResolvedValue({
+      report: {
+        reportId: "rpt_hover_remote_0001",
+        status: "submitted",
+        createdAt: "2026-05-27T00:00:00.000Z",
+        updatedAt: "2026-05-27T00:00:00.000Z",
+        submittedAt: "2026-05-27T00:00:00.000Z",
+        issueCategory: "translation_quality",
+        defaultContentIncluded: false,
+        knownIssue: null,
+      },
+    })
     findContentRootMock.mockReturnValue(document.body)
     findClosestTextBlockMock.mockImplementation(() => ({ element: target, text: "Hello world" }))
     hasInjectedTranslationMock.mockReturnValue(false)
@@ -180,6 +225,7 @@ describe("HoverTranslate", () => {
     expect(translateTextsMock).toHaveBeenCalledWith({
       texts: ["Hello world"],
       targetLang: "zh-CN",
+      serviceMode: "automatic",
       context: {
         pageTitle: "Test page",
         selectionContext: "Hello world",
@@ -372,6 +418,183 @@ describe("HoverTranslate", () => {
 
     expect(saveVocabularyEntryMock).toHaveBeenCalledTimes(1)
     expect(markSessionSaveMock).toHaveBeenCalledWith("hover_translate", 0)
+
+    const card = getHost().shadowRoot?.querySelector("[data-testid='hover-translate-card']") as HTMLDivElement | null
+    expect(card?.textContent).toContain(t("learningSavedTitle"))
+    expect(card?.textContent).toContain(t("learningSavedHint"))
+    expect(card?.textContent).toMatch(/learning queue|学习队列/)
+    expect(card?.textContent).toMatch(/1 minute|1 分钟/)
+    expect(card?.textContent).toMatch(/source|来源/)
+  })
+
+  it("submits a metadata-only hover report from the error card when signed in", async () => {
+    window.history.replaceState({}, "", "/article?with=path")
+    readAstraSessionMock.mockResolvedValue({
+      version: 1,
+      sessionToken: "astra-session",
+      sessionId: "session-123",
+      deviceId: "device-123",
+      identityMode: "authenticated",
+      relayBaseURL: "https://astra.example/v1",
+      email: "demo@astra.local",
+      plan: "pro",
+      subscriptionStatus: "active",
+      providerEntitlements: ["google_translate", "openai", "gemini"],
+      quota: {},
+      usage: {},
+      issuedAt: null,
+      expiresAt: null,
+    })
+    translateTextsMock.mockResolvedValueOnce({
+      ok: false,
+      error: { code: "PROVIDER_REQUEST_FAILED", message: "Relay unavailable" },
+    })
+    const createObjectURLMock = vi.fn(() => "blob:should-not-download")
+    Object.defineProperty(URL, "createObjectURL", {
+      configurable: true,
+      value: createObjectURLMock,
+    })
+
+    const target = document.getElementById("target") as HTMLElement
+    const handleMouseMove = listeners.mousemove as ((event: MouseEvent) => void) | undefined
+    const event = new MouseEvent("mousemove", { altKey: true })
+    Object.defineProperty(event, "target", { value: target })
+
+    await act(async () => {
+      handleMouseMove?.(event)
+      await vi.advanceTimersByTimeAsync(300)
+      await Promise.resolve()
+    })
+
+    const recoveryCard = getHost().shadowRoot?.querySelector("[data-testid='hover-error-recovery-card']") as HTMLDivElement | null
+    expect(recoveryCard?.textContent).toContain("Astra could not connect right now")
+    expect(recoveryCard?.textContent).toContain("Next step: Retry when online")
+    expect(recoveryCard?.textContent).toContain("Local progress was kept")
+    expect(recoveryCard?.textContent).toContain("report this hover")
+    expect(recoveryCard?.textContent).not.toContain("Relay unavailable")
+
+    const reportButton = getHost().shadowRoot?.querySelector("[data-testid='hover-report-error-button']") as HTMLButtonElement | null
+    expect(reportButton).toBeTruthy()
+
+    await act(async () => {
+      reportButton?.dispatchEvent(new MouseEvent("click", { bubbles: true, composed: true }))
+      await Promise.resolve()
+      await Promise.resolve()
+      await Promise.resolve()
+      await Promise.resolve()
+    })
+
+    expect(submitAstraSupportReportMock).toHaveBeenCalledTimes(1)
+    expect(submitAstraSupportReportMock).toHaveBeenCalledWith(expect.objectContaining({
+      baseURL: "https://astra.example/v1",
+      sessionToken: "astra-session",
+      deviceId: "device-123",
+      bundle: expect.objectContaining({
+        schema: "astra-support-bundle.v1",
+        userConsent: true,
+        featureSurface: "selection",
+        action: "report_hover_translation_error",
+        issueCategory: "translation_quality",
+        errorCategory: "hover_translation_failed",
+        lastErrorCategory: "hover_translation_failed",
+        runtimeSurface: "content_hover_translate",
+        hostname: "localhost",
+        privacyMode: DEFAULT_ASTRA_CONFIG.privacyMode,
+        membershipState: "pro",
+        userMessageIncluded: false,
+        contactIncluded: false,
+        contentIncluded: { enabled: false, type: "none" },
+      }),
+    }))
+    const submittedBundle = submitAstraSupportReportMock.mock.calls[0]?.[0]?.bundle
+    expect(JSON.stringify(submittedBundle)).not.toContain("Hello world")
+    expect(JSON.stringify(submittedBundle)).not.toContain("/article")
+    expect(JSON.stringify(submittedBundle)).not.toContain("with=path")
+    expect(createObjectURLMock).not.toHaveBeenCalled()
+    expect(recordLearningLoopEventMock).toHaveBeenCalledWith("support_report_submitted", expect.objectContaining({
+      source: "content_hover_translate",
+      reportId: "rpt_hover_remote_0001",
+      issueCategory: "translation_quality",
+      featureSurface: "selection",
+      knownIssueMatched: false,
+    }))
+    expect(getHost().shadowRoot?.querySelector("[data-testid='hover-report-status']")?.textContent).toContain("Metadata report submitted")
+  })
+
+  it("downloads a metadata-only hover report from the error card when unsigned", async () => {
+    window.history.replaceState({}, "", "/article?with=path")
+    readAstraSessionMock.mockResolvedValue(null)
+    translateTextsMock.mockResolvedValueOnce({
+      ok: false,
+      error: { code: "PROVIDER_REQUEST_FAILED", message: "Relay unavailable" },
+    })
+    let clickedDownloadAnchor: HTMLAnchorElement | null = null
+    const NativeBlob = globalThis.Blob
+    let lastDownloadBlobParts: BlobPart[] = []
+    vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(function (this: HTMLAnchorElement) {
+      clickedDownloadAnchor = this
+    })
+    Object.defineProperty(globalThis, "Blob", {
+      configurable: true,
+      value: class TestDownloadBlob extends NativeBlob {
+        constructor(blobParts?: BlobPart[], options?: BlobPropertyBag) {
+          lastDownloadBlobParts = [...(blobParts ?? [])]
+          super(blobParts, options)
+        }
+      },
+    })
+    const createObjectURLMock = vi.fn(() => "blob:astra-hover-report")
+    const revokeObjectURLMock = vi.fn()
+    Object.defineProperty(URL, "createObjectURL", {
+      configurable: true,
+      value: createObjectURLMock,
+    })
+    Object.defineProperty(URL, "revokeObjectURL", {
+      configurable: true,
+      value: revokeObjectURLMock,
+    })
+
+    const target = document.getElementById("target") as HTMLElement
+    const handleMouseMove = listeners.mousemove as ((event: MouseEvent) => void) | undefined
+    const event = new MouseEvent("mousemove", { altKey: true })
+    Object.defineProperty(event, "target", { value: target })
+
+    await act(async () => {
+      handleMouseMove?.(event)
+      await vi.advanceTimersByTimeAsync(300)
+      await Promise.resolve()
+    })
+
+    const reportButton = getHost().shadowRoot?.querySelector("[data-testid='hover-report-error-button']") as HTMLButtonElement | null
+    expect(reportButton).toBeTruthy()
+
+    await act(async () => {
+      reportButton?.dispatchEvent(new MouseEvent("click", { bubbles: true, composed: true }))
+      await Promise.resolve()
+      await Promise.resolve()
+      await Promise.resolve()
+      await Promise.resolve()
+    })
+
+    expect(submitAstraSupportReportMock).not.toHaveBeenCalled()
+    expect(createObjectURLMock).toHaveBeenCalledTimes(1)
+    expect(revokeObjectURLMock).toHaveBeenCalledWith("blob:astra-hover-report")
+    const payload = JSON.parse(String(lastDownloadBlobParts[0] ?? ""))
+    expect(payload).toEqual(expect.objectContaining({
+      schema: "astra-support-bundle.v1",
+      userConsent: true,
+      featureSurface: "selection",
+      action: "report_hover_translation_error",
+      issueCategory: "translation_quality",
+      runtimeSurface: "content_hover_translate",
+      hostname: "localhost",
+      contentIncluded: { enabled: false, type: "none" },
+    }))
+    expect(JSON.stringify(payload)).not.toContain("Hello world")
+    expect(JSON.stringify(payload)).not.toContain("/article")
+    expect(JSON.stringify(payload)).not.toContain("with=path")
+    expect((clickedDownloadAnchor as HTMLAnchorElement | null)?.download).toMatch(/^astra-hover-report-.*\.json$/)
+    expect(getHost().shadowRoot?.querySelector("[data-testid='hover-report-status']")?.textContent).toContain("Downloaded metadata-only report JSON")
   })
 
   it("keeps the hover card interactive when the pointer moves onto it", async () => {

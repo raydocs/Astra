@@ -5,7 +5,7 @@
 
 import { translateTexts } from "@/utils/translate/translate"
 import { readConfig } from "@/utils/storage/config"
-import { hasResolvedProviderAccess, resolveSiteTranslationSettings } from "@/types/config"
+import { hasResolvedProviderAccess, resolveSiteTranslationSettings, type ServiceMode } from "@/types/config"
 import { readAstraSession } from "@/utils/storage/auth"
 import { sanitizeTranslationContext } from "@/utils/privacy"
 import { getDocumentTranslationContext } from "./translation-context"
@@ -33,15 +33,21 @@ function getTranslatedKeys(video: HTMLVideoElement): Set<string> {
   return keys
 }
 
-function hasAstraTrackForTarget(video: HTMLVideoElement, targetLang: string): boolean {
+function hasAstraTrackForTarget(video: HTMLVideoElement, targetLang: string, serviceMode: ServiceMode): boolean {
   const expectedLabel = `${ASTRA_TRACK_LABEL_PREFIX}${targetLang}`
-  return Array.from(video.textTracks).some((track) => track.label === expectedLabel)
-    || Array.from(video.querySelectorAll("track"))
-      .some((trackEl) => trackEl.label === expectedLabel)
+  return Array.from(video.querySelectorAll("track"))
+    .some((trackEl) => trackEl.label === expectedLabel && trackEl.dataset.astraServiceMode === serviceMode)
 }
 
-function buildTrackKey(track: PlatformSubtitleTrack, targetLang: string): string {
-  return `${track.platform}:${track.source}:${track.id}:${targetLang}`
+function removeStaleAstraTracksForTarget(video: HTMLVideoElement, targetLang: string, serviceMode: ServiceMode): void {
+  const expectedLabel = `${ASTRA_TRACK_LABEL_PREFIX}${targetLang}`
+  Array.from(video.querySelectorAll("track"))
+    .filter((trackEl) => trackEl.label === expectedLabel && trackEl.dataset.astraServiceMode !== serviceMode)
+    .forEach((trackEl) => trackEl.remove())
+}
+
+function buildTrackKey(track: PlatformSubtitleTrack, targetLang: string, serviceMode: ServiceMode): string {
+  return `${track.platform}:${track.source}:${track.id}:${targetLang}:${serviceMode}`
 }
 
 function getSubtitleContext(privacyMode: boolean) {
@@ -61,6 +67,7 @@ async function translateSubtitleCueTrack(
   video: HTMLVideoElement,
   sourceTrack: PlatformSubtitleTrack,
   targetLang: string,
+  serviceMode: ServiceMode,
   privacyMode: boolean,
 ): Promise<boolean> {
   const cues = sourceTrack.cues.filter((cue) => cue.text.trim().length > 0)
@@ -74,6 +81,7 @@ async function translateSubtitleCueTrack(
     const result = await translateTexts({
       texts: batch,
       targetLang,
+      serviceMode,
       context,
     })
 
@@ -96,6 +104,7 @@ async function translateSubtitleCueTrack(
   trackElement.dataset.astraSubtitlePlatform = sourceTrack.platform
   trackElement.dataset.astraSubtitleSource = sourceTrack.source
   trackElement.dataset.astraSubtitleTrackId = sourceTrack.id
+  trackElement.dataset.astraServiceMode = serviceMode
   video.appendChild(trackElement)
 
   try {
@@ -182,16 +191,17 @@ export async function translatePageSubtitles(): Promise<void> {
   if (videos.length === 0) return
 
   for (const video of videos) {
-    if (hasAstraTrackForTarget(video, resolved.targetLang)) continue
+    removeStaleAstraTracksForTarget(video, resolved.targetLang, config.serviceMode)
+    if (hasAstraTrackForTarget(video, resolved.targetLang, config.serviceMode)) continue
 
     const sourceTrack = await loadBestSubtitleTrack(video, resolved.targetLang)
     if (!sourceTrack) continue
 
-    const trackKey = buildTrackKey(sourceTrack, resolved.targetLang)
+    const trackKey = buildTrackKey(sourceTrack, resolved.targetLang, config.serviceMode)
     const translatedKeys = getTranslatedKeys(video)
     if (translatedKeys.has(trackKey)) continue
 
-    const translated = await translateSubtitleCueTrack(video, sourceTrack, resolved.targetLang, config.privacyMode)
+    const translated = await translateSubtitleCueTrack(video, sourceTrack, resolved.targetLang, config.serviceMode, config.privacyMode)
     if (translated) {
       translatedKeys.add(trackKey)
     }

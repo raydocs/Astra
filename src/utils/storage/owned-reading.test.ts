@@ -2,6 +2,8 @@ import { beforeEach, describe, expect, it } from "vitest"
 
 import { createMockBrowser, setMockBrowser } from "../../../test/utils/mockBrowser"
 import { READING_HISTORY_STORAGE_KEY } from "./reading-history"
+import { saveConfig } from "./config"
+import { excludeHostnameFromPersonalization } from "./learning-profile"
 import {
   OWNED_READING_STORAGE_KEY,
   applyOwnedReadingSyncMutations,
@@ -31,6 +33,7 @@ import {
   replaceOwnedReadingItems,
   removeOwnedReadingItem,
   setOwnedReadingStatus,
+  setOwnedReadingUserControl,
   syncRecentReadingHistoryToOwnedQueue,
   upsertOwnedArticleFromUrl,
   upsertOwnedEpubFromImport,
@@ -94,6 +97,71 @@ describe("owned reading storage", () => {
     expect(second.sourceUrl).toBe("https://example.com/a")
     const list = await listOwnedReadingItems()
     expect(list).toHaveLength(1)
+  })
+
+  it("reduces automatic article capture metadata under Privacy Mode", async () => {
+    await saveConfig({ privacyMode: true })
+
+    const item = await upsertOwnedArticleFromUrl({
+      url: "https://private.example/sensitive/path?token=secret#section",
+      title: "Sensitive Full Title",
+      status: "saved",
+    })
+
+    expect(item).toMatchObject({
+      id: "or_article_https%3A%2F%2Fprivate.example%2F",
+      title: "Private page",
+      sourceUrl: "https://private.example/",
+      readingHistoryRecordId: "https://private.example/",
+      studyProgressRecordId: "https://private.example/",
+      userControl: { syncEnabled: false, excludedFromDigest: true, privacyModeAtCapture: true },
+    })
+    const list = await listOwnedReadingItems()
+    expect(list).toHaveLength(1)
+    expect(JSON.stringify(list[0])).not.toContain("Sensitive Full Title")
+    expect(JSON.stringify(list[0])).not.toContain("sensitive/path")
+  })
+
+  it("suppresses automatic article capture for excluded hosts", async () => {
+    await excludeHostnameFromPersonalization("private.example")
+
+    const item = await upsertOwnedArticleFromUrl({
+      url: "https://private.example/sensitive/path",
+      title: "Sensitive Full Title",
+      status: "saved",
+    })
+
+    expect(item).toMatchObject({
+      title: "Sensitive Full Title",
+      sourceUrl: "https://private.example/sensitive/path",
+    })
+    expect(await listOwnedReadingItems()).toEqual([])
+  })
+
+  it("stores source-level user controls and omits disabled sources from sync-safe records", async () => {
+    const item = await upsertOwnedArticleFromUrl({
+      url: "https://example.com/source-controls",
+      title: "Source controls",
+      status: "saved",
+    })
+
+    expect((await listOwnedReadingItems())[0]?.userControl).toMatchObject({
+      syncEnabled: true,
+      excludedFromDigest: false,
+      privacyModeAtCapture: false,
+    })
+
+    await setOwnedReadingUserControl(item.id, {
+      syncEnabled: false,
+      excludedFromDigest: true,
+    })
+
+    const [updated] = await listOwnedReadingItems()
+    expect(updated?.userControl).toMatchObject({
+      syncEnabled: false,
+      excludedFromDigest: true,
+    })
+    expect(await readSyncSafeOwnedReadingItems()).toEqual([])
   })
 
   it("keeps in_progress when re-upserting as saved", async () => {
@@ -622,6 +690,33 @@ describe("owned reading storage", () => {
     const titles = new Set(list.map((r) => r.title))
     expect(titles.has("News X")).toBe(true)
     expect(titles.has("Other")).toBe(true)
+  })
+
+  it("syncRecentReadingHistoryToOwnedQueue reduces privacy-mode history rows before owned capture", async () => {
+    await saveConfig({ privacyMode: true })
+    setMockBrowser(createMockBrowser({
+      [READING_HISTORY_STORAGE_KEY]: [{
+        id: "https://private.example/sensitive/path",
+        url: "https://private.example/sensitive/path",
+        hostname: "private.example",
+        title: "Sensitive Full Title",
+        wordsTranslated: 10,
+        visitedAt: 100,
+      }],
+    }))
+    await saveConfig({ privacyMode: true })
+
+    await syncRecentReadingHistoryToOwnedQueue(10)
+
+    const list = await listOwnedReadingItems()
+    expect(list).toHaveLength(1)
+    expect(list[0]).toMatchObject({
+      title: "Private page",
+      sourceUrl: "https://private.example/",
+      userControl: { syncEnabled: false, excludedFromDigest: true, privacyModeAtCapture: true },
+    })
+    expect(JSON.stringify(list[0])).not.toContain("sensitive/path")
+    expect(JSON.stringify(list[0])).not.toContain("Sensitive Full Title")
   })
 
   it("removeOwnedReadingItem deletes row", async () => {

@@ -2,6 +2,7 @@ import { useState, useEffect, useRef, useCallback } from "react"
 import { createRoot } from "react-dom/client"
 import { ErrorBoundary } from "@/components/ErrorBoundary"
 import { t } from "@/utils/i18n"
+import { getSafeAiUnavailableCopy } from "@/utils/copy-dictionary"
 import { readConfig, saveConfig } from "@/utils/storage/config"
 import { resolveSiteTranslationSettings } from "@/types/config"
 import { isSensitiveInput } from "@/utils/privacy"
@@ -288,7 +289,7 @@ function InputTranslateApp() {
 
     try {
       if (!await isPageAccessAllowedForUrl(window.location.href)) {
-        setOverlay(prev => ({ ...prev, error: "Astra page access revoked for this site" }))
+        setOverlay(prev => ({ ...prev, error: getSafeAiUnavailableCopy({ code: "CONTENT_UNAVAILABLE", message: "Astra page access revoked for this site" }) }))
         setTimeout(() => setOverlay(prev => ({ ...prev, error: null })), 2000)
         return
       }
@@ -302,7 +303,7 @@ function InputTranslateApp() {
 
       const resolved = resolveSiteTranslationSettings(config, window.location.hostname)
       if (!resolved.enabled) {
-        setOverlay(prev => ({ ...prev, error: "Astra disabled on this site" }))
+        setOverlay(prev => ({ ...prev, error: getSafeAiUnavailableCopy({ code: "SITE_DISABLED", message: "Astra disabled on this site" }, { siteEnabled: false }) }))
         setTimeout(() => setOverlay(prev => ({ ...prev, error: null })), 2000)
         return
       }
@@ -310,6 +311,7 @@ function InputTranslateApp() {
       const result = await runInlineAction({
         text,
         targetLang: resolved.targetLang,
+        serviceMode: config.serviceMode,
         task: "translate",
       })
 
@@ -322,7 +324,7 @@ function InputTranslateApp() {
         restoreEditableSelection(input, selectionSnapshot, outputText)
         dispatchEditableInputEvent(input, outputText)
       } else {
-        const msg = result.message || "Translation failed"
+        const msg = getSafeAiUnavailableCopy({ code: "UNKNOWN", message: result.message || "Translation failed" })
         setOverlay(prev => ({ ...prev, error: msg }))
         setTimeout(() => setOverlay(prev => ({ ...prev, error: null })), 3000)
       }

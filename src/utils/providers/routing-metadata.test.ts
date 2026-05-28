@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest"
 
-import { summarizeProviderRoute } from "./routing-metadata"
+import { createTranslationPathMarker, summarizeProviderRoute } from "./routing-metadata"
 
 describe("routing metadata helpers", () => {
   it("classifies direct requests", () => {
@@ -19,5 +19,18 @@ describe("routing metadata helpers", () => {
 
   it("returns null when no transport was attempted", () => {
     expect(summarizeProviderRoute([], null)).toBeNull()
+  })
+
+  it("preserves fallback reason metadata on path markers", () => {
+    expect(createTranslationPathMarker({
+      route: "fallback",
+      attemptedTransports: ["direct", "relay"],
+      finalTransport: "relay",
+      fallbackUsed: true,
+      fallbackReason: "timeout",
+    })).toMatchObject({
+      kind: "fallback",
+      fallbackReason: "timeout",
+    })
   })
 })

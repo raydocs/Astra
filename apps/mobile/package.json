@@ -1,0 +1,53 @@
+{
+  "name": "@astra/mobile-companion",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Astra Mobile Review Companion for iOS and Android",
+  "main": "index.ts",
+  "scripts": {
+    "prestart": "node ./scripts/ensure-mobile-deps.mjs",
+    "start": "expo start",
+    "preios": "node ./scripts/ensure-mobile-deps.mjs",
+    "ios": "expo run:ios",
+    "preandroid": "node ./scripts/ensure-mobile-deps.mjs",
+    "android": "expo run:android",
+    "preweb": "node ./scripts/ensure-mobile-deps.mjs",
+    "web": "expo start --web",
+    "doctor": "expo doctor",
+    "prebuild:ios": "expo prebuild --platform ios",
+    "prebuild:android": "expo prebuild --platform android",
+    "ios:pods": "cd ios && pod install",
+    "ios:build:generic": "xcodebuild -workspace ios/AstraReview.xcworkspace -scheme AstraReview -configuration Debug -destination 'generic/platform=iOS' -derivedDataPath /tmp/astra-mobile-ios-derived build",
+    "build:ios": "eas build --platform ios",
+    "build:android": "eas build --platform android",
+    "android:assemble": "node ./scripts/android-assemble-debug.mjs",
+    "type-check": "tsc --noEmit",
+    "verify": "node ./scripts/verify-mobile-scaffold.mjs"
+  },
+  "dependencies": {
+    "@expo/metro-runtime": "56.0.13",
+    "@react-native-async-storage/async-storage": "3.1.0",
+    "expo": "56.0.5",
+    "expo-apple-authentication": "~56.0.4",
+    "expo-application": "56.0.3",
+    "expo-auth-session": "~56.0.12",
+    "expo-camera": "~56.0.7",
+    "expo-constants": "56.0.16",
+    "expo-crypto": "~56.0.4",
+    "expo-notifications": "~56.0.14",
+    "expo-secure-store": "56.0.4",
+    "expo-speech": "~56.0.3",
+    "expo-status-bar": "56.0.4",
+    "expo-system-ui": "56.0.5",
+    "expo-web-browser": "~56.0.5",
+    "react": "19.2.6",
+    "react-native": "0.85.3",
+    "react-native-safe-area-context": "5.8.0",
+    "react-native-screens": "4.25.2"
+  },
+  "devDependencies": {
+    "@types/react": "^19.2.15",
+    "eas-cli": "^19.1.0",
+    "typescript": "^6.0.3"
+  }
+}

@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest"
 
 import { createMockBrowser, setMockBrowser } from "../../../test/utils/mockBrowser"
+import { findForbiddenUserCopyTerms } from "../copy-dictionary"
 import {
   PAGE_ACCESS_POLICY_STORAGE_KEY,
   getPageAccessState,
@@ -35,6 +36,8 @@ describe("page permission utility", () => {
     const result = await requestPageAccess("site")
 
     expect(result.ok).toBe(true)
+    expect(result.message).toBe("Astra will remember this site.")
+    expect(findForbiddenUserCopyTerms(result.message)).toEqual([])
     expect(browser.permissions.request).toHaveBeenCalledWith({ origins: ["https://example.com/*"] })
     expect(browser.permissions.request).not.toHaveBeenCalledWith({ origins: ["https://*/*", "http://*/*"] })
     expect(browser.__storage[PAGE_ACCESS_POLICY_STORAGE_KEY]).toMatchObject({
@@ -55,6 +58,8 @@ describe("page permission utility", () => {
     const result = await requestPageAccess("page")
 
     expect(result.ok).toBe(true)
+    expect(result.message).toBe("Astra can help on this page once.")
+    expect(findForbiddenUserCopyTerms(result.message)).toEqual([])
     expect(browser.permissions.request).not.toHaveBeenCalled()
     expect(browser.__storage[PAGE_ACCESS_POLICY_STORAGE_KEY]).toBeUndefined()
     expect(browser.tabs.sendMessage).toHaveBeenCalledWith(7, expect.objectContaining({
@@ -113,6 +118,8 @@ describe("page permission utility", () => {
     const result = await requestPageAccess("site")
 
     expect(result.ok).toBe(false)
+    expect(result.message).toBe("Your browser did not confirm the site choice.")
+    expect(findForbiddenUserCopyTerms(result.message)).toEqual([])
     expect(browser.__storage[PAGE_ACCESS_POLICY_STORAGE_KEY]).toBeUndefined()
   })
 
@@ -147,9 +154,11 @@ describe("page permission utility", () => {
   it("reports all-sites grants separately from current-origin grants", async () => {
     const browser = getMockBrowser()
 
-    await requestPageAccess("all-sites")
+    const result = await requestPageAccess("all-sites")
     const state = await getPageAccessState()
 
+    expect(result.message).toBe("Astra can help on all supported sites.")
+    expect(findForbiddenUserCopyTerms(result.message)).toEqual([])
     expect(browser.permissions.request).toHaveBeenCalledWith({ origins: ["http://*/*", "https://*/*"] })
     expect(state.allSitesGranted).toBe(true)
     expect(browser.tabs.sendMessage).toHaveBeenCalledWith(7, expect.objectContaining({
@@ -179,6 +188,8 @@ describe("page permission utility", () => {
     const result = await requestPageAccess("page")
 
     expect(result.ok).toBe(true)
+    expect(result.message).toBe("Astra can help on this page once.")
+    expect(findForbiddenUserCopyTerms(result.message)).toEqual([])
     expect(browser.permissions.request).not.toHaveBeenCalled()
     expect(browser.__storage[PAGE_ACCESS_POLICY_STORAGE_KEY]).toMatchObject({
       sites: {
@@ -222,6 +233,8 @@ describe("page permission utility", () => {
     const result = await revokePageAccess("all-sites")
 
     expect(result.ok).toBe(true)
+    expect(result.message).toBe("Astra is paused on supported sites.")
+    expect(findForbiddenUserCopyTerms(result.message)).toEqual([])
     expect(result.browserPermissionChanged).toBe(false)
     expect(result.state.allSitesGranted).toBe(false)
     expect(browser.__storage[PAGE_ACCESS_POLICY_STORAGE_KEY]).toMatchObject({ allSitesState: "revoked" })

@@ -9,7 +9,7 @@ describe("Astra relay provider", () => {
     vi.restoreAllMocks()
   })
 
-  it("posts translation requests to the configured relay endpoint", async () => {
+  it("posts managed service-mode requests to the configured relay endpoint without provider/model", async () => {
     const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({
       translations: ["你好"],
     }), {
@@ -37,8 +37,6 @@ describe("Astra relay provider", () => {
         Authorization: "Bearer astra-token",
       },
       body: JSON.stringify({
-        provider: "openai",
-        model: "gpt-5.4-nano",
         texts: ["hello"],
         targetLang: "zh-CN",
         task: "translate",

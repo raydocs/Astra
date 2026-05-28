@@ -1318,7 +1318,8 @@ html[data-astra-theme] h3 {
   border-color: var(--astra-brand-border);
   background: var(--astra-brand-muted);
 }
-.astra-option-card[aria-pressed="true"] {
+.astra-option-card[aria-pressed="true"],
+.astra-option-card[aria-checked="true"] {
   border: 2px solid var(--astra-brand);
   background: var(--astra-brand-muted);
 }
@@ -3375,6 +3376,29 @@ html[data-astra-theme] h3 {
   }
 }
 
+.astra-toast-viewport {
+  position: fixed;
+  inset-inline-end: var(--astra-space-4);
+  inset-block-end: var(--astra-space-4);
+  display: grid;
+  gap: var(--astra-space-2);
+  width: min(calc(100vw - (var(--astra-space-4) * 2)), 380px);
+  max-height: min(60vh, 420px);
+  overflow: auto;
+  overscroll-behavior: contain;
+  pointer-events: none;
+  z-index: var(--astra-z-toast);
+}
+
+.astra-toast-viewport[data-placement="top"] {
+  inset-block-start: var(--astra-space-4);
+  inset-block-end: auto;
+}
+
+.astra-toast-viewport > .astra-toast {
+  pointer-events: auto;
+}
+
 .astra-toast {
   display: flex;
   align-items: flex-start;
@@ -3446,9 +3470,15 @@ html[data-astra-theme] h3 {
   transition: background var(--astra-transition-fast), color var(--astra-transition-fast);
 }
 
-.astra-toast__dismiss:hover {
+.astra-toast__dismiss:hover,
+.astra-toast__dismiss:focus-visible {
   background: var(--astra-bg-hover);
   color: var(--astra-text-primary);
+}
+
+.astra-toast__dismiss:focus-visible {
+  outline: 2px solid var(--astra-focus);
+  outline-offset: 2px;
 }
 
 /* ─────────────────────────────────────────────────────────────────────────────

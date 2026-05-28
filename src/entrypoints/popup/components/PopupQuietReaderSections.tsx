@@ -175,10 +175,10 @@ export function PopupSiteQuickCard({
   const revoked = permissionState?.runtimeSiteState === "revoked"
   const siteGranted = permissionState?.siteGranted || permissionState?.runtimeSiteState === "granted"
   const permissionSubtitle = revoked
-    ? "Revoked in Astra; automatic actions stop for this origin."
+    ? "Paused in Astra; automatic help stops on this site."
     : siteGranted
-      ? "Enabled for this origin; current build still declares broad host access."
-      : "Use page-only for this invocation or grant this origin where the browser supports it."
+      ? "Astra will remember this site."
+      : "Use Astra once on this page, or remember this site."
 
   return (
     <PopupGroupCard eyebrow={t("popup_designThisSite")} className="astra-popup-site-quick-card">
@@ -206,20 +206,20 @@ export function PopupSiteQuickCard({
         )}
         <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
           <button type="button" className="astra-btn-outline-quiet" onClick={onGrantPageAccess} disabled={!permissionState?.activeTabAvailable}>
-            Page only
+            Page once
           </button>
           <button type="button" className="astra-btn-outline-quiet" onClick={onGrantSiteAccess} disabled={!permissionState?.sitePattern || (!permissionState?.permissionsApiAvailable && permissionState?.runtimeSiteState !== "revoked")}>
-            Allow this site
+            Remember this site
           </button>
           <button type="button" className="astra-btn-outline-quiet" onClick={onRevokeSiteAccess} disabled={!permissionState?.sitePattern}>
-            Revoke site
+            Pause this site
           </button>
           <button type="button" className="astra-btn-outline-quiet" onClick={onGrantAllSitesAccess} disabled={!permissionState?.permissionsApiAvailable}>
             All sites
           </button>
         </div>
         <div style={{ fontSize: 10, lineHeight: 1.4, color: "var(--astra-text-hint)" }}>
-          Chrome/Firefox can expose optional host prompts; Safari/iOS support is build/runtime dependent. Broad host access remains disclosed until the manifest no longer needs it.
+          Your browser may ask you to confirm. You can pause this site any time.
         </div>
       </div>
       <PopupSettingRow
@@ -262,11 +262,13 @@ export function PopupReadingQuickCard({
   hoverTrigger,
   onHoverTriggerChange,
   onOpenDeepRead,
+  onOpenDocumentIntake,
   deepReadDisabled,
 }: {
   hoverTrigger: HoverTrigger
   onHoverTriggerChange: (next: HoverTrigger) => void
   onOpenDeepRead: () => void
+  onOpenDocumentIntake: () => void
   deepReadDisabled: boolean
 }) {
   const hoverOn = hoverTrigger !== "disabled"
@@ -278,6 +280,17 @@ export function PopupReadingQuickCard({
         title={t("popup_deepReadAction")}
         onClick={onOpenDeepRead}
         disabled={deepReadDisabled}
+        accessory={(
+          <span aria-hidden="true" style={{ color: "var(--astra-text-muted)", display: "inline-flex" }}>
+            <IconChevronRight />
+          </span>
+        )}
+      />
+      <PopupSettingRow
+        icon={<IconBookmark />}
+        title="Open file"
+        subtitle="PDF · EPUB · Subtitle"
+        onClick={onOpenDocumentIntake}
         accessory={(
           <span aria-hidden="true" style={{ color: "var(--astra-text-muted)", display: "inline-flex" }}>
             <IconChevronRight />

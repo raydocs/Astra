@@ -31,19 +31,19 @@ Astra 现在最强的是“读懂”和“解释”：整页翻译、双语阅�
 ## Preview
 
 <p align="center">
-  <img src="store/screenshots/ui-parity-2026-05-13/production/web-landing.png" alt="Astra web landing page showing the product entry and learning workspace direction" width="840" />
+  <img src="store/screenshots/01-page-translation.png" alt="Astra page translation launch-candidate screenshot" width="840" />
 </p>
 
 <table>
   <tr>
     <td width="50%">
-      <img src="store/screenshots/ui-parity-2026-05-13/production/popup-empty-state.png" alt="Astra browser extension popup control surface" />
+      <img src="store/screenshots/03-popup-control-center.png" alt="Astra browser extension popup control surface launch-candidate screenshot" />
       <br />
       <strong>Extension control surface</strong><br />
       Configure reading and translation behavior close to the page.
     </td>
     <td width="50%">
-      <img src="store/screenshots/ui-parity-2026-05-13/production/selection-toolbar.png" alt="Astra selection toolbar for translating highlighted text" />
+      <img src="store/screenshots/02-selection-toolbar.png" alt="Astra selection toolbar launch-candidate screenshot for translating highlighted text" />
       <br />
       <strong>Selection translation</strong><br />
       Translate and explain selected text without leaving the current page.
@@ -57,7 +57,7 @@ Astra 现在最强的是“读懂”和“解释”：整页翻译、双语阅�
       Early learning-loop surface for turning reading into review material.
     </td>
     <td width="50%">
-      <img src="store/screenshots/ui-parity-2026-05-13/production/web-files-pdf.png" alt="Astra web companion file and PDF reading surface" />
+      <img src="store/screenshots/05-pdf-reader.png" alt="Astra web companion PDF reader launch-candidate screenshot" />
       <br />
       <strong>Reader surfaces</strong><br />
       Web companion surfaces for owned reading workflows under active development.
@@ -65,7 +65,7 @@ Astra 现在最强的是“读懂”和“解释”：整页翻译、双语阅�
   </tr>
 </table>
 
-> Screenshot set is drawn from current production/parity captures under `store/screenshots/ui-parity-2026-05-13/production/`. Design references live under `docs/design-comparison/` and are not presented here as shipped product UI.
+> Screenshot set uses root-level launch-candidate artifacts in `store/screenshots/`, derived from current production/parity captures where noted in `store/screenshots/README.md`. Design references live under `docs/design-comparison/` and are not presented here as shipped product UI.
 
 ## Why Astra
 
@@ -91,12 +91,13 @@ Current high-confidence surfaces:
 - **Input translation** — assist expression in everyday input fields.
 - **Article mode** — prioritize main content and reduce noisy page regions.
 - **Site rules** — enable/disable, auto-translate, target language, hover behavior, scope, and presentation style per site.
-- **Subtitle translation** — best-effort YouTube subtitle path, with Bilibili as a narrower beta/best-effort adapter; other video adapters are not public launch claims.
-- **Provider routing** — direct provider paths where configured, plus Astra relay / relay-lite support and direct → relay fallback when both paths are configured and the failure is fallback-eligible.
+- **Subtitle translation** — proof-backed YouTube subtitle path, with Bilibili as a narrower beta/best-effort adapter; other video adapters are not public launch claims.
+- **Controlled reader/file workflows** — PDF, EPUB, and SRT/VTT subtitle-file readers have proof-backed intake/reader lanes and in-reader confidence labels; ASS/Markdown/TXT/HTML parser support is opportunistic.
+- **Astra-managed AI access** — users choose a reading style and target language; Astra handles service details behind the scenes.
 
 Evolving surfaces:
 
-- PDF / EPUB / owned reading workflows
+- broader owned-reading reopen and cross-device document continuity
 - vocabulary and review loop
 - web companion workspace
 - cross-surface continuity and sync
@@ -115,21 +116,17 @@ For deeper status, use the [capability matrix](docs/capability-matrix-v2.md). It
 
 Canonical support boundaries live in [`docs/investigations/support-matrix-2026-q2.md`](docs/investigations/support-matrix-2026-q2.md).
 
-## Privacy and AI provider boundary
+## Privacy and AI boundary
 
-Astra can run through two outbound paths:
-
-- **Direct provider** — your configured provider credentials call the provider directly. Google Translate uses Cloud Translation Basic v2 (`nmt`).
-- **Astra relay / relay-lite** — requests go through an Astra-managed, relay-lite, or self-hosted relay, then to the relay's configured upstream provider. Free public beta managed translation uses an anonymous Astra session or optional account session for authentication and quotas; this is not a paid-launch or durable entitlement claim.
+Astra translation and explanation requests are processed by Astra-managed AI services in the default product flow. Local development and self-hosted deployments can point the extension at their own trusted backend, but that is an operator/developer setup detail rather than an end-user requirement.
 
 Important boundaries:
 
-- Translation content can leave the device through direct provider or relay paths.
+- Translation content can leave the device for translation or explanation.
 - `privacyMode` means request-context sanitization; it is not a promise of local-only AI processing.
-- If direct provider credentials and Astra relay/session are both configured, runtime fallback may change transport after direct provider failure.
-- `relayBaseURL` is part of your trust boundary and should point to a relay you control or explicitly trust.
+- If you self-host or use a development backend, its base URL is part of your trust boundary and should point to infrastructure you control or explicitly trust.
 
-Detailed privacy/routing caveats are tracked in [`docs/investigations/month-6-privacy-routing-failure-inventory-2026-04-14.md`](docs/investigations/month-6-privacy-routing-failure-inventory-2026-04-14.md).
+Detailed privacy and operator caveats are tracked in [`docs/investigations/month-6-privacy-routing-failure-inventory-2026-04-14.md`](docs/investigations/month-6-privacy-routing-failure-inventory-2026-04-14.md).
 
 ## Quick Start
 
@@ -154,7 +151,7 @@ pnpm dev:safari
 # Prepare iOS Safari shell resources
 pnpm ios:prepare
 
-# Astra relay server
+# Developer/operator only: local relay server
 pnpm relay:start
 
 # Web companion
@@ -170,7 +167,7 @@ pnpm test
 
 Load the Chromium build from `.output/chrome-mv3/` as an unpacked extension.
 
-For relay configuration, see [`src/server/.env.example`](src/server/.env.example) and [`docs/relay-server.md`](docs/relay-server.md). The relay reads `process.env`; export provider keys such as `GOOGLE_TRANSLATE_API_KEY` before `pnpm relay:start`.
+For normal extension use, Astra presents a managed AI service path rather than asking users to configure providers or models. Developer/operator setup for the local relay is documented in [`docs/relay-server.md`](docs/relay-server.md) and [`src/server/.env.example`](src/server/.env.example).
 
 ## Architecture
 
@@ -204,10 +201,10 @@ pnpm check:repo-knowledge
 
 ## Roadmap
 
-- **Now: daily-use translation** — stable page translation, low-interruption interactions, article mode, site rules, provider routing.
-- **Next: learning loop** — save useful words/sentences, preserve context, build review material.
-- **Later: owned reading/video surfaces** — PDF, EPUB, video subtitles, web companion workspace, continuity.
-- **Ecosystem: multi-surface learning system** — browser, reading, video, vocabulary, progress, sync, and future subscription surfaces connected into one product after the required billing/legal work is complete.
+- **Now: daily-use translation** — stable page translation, low-interruption interactions, article mode, site rules, and managed Astra AI access.
+- **Now: proof-backed learning loop** — save useful words/sentences, preserve context, and review them from Vocabulary/Review.
+- **Now: proof-backed reader/video surfaces** — PDF, EPUB, SRT/VTT subtitle-file, and YouTube learning-workspace proof lanes exist; broader platform and document-format claims (including ASS/Markdown/TXT/HTML parser convenience paths) stay scoped by the support matrix.
+- **Next: ecosystem maturity** — browser, reading, video, vocabulary, progress, sync, and future subscription surfaces connected into one product after the required billing/legal work is complete.
 
 See [`docs/product-roadmap.md`](docs/product-roadmap.md) for the fuller direction.
 

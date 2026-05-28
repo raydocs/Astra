@@ -3,6 +3,8 @@ import { browser } from "#imports"
 import type { VocabularyEntry } from "@/utils/storage/vocabulary"
 import { recordLearningLoopEvent } from "@/utils/learning-loop-events"
 import { updateVocabularyEntry, getVocabularyEntries, recordVocabularyReviewSchedule } from "@/utils/storage/vocabulary"
+import { readLearningProfile } from "@/utils/storage/learning-profile"
+import { buildPersonalizedReviewPlan, type AstraPersonalizedReviewPlan } from "@/utils/personalization-experience"
 import { applyReview, getDueCards, getBoxDistribution } from "@/utils/srs/leitner"
 import type { SrsFields, BoxDistribution, ReviewGrade } from "@/utils/srs/leitner"
 import { buildVocabularyReviewStudyEvent, deriveStudyLoopViewModel, getStudyProgress, recordStudyEvent, type PersonalizedTeachingStrategy, type StudyLoopViewModel, type StudyStep } from "@/utils/storage/study-progress"
@@ -24,10 +26,29 @@ import ReviewStats from "./ReviewStats"
 
 type ReviewPhase = "showing-front" | "showing-back" | "session-complete"
 
-type ReviewGradeKey = "1" | "2" | "3" | "4"
+type ReviewGradeKey = "1" | "2" | "3"
+
+type LegacyReviewGradeKey = "4"
 
 const REVIEW_GRADE_ACTIONS: Array<{
   key: ReviewGradeKey
+  grade: ReviewGrade
+  labelKey: string
+  hintKey: string
+  tone: ReviewGrade
+}> = [
+  { key: "1", grade: "again", labelKey: "review_gradeAgain", hintKey: "review_gradeAgainHint", tone: "again" },
+  { key: "2", grade: "good", labelKey: "review_gradeGood", hintKey: "review_gradeGoodHint", tone: "good" },
+  { key: "3", grade: "easy", labelKey: "review_gradeEasy", hintKey: "review_gradeEasyHint", tone: "easy" },
+]
+
+const LEGACY_HARD_REVIEW_GRADE_ACTION: {
+  key: LegacyReviewGradeKey
+  grade: ReviewGrade
+} = { key: "4", grade: "hard" }
+
+const CERTIFICATION_REVIEW_GRADE_ACTIONS: Array<{
+  key: ReviewGradeKey | LegacyReviewGradeKey
   grade: ReviewGrade
   labelKey: string
   hintKey: string
@@ -142,6 +163,27 @@ function getReviewStudyLoopUrl(entry?: VocabularyEntry | null): string | undefin
   return entry?.sourceContext?.studyProgressRecordId ?? entry?.url
 }
 
+function buildVideoTimestampReturnUrl(entry?: VocabularyEntry | null): string | null {
+  if (entry?.sourceContext?.surface !== "video_transcript") return null
+  const timestampMs = entry.sourceContext.videoTimestampMs
+  if (typeof timestampMs !== "number") return null
+  const baseUrl = entry.sourceContext.pageUrl ?? entry.url
+  if (!baseUrl?.trim()) return null
+
+  const seconds = Math.max(0, Math.floor(timestampMs / 1000))
+  try {
+    const url = new URL(baseUrl)
+    if (url.hostname.includes("youtube.com") || url.hostname === "youtu.be") {
+      url.searchParams.set("t", `${seconds}s`)
+    } else {
+      url.searchParams.set("t", String(seconds))
+    }
+    return url.toString()
+  } catch {
+    return baseUrl
+  }
+}
+
 function formatLocalDayLabel(date: string): string {
   const parsed = new Date(`${date}T00:00:00`)
   if (Number.isNaN(parsed.getTime())) return date
@@ -219,7 +261,6 @@ const ASTRA_CERT_REVIEW_GRADE_HINTS: Record<ReviewGrade, string> = {
 }
 
 const ASTRA_CERT_KEYBOARD_HINT = "Press space to reveal · 1–4 to grade"
-
 const ASTRA_CERT_SETTLING_WORDS = [
   ["solitude", "again in 4 days"],
   ["marginalia", "again in 6 days"],
@@ -249,6 +290,7 @@ export default function ReviewMode() {
   const [snippetExpanded, setSnippetExpanded] = useState(false)
   const [studyLoop, setStudyLoop] = useState<StudyLoopViewModel | null>(null)
   const [ownedReadingItems, setOwnedReadingItems] = useState<OwnedReadingItem[]>([])
+  const [personalizedReviewPlan, setPersonalizedReviewPlan] = useState<AstraPersonalizedReviewPlan | null>(null)
   const [reviewQuery] = useState(() => {
     const params = new URLSearchParams(window.location.search)
     const loop = params.get("loop")?.trim() ?? ""
@@ -284,14 +326,16 @@ export default function ReviewMode() {
       setDailyVocabSaved(0)
       setDailyVocabReviewed(0)
       setStudyLoop(null)
+      setPersonalizedReviewPlan(null)
       setSnippetExpanded(false)
       setLoading(false)
       return
     }
 
-    const [entries, linkedItems] = await Promise.all([
+    const [entries, linkedItems, learningProfile] = await Promise.all([
       getVocabularyEntries(),
       listOwnedReadingItems(),
+      readLearningProfile().catch(() => null),
     ])
     const focusedEntry = focusedEntryId
       ? entries.find((entry) => entry.id === focusedEntryId) ?? null
@@ -299,7 +343,13 @@ export default function ReviewMode() {
     const pageLoopCards = isPageReviewLoop
       ? getPageReviewVocabularyEntries(entries, pageLoopStudyUrl, focusedEntryId)
       : []
-    const due = isPageReviewLoop ? pageLoopCards : focusedEntry ? [focusedEntry] : getDueCards(entries)
+    const baseDueCards = getDueCards(entries)
+    const reviewPlan = buildPersonalizedReviewPlan(baseDueCards, learningProfile)
+    const due = isPageReviewLoop
+      ? pageLoopCards
+      : focusedEntry
+        ? [focusedEntry]
+        : reviewPlan.cards
     setOwnedReadingItems(linkedItems)
     setDueCards(due)
     setDistribution(getBoxDistribution(entries))
@@ -321,6 +371,7 @@ export default function ReviewMode() {
     setDailyVocabSaved(progress.dailyStats.vocabSaved)
     setDailyVocabReviewed(progress.dailyStats.vocabReviewed)
     setStudyLoop(deriveStudyLoopViewModel(progress, isPageReviewLoop ? pageLoopStudyUrl : getReviewStudyLoopUrl(due[0])))
+    setPersonalizedReviewPlan(isPageReviewLoop || focusedEntry ? null : reviewPlan)
     setSnippetExpanded(false)
     setLoading(false)
   }, [certificationMode, certificationSummaryMode, focusedEntryId, isPageReviewLoop, pageLoopStudyUrl])
@@ -437,6 +488,8 @@ export default function ReviewMode() {
     }
   }, [phase])
 
+  const activeReviewGradeActions = certificationMode ? CERTIFICATION_REVIEW_GRADE_ACTIONS : REVIEW_GRADE_ACTIONS
+
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (phase === "session-complete") return
@@ -454,15 +507,21 @@ export default function ReviewMode() {
         void handleAnswer("good")
       } else if (phase === "showing-back" && ["Digit1", "Digit2", "Digit3", "Digit4", "Numpad1", "Numpad2", "Numpad3", "Numpad4"].includes(e.code)) {
         e.preventDefault()
-        const key = e.code.replace("Digit", "").replace("Numpad", "") as ReviewGradeKey
-        const action = REVIEW_GRADE_ACTIONS.find((item) => item.key === key)
-        if (action) void handleAnswer(action.grade)
+        const key = e.code.replace("Digit", "").replace("Numpad", "")
+        const action = activeReviewGradeActions.find((item) => item.key === key)
+        if (action) {
+          void handleAnswer(action.grade)
+          return
+        }
+        if (!certificationMode && key === LEGACY_HARD_REVIEW_GRADE_ACTION.key) {
+          void handleAnswer(LEGACY_HARD_REVIEW_GRADE_ACTION.grade)
+        }
       }
     }
 
     window.addEventListener("keydown", handleKeyDown)
     return () => window.removeEventListener("keydown", handleKeyDown)
-  }, [phase, handleFlip, handleAnswer])
+  }, [phase, handleFlip, handleAnswer, activeReviewGradeActions, certificationMode])
 
   if (loading) {
     return (
@@ -475,7 +534,10 @@ export default function ReviewMode() {
   const dueCount = dueCards.length - currentIndex
   const totalDue = phase === "session-complete" ? 0 : dueCount
   const focusedReturnEntry = phase === "session-complete" ? focusedReviewedEntry : null
+  const focusedVideoTimestampUrl = buildVideoTimestampReturnUrl(focusedReturnEntry)
+  const canReturnToFocusedVideoTimestamp = !!focusedVideoTimestampUrl
   const canReturnToFocusedSentence = !!focusedReturnEntry
+    && !canReturnToFocusedVideoTimestamp
     && !!focusedReturnEntry.sourceContext?.sentenceText
     && !!(focusedReturnEntry.sourceContext?.pageUrl ?? focusedReturnEntry.url)?.trim()
   const sourceDisplay = currentCard
@@ -490,7 +552,8 @@ export default function ReviewMode() {
   const linkedReadingProgress = linkedReadingItem ? describeOwnedReadingProgress(linkedReadingItem) : null
   const currentPageLoop = studyLoop
   const snippetLong = sourceDisplay.snippet.length > 300
-  const sourcePageIsWeb = /^https?:\/\//i.test(sourceDisplay.pageUrl)
+  const sourcePageUrl = buildVideoTimestampReturnUrl(currentCard) ?? sourceDisplay.pageUrl
+  const sourcePageIsWeb = /^https?:\/\//i.test(sourcePageUrl)
 
   const hasDailyProgress =
     dailyPagesStudied > 0
@@ -501,6 +564,17 @@ export default function ReviewMode() {
   const summaryLongerInterval = summary.good + summary.easy
   const summarySoonerInterval = summary.again + summary.hard
   const summaryRecallPercent = summary.total > 0 ? Math.round((summaryLongerInterval / summary.total) * 100) : 0
+
+  const reviewProgressText = currentCard
+    ? t("review_cardProgress", [`${currentIndex + 1}`, `${dueCards.length}`])
+    : ""
+  const reviewKeyboardHintText = certificationMode
+    ? ASTRA_CERT_KEYBOARD_HINT
+    : phase === "showing-front"
+      ? t("review_keyboardHintFront")
+      : t("review_keyboardHintBackThree")
+  const reviewKeyboardHintId = certificationMode ? "review-keyboard-hint-cert" : "review-keyboard-hint"
+  const reviewScheduleDisclosureId = certificationMode ? undefined : "review-grade-schedule-disclosure"
 
   const handleResumeLinkedReading = async () => {
     if (!linkedReadingItem || !linkedReadingResumeTarget) return
@@ -677,7 +751,7 @@ export default function ReviewMode() {
           )}
           {sourcePageIsWeb && !certificationMode && (
             <a
-              href={sourceDisplay.pageUrl}
+              href={sourcePageUrl}
               target="_blank"
               rel="noopener noreferrer"
               style={sourceLinkStyle}
@@ -707,6 +781,28 @@ export default function ReviewMode() {
           <span className="astra-cert-review-topbar__end" aria-hidden="true">×&nbsp; End session</span>
         </div>
       )}
+      {personalizedReviewPlan && (
+        <div
+          data-testid="review-personalized-profile-card"
+          className="astra-progress-panel"
+          style={{ border: personalizedReviewPlan.profileApplied ? "1px solid var(--astra-brand-border)" : "1px solid var(--astra-border)", background: personalizedReviewPlan.profileApplied ? "var(--astra-brand-muted)" : "var(--astra-bg-card)" }}
+          aria-label="Personalized review plan"
+        >
+          <div style={{ fontSize: 12, fontWeight: 800, color: "var(--astra-text-primary)", marginBottom: 4 }}>
+            {personalizedReviewPlan.headline}
+          </div>
+          <div style={{ fontSize: 11, color: "var(--astra-text-secondary)", lineHeight: 1.5, marginBottom: 6 }}>
+            {personalizedReviewPlan.detail}
+          </div>
+          <div style={{ fontSize: 11, color: "var(--astra-text-muted)", lineHeight: 1.45 }}>
+            {personalizedReviewPlan.evidence}
+          </div>
+          <div style={{ fontSize: 10, color: "var(--astra-text-muted)", lineHeight: 1.45, marginTop: 6 }}>
+            {personalizedReviewPlan.reversibleCopy}
+          </div>
+        </div>
+      )}
+
       <ReviewStats distribution={distribution} dueCount={totalDue} />
 
       {hasDailyProgress && (
@@ -852,11 +948,21 @@ export default function ReviewMode() {
               </>
             ) : (
               <>
+                {canReturnToFocusedVideoTimestamp && focusedVideoTimestampUrl && (
+                  <button
+                    data-testid="review-return-video-timestamp"
+                    type="button"
+                    className="astra-btn-primary"
+                    onClick={() => void browser.tabs.create({ url: focusedVideoTimestampUrl })}
+                  >
+                    {t("review_returnToVideoTimestamp")}
+                  </button>
+                )}
                 {canReturnToFocusedSentence && focusedReturnEntry && (
                   <button
                     data-testid="review-return-deep-read"
                     type="button"
-                    className="astra-btn-primary"
+                    className={canReturnToFocusedVideoTimestamp ? "astra-btn-secondary" : "astra-btn-primary"}
                     onClick={() => void openVocabularyEntryInDeepRead(focusedReturnEntry)}
                   >
                     {t("review_returnToDeepReadSentence")}
@@ -866,7 +972,7 @@ export default function ReviewMode() {
                   <button
                     data-testid="review-resume-page-reading"
                     type="button"
-                    className={canReturnToFocusedSentence ? "astra-btn-secondary" : "astra-btn-primary"}
+                    className={canReturnToFocusedVideoTimestamp || canReturnToFocusedSentence ? "astra-btn-secondary" : "astra-btn-primary"}
                     onClick={() => void handleResumeCompletedPageReading()}
                   >
                     {t("review_resumeReadingThisPage")}
@@ -874,7 +980,7 @@ export default function ReviewMode() {
                 )}
                 <button
                   type="button"
-                  className={canReturnToFocusedSentence || completedPageResumeTarget ? "astra-btn-secondary" : "astra-btn-primary"}
+                  className={canReturnToFocusedVideoTimestamp || canReturnToFocusedSentence || completedPageResumeTarget ? "astra-btn-secondary" : "astra-btn-primary"}
                   onClick={() => void loadDueCards()}
                 >
                   {t("review_actionReviewAgain")}
@@ -888,8 +994,8 @@ export default function ReviewMode() {
       {phase !== "session-complete" && currentCard && (
         <>
           {!certificationMode && (
-            <div style={progressTextStyle}>
-              {t("review_cardProgress", [`${currentIndex + 1}`, `${dueCards.length}`])}
+            <div style={progressTextStyle} role="status" aria-live="polite" data-testid="review-progress-status">
+              {reviewProgressText}
               <span style={{ marginLeft: 8, fontSize: 11, color: "var(--astra-text-decorative)" }}>
                 {t("review_boxLabel", `${currentCard.srsBox ?? 1}`)}
               </span>
@@ -913,6 +1019,7 @@ export default function ReviewMode() {
                 }
               }}
               aria-label={`${currentCard.text}. Press Enter or Space to reveal.`}
+              aria-describedby={reviewKeyboardHintId}
             >
               {certificationMode ? certificationReviewCardBody : reviewCardBody}
             </button>
@@ -922,6 +1029,7 @@ export default function ReviewMode() {
               className="astra-flashcard-flip astra-flashcard-flip--revealed"
               style={flashcardStyle}
               aria-label={`${currentCard.text}. Answer shown.`}
+              aria-describedby={reviewKeyboardHintId}
             >
               {certificationMode ? certificationReviewCardBody : reviewCardBody}
             </section>
@@ -930,12 +1038,12 @@ export default function ReviewMode() {
           {phase === "showing-back" && (
             <>
               {!certificationMode && (
-                <div className="astra-review-schedule-disclosure" style={scheduleDisclosureStyle}>
+                <div id={reviewScheduleDisclosureId} className="astra-review-schedule-disclosure" style={scheduleDisclosureStyle}>
                   {t("review_gradeScheduleDisclosure")}
                 </div>
               )}
-              <div className="astra-review-grade-row" style={buttonRowStyle} aria-label={t("review_gradeGroupAria")}>
-                {REVIEW_GRADE_ACTIONS.map((action) => (
+              <div className="astra-review-grade-row" style={buttonRowStyle} role="group" aria-label={t("review_gradeGroupAria")} aria-describedby={reviewScheduleDisclosureId ?? reviewKeyboardHintId}> 
+                {activeReviewGradeActions.map((action) => (
                   <button
                     key={action.key}
                     type="button"
@@ -943,6 +1051,7 @@ export default function ReviewMode() {
                     data-review-grade={action.grade}
                     data-review-key={action.key}
                     onClick={() => void handleAnswer(action.grade)}
+                    aria-label={`${t(action.labelKey)}. ${certificationMode ? ASTRA_CERT_REVIEW_GRADE_HINTS[action.grade] : t(action.hintKey)}. Shortcut ${action.key}.`}
                   >
                     <span className="astra-review-grade__rail" aria-hidden="true" />
                     <span className="astra-review-grade__label">{t(action.labelKey)}</span>
@@ -954,12 +1063,8 @@ export default function ReviewMode() {
             </>
           )}
 
-          <div className="astra-review-keyboard-hint" style={keyboardHintStyle}>
-            {certificationMode
-              ? ASTRA_CERT_KEYBOARD_HINT
-              : phase === "showing-front"
-                ? t("review_keyboardHintFront")
-                : t("review_keyboardHintBackFour")}
+          <div id={reviewKeyboardHintId} className="astra-review-keyboard-hint" style={keyboardHintStyle}>
+            {reviewKeyboardHintText}
           </div>
         </>
       )}

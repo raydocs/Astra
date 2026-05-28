@@ -83,7 +83,7 @@ describe("ImageTranslateApp", () => {
   beforeEach(async () => {
     vi.clearAllMocks()
     window.history.replaceState(null, "", "/image-translate.html")
-    readConfigMock.mockResolvedValue({ ...DEFAULT_ASTRA_CONFIG, targetLang: "ja" })
+    readConfigMock.mockResolvedValue({ ...DEFAULT_ASTRA_CONFIG, targetLang: "ja", serviceMode: "balanced" })
     translateTextsMock.mockResolvedValue({ ok: true, translations: ["こんにちは Astra", "メモ"] })
     consumeImageTranslateHandoffMock.mockResolvedValue({ ok: false, reason: "invalid" })
     extractTextFromImageFileMock.mockResolvedValue({
@@ -167,6 +167,7 @@ describe("ImageTranslateApp", () => {
     expect(translateTextsMock).toHaveBeenCalledWith(expect.objectContaining({
       texts: ["Hello Astra", "Note without box"],
       targetLang: "ja",
+      serviceMode: "balanced",
       task: "translate",
     }))
     expect(container.querySelector('[data-testid="image-translation-result-panel"]')).toBeTruthy()
@@ -272,7 +273,7 @@ describe("ImageTranslateApp", () => {
     expect(preloadedFile).toBeInstanceOf(File)
     expect(preloadedFile.name).toBe("menu.svg")
     expect(preloadedFile.type).toBe("image/svg+xml")
-    expect(translateTextsMock).toHaveBeenLastCalledWith(expect.objectContaining({ targetLang: "ja" }))
+    expect(translateTextsMock).toHaveBeenLastCalledWith(expect.objectContaining({ targetLang: "ja", serviceMode: "balanced" }))
     expect(container.querySelector('[data-testid="image-translation-result-panel"]')).toBeTruthy()
     expect(container.textContent).toContain("こんにちは Astra")
   })

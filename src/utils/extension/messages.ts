@@ -28,7 +28,7 @@ import {
   type TranslationError,
   type TranslationSnapshot,
 } from "@/types/translation"
-import type { ExplainMode, LanguageLevel } from "@/types/config"
+import type { ExplainMode, LanguageLevel, ServiceMode } from "@/types/config"
 
 export type TranslationBatchRequestResult =
   | {
@@ -186,6 +186,7 @@ export async function requestTranslationBatch(payload: {
   placeholderFormat?: TranslationPlaceholderFormat
   languageLevel?: LanguageLevel
   explainMode?: ExplainMode
+  serviceMode?: ServiceMode
   explanationRepairInstruction?: string
 }): Promise<TranslationBatchRequestResult> {
   try {
