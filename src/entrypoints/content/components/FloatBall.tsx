@@ -3,7 +3,7 @@ import ReactDOM from "react-dom/client"
 import { browser } from "#imports"
 import { ErrorBoundary } from "@/components/ErrorBoundary"
 import { t } from "@/utils/i18n"
-import { getSafeAiUnavailableCopy } from "@/utils/copy-dictionary"
+import { getSafeAiUnavailableCopy, getServiceModeLabel } from "@/utils/copy-dictionary"
 import { retryFailedBlocks, stopPageTranslation, subscribePageTranslationState, translatePageElements } from "../page-translate"
 import { toggleCurrentTabTranslation } from "@/utils/extension/messages"
 import { IDLE_TRANSLATION_SNAPSHOT, type TranslationSnapshot } from "@/types/translation"
@@ -1108,7 +1108,7 @@ function QuietStatusPill() {
               {contentScope === "full_page" ? "Full page" : "Immersive"}
             </button>
             <button type="button" role="menuitem" style={quickActionStyle(fontScale)} onClick={(event) => { event.stopPropagation(); cycleServiceMode() }} onPointerUp={(event) => { event.stopPropagation() }}>
-              {serviceMode === "best_quality" ? "Best quality" : serviceMode === "balanced" ? "Balanced" : serviceMode === "fast" ? "Fast" : "Automatic"}
+              {getServiceModeLabel(serviceMode)}
             </button>
             <button type="button" role="menuitem" style={quickActionStyle(fontScale)} onClick={(event) => { event.stopPropagation(); togglePositionLock() }} onPointerUp={(event) => { event.stopPropagation() }}>
               {locked ? "Unlock position" : "Lock position"}

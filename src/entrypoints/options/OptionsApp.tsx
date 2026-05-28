@@ -55,7 +55,7 @@ import { isTtsSupported, listVoices, type TTSVoiceOption } from "@/utils/tts"
 import { useViewportProfile } from "@/utils/ui/useViewportProfile"
 import { useAstraTheme } from "@/utils/ui/useAstraTheme"
 import { t } from "@/utils/i18n"
-import { getSafeAiUnavailableCopy } from "@/utils/copy-dictionary"
+import { getSafeAiUnavailableCopy, getServiceModeLabel, SERVICE_MODE_LABELS } from "@/utils/copy-dictionary"
 import {
   isOptionsAdvancedEnabled,
   sanitizeRequestedSection,
@@ -156,10 +156,10 @@ const SERVICE_MODE_OPTIONS: Array<{
   label: string
   hint: string
 }> = [
-  { value: "automatic", label: "Automatic", hint: "Recommended. Astra decides whether speed or precision matters more for each task." },
-  { value: "fast", label: "Fast", hint: "Prioritizes quick page reading and everyday browsing." },
-  { value: "balanced", label: "Balanced", hint: "Keeps normal reading quick while staying careful for explanations." },
-  { value: "best_quality", label: "Best quality", hint: "Uses the most careful service path for harder content and study work." },
+  { value: "automatic", label: SERVICE_MODE_LABELS.automatic, hint: "Recommended. Astra decides whether speed or precision matters more for each task." },
+  { value: "fast", label: SERVICE_MODE_LABELS.fast, hint: "Prioritizes quick page reading and everyday browsing." },
+  { value: "balanced", label: SERVICE_MODE_LABELS.balanced, hint: "Keeps normal reading quick while staying careful for explanations." },
+  { value: "best_quality", label: SERVICE_MODE_LABELS.best_quality, hint: "Uses the most careful service path for harder content and study work." },
 ]
 
 const BRAND_COLOR = "var(--astra-brand)"
@@ -393,16 +393,7 @@ function formatLearningLoopAutoSelectionTime(value: number | null): string {
 }
 
 function formatServiceModeLabel(serviceMode: AstraConfig["serviceMode"]): string {
-  switch (serviceMode) {
-    case "fast":
-      return "Managed · Fast"
-    case "balanced":
-      return "Managed · Balanced"
-    case "best_quality":
-      return "Managed · Best quality"
-    case "automatic":
-      return "Managed · Automatic"
-  }
+  return `Managed · ${getServiceModeLabel(serviceMode)}`
 }
 
 function getLearningLoopEventSummary(event: TelemetryEvent): string | null {

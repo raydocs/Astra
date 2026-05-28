@@ -1,4 +1,5 @@
 import type { ExplainMode, LanguageLevel, ServiceMode, TranslationMode } from "@/types/config"
+import { getServiceModeLabel } from "@/utils/copy-dictionary"
 import { t } from "@/utils/i18n"
 import { PopupGroupCard, PopupSegmentedControl, PopupSettingRow } from "./PopupDesignPrimitives"
 
@@ -90,10 +91,10 @@ export default function SimpleControls({
             onChange={(e) => onServiceModeChange(e.target.value as ServiceMode)}
             className="astra-input"
           >
-            <option value="automatic">Automatic</option>
-            <option value="fast">Fast</option>
-            <option value="balanced">Balanced</option>
-            <option value="best_quality">Best quality</option>
+            <option value="automatic">{getServiceModeLabel("automatic")}</option>
+            <option value="fast">{getServiceModeLabel("fast")}</option>
+            <option value="balanced">{getServiceModeLabel("balanced")}</option>
+            <option value="best_quality">{getServiceModeLabel("best_quality")}</option>
           </select>
         }
       />

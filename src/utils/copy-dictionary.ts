@@ -1,3 +1,4 @@
+import type { ServiceMode } from "@/types/config"
 import type { TranslationError, TranslationErrorCode } from "@/types/translation"
 
 export const FORBIDDEN_USER_COPY_TERMS = [
@@ -54,6 +55,23 @@ export type CopyDictionaryKey = keyof typeof COPY_DICTIONARY
 
 export function getUserCopy(key: CopyDictionaryKey): string {
   return COPY_DICTIONARY[key]
+}
+
+/**
+ * Single source of truth for the user-facing service-mode (Astra AI style)
+ * labels. Ordinary users only ever see these human words — never provider,
+ * model, or token language. Surfaces (options, popup controls, FloatBall) must
+ * render labels via getServiceModeLabel rather than hard-coding strings.
+ */
+export const SERVICE_MODE_LABELS: Record<ServiceMode, string> = {
+  automatic: "Automatic",
+  fast: "Fast",
+  balanced: "Balanced",
+  best_quality: "Best quality",
+}
+
+export function getServiceModeLabel(mode: ServiceMode): string {
+  return SERVICE_MODE_LABELS[mode]
 }
 
 export function findForbiddenUserCopyTerms(copy: string): ForbiddenUserCopyTerm[] {
