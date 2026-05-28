@@ -348,13 +348,13 @@ function isIsoTimestamp(value: string): boolean {
 
 function isEvidenceLikeReference(value: string): boolean {
   const trimmedValue = value.trim()
-  if (/^https?:\/\//.test(trimmedValue)) return !isLocalUrlReference(trimmedValue)
+  if (/^https?:\/\//.test(trimmedValue)) return /^https:\/\//.test(trimmedValue) && !isLocalUrlReference(trimmedValue)
   return isRepoArtifactPathReference(trimmedValue)
 }
 
 function isRepoArtifactPathReference(value: string): boolean {
   if (!/^(docs\/|data\/|artifacts\/|test-results\/|playwright-report\/)/.test(value)) return false
-  if (value.startsWith("/") || value.includes("\\") || value.includes("?")) return false
+  if (value.startsWith("/") || value.includes("\\") || value.includes("?") || value.includes("#") || /%(?:2e|2f|5c)/i.test(value)) return false
 
   const segments = value.split("/")
   return segments.every((segment) => segment.length > 0 && segment !== "." && segment !== "..")

@@ -733,6 +733,9 @@ describe("Astra macro operational evidence", () => {
     expect(checker).toContain("else if (!isEvidenceLikeReference(link))")
     expect(checker).toContain("function isRepoArtifactPathReference")
     expect(checker).toContain('segment !== ".."')
+    expect(checker).toContain('value.includes("#")')
+    expect(checker).toContain('/%(?:2e|2f|5c)/i.test(value)')
+    expect(checker).toContain('^https:')
     expect(checker).toContain("function isLocalUrlReference")
     expect(checker).toContain('hostname === "localhost"')
     expect(checker).toContain('/^127(?:\\.\\d{1,3}){3}$/.test(hostname)')
@@ -1279,8 +1282,8 @@ describe("Astra macro operational evidence", () => {
         jobName: "mock release job",
         artifactId: "aaaaaaaaaaaa",
         artifactDigest: "000000000000",
-        artifactManifestPath: "docs/../release-artifacts/quality-gate-manifest.json",
-        runUrl: "https://",
+        artifactManifestPath: "docs/release%2e%2e-artifacts/quality-gate-manifest.json",
+        runUrl: "http://github.com/astra-release/actions/runs/123",
         artifactUrl: "http://[fd00::1]/artifacts/quality-gate-results.zip",
         commitSha: "0000000",
         ownerDate: "Release owner",

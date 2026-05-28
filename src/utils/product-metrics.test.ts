@@ -264,7 +264,7 @@ describe("Astra product metrics contract", () => {
         queryVersion: "query:000000000000",
         evidenceLink: "http://[fe80::1]/metrics/activation.csv",
         ownerDate: "metrics owner / 2026-99-99",
-        privacyReviewLink: "docs/reviews//privacy-review.md",
+        privacyReviewLink: "docs/reviews/privacy%2e%2e-review.md",
       },
       ...completeProductionExportRows.slice(1),
     ])

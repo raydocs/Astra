@@ -195,7 +195,7 @@ describe("Astra AI quality system", () => {
       rubricVersion: "draft",
       fixtureManifestPath: "test/fixtures/../quality/ai-quality-samples.json",
       fixtureManifestVersion: "astra-ai-quality-samples.v1",
-      providerSampleEvidenceLink: "docs/reviews/ai-quality/provider-samples.json?local=true",
+      providerSampleEvidenceLink: "http://[fd00::1]/ai-quality/provider-samples.json",
       scoredSampleCount: Number.NaN,
       liveProviderSampleCount: Number.POSITIVE_INFINITY,
       blockerTriageLink: "http://169.254.1.2/blocker-triage.json",

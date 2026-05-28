@@ -557,13 +557,13 @@ function includesIsoDate(value: string): boolean {
 
 function isFixtureManifestReference(value: string): boolean {
   const trimmedValue = value.trim()
-  if (/^https?:\/\//.test(trimmedValue)) return !isLocalUrlReference(trimmedValue)
+  if (/^https?:\/\//.test(trimmedValue)) return /^https:\/\//.test(trimmedValue) && !isLocalUrlReference(trimmedValue)
   return isRepoArtifactPathReference(trimmedValue, { allowTestFixtures: true })
 }
 
 function isEvidenceArtifactReference(value: string): boolean {
   const trimmedValue = value.trim()
-  if (/^https?:\/\//.test(trimmedValue)) return !isLocalUrlReference(trimmedValue)
+  if (/^https?:\/\//.test(trimmedValue)) return /^https:\/\//.test(trimmedValue) && !isLocalUrlReference(trimmedValue)
   return isRepoArtifactPathReference(trimmedValue)
 }
 
@@ -572,7 +572,7 @@ function isRepoArtifactPathReference(value: string, options: { allowTestFixtures
     ? /^(docs\/|data\/|artifacts\/|test-results\/|playwright-report\/|test\/fixtures\/)/
     : /^(docs\/|data\/|artifacts\/|test-results\/|playwright-report\/)/
   if (!prefixPattern.test(value)) return false
-  if (value.startsWith("/") || value.includes("\\") || value.includes("?")) return false
+  if (value.startsWith("/") || value.includes("\\") || value.includes("?") || value.includes("#") || /%(?:2e|2f|5c)/i.test(value)) return false
 
   const segments = value.split("/")
   return segments.every((segment) => segment.length > 0 && segment !== "." && segment !== "..")
@@ -590,11 +590,17 @@ function isLocalUrlReference(value: string): boolean {
       || /^192\.168(?:\.\d{1,3}){2}$/.test(hostname)
       || /^172\.(?:1[6-9]|2\d|3[0-1])(?:\.\d{1,3}){2}$/.test(hostname)
       || /^169\.254(?:\.\d{1,3}){2}$/.test(hostname)
-      || hostname === "::1"
-      || hostname === "[::1]"
+      || isPrivateIpv6Hostname(hostname)
   } catch {
     return true
   }
+}
+
+function isPrivateIpv6Hostname(hostname: string): boolean {
+  const normalizedHostname = hostname.replace(/^\[|\]$/g, "")
+  return normalizedHostname === "::1"
+    || /^f[cd][0-9a-f]{2}:/i.test(normalizedHostname)
+    || /^fe[89ab][0-9a-f]:/i.test(normalizedHostname)
 }
 
 function isNonNegativeInteger(value: number): boolean {
