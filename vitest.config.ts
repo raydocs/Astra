@@ -9,6 +9,7 @@ export default defineConfig({
       "#imports": path.resolve(__dirname, "./test/mocks/imports.ts"),
       "expo-application": path.resolve(__dirname, "./test/mocks/expo-application.ts"),
       "expo-constants": path.resolve(__dirname, "./test/mocks/expo-constants.ts"),
+      "expo-crypto": path.resolve(__dirname, "./test/mocks/expo-crypto.ts"),
       "expo-notifications": path.resolve(__dirname, "./test/mocks/expo-notifications.ts"),
       "expo-speech": path.resolve(__dirname, "./test/mocks/expo-speech.ts"),
       "react-native": path.resolve(__dirname, "./test/mocks/react-native.ts"),
