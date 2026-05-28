@@ -31,6 +31,8 @@ const {
   getStudyProgressMock,
   recordStudyEventMock,
   deriveStudyLoopViewModelMock,
+  listOwnedReadingItemsMock,
+  upsertOwnedArticleFromUrlMock,
   getPageDigestMock,
   isDigestStaleMock,
   generatePageDigestMock,
@@ -67,6 +69,8 @@ const {
   getStudyProgressMock: vi.fn(),
   recordStudyEventMock: vi.fn(),
   deriveStudyLoopViewModelMock: vi.fn(),
+  listOwnedReadingItemsMock: vi.fn(),
+  upsertOwnedArticleFromUrlMock: vi.fn(),
   getPageDigestMock: vi.fn(),
   isDigestStaleMock: vi.fn(),
   generatePageDigestMock: vi.fn(),
@@ -199,6 +203,15 @@ vi.mock("@/utils/storage/study-progress", async (importOriginal) => {
     getStudyProgress: getStudyProgressMock,
     recordStudyEvent: recordStudyEventMock,
     deriveStudyLoopViewModel: deriveStudyLoopViewModelMock,
+  }
+})
+
+vi.mock("@/utils/storage/owned-reading", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/utils/storage/owned-reading")>()
+  return {
+    ...actual,
+    listOwnedReadingItems: listOwnedReadingItemsMock,
+    upsertOwnedArticleFromUrl: upsertOwnedArticleFromUrlMock,
   }
 })
 
@@ -529,6 +542,33 @@ describe("popup App", () => {
       ...(entry as Record<string, unknown>),
     }))
     getReadingHistoryMock.mockResolvedValue([])
+    listOwnedReadingItemsMock.mockImplementation(async () => {
+      const store = browserMock.__storage[OWNED_READING_STORAGE_KEY] as { items?: unknown[] } | undefined
+      return store?.items ?? []
+    })
+    upsertOwnedArticleFromUrlMock.mockImplementation(async (params: { url: string; title: string; status: string }) => {
+      const now = Date.now()
+      const item = {
+        id: `or_article_${params.url.replace(/[^a-z0-9]+/gi, "_").replace(/^_+|_+$/g, "").toLowerCase()}`,
+        sourceType: "article",
+        title: params.title,
+        sourceUrl: params.url,
+        openedAt: now,
+        updatedAt: now,
+        status: params.status,
+        readingHistoryRecordId: params.url,
+        studyProgressRecordId: params.url,
+        progress: { completed: false, percent: 0 },
+        userControl: { syncEnabled: true, excludedFromDigest: false, privacyModeAtCapture: false },
+      }
+      const currentStore = browserMock.__storage[OWNED_READING_STORAGE_KEY] as { version?: number; items?: unknown[] } | undefined
+      const currentItems = currentStore?.items ?? []
+      browserMock.__storage[OWNED_READING_STORAGE_KEY] = {
+        version: 1,
+        items: [...currentItems.filter((row: any) => row.id !== item.id), item],
+      }
+      return item
+    })
     getTranslationUsageSummaryMock.mockResolvedValue({
       sessionStartedAt: 1000,
       session: {
