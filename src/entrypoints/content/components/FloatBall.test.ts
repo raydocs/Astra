@@ -138,7 +138,10 @@ describe("FloatBall", () => {
     vi.clearAllMocks()
     document.getElementById("astra-float-ball-host")?.remove()
     document.querySelectorAll("iframe").forEach((frame) => frame.remove())
-    setMockBrowser(createMockBrowser({ astra_float_ball_y: 420 }))
+    // Advanced FloatBall actions are hidden by default in the beta; enable them
+    // here so the existing behavior tests below exercise the full action surface.
+    // A dedicated test asserts the default-hidden (3-core-action) behavior.
+    setMockBrowser(createMockBrowser({ astra_float_ball_y: 420, astra_float_ball_advanced: true }))
 
     subscribePageTranslationStateMock.mockImplementation((listener: (snapshot: TranslationSnapshot) => void) => {
       listener(snap({ phase: "idle" }))
@@ -1290,5 +1293,34 @@ describe("FloatBall", () => {
       },
     })
     expect(button.textContent).toContain("Astra · Hidden here")
+  })
+
+  it("hides advanced actions by default, showing only the core three", async () => {
+    // No advanced flag in storage -> zero-config default surface.
+    setMockBrowser(createMockBrowser({ astra_float_ball_y: 420 }))
+
+    await act(async () => {
+      mountFloatBall()
+      await Promise.resolve()
+      await Promise.resolve()
+    })
+
+    const button = getMountedButton()
+    await act(async () => {
+      button.dispatchEvent(new MouseEvent("mouseover", { bubbles: true }))
+      await Promise.resolve()
+    })
+
+    const labels = Array.from(button.querySelectorAll('button[role="menuitem"]')).map((action) => action.textContent?.trim())
+
+    // Core actions remain reachable.
+    expect(labels).toContain("Stop")
+    expect(labels).toContain("Bilingual")
+    expect(labels.some((label) => label === "Review" || label === "Settings")).toBe(true)
+
+    // Advanced/secondary actions are hidden on the default path.
+    for (const hidden of ["This paragraph", "This section", "Deep Read", "Full page", "Immersive", "Lock position", "Auto on site", "Hide here"]) {
+      expect(labels).not.toContain(hidden)
+    }
   })
 })

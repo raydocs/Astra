@@ -34,6 +34,14 @@ const FLOATBALL_Y_STORAGE_KEY = "astra_float_ball_y"
 const FLOATBALL_SIDE_STORAGE_KEY = "astra_float_ball_side"
 const FLOATBALL_LOCKED_STORAGE_KEY = "astra_float_ball_locked"
 const FLOATBALL_DRAG_THRESHOLD_PX = 4
+// Zero-config beta: the FloatBall expands to only 3 core actions
+// (Translate/Toggle/Retry · Stop · Review/bilingual). The advanced/secondary
+// actions (per-block translate, Deep Read, video note, page-surface, quality
+// cycle, position lock, auto-on-site, hide-here, error recovery shortcuts)
+// remain in the code but are hidden by default so the quiet pill stays calm.
+// Deep Read is reachable from the popup; Report from options "Help & privacy".
+// Advanced users can restore the full surface by setting this storage key true.
+const FLOATBALL_ADVANCED_STORAGE_KEY = "astra_float_ball_advanced"
 
 type AstraContentCertificationParams = {
   enabled: boolean
@@ -417,6 +425,7 @@ function QuietStatusPill() {
   const [hovered, setHovered] = useState(false)
   const [focused, setFocused] = useState(false)
   const [learningPulseActive, setLearningPulseActive] = useState(false)
+  const [showAdvancedActions, setShowAdvancedActions] = useState(false)
   const [siteActionStatus, setSiteActionStatus] = useState<SiteActionStatus>("idle")
   const [supportReportStatus, setSupportReportStatus] = useState<string | null>(null)
   const [protectedFrameCount, setProtectedFrameCount] = useState(0)
@@ -490,7 +499,7 @@ function QuietStatusPill() {
 
   useEffect(() => {
     let cancelled = false
-    void browser.storage.local.get([FLOATBALL_Y_STORAGE_KEY, FLOATBALL_SIDE_STORAGE_KEY, FLOATBALL_LOCKED_STORAGE_KEY])
+    void browser.storage.local.get([FLOATBALL_Y_STORAGE_KEY, FLOATBALL_SIDE_STORAGE_KEY, FLOATBALL_LOCKED_STORAGE_KEY, FLOATBALL_ADVANCED_STORAGE_KEY])
       .then((stored) => {
         if (cancelled) return
         const storedY = typeof stored[FLOATBALL_Y_STORAGE_KEY] === "number"
@@ -499,6 +508,7 @@ function QuietStatusPill() {
         const storedSide = stored[FLOATBALL_SIDE_STORAGE_KEY] === "left" ? "left" : "right"
         setPosition({ side: storedSide, y: clampFloatBallY(storedY) })
         setLocked(stored[FLOATBALL_LOCKED_STORAGE_KEY] === true)
+        setShowAdvancedActions(stored[FLOATBALL_ADVANCED_STORAGE_KEY] === true)
       })
       .catch(() => {})
 
@@ -1074,6 +1084,8 @@ function QuietStatusPill() {
             <button type="button" role="menuitem" style={quickActionStyle(fontScale)} onClick={(event) => { event.stopPropagation(); stopTranslation() }} onPointerUp={(event) => { event.stopPropagation() }}>
               Stop
             </button>
+            {showAdvancedActions && (
+            <>
             <button type="button" role="menuitem" style={quickActionStyle(fontScale)} onClick={(event) => { event.stopPropagation(); translateNearbyContent("paragraph") }} onPointerUp={(event) => { event.stopPropagation() }}>
               This paragraph
             </button>
@@ -1098,12 +1110,16 @@ function QuietStatusPill() {
                 Report this page
               </button>
             ) : null}
+            </>
+            )}
             <button type="button" role="menuitem" style={quickActionStyle(fontScale)} onClick={(event) => { event.stopPropagation(); visual.reviewReady ? openReview() : openSettings() }} onPointerUp={(event) => { event.stopPropagation() }}>
               {visual.reviewReady ? "Review" : "Settings"}
             </button>
             <button type="button" role="menuitem" style={quickActionStyle(fontScale)} onClick={(event) => { event.stopPropagation(); toggleReadingMode() }} onPointerUp={(event) => { event.stopPropagation() }}>
               {translationMode === "bilingual" ? "Bilingual" : "Translation only"}
             </button>
+            {showAdvancedActions && (
+            <>
             <button type="button" role="menuitem" style={quickActionStyle(fontScale)} onClick={(event) => { event.stopPropagation(); togglePageSurfaceMode() }} onPointerUp={(event) => { event.stopPropagation() }}>
               {contentScope === "full_page" ? "Full page" : "Immersive"}
             </button>
@@ -1119,6 +1135,8 @@ function QuietStatusPill() {
             <button type="button" role="menuitem" style={quickActionStyle(fontScale)} onClick={(event) => { event.stopPropagation(); hideOnThisSite() }} onPointerUp={(event) => { event.stopPropagation() }}>
               Hide here
             </button>
+            </>
+            )}
             {showProtectedFrameBoundary ? (
               <span
                 role="status"
