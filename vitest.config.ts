@@ -7,10 +7,13 @@ export default defineConfig({
     alias: {
       "@": path.resolve(__dirname, "./src"),
       "#imports": path.resolve(__dirname, "./test/mocks/imports.ts"),
+      "expo-apple-authentication": path.resolve(__dirname, "./test/mocks/expo-apple-authentication.ts"),
       "expo-application": path.resolve(__dirname, "./test/mocks/expo-application.ts"),
+      "expo-auth-session": path.resolve(__dirname, "./test/mocks/expo-auth-session"),
       "expo-constants": path.resolve(__dirname, "./test/mocks/expo-constants.ts"),
       "expo-crypto": path.resolve(__dirname, "./test/mocks/expo-crypto.ts"),
       "expo-notifications": path.resolve(__dirname, "./test/mocks/expo-notifications.ts"),
+      "expo-web-browser": path.resolve(__dirname, "./test/mocks/expo-web-browser.ts"),
       "expo-speech": path.resolve(__dirname, "./test/mocks/expo-speech.ts"),
       "react-native": path.resolve(__dirname, "./test/mocks/react-native.ts"),
     },
