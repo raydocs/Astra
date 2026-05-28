@@ -192,10 +192,10 @@
     "message": "复习"
   },
   "learningSavedTitle": {
-    "message": "已加入你的学习队列"
+    "message": "已保存，今晚可复习"
   },
   "learningSavedHint": {
-    "message": "打开词汇表或直接进入复习，让这条表达继续留在学习循环里。"
+    "message": "已加入你的学习队列。约 1 分钟后可复习，也可以稍后从词汇表回到来源。"
   },
   "popup_studyPageSavedReviewTitle": {
     "message": "本页已保存的句子"
@@ -1167,7 +1167,7 @@
     "message": "Astra 服务状态"
   },
   "options_diagDirectApi": {
-    "message": "设备服务"
+    "message": "本地服务路径"
   },
   "options_diagAstraRelay": {
     "message": "Astra 云服务"
@@ -1191,7 +1191,7 @@
     "message": "服务路径"
   },
   "options_diagDirect": {
-    "message": "设备路径："
+    "message": "本地路径："
   },
   "options_diagYes": {
     "message": "是"

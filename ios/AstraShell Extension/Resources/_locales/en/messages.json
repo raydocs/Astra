@@ -192,10 +192,10 @@
     "message": "Review"
   },
   "learningSavedTitle": {
-    "message": "Saved to your learning queue"
+    "message": "Saved for review tonight"
   },
   "learningSavedHint": {
-    "message": "Open vocabulary or jump into review to keep this phrase active."
+    "message": "Added to your learning queue. Review in about 1 minute, or open Vocabulary later to return to the source."
   },
   "popup_studyPageSavedReviewTitle": {
     "message": "Saved sentences on this page"
@@ -482,7 +482,7 @@
     "message": "Delete"
   },
   "vocabulary_readingIntro": {
-    "message": "Revisit reading items from one queue. Articles and remote PDFs resume from their saved links; local PDF / EPUB / subtitle files reopen the right reader and are kept on this device only."
+    "message": "Revisit reading items from one queue. Articles and remote PDFs resume from their saved links; local PDF / EPUB / subtitle files reopen the right reader and ask for the same file again."
   },
   "vocabulary_viewLabel": {
     "message": "View:"
@@ -1192,7 +1192,7 @@
     "message": "Service paths"
   },
   "options_diagDirect": {
-    "message": "Device path:"
+    "message": "Local path:"
   },
   "options_diagYes": {
     "message": "Yes"
