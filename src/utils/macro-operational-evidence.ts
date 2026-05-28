@@ -817,18 +817,21 @@ function isBlank(value: string): boolean {
 
 function isPlaceholderEvidenceReference(value: string): boolean {
   const normalizedValue = value.toLowerCase()
-  return normalizedValue.includes("example") || normalizedValue.includes("placeholder") || normalizedValue.includes("todo")
+  return normalizedValue.includes("example")
+    || normalizedValue.includes("placeholder")
+    || normalizedValue.includes("todo")
+    || /\b(?:mock|draft|tbd|pending|temp|temporary)\b/.test(normalizedValue)
 }
 
 function digestOrVersionIdentity(value: string): string {
   return value
     .trim()
     .toLowerCase()
-    .replace(/^(?:sha(?:256|384|512)?|checksum|digest|version|build|artifact)[:=/ -]+/, "")
+    .replace(/^(?:sha(?:256|384|512)?|checksum|digest|version|build|artifact|run|rubric|fixture|manifest|export|query)[:=/ -]+/, "")
 }
 
 function hasWeakEvidenceKeyword(value: string): boolean {
-  return /\b(?:dummy|sample|fake|local|none|n\/a|na|latest|dev|test)\b/.test(value.trim().toLowerCase())
+  return /\b(?:dummy|sample|fake|mock|draft|tbd|pending|temp|temporary|local|none|n\/a|na|latest|dev|test)\b/.test(value.trim().toLowerCase())
 }
 
 function isWeakDigestReference(value: string): boolean {
@@ -1510,23 +1513,23 @@ export function evaluateAstraMacroPlanCompletion(
   if (!evidence.manualQaChecklistComplete) {
     blockers.push({
       code: "manual_qa_checklist",
-      message: "Fill every Section 6/7/13/14/24/32 manual/browser QA row with owner/date containing a real calendar YYYY-MM-DD, environment, URL or repo artifact-path evidence link, and `pass` or `pass-with-downgrade` verdict.",
+      message: "Fill every Section 6/7/13/14/24/32 manual/browser QA row with owner/date containing a real calendar YYYY-MM-DD, real browser/build environment, URL or repo artifact-path evidence link, and `pass` or `pass-with-downgrade` verdict.",
     })
   }
 
   if (!evidence.humanScoredAiQualityReportAttached) {
     blockers.push({
       code: "human_scored_ai_quality",
-      message: "Attach a dated human-scored AI quality report with reviewer/date containing a real calendar YYYY-MM-DD, target environment, run metadata, URL or repo artifact-path live provider samples and blocker triage, finite sample counts matching summarized P0 samples, trend, and release decision before production quality claims.",
+      message: "Attach a dated human-scored AI quality report with reviewer/date containing a real calendar YYYY-MM-DD, real target environment, stable non-weak run metadata and fixture manifest version, URL or repo artifact-path live provider samples and blocker triage, finite sample counts matching summarized P0 samples, trend, and release decision before production quality claims.",
     })
   }
 
   if (!evidence.billingLegalStoreGtmArtifactsAttached) {
-    blockers.push({ code: "billing_legal_store_gtm_artifacts", message: "Attach billing, legal, store submission, and GTM launch artifact rows with artifact type/id, stable non-weak digest or version, target channel, claim boundary, owner/date containing a real calendar YYYY-MM-DD, environment/channel, and URL or repo artifact-path evidence link before launch-complete claims." })
+    blockers.push({ code: "billing_legal_store_gtm_artifacts", message: "Attach billing, legal, store submission, and GTM launch artifact rows with artifact type/id, stable non-weak digest or version, target channel, claim boundary, owner/date containing a real calendar YYYY-MM-DD, real environment/channel context, and URL or repo artifact-path evidence link before launch-complete claims." })
   }
 
   if (!evidence.productionMetricsExportAttached) {
-    blockers.push({ code: "production_metrics_export", message: "Attach production/cohort metric dashboard exports with valid non-reversed shared YYYY-MM-DD..YYYY-MM-DD date range, ISO exported-at timestamp, export id, stable non-weak digest/checksum, query version, category-aligned non-duplicated metric ids, URL or repo artifact-path evidence/privacy links, and owner/date containing a real calendar YYYY-MM-DD before metric maturity claims." })
+    blockers.push({ code: "production_metrics_export", message: "Attach production/cohort metric dashboard exports with valid non-reversed shared YYYY-MM-DD..YYYY-MM-DD date range, real cohort/source/export id, ISO exported-at timestamp, stable non-weak digest/checksum, real query version, category-aligned non-duplicated metric ids, URL or repo artifact-path evidence/privacy links, and owner/date containing a real calendar YYYY-MM-DD before metric maturity claims." })
   }
 
   return {

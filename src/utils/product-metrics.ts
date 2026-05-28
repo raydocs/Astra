@@ -268,11 +268,14 @@ function isBlank(value: string): boolean {
 
 function isPlaceholderEvidenceReference(value: string): boolean {
   const normalizedValue = value.toLowerCase()
-  return normalizedValue.includes("example") || normalizedValue.includes("placeholder") || normalizedValue.includes("todo")
+  return normalizedValue.includes("example")
+    || normalizedValue.includes("placeholder")
+    || normalizedValue.includes("todo")
+    || /\b(?:mock|draft|tbd|pending|temp|temporary)\b/.test(normalizedValue)
 }
 
 function hasWeakEvidenceKeyword(value: string): boolean {
-  return /\b(?:dummy|sample|fake|local|none|n\/a|na|latest|dev|test)\b/.test(value.trim().toLowerCase())
+  return /\b(?:dummy|sample|fake|mock|draft|tbd|pending|temp|temporary|local|none|n\/a|na|latest|dev|test)\b/.test(value.trim().toLowerCase())
 }
 
 function isWeakContextEvidenceReference(value: string): boolean {
@@ -280,11 +283,16 @@ function isWeakContextEvidenceReference(value: string): boolean {
   return isPlaceholderEvidenceReference(normalizedValue) || hasWeakEvidenceKeyword(normalizedValue)
 }
 
+function evidenceIdentityValue(value: string): string {
+  return value
+    .trim()
+    .toLowerCase()
+    .replace(/^(?:sha(?:256|384|512)?|checksum|digest|version|build|artifact|export|query)[:=/ -]+/, "")
+}
+
 function isWeakDigestReference(value: string): boolean {
   const normalizedValue = value.trim().toLowerCase()
-  const identityValue = normalizedValue
-    .replace(/^(?:sha(?:256|384|512)?|checksum|digest|version|build|artifact)[:=/ -]+/, "")
-    .replace(/[^a-z0-9]/g, "")
+  const identityValue = evidenceIdentityValue(value).replace(/[^a-z0-9]/g, "")
 
   return identityValue.length < 12
     || /^0+$/.test(identityValue)
@@ -294,7 +302,7 @@ function isWeakDigestReference(value: string): boolean {
 
 function isStableExportIdentityReference(value: string): boolean {
   const normalizedValue = value.trim().toLowerCase()
-  const compactValue = normalizedValue.replace(/[^a-z0-9]/g, "")
+  const compactValue = evidenceIdentityValue(value).replace(/[^a-z0-9]/g, "")
   return compactValue.length >= 4
     && /\d/.test(compactValue)
     && !/^0+$/.test(compactValue)

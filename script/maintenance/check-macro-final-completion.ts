@@ -452,18 +452,21 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 function isPlaceholderEvidenceReference(value: string): boolean {
   const normalizedValue = value.toLowerCase()
-  return normalizedValue.includes("example") || normalizedValue.includes("placeholder") || normalizedValue.includes("todo")
+  return normalizedValue.includes("example")
+    || normalizedValue.includes("placeholder")
+    || normalizedValue.includes("todo")
+    || /\b(?:mock|draft|tbd|pending|temp|temporary)\b/.test(normalizedValue)
 }
 
 function digestOrVersionIdentity(value: string): string {
   return value
     .trim()
     .toLowerCase()
-    .replace(/^(?:sha(?:256|384|512)?|checksum|digest|version|build|artifact|run|rubric|fixture|manifest)[:=/ -]+/, "")
+    .replace(/^(?:sha(?:256|384|512)?|checksum|digest|version|build|artifact|run|rubric|fixture|manifest|export|query)[:=/ -]+/, "")
 }
 
 function hasWeakEvidenceKeyword(value: string): boolean {
-  return /\b(?:dummy|sample|fake|local|none|n\/a|na|latest|dev|test)\b/.test(value.trim().toLowerCase())
+  return /\b(?:dummy|sample|fake|mock|draft|tbd|pending|temp|temporary|local|none|n\/a|na|latest|dev|test)\b/.test(value.trim().toLowerCase())
 }
 
 function isWeakDigestReference(value: string): boolean {

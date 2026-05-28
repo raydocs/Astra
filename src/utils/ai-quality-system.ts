@@ -513,11 +513,14 @@ function isBlank(value: string): boolean {
 
 function isPlaceholderEvidenceReference(value: string): boolean {
   const normalizedValue = value.toLowerCase()
-  return normalizedValue.includes("example") || normalizedValue.includes("placeholder") || normalizedValue.includes("todo")
+  return normalizedValue.includes("example")
+    || normalizedValue.includes("placeholder")
+    || normalizedValue.includes("todo")
+    || /\b(?:mock|draft|tbd|pending|temp|temporary)\b/.test(normalizedValue)
 }
 
 function hasWeakEvidenceKeyword(value: string): boolean {
-  return /\b(?:dummy|sample|fake|local|none|n\/a|na|latest|dev|test)\b/.test(value.trim().toLowerCase())
+  return /\b(?:dummy|sample|fake|mock|draft|tbd|pending|temp|temporary|local|none|n\/a|na|latest|dev|test)\b/.test(value.trim().toLowerCase())
 }
 
 function isWeakIdentityOrVersionReference(value: string): boolean {

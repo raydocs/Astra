@@ -755,6 +755,9 @@ describe("Astra macro operational evidence", () => {
     const checker = readFileSync("script/maintenance/check-macro-final-completion.ts", "utf8")
 
     expect(checker).toContain("function validateAiQualityRunSummary")
+    expect(checker).toContain("artifact|run|rubric|fixture|manifest|export|query")
+    expect(checker).toContain("mock|draft|tbd|pending|temp|temporary")
+    expect(checker).toContain("normalizedValue.includes(\"placeholder\")")
     expect(checker).toContain("AI_QUALITY_SUMMARY_REQUIRED_KEYS")
     expect(checker).toContain("validateConstrainedNumberField(value[field]")
     expect(checker).toContain("validateNullableConstrainedNumberField(value.averageScore")
@@ -857,7 +860,7 @@ describe("Astra macro operational evidence", () => {
       {
         areaId: "first_success_activation_evidence",
         ownerDate: "release-owner / 2026-99-99",
-        environment: "local test evidence packet",
+        environment: "pending target-release evidence packet",
         evidenceLink: "docs/reviews/../private-evidence.md",
         requirementEvidence: "generic proof exists",
         verdict: "proved",
@@ -1018,7 +1021,7 @@ describe("Astra macro operational evidence", () => {
     const decision = evaluateAstraMacroManualQaEvidencePacket([
       {
         ...completeManualQaRows[0],
-        evidenceLink: "https://release-evidence.astra.internal/manual-qa/placeholder-section-6.md",
+        evidenceLink: "https://release-evidence.astra.internal/manual-qa/draft-section-6.md",
       },
       ...completeManualQaRows.slice(1),
     ])
@@ -1039,7 +1042,7 @@ describe("Astra macro operational evidence", () => {
       {
         ...completeManualQaRows[0],
         ownerDate: "QA owner",
-        environment: "local test browser",
+        environment: "draft browser evidence",
         evidenceLink: "done",
       },
       ...completeManualQaRows.slice(1),
@@ -1272,8 +1275,8 @@ describe("Astra macro operational evidence", () => {
     const decision = evaluateAstraMacroCiArtifactPacket([
       {
         ...completeCiArtifactPacket[0],
-        runId: "000000000000",
-        jobName: "local test job",
+        runId: "run:000000000000",
+        jobName: "mock release job",
         artifactId: "aaaaaaaaaaaa",
         artifactDigest: "000000000000",
         artifactManifestPath: "docs/../release-artifacts/quality-gate-manifest.json",
@@ -1456,10 +1459,10 @@ describe("Astra macro operational evidence", () => {
     const decision = evaluateAstraMacroLaunchArtifactPacket([
       {
         ...completeLaunchArtifactRows[0],
-        artifactType: "local billing artifact",
+        artifactType: "draft billing artifact",
         artifactId: "000000000000",
         artifactDigestOrVersion: "000000000000",
-        targetChannel: "local channel",
+        targetChannel: "pending channel",
         claimBoundary: "gtm",
         evidenceLink: "not-a-link",
         ownerDate: "Release owner",
@@ -1616,13 +1619,17 @@ describe("Astra macro operational evidence", () => {
     expect(committedNote).toContain("`pass` or `pass-with-downgrade`")
     expect(committedNote).toContain("human_scored_ai_quality")
     expect(committedNote).toContain("reviewer/date containing a real calendar YYYY-MM-DD")
+    expect(committedNote).toContain("real target environment")
+    expect(committedNote).toContain("stable non-weak run metadata and fixture manifest version")
     expect(committedNote).toContain("URL or repo artifact-path live provider samples and blocker triage")
     expect(committedNote).toContain("finite sample counts matching summarized P0 samples")
     expect(committedNote).toContain("billing_legal_store_gtm_artifacts")
-    expect(committedNote).toContain("owner/date containing a real calendar YYYY-MM-DD, environment/channel")
+    expect(committedNote).toContain("owner/date containing a real calendar YYYY-MM-DD, real environment/channel context")
     expect(committedNote).toContain("URL or repo artifact-path evidence link before launch-complete claims")
     expect(committedNote).toContain("production_metrics_export")
     expect(committedNote).toContain("valid non-reversed shared YYYY-MM-DD..YYYY-MM-DD date range")
+    expect(committedNote).toContain("real cohort/source/export id")
+    expect(committedNote).toContain("real query version")
     expect(committedNote).toContain("category-aligned non-duplicated metric ids")
     expect(committedNote).toContain("URL or repo artifact-path evidence/privacy links")
   })
