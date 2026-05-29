@@ -40,4 +40,23 @@ describe("copy dictionary", () => {
     expect(getSafeAiUnavailableCopy({ code: "CONTENT_UNAVAILABLE", message: "Protected page" }))
       .toBe("This page is protected. Try selection translation or Deep Read.")
   })
+
+  it("turns a used-up included sample into a value-framed Pro reason, not a cold limit", () => {
+    // Server raises QUOTA_EXCEEDED with this message once a Free user has spent
+    // their included monthly deep-reading / video sample — the moment to explain Pro.
+    expect(getSafeAiUnavailableCopy({ code: "QUOTA_EXCEEDED", message: "deep_reading monthly allowance exceeded for the free plan." }))
+      .toBe(COPY_DICTIONARY.proValue)
+    expect(getSafeAiUnavailableCopy({ code: "QUOTA_EXCEEDED", message: "video_summary monthly allowance exceeded for the free plan." }))
+      .toBe(COPY_DICTIONARY.proValue)
+  })
+
+  it("frames the daily Fair-Use ceiling as today's reading refreshing, not a busy retry", () => {
+    expect(getSafeAiUnavailableCopy({ code: "PROVIDER_REQUEST_FAILED", message: "Daily request quota exceeded." }))
+      .toBe(COPY_DICTIONARY.dailyFreeReached)
+    expect(getSafeAiUnavailableCopy({ code: "PROVIDER_REQUEST_FAILED", message: "Daily character quota exceeded." }))
+      .toBe(COPY_DICTIONARY.dailyFreeReached)
+    // A transient per-minute rate limit is genuinely temporary and must still ask to retry.
+    expect(getSafeAiUnavailableCopy({ code: "PROVIDER_REQUEST_FAILED", message: "Rate limit exceeded for the current minute." }))
+      .toBe("Astra is temporarily busy. Retry in a moment.")
+  })
 })

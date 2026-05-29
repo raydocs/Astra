@@ -1,4 +1,5 @@
 import { browser } from "#imports"
+import { localizedOrFallback } from "@/utils/copy-dictionary"
 import type { TelemetryEvent } from "@/utils/telemetry"
 
 export type LearningLoopEventName =
@@ -733,11 +734,20 @@ export function buildLearningLoopProValueMoments(input: {
       return true
     })
     .slice(0, maxMoments)
-    .map((trigger) => ({
-      trigger,
-      surface: input.surface,
-      ...LEARNING_LOOP_PRO_VALUE_MOMENTS[trigger],
-    }))
+    .map((trigger) => {
+      // The English const above is the source of truth and the fallback; the
+      // active-locale card is resolved from `_locales` so the Chinese-first
+      // (default_locale: zh_CN) audience reads upgrade value in their language.
+      const copy = LEARNING_LOOP_PRO_VALUE_MOMENTS[trigger]
+      return {
+        trigger,
+        surface: input.surface,
+        eyebrow: localizedOrFallback(`proMoment_${trigger}_eyebrow`, copy.eyebrow),
+        title: localizedOrFallback(`proMoment_${trigger}_title`, copy.title),
+        summary: localizedOrFallback(`proMoment_${trigger}_summary`, copy.summary),
+        cta: localizedOrFallback(`proMoment_${trigger}_cta`, copy.cta),
+      }
+    })
 }
 
 function normalizeLearningLoopUpgradePromptVariant(value: unknown): LearningLoopUpgradePromptVariant | null {
@@ -782,28 +792,39 @@ export function buildLearningLoopUpgradePrompt(input: {
 
   const primary = triggers[0] ?? "deep_read"
   const moment = LEARNING_LOOP_PRO_VALUE_MOMENTS[primary]
+  // The interpolated moment title must match the language of the rest of the card.
+  const momentTitle = localizedOrFallback(`proMoment_${primary}_title`, moment.title).toLowerCase()
   const shared = {
     variant: input.variant,
-    experimentId: LEARNING_LOOP_UPGRADE_PROMPT_EXPERIMENT_ID,
+    experimentId: LEARNING_LOOP_UPGRADE_PROMPT_EXPERIMENT_ID as typeof LEARNING_LOOP_UPGRADE_PROMPT_EXPERIMENT_ID,
     triggers,
-    cta: "I'm interested in upgrades",
-    boundary: "Beta note: paid upgrades are not available in this build. This button only records local interest; it does not start checkout, a trial, email capture, or a subscription change.",
-  } as const
+    cta: localizedOrFallback("upgradePrompt_cta", "I'm interested in upgrades"),
+    boundary: localizedOrFallback(
+      "upgradePrompt_boundary",
+      "Beta note: paid upgrades are not available in this build. This button only records local interest; it does not start checkout, a trial, email capture, or a subscription change.",
+    ),
+  }
 
   if (input.variant === "momentum_first") {
     return {
       ...shared,
-      eyebrow: "Upgrade interest · learning momentum",
-      title: "Would an upgrade help you keep this learning momentum?",
-      summary: `Astra is exploring ways to support moments like ${moment.title.toLowerCase()} Tell us locally if this kind of upgrade would be useful when paid plans launch later.`,
+      eyebrow: localizedOrFallback("upgradePrompt_momentum_eyebrow", "Upgrade interest · learning momentum"),
+      title: localizedOrFallback("upgradePrompt_momentum_title", "Would an upgrade help you keep this learning momentum?"),
+      summary: localizedOrFallback(
+        "upgradePrompt_momentum_summary",
+        "Astra is exploring ways to support moments like {moment} Tell us locally if this kind of upgrade would be useful when paid plans launch later.",
+      ).replace("{moment}", momentTitle),
     }
   }
 
   return {
     ...shared,
-    eyebrow: "Upgrade interest · continuity",
-    title: "Would an upgrade help keep this learning trail connected?",
-    summary: `Astra is exploring upgrade value around continuity, deeper reading, and fewer interruptions. This moment is about ${moment.title.toLowerCase()} Tell us locally if that sounds useful when paid plans launch later.`,
+    eyebrow: localizedOrFallback("upgradePrompt_continuity_eyebrow", "Upgrade interest · continuity"),
+    title: localizedOrFallback("upgradePrompt_continuity_title", "Would an upgrade help keep this learning trail connected?"),
+    summary: localizedOrFallback(
+      "upgradePrompt_continuity_summary",
+      "Astra is exploring upgrade value around continuity, deeper reading, and fewer interruptions. This moment is about {moment} Tell us locally if that sounds useful when paid plans launch later.",
+    ).replace("{moment}", momentTitle),
   }
 }
 

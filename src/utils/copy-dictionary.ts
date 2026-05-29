@@ -45,6 +45,8 @@ export const COPY_DICTIONARY = {
   syncIssue: "Your learning record is saved on this device for now.",
   supportPrivacy: "We’ll include technical details, not your page text.",
   proLongContent: "Longer videos and deeper explanations are included with Pro.",
+  proValue: "Pro includes longer videos, deeper explanations, synced learning history, and unlimited review cards.",
+  dailyFreeReached: "You’ve used today’s free reading. It refreshes tomorrow, or Pro keeps longer videos and deeper explanations going.",
   continueTomorrow: "You can continue tomorrow, or upgrade for longer reading.",
   proBusy: "Astra is processing a lot of long content. Some tasks may take longer.",
   canceledPlan: "Your saved learning items stay in your account. Pro features will pause after the current period.",
@@ -53,8 +55,22 @@ export const COPY_DICTIONARY = {
 
 export type CopyDictionaryKey = keyof typeof COPY_DICTIONARY
 
+// Membership / paywall copy that users read in their own language. Each key here
+// has matching `_locales/{en,zh_CN}` entries; `localizedOrFallback` (defined
+// below, hoisted) resolves the active-locale string and falls back to the
+// English value above when extension i18n is unavailable (web app / unit tests).
+// Keys NOT listed here stay English-only for now.
+const COPY_DICTIONARY_MESSAGE_KEYS: Partial<Record<CopyDictionaryKey, string>> = {
+  proValue: "copyProValue",
+  dailyFreeReached: "copyDailyFreeReached",
+  freeLimit: "copyFreeLimit",
+  proLongContent: "copyProLongContent",
+  continueTomorrow: "copyContinueTomorrow",
+}
+
 export function getUserCopy(key: CopyDictionaryKey): string {
-  return COPY_DICTIONARY[key]
+  const messageKey = COPY_DICTIONARY_MESSAGE_KEYS[key]
+  return messageKey ? localizedOrFallback(messageKey, COPY_DICTIONARY[key]) : COPY_DICTIONARY[key]
 }
 
 /**
@@ -82,7 +98,7 @@ const SERVICE_MODE_MESSAGE_KEYS: Record<ServiceMode, string> = {
 // Localize via the extension i18n message table when available. Accessed through
 // globalThis (not WXT's "#imports") so this module stays usable in the web app /
 // unit tests, where there is no extension i18n and the English fallback is used.
-function localizedOrFallback(key: string, fallback: string): string {
+export function localizedOrFallback(key: string, fallback: string): string {
   try {
     const i18n =
       (globalThis as { chrome?: { i18n?: { getMessage?: (name: string) => string } } }).chrome?.i18n
@@ -149,6 +165,21 @@ function classifyMessage(message: string): CopyDictionaryKey | null {
 
   if (messageMatches(message, /relay|network|fetch|timeout|timed out|abort|connection|reconnect/)) {
     return "membershipReconnecting"
+  }
+
+  // A Free learner who has used an included monthly sample (deep reading / video
+  // lesson) has already felt the value — frame the wall as the reason to go Pro,
+  // never as a cold limit error. Server raises this as "<task> monthly allowance
+  // exceeded for the <plan> plan." (user-store assertUsageCapacity).
+  if (messageMatches(message, /monthly allowance/)) {
+    return "proValue"
+  }
+
+  // Today's included reading is used up (daily Fair-Use ceiling: "Daily request /
+  // character quota exceeded."). Human, refresh-tomorrow framing — kept distinct
+  // from the per-minute rate limit, which should still read as "retry in a moment."
+  if (messageMatches(message, /daily (request|character) quota|daily reading|today'?s free/)) {
+    return "dailyFreeReached"
   }
 
   if (messageMatches(message, /provider|model|upstream|rate limit|quota|token limit|too many|busy|unavailable|incomplete|invalid response|empty response/)) {
