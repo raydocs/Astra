@@ -840,7 +840,29 @@ function buildMobileReviewCards(cloudAssets: WebCloudAssetsWorkspace | null): Mo
   const entries = cloudAssets?.vocabulary.entries ?? []
   if (entries.length === 0) return SAMPLE_MOBILE_REVIEW_CARDS
 
+  // Order /today by what's DUE (SRS), not by what was most recently saved. The SRS
+  // schedule rides in a separate sync collection alongside entries; an entry with no
+  // schedule record is new and counts as due now. Mirrors srs/leitner isDue (due when
+  // now >= nextReviewAt): due/overdue first (most overdue first), then soonest-upcoming,
+  // with savedAt as the final tiebreak. Slices to the session size, never empty.
+  const now = Date.now()
+  const nextReviewByEntryId = new Map(
+    (cloudAssets?.vocabulary.reviewSchedule ?? []).map((record) => [record.vocabularyEntryId, record.nextReviewAt]),
+  )
+  const nextReviewAtFor = (entryId: string): number => nextReviewByEntryId.get(entryId) ?? 0
+
   return entries
+    .slice()
+    .sort((a, b) => {
+      const aNext = nextReviewAtFor(a.id)
+      const bNext = nextReviewAtFor(b.id)
+      const aDue = aNext <= now
+      const bDue = bNext <= now
+      if (aDue !== bDue) return aDue ? -1 : 1
+      if (aNext !== bNext) return aNext - bNext
+      return b.savedAt - a.savedAt
+    })
+    .slice(0, MOBILE_REVIEW_SESSION_SIZE)
     .map((entry): MobileReviewCard => {
       const sentence = entry.sourceContext?.sentenceText ?? entry.context ?? ""
       const looksLikeSentence = entry.text.trim().includes(" ") || entry.text.length > 48
@@ -857,8 +879,6 @@ function buildMobileReviewCards(cloudAssets: WebCloudAssetsWorkspace | null): Mo
         sample: false,
       }
     })
-    .sort((a, b) => b.savedAt - a.savedAt)
-    .slice(0, MOBILE_REVIEW_SESSION_SIZE)
 }
 
 function summarizeMobileReviewSources(cards: MobileReviewCard[]): string {

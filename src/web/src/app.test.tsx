@@ -309,13 +309,7 @@ function createCloudAssets(overrides: Record<string, unknown> = {}) {
           savedAt: 1_775_692_800_000,
         },
       ],
-    },
-    reviewSchedule: {
-      enabled: true,
-      defaultEnabled: true,
-      cursor: null,
-      count: 0,
-      items: [],
+      reviewSchedule: [],
     },
     readingHistory: {
       enabled: true,
@@ -1591,6 +1585,42 @@ describe("AstraWebApp smoke", () => {
     expect(container.textContent).toContain("Done for today.")
     const queuedEvents = JSON.parse(window.localStorage.getItem("astra.web.mobile-review-events.v1") ?? "[]") as Array<{ cardId: string; rating: string; queued: boolean }>
     expect(queuedEvents[0]).toMatchObject({ cardId: "vocab-1", rating: "good", queued: true })
+
+    await unmount()
+  })
+
+  it("orders Today Review by SRS due date, not recency", async () => {
+    const session = createSession()
+    mocks.readWebSessionMock.mockReturnValue(session)
+    mocks.refreshWebSessionMock.mockResolvedValue(session)
+    mocks.fetchWebCloudAssetsMock.mockResolvedValue(createCloudAssets({
+      vocabulary: {
+        enabled: true,
+        defaultEnabled: true,
+        cursor: "vocab-due",
+        count: 2,
+        entries: [
+          // Saved most recently — recency ordering would surface this first.
+          { id: "recent-not-due", text: "newword", translation: "新词", hostname: "example.com", savedAt: 2_000_000_000_000 },
+          // Saved earlier, but overdue — SRS ordering must surface this first.
+          { id: "older-due", text: "oldword", translation: "旧词", hostname: "example.com", savedAt: 1_000_000_000_000 },
+        ],
+        reviewSchedule: [
+          { vocabularyEntryId: "recent-not-due", srsBox: 3, nextReviewAt: 4_000_000_000_000, reviewCount: 2, lastReviewedAt: null, lastReviewGrade: null, lastReviewGradeAt: null, updatedAt: 2_000_000_000_000 },
+          { vocabularyEntryId: "older-due", srsBox: 1, nextReviewAt: 1, reviewCount: 0, lastReviewedAt: null, lastReviewGrade: null, lastReviewGradeAt: null, updatedAt: 1_000_000_000_000 },
+        ],
+      },
+    }))
+    window.location.hash = "#/today"
+
+    const { container, unmount } = await renderApp()
+
+    expect(container.textContent).toContain("2 cards are ready from your web reading.")
+    // Due-first: the overdue "oldword" is the active review card even though
+    // "newword" was saved more recently (recency ordering would surface "newword").
+    const activeCardFront = container.querySelector(".mobile-review-card h3")
+    expect(activeCardFront?.textContent).toBe("oldword")
+    expect(container.textContent).toContain("word card: oldword")
 
     await unmount()
   })
