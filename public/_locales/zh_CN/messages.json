@@ -201,7 +201,7 @@
     "message": "本页已保存的句子"
   },
   "popup_studyPageSavedReviewHint": {
-    "message": "本页已有 $1 条保存句子，可随时进入复习。",
+    "message": "已加入今日复习 · 现在复习 $1 张",
     "placeholders": {
       "1": { "content": "$1" }
     }

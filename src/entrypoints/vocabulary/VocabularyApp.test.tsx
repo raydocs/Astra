@@ -162,7 +162,7 @@ vi.mock("@/utils/i18n", () => ({
       vocabulary_continueReadingTitle: "Continue where you left off",
       vocabulary_actionResumeReading: "Resume reading",
       popup_studyPageSavedReviewTitle: "Saved sentences on this page",
-      popup_studyPageSavedReviewHint: `${subs[0] ?? "$1"} saved sentence(s) from this page can be reviewed anytime.`,
+      popup_studyPageSavedReviewHint: `Added to today's review · Review ${subs[0] ?? "$1"} card(s) now`,
       popup_studyPageSavedReviewAction: "Review saved sentences from this page",
       vocabulary_searchPlaceholder: "Search words, translations, notes, tags, or source (title, URL, excerpt)...",
       vocabulary_sortLabel: "Sort:",
@@ -1985,7 +1985,7 @@ describe("VocabularyApp", () => {
     const learningDeskCta = container.querySelector('[data-testid="learning-desk-page-review-cta"] button') as HTMLButtonElement
     expect(learningDeskCta).toBeTruthy()
     expect(container.textContent).toContain("Saved sentences on this page")
-    expect(container.textContent).toContain("1 saved sentence(s) from this page can be reviewed anytime.")
+    expect(container.textContent).toContain("Added to today's review · Review 1 card(s) now")
 
     await act(async () => {
       learningDeskCta.click()

@@ -201,7 +201,7 @@
     "message": "Saved sentences on this page"
   },
   "popup_studyPageSavedReviewHint": {
-    "message": "$1 saved sentence(s) from this page can be reviewed anytime.",
+    "message": "Added to today's review · Review $1 card(s) now",
     "placeholders": {
       "1": { "content": "$1" }
     }
