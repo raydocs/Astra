@@ -1,0 +1,18 @@
+{
+  "schema": "astra-macro-product-metrics-readiness-packet.v1",
+  "generatedAt": "2026-05-28T00:00:00.000Z",
+  "label": "Macro product metrics readiness packet — 2026-05-28 intake",
+  "ownerDate": "",
+  "evidenceLink": "",
+  "evidence": {
+    "productQuestionsHaveMetricCoverage": false,
+    "activationMetricsCovered": false,
+    "understandingMetricsCovered": false,
+    "learningMetricsCovered": false,
+    "membershipMetricsCovered": false,
+    "telemetryAvoidsSensitiveRawText": false,
+    "telemetryPrefersEventsOverContent": false,
+    "privacyModeReducesTelemetryDetail": false,
+    "userDataControlsAreClear": false
+  }
+}

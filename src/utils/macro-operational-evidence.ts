@@ -1,3 +1,5 @@
+import { evidenceReferenceDuplicateIdentity, isEvidenceLikeReference, isPublicHttpsEvidenceUrl as isUrlReference } from "./evidence-reference"
+
 export type AstraMacroOperationalEvidenceAreaId =
   | "first_success_activation_evidence"
   | "learning_library_surface_coverage"
@@ -453,9 +455,10 @@ export const ASTRA_MACRO_OPERATIONAL_EVIDENCE: AstraMacroOperationalEvidenceItem
       "docs/analysis/minimal-mobile-retention-ops-summary-checklist-2026-05-28.md",
       "docs/reviews/product-metrics-evidence-note-2026-05-28.md",
       "docs/reviews/production-metrics-export-evidence-note-2026-05-28.md",
+      "docs/reviews/macro-product-metrics-readiness-packet-2026-05-28.json",
     ],
-    requiredBeforeStrongerClaim: ["Attach dated CI or production dashboard/export evidence showing Activation, Understanding, Learning, and Membership metrics are queryable for the target commit/worktree or release cohort, with date range, cohort definition, dashboard/query source, export id, exported-at timestamp, digest/checksum, query version, category-aligned metric ids, evidence link, owner/date, and privacy-review evidence that satisfies evaluateAstraProductionMetricsExportPacket(). The aggregate mobile retention ops summary is repo-side visibility only and does not satisfy production/cohort export evidence."],
-    downgradeCopy: "Metrics contracts, local V0 Options diagnostics, metadata-only aggregators, an aggregate-only mobile retention ops summary, and a production metrics export packet intake guard exist in repo; production/release-cohort dashboard exports with export identity, digest/checksum, query version, cohort definitions, privacy review, and owner-approved query evidence remain required before claiming operational metric maturity.",
+    requiredBeforeStrongerClaim: ["Attach dated CI or production dashboard/export evidence showing Activation, Understanding, Learning, and Membership metrics are queryable for the target commit/worktree or release cohort, with date range, cohort definition, dashboard/query source, export id, timezone-bearing exported-at timestamp, digest/checksum, query version, category-aligned metric ids, evidence link, owner/date, privacy-review evidence that satisfies evaluateAstraProductionMetricsExportPacket(), and a product-metrics readiness packet that satisfies evaluateAstraProductMetricsReadiness(). The aggregate mobile retention ops summary is repo-side visibility only and does not satisfy production/cohort export evidence."],
+    downgradeCopy: "Metrics contracts, local V0 Options diagnostics, metadata-only aggregators, an aggregate-only mobile retention ops summary, a production metrics export packet intake guard, and a product metrics readiness packet placeholder exist in repo; production/release-cohort dashboard exports with export identity, digest/checksum, query version, cohort definitions, privacy review, readiness evidence, and owner-approved query evidence remain required before claiming operational metric maturity.",
   },
   {
     id: "learning_digest",
@@ -699,9 +702,20 @@ export function evaluateAstraMacroOperationalEvidenceCompletionPacket(
   const findings: AstraMacroOperationalEvidenceCompletionPacketFinding[] = []
   const rowsByArea = new Map<AstraMacroOperationalEvidenceAreaId, AstraMacroOperationalEvidenceCompletionPacketRow>()
   const expectedAreaIds = new Set(items.map((item) => item.id))
+  const seenEvidenceLinks = new Map<string, AstraMacroOperationalEvidenceAreaId>()
 
   for (const row of rows) {
-    if (!expectedAreaIds.has(row.areaId)) {
+    const normalizedAreaId = row.areaId.trim()
+    const areaIdIdentity = normalizedAreaId.toLowerCase()
+    const canonicalAreaId = items.find((item) => item.id.toLowerCase() === areaIdIdentity)?.id
+    if (normalizedAreaId !== row.areaId || (canonicalAreaId !== undefined && canonicalAreaId !== row.areaId)) {
+      findings.push({
+        areaId: row.areaId,
+        message: `${row.areaId} must use canonical operational evidence area casing without surrounding whitespace.`,
+        nextStep: "Use the exact area id from ASTRA_MACRO_OPERATIONAL_EVIDENCE.",
+      })
+    }
+    if (canonicalAreaId === undefined || !expectedAreaIds.has(canonicalAreaId)) {
       findings.push({
         areaId: row.areaId,
         message: `${row.areaId} is not a tracked macro operational evidence area.`,
@@ -709,7 +723,7 @@ export function evaluateAstraMacroOperationalEvidenceCompletionPacket(
       })
       continue
     }
-    if (rowsByArea.has(row.areaId)) {
+    if (rowsByArea.has(canonicalAreaId)) {
       findings.push({
         areaId: row.areaId,
         message: `${row.areaId} has duplicate operational completion evidence rows.`,
@@ -717,7 +731,21 @@ export function evaluateAstraMacroOperationalEvidenceCompletionPacket(
       })
       continue
     }
-    rowsByArea.set(row.areaId, row)
+    const evidenceLink = row.evidenceLink.trim()
+    const evidenceLinkIdentity = evidenceReferenceDuplicateIdentity(row.evidenceLink)
+    if (evidenceLink.length > 0) {
+      const existingAreaId = seenEvidenceLinks.get(evidenceLinkIdentity)
+      if (existingAreaId && existingAreaId !== canonicalAreaId) {
+        findings.push({
+          areaId: row.areaId,
+          message: `${row.areaId} reuses operational evidence link ${evidenceLink}.`,
+          nextStep: "Attach area-specific target-release evidence so every operational claim can be audited independently.",
+        })
+      }
+      seenEvidenceLinks.set(evidenceLinkIdentity, canonicalAreaId)
+    }
+
+    rowsByArea.set(canonicalAreaId, { ...row, areaId: canonicalAreaId })
   }
 
   for (const item of items) {
@@ -744,11 +772,11 @@ export function evaluateAstraMacroOperationalEvidenceCompletionPacket(
         message: `${item.label} is missing owner/date.`,
         nextStep: "Record who reviewed the operational evidence and when.",
       })
-    } else if (!includesIsoDate(row.ownerDate)) {
+    } else if (!hasOwnerIdentityWithIsoDate(row.ownerDate)) {
       findings.push({
         areaId: item.id,
-        message: `${item.label} owner/date must include a YYYY-MM-DD date.`,
-        nextStep: "Record the operational evidence owner and review date using YYYY-MM-DD.",
+        message: `${item.label} owner/date must identify a real owner and include a YYYY-MM-DD date.`,
+        nextStep: "Record the real operational evidence owner and review date using YYYY-MM-DD.",
       })
     }
     if (isBlank(row.environment)) {
@@ -757,11 +785,23 @@ export function evaluateAstraMacroOperationalEvidenceCompletionPacket(
         message: `${item.label} is missing environment or target release context.`,
         nextStep: "Record target build, browser/OS, deployment, cohort, provider, or release-candidate context.",
       })
+    } else if (row.environment.trim() !== row.environment) {
+      findings.push({
+        areaId: item.id,
+        message: `${item.label} environment must be canonical without surrounding whitespace.`,
+        nextStep: "Record the real target environment or release context for this proof without surrounding whitespace.",
+      })
     } else if (isWeakContextEvidenceReference(row.environment)) {
       findings.push({
         areaId: item.id,
         message: `${item.label} environment is placeholder evidence.`,
         nextStep: "Record the real target environment or release context for this proof.",
+      })
+    } else if (!isSpecificOperationalEnvironment(row.environment)) {
+      findings.push({
+        areaId: item.id,
+        message: `${item.label} environment must include target-release context plus concrete build/browser/deployment/cohort/provider evidence details.`,
+        nextStep: "Record target build, browser/OS, deployment, cohort, provider, packet, dashboard, QA, approval, or artifact context.",
       })
     }
     if (isBlank(row.evidenceLink)) {
@@ -821,13 +861,35 @@ function isPlaceholderEvidenceReference(value: string): boolean {
     || normalizedValue.includes("placeholder")
     || normalizedValue.includes("todo")
     || /\b(?:mock|draft|tbd|pending|temp|temporary)\b/.test(normalizedValue)
+    || /\b(?:(?:fake|dummy|latest|dev|local)[-_ ]?(?:proof|evidence|artifact|report)|(?<!provider[-_ ])sample[-_ ]?(?:proof|evidence|artifact|report)|(?:proof|evidence|artifact|report)[-_ ]?(?:sample|fake|dummy|latest|dev|local))\b/.test(normalizedValue)
+}
+
+function isPlaceholderIdentityReference(value: string): boolean {
+  if (value.trim() !== value) return true
+  const [localIdentityText = "", domainIdentityText = ""] = value.split("@")
+  const identityText = value.includes("@") ? `${localIdentityText} ${domainIdentityText}` : value
+  const normalizedIdentityText = identityText
+    .replace(/[—–_/.-]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+    .toLowerCase()
+  if (/\b(?:example|placeholder|todo|mock|draft|tbd|pending|temp|temporary|none|n\/a|na)\b/i.test(normalizedIdentityText)) return true
+  if (!value.includes("@") && /^(?:owner|release owner|approver|release approver|qa|tester)$/i.test(normalizedIdentityText)) return true
+  return false
 }
 
 function digestOrVersionIdentity(value: string): string {
   return value
     .trim()
     .toLowerCase()
-    .replace(/^(?:sha(?:256|384|512)?|checksum|digest|version|build|artifact|run|rubric|fixture|manifest|export|query)[:=/ -]+/, "")
+      .replace(/^(?:(?:sha(?:256|384|512)?|checksum|digest|version|build|artifact|run|rubric|fixture|manifest|export|query)[:=/ -]+)+/, "")
+}
+
+function launchArtifactIdDuplicateIdentity(value: string): string {
+  const trimmedValue = value.trim()
+  return /^https?:\/\//i.test(trimmedValue)
+    ? evidenceReferenceDuplicateIdentity(trimmedValue)
+    : digestOrVersionIdentity(value)
 }
 
 function hasWeakEvidenceKeyword(value: string): boolean {
@@ -844,9 +906,96 @@ function isWeakDigestReference(value: string): boolean {
     || hasWeakEvidenceKeyword(normalizedValue)
 }
 
+function isCanonicalDigestReference(value: string): boolean {
+  if (value.trim() !== value || isWeakDigestReference(value)) return false
+  const normalizedValue = value.trim().toLowerCase()
+  const identityValue = digestOrVersionIdentity(value)
+  const compactValue = identityValue.replace(/[^a-f0-9]/g, "")
+  const compactAlnumValue = identityValue.replace(/[^a-z0-9]/g, "")
+  return /^(?:sha(?:256|384|512)?|checksum|digest)[:=/ -]+/.test(normalizedValue)
+    && compactValue === compactAlnumValue
+    && /^(?:[a-f0-9]{32}|[a-f0-9]{40}|[a-f0-9]{64}|[a-f0-9]{96}|[a-f0-9]{128})$/.test(compactValue)
+}
+
 function isWeakContextEvidenceReference(value: string): boolean {
   const normalizedValue = value.trim().toLowerCase()
   return isPlaceholderEvidenceReference(normalizedValue) || hasWeakEvidenceKeyword(normalizedValue)
+}
+
+function isSpecificOperationalEnvironment(value: string): boolean {
+  const normalizedValue = value.toLowerCase()
+  const hasReleaseContext = /\b(?:target|release|rc|candidate|production)\b/.test(normalizedValue)
+  const hasConcreteEvidenceContext = /\b(?:build|browser|os|deployment|cohort|provider|packet|dashboard|qa|approval|artifact|chrome|chromium|firefox|safari|edge|macos|windows|linux|relay|extension|web app|store|billing|gtm|metrics|ci)\b/.test(normalizedValue)
+  return hasReleaseContext && hasConcreteEvidenceContext
+}
+
+function hasLaunchArtifactGroupContext(value: string, group: AstraMacroLaunchArtifactGroupId): boolean {
+  const normalizedValue = value.toLowerCase().replace(/[_-]+/g, " ")
+  const normalizedGroup = group.toLowerCase().replace(/[_-]+/g, " ")
+  if (normalizedValue.includes(normalizedGroup)) return true
+  switch (group) {
+    case "billing":
+      return /\b(?:billing|stripe|checkout|webhook|entitlement|quota|refund|subscription|portal)\b/.test(normalizedValue)
+    case "legal_trust":
+      return /\b(?:legal|trust|privacy|terms|policy|support|contact|notice|ai limitation)\b/.test(normalizedValue)
+    case "store_submission":
+      return /\b(?:store|submission|reviewer|screenshot|package|zip|chrome web store|app store|play listing|signed build)\b/.test(normalizedValue)
+    case "gtm":
+      return /\b(?:gtm|demo|storyboard|launch media|copy|claim review|campaign|marketing)\b/.test(normalizedValue)
+  }
+}
+
+function hasLaunchArtifactRequirementContext(value: string, requirementId: AstraMacroLaunchArtifactRequirementId): boolean {
+  const normalizedValue = value.toLowerCase().replace(/[_-]+/g, " ")
+  switch (requirementId) {
+    case "billing_checkout":
+      return /\b(?:checkout|payment|portal|checkout success)\b/.test(normalizedValue)
+    case "billing_webhook":
+      return /\bwebhook\b/.test(normalizedValue)
+    case "billing_entitlement":
+      return /\b(?:entitlement|quota)\b/.test(normalizedValue)
+    case "billing_cancel_refund":
+      return /\b(?:cancel|cancellation|refund)\b/.test(normalizedValue)
+    case "legal_privacy_terms":
+      return /\b(?:privacy|terms|policy)\b/.test(normalizedValue)
+    case "legal_ai_notice":
+      return /\b(?:ai notice|ai limitation|limitation notice)\b/.test(normalizedValue)
+    case "legal_support_contact":
+      return /\b(?:support|contact|incident)\b/.test(normalizedValue)
+    case "store_zip_hash":
+      return /\b(?:zip|package|hash|signed build)\b/.test(normalizedValue)
+    case "store_upload_submission":
+      return /\b(?:upload|submission|submitted)\b/.test(normalizedValue)
+    case "store_reviewer_notes":
+      return /\b(?:reviewer|notes|questionnaire|approval)\b/.test(normalizedValue)
+    case "store_screenshots":
+      return /\bscreenshots?\b/.test(normalizedValue)
+    case "gtm_demo_capture":
+      return /\b(?:demo|capture)\b/.test(normalizedValue)
+    case "gtm_storyboard_screenshots":
+      return /\b(?:storyboard|screenshots?)\b/.test(normalizedValue)
+    case "gtm_copy_claim_review":
+      return /\b(?:copy|claim review|claim)\b/.test(normalizedValue)
+  }
+}
+
+function isSpecificLaunchArtifactType(value: string, requirement: AstraMacroLaunchArtifactRequirement): boolean {
+  const normalizedValue = value.toLowerCase().replace(/[_-]+/g, " ")
+  const namesArtifactSurface = /\b(?:artifact|record|approval|upload|submission|screenshot|capture|package|hash|policy|media|copy|review|provider|build|receipt|portal|webhook|entitlement|quota|refund|notice|notes)\b/.test(normalizedValue)
+  return namesArtifactSurface && hasLaunchArtifactGroupContext(value, requirement.group) && hasLaunchArtifactRequirementContext(value, requirement.id)
+}
+
+function isSpecificLaunchTargetChannel(value: string, requirement: AstraMacroLaunchArtifactRequirement): boolean {
+  const normalizedValue = value.toLowerCase().replace(/[_-]+/g, " ")
+  const namesTargetChannel = /\b(?:target|release|production|channel|provider|store|console|public|browser|mobile|web|gtm|billing|legal|privacy|terms|checkout|webhook|entitlement|quota|refund|notice|support|package|upload|submission|reviewer|screenshots?|demo|storyboard|copy|claim)\b/.test(normalizedValue)
+  return namesTargetChannel && hasLaunchArtifactGroupContext(value, requirement.group) && hasLaunchArtifactRequirementContext(value, requirement.id)
+}
+
+function isSpecificLaunchArtifactEnvironment(value: string, requirement: AstraMacroLaunchArtifactRequirement): boolean {
+  const normalizedValue = value.toLowerCase().replace(/[_-]+/g, " ")
+  const hasReleaseContext = /\b(?:target|release|rc|candidate|production)\b/.test(normalizedValue)
+  const hasChannelOrRuntimeContext = /\b(?:channel|environment|provider|store|submission|billing|stripe|checkout|webhook|entitlement|quota|refund|legal|privacy|terms|support|gtm|demo|storyboard|copy|screenshots|artifact|package|upload|reviewer|claim|notice)\b/.test(normalizedValue)
+  return hasReleaseContext && hasChannelOrRuntimeContext && hasLaunchArtifactGroupContext(value, requirement.group) && hasLaunchArtifactRequirementContext(value, requirement.id)
 }
 
 function isStableVersionReference(value: string): boolean {
@@ -856,12 +1005,33 @@ function isStableVersionReference(value: string): boolean {
   const compactValue = normalizedValue.replace(/[^a-z0-9]/g, "")
   if (!/\d/.test(compactValue) || /^0+$/.test(compactValue) || /^([a-z0-9])\1+$/.test(compactValue)) return false
   if (/^v?\d+\.\d+\.\d+(?:[-+][a-z0-9.-]+)?$/i.test(normalizedValue)) return true
+  if (/^[1-9]\d{5,}$/.test(normalizedValue)) return true
   if (/^20\d{2}-\d{2}-\d{2}$/.test(normalizedValue)) return includesIsoDate(normalizedValue)
   return /^[a-z][a-z0-9]*(?:[-_.][a-z0-9]+)+$/i.test(normalizedValue)
 }
 
 function isWeakDigestOrVersionReference(value: string): boolean {
   return isWeakDigestReference(value) && !isStableVersionReference(value)
+}
+
+function isDigestOrChecksumReference(value: string): boolean {
+  return /^(?:sha(?:256|384|512)?|checksum|digest)[:=/ -]+/i.test(value.trim())
+}
+
+function isSemverOnlyReference(value: string): boolean {
+  return /^v?\d+\.\d+\.\d+(?:[-+][a-z0-9.-]+)?$/i.test(digestOrVersionIdentity(value))
+}
+
+function isDateOnlyIdentityReference(value: string): boolean {
+  const identityValue = digestOrVersionIdentity(value)
+  return /^20\d{2}-\d{2}-\d{2}$/.test(identityValue) && includesIsoDate(identityValue)
+}
+
+function isCiIdentityReference(value: string): boolean {
+  const identityValue = digestOrVersionIdentity(value)
+  if (isWeakDigestOrVersionReference(value) || isSemverOnlyReference(value) || isDateOnlyIdentityReference(value)) return false
+  return /^[1-9]\d{5,}$/.test(identityValue)
+    || /^[a-z][a-z0-9]*(?:[-_:][a-z0-9]+)+$/i.test(identityValue) && /\d/.test(identityValue)
 }
 
 function includesIsoDate(value: string): boolean {
@@ -879,57 +1049,138 @@ function includesIsoDate(value: string): boolean {
     && date.getUTCDate() === day
 }
 
-function isEvidenceLikeReference(value: string): boolean {
-  const trimmedValue = value.trim()
-  if (/^https?:\/\//.test(trimmedValue)) return isUrlReference(trimmedValue)
-  return isRepoArtifactPathReference(trimmedValue)
+function isExactIsoDate(value: string): boolean {
+  return /^20\d{2}-\d{2}-\d{2}$/.test(value) && includesIsoDate(value)
 }
 
-function isRepoArtifactPathReference(value: string): boolean {
-  if (!/^(docs\/|data\/|artifacts\/|test-results\/|playwright-report\/)/.test(value)) return false
-  if (value.startsWith("/") || value.includes("\\") || value.includes("?") || value.includes("#") || /%(?:2e|2f|5c)/i.test(value)) return false
-
-  const segments = value.split("/")
-  return segments.every((segment) => segment.length > 0 && segment !== "." && segment !== "..")
+function hasOwnerIdentityWithIsoDate(value: string): boolean {
+  if (value.trim() !== value || !includesIsoDate(value) || isWeakContextEvidenceReference(value)) return false
+  const ownerText = value
+    .replace(/\b20\d{2}-\d{2}-\d{2}\b/g, " ")
+    .replace(/[—–:|/(),._-]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+  const ownerIdentity = ownerText.toLowerCase()
+  if (/^(?:owner|release owner|qa owner|tester|metrics owner)$/.test(ownerIdentity)) return false
+  return /[a-z][a-z0-9@.-]{1,}/i.test(ownerText)
 }
 
-function isUrlReference(value: string): boolean {
-  const trimmedValue = value.trim()
-  return /^https:\/\//.test(trimmedValue) && !isLocalUrlReference(trimmedValue)
-}
-
-function isLocalUrlReference(value: string): boolean {
-  try {
-    const hostname = new URL(value).hostname.toLowerCase()
-    return hostname.length === 0
-      || hostname === "localhost"
-      || hostname.endsWith(".localhost")
-      || hostname === "0.0.0.0"
-      || /^127(?:\.\d{1,3}){3}$/.test(hostname)
-      || /^10(?:\.\d{1,3}){3}$/.test(hostname)
-      || /^192\.168(?:\.\d{1,3}){2}$/.test(hostname)
-      || /^172\.(?:1[6-9]|2\d|3[0-1])(?:\.\d{1,3}){2}$/.test(hostname)
-      || /^169\.254(?:\.\d{1,3}){2}$/.test(hostname)
-      || isPrivateIpv6Hostname(hostname)
-  } catch {
-    return true
+function manualQaRowContextMatches(value: string, section: number, qaRow: string): boolean {
+  const normalizedValue = value.toLowerCase()
+  const normalizedRow = qaRow.toLowerCase()
+  switch (section) {
+    case 6:
+      return /\b(?:source|library|asset|delete|export|pdf|epub|subtitle|video|theme|return)\b/.test(normalizedValue)
+    case 7:
+      return /\b(?:personalization|profile|privacy|memory|excluded|options|review|fallback)\b/.test(normalizedValue)
+    case 13:
+      return /\b(?:copy|onboarding|popup|deep read|library|review|error|boundary|store|landing)\b/.test(normalizedValue)
+    case 14:
+      return /\b(?:support|help|status|incident|owner|limitations|report)\b/.test(normalizedValue)
+    case 24:
+      return /\b(?:ai|provider|fixture|scoring|sample|triage|trend|decision|quality)\b/.test(normalizedValue)
+    case 32:
+      return /\b(?:accessibility|keyboard|screen reader|voiceover|nvda|jaws|contrast|scaled text|reduced motion|mouse)\b/.test(normalizedValue)
+    default:
+      return normalizedRow.length > 0 && normalizedRow.split(/[^a-z0-9]+/).filter((part) => part.length >= 5).some((part) => normalizedValue.includes(part))
   }
 }
 
-function isPrivateIpv6Hostname(hostname: string): boolean {
-  const normalizedHostname = hostname.replace(/^\[|\]$/g, "")
-  return normalizedHostname === "::1"
-    || /^f[cd][0-9a-f]{2}:/i.test(normalizedHostname)
-    || /^fe[89ab][0-9a-f]:/i.test(normalizedHostname)
+function isSpecificManualQaEnvironment(value: string, section: number, qaRow: string): boolean {
+  const normalizedValue = value.toLowerCase()
+  const hasBrowser = /\b(?:chrome|chromium|firefox|safari|edge)\b/.test(normalizedValue)
+  const hasOs = /\b(?:macos|windows|linux|ubuntu|android|ios)\b/.test(normalizedValue)
+  return hasBrowser
+    && hasOs
+    && /\b(?:build|extension|relay|api|web app|candidate|rc)\b/.test(normalizedValue)
+    && manualQaRowContextMatches(value, section, qaRow)
 }
 
 function isSuccessfulCiConclusion(value: string | undefined): boolean {
-  return value?.trim().toLowerCase() === "success"
+  return value === "success"
 }
 
 function isCommitShaLike(value: string): boolean {
-  const trimmedValue = value.trim()
-  return /^[a-f0-9]{7,40}$/i.test(trimmedValue) && !/^0+$/.test(trimmedValue)
+  return /^[a-f0-9]{7,40}$/i.test(value) && !/^0+$/.test(value)
+}
+
+function ciUrl(value: string): URL | null {
+  try {
+    return isUrlReference(value) ? new URL(value) : null
+  } catch {
+    return null
+  }
+}
+
+function ciPathSegments(url: URL): string[] {
+  try {
+    return decodeURIComponent(url.pathname).split("/").filter(Boolean)
+  } catch {
+    return []
+  }
+}
+
+function isCiRunUrlReference(value: string): boolean {
+  const url = ciUrl(value)
+  if (!url) return false
+  const pathSegments = ciPathSegments(url)
+  return url.hostname.toLowerCase() === "github.com"
+    && pathSegments.length === 5
+    && pathSegments[2] === "actions"
+    && pathSegments[3] === "runs"
+    && /^[1-9]\d+$/.test(pathSegments[4] ?? "")
+}
+
+function isCiArtifactUrlReference(value: string): boolean {
+  const url = ciUrl(value)
+  if (!url) return false
+  const pathSegments = ciPathSegments(url)
+  return url.hostname.toLowerCase() === "github.com"
+    && pathSegments.length === 7
+    && pathSegments[2] === "actions"
+    && pathSegments[3] === "runs"
+    && /^[1-9]\d+$/.test(pathSegments[4] ?? "")
+    && pathSegments[5] === "artifacts"
+    && /^[1-9]\d+$/.test(pathSegments[6] ?? "")
+}
+
+interface CiRunUrlParts {
+  repo: string
+  runId: string
+}
+
+interface CiArtifactUrlParts {
+  repo: string
+  runId?: string
+  artifactId: string
+}
+
+function ciRunUrlParts(value: string): CiRunUrlParts | null {
+  if (!isCiRunUrlReference(value)) return null
+  const url = ciUrl(value)
+  if (!url) return null
+  const pathSegments = ciPathSegments(url)
+  return { repo: `${pathSegments[0]?.toLowerCase()}/${pathSegments[1]?.toLowerCase()}`, runId: pathSegments[4] ?? "" }
+}
+
+function ciArtifactUrlParts(value: string): CiArtifactUrlParts | null {
+  if (!isCiArtifactUrlReference(value)) return null
+  const url = ciUrl(value)
+  if (!url) return null
+  const pathSegments = ciPathSegments(url)
+  const repo = `${pathSegments[0]?.toLowerCase()}/${pathSegments[1]?.toLowerCase()}`
+  return { repo, runId: pathSegments[4], artifactId: pathSegments[6] ?? "" }
+}
+
+function ciIdentityMatchesUrlSegment(identity: string, urlSegment: string | undefined): boolean {
+  return urlSegment !== undefined && digestOrVersionIdentity(identity) === urlSegment.toLowerCase()
+}
+
+function isCiArtifactManifestReference(value: string, artifactName: string): boolean {
+  if (!isEvidenceLikeReference(value)) return false
+  const normalizedValue = value.toLowerCase()
+  return normalizedValue.includes(artifactName.toLowerCase())
+    && /(?:^|[/-])manifest\.json(?:$|[?#])/.test(normalizedValue)
 }
 
 function includesRequiredEvidenceTerms(value: string, item: AstraMacroOperationalEvidenceItem): boolean {
@@ -943,9 +1194,16 @@ function includesRequiredEvidenceTerms(value: string, item: AstraMacroOperationa
   return uniqueRequiredTerms.filter((term) => normalizedValue.includes(term)).length >= 3
 }
 
+function isNegatedCoverageEntry(value: string): boolean {
+  return /\b(?:did\s+not\s+run|not[-\s]?run|not\s+covered|missing|skipped?|failed|failure|without)\b/i.test(value)
+}
+
 function includesCoverageToken(coverage: readonly string[], token: string): boolean {
   const normalizedToken = token.toLowerCase()
-  return coverage.some((entry) => entry.toLowerCase().includes(normalizedToken))
+  return coverage.some((entry) => {
+    const normalizedEntry = entry.toLowerCase()
+    return normalizedEntry.includes(normalizedToken) && !isNegatedCoverageEntry(normalizedEntry)
+  })
 }
 
 export function evaluateAstraMacroCiArtifactPacket(
@@ -955,10 +1213,24 @@ export function evaluateAstraMacroCiArtifactPacket(
   const evidenceByField = new Map<AstraMacroCiArtifactEvidenceField, AstraMacroCiArtifactPacketEvidence>()
   const expectedEvidenceFields = new Set(ASTRA_MACRO_CI_ARTIFACT_REQUIREMENTS.map((requirement) => requirement.evidenceField))
   const seenArtifactIds = new Map<string, AstraMacroCiArtifactEvidenceField>()
+  const seenArtifactDigests = new Map<string, AstraMacroCiArtifactEvidenceField>()
+  const seenArtifactManifestPaths = new Map<string, AstraMacroCiArtifactEvidenceField>()
   const seenArtifactUrls = new Map<string, AstraMacroCiArtifactEvidenceField>()
 
   for (const item of evidence) {
-    if (!expectedEvidenceFields.has(item.evidenceField)) {
+    const normalizedEvidenceField = item.evidenceField.trim()
+    const evidenceFieldIdentity = normalizedEvidenceField.toLowerCase()
+    const canonicalEvidenceField = ASTRA_MACRO_CI_ARTIFACT_REQUIREMENTS.find(
+      (requirement) => requirement.evidenceField.toLowerCase() === evidenceFieldIdentity,
+    )?.evidenceField
+    if (normalizedEvidenceField !== item.evidenceField || (canonicalEvidenceField !== undefined && canonicalEvidenceField !== item.evidenceField)) {
+      findings.push({
+        evidenceField: item.evidenceField,
+        message: `${item.evidenceField} must use canonical CI artifact evidence field casing without surrounding whitespace.`,
+        nextStep: "Use ciQualityArtifactsAttached or ciLiveBrowserArtifactsAttached exactly as defined.",
+      })
+    }
+    if (canonicalEvidenceField === undefined || !expectedEvidenceFields.has(canonicalEvidenceField)) {
       findings.push({
         evidenceField: item.evidenceField,
         message: `${item.evidenceField} is not a tracked final CI artifact evidence field.`,
@@ -966,7 +1238,7 @@ export function evaluateAstraMacroCiArtifactPacket(
       })
       continue
     }
-    if (evidenceByField.has(item.evidenceField)) {
+    if (evidenceByField.has(canonicalEvidenceField)) {
       findings.push({
         evidenceField: item.evidenceField,
         message: `${item.evidenceField} has duplicate CI artifact evidence rows.`,
@@ -976,32 +1248,62 @@ export function evaluateAstraMacroCiArtifactPacket(
     }
 
     const artifactId = item.artifactId.trim()
+    const artifactIdIdentity = digestOrVersionIdentity(item.artifactId)
     if (artifactId.length > 0) {
-      const existingEvidenceField = seenArtifactIds.get(artifactId)
-      if (existingEvidenceField && existingEvidenceField !== item.evidenceField) {
+      const existingEvidenceField = seenArtifactIds.get(artifactIdIdentity)
+      if (existingEvidenceField && existingEvidenceField !== canonicalEvidenceField) {
         findings.push({
-          evidenceField: item.evidenceField,
-          message: `${item.evidenceField} reuses CI artifact id ${artifactId}.`,
+          evidenceField: canonicalEvidenceField,
+          message: `${canonicalEvidenceField} reuses CI artifact id ${artifactId}.`,
           nextStep: "Attach distinct uploaded artifact ids for quality-gate-results and live-bench-results.",
         })
       }
-      seenArtifactIds.set(artifactId, item.evidenceField)
+      seenArtifactIds.set(artifactIdIdentity, canonicalEvidenceField)
+    }
+
+    const artifactDigest = item.artifactDigest.trim()
+    const artifactDigestIdentity = digestOrVersionIdentity(item.artifactDigest)
+    if (artifactDigest.length > 0) {
+      const existingEvidenceField = seenArtifactDigests.get(artifactDigestIdentity)
+      if (existingEvidenceField && existingEvidenceField !== canonicalEvidenceField) {
+        findings.push({
+          evidenceField: canonicalEvidenceField,
+          message: `${canonicalEvidenceField} reuses CI artifact digest ${artifactDigest}.`,
+          nextStep: "Attach distinct checksum values for quality-gate-results and live-bench-results uploaded artifacts.",
+        })
+      }
+      seenArtifactDigests.set(artifactDigestIdentity, canonicalEvidenceField)
+    }
+
+    const artifactManifestPath = item.artifactManifestPath.trim()
+    const artifactManifestPathIdentity = evidenceReferenceDuplicateIdentity(item.artifactManifestPath)
+    if (artifactManifestPath.length > 0) {
+      const existingEvidenceField = seenArtifactManifestPaths.get(artifactManifestPathIdentity)
+      if (existingEvidenceField && existingEvidenceField !== canonicalEvidenceField) {
+        findings.push({
+          evidenceField: canonicalEvidenceField,
+          message: `${canonicalEvidenceField} reuses CI artifact manifest path ${artifactManifestPath}.`,
+          nextStep: "Attach distinct manifest paths for quality-gate-results and live-bench-results uploaded artifacts.",
+        })
+      }
+      seenArtifactManifestPaths.set(artifactManifestPathIdentity, canonicalEvidenceField)
     }
 
     const artifactUrl = item.artifactUrl.trim()
+    const artifactUrlIdentity = evidenceReferenceDuplicateIdentity(item.artifactUrl)
     if (artifactUrl.length > 0) {
-      const existingEvidenceField = seenArtifactUrls.get(artifactUrl)
-      if (existingEvidenceField && existingEvidenceField !== item.evidenceField) {
+      const existingEvidenceField = seenArtifactUrls.get(artifactUrlIdentity)
+      if (existingEvidenceField && existingEvidenceField !== canonicalEvidenceField) {
         findings.push({
-          evidenceField: item.evidenceField,
-          message: `${item.evidenceField} reuses CI artifact URL ${artifactUrl}.`,
+          evidenceField: canonicalEvidenceField,
+          message: `${canonicalEvidenceField} reuses CI artifact URL ${artifactUrl}.`,
           nextStep: "Attach distinct downloadable artifact URLs for quality-gate-results and live-bench-results.",
         })
       }
-      seenArtifactUrls.set(artifactUrl, item.evidenceField)
+      seenArtifactUrls.set(artifactUrlIdentity, canonicalEvidenceField)
     }
 
-    evidenceByField.set(item.evidenceField, item)
+    evidenceByField.set(canonicalEvidenceField, { ...item, evidenceField: canonicalEvidenceField })
   }
 
   const ciCommitShas = Array.from(evidenceByField.values())
@@ -1012,6 +1314,17 @@ export function evaluateAstraMacroCiArtifactPacket(
       evidenceField: "ciQualityArtifactsAttached/ciLiveBrowserArtifactsAttached",
       message: "CI quality and live-browser artifacts must target the same commit/SHA.",
       nextStep: "Attach quality-gate-results and live-bench-results artifacts from the same target commit/worktree or release candidate.",
+    })
+  }
+
+  const ciRepositoryIdentities = Array.from(evidenceByField.values())
+    .flatMap((item) => [ciRunUrlParts(item.runUrl)?.repo, ciArtifactUrlParts(item.artifactUrl)?.repo])
+    .filter((repo): repo is string => typeof repo === "string" && repo.length > 0)
+  if (new Set(ciRepositoryIdentities).size > 1) {
+    findings.push({
+      evidenceField: "ciQualityArtifactsAttached/ciLiveBrowserArtifactsAttached",
+      message: "CI quality and live-browser artifact URLs must point to the same GitHub repository.",
+      nextStep: "Attach quality-gate-results and live-bench-results artifacts from the same target GitHub repository.",
     })
   }
 
@@ -1033,7 +1346,19 @@ export function evaluateAstraMacroCiArtifactPacket(
         nextStep: requirement.requiredEvidence,
       })
     }
-    if (!item.workflowName.toLowerCase().includes(requirement.workflowName)) {
+    if (isBlank(item.workflowName)) {
+      findings.push({
+        evidenceField: requirement.evidenceField,
+        message: `${requirement.label} is missing the CI workflow name.`,
+        nextStep: "Record the CI workflow name from the target run.",
+      })
+    } else if (item.workflowName.trim() !== item.workflowName || isWeakContextEvidenceReference(item.workflowName)) {
+      findings.push({
+        evidenceField: requirement.evidenceField,
+        message: `${requirement.label} CI workflow name is placeholder evidence or not canonical.`,
+        nextStep: "Record the real CI workflow name from the target run without surrounding whitespace.",
+      })
+    } else if (!item.workflowName.toLowerCase().includes(requirement.workflowName)) {
       findings.push({
         evidenceField: requirement.evidenceField,
         message: `${requirement.label} must identify the ${requirement.workflowName} workflow/job.`,
@@ -1042,13 +1367,17 @@ export function evaluateAstraMacroCiArtifactPacket(
     }
     if (isBlank(item.runId)) {
       findings.push({ evidenceField: requirement.evidenceField, message: `${requirement.label} is missing the CI run id.`, nextStep: "Record the immutable CI run id for the target run." })
+    } else if (item.runId.trim() !== item.runId) {
+      findings.push({ evidenceField: requirement.evidenceField, message: `${requirement.label} CI run id must be canonical without surrounding whitespace.`, nextStep: "Record the real immutable CI run id for the target run without surrounding whitespace." })
     } else if (isPlaceholderEvidenceReference(item.runId)) {
       findings.push({ evidenceField: requirement.evidenceField, message: `${requirement.label} CI run id is placeholder evidence.`, nextStep: "Record the real immutable CI run id for the target run." })
-    } else if (isWeakDigestOrVersionReference(item.runId)) {
-      findings.push({ evidenceField: requirement.evidenceField, message: `${requirement.label} CI run id must be a stable run identity.`, nextStep: "Record the real immutable CI run id for the target run." })
+    } else if (!isCiIdentityReference(item.runId)) {
+      findings.push({ evidenceField: requirement.evidenceField, message: `${requirement.label} CI run id must be an immutable CI run identity, not a generic version or date.`, nextStep: "Record the real immutable CI run id for the target run." })
     }
     if (isBlank(item.jobName)) {
       findings.push({ evidenceField: requirement.evidenceField, message: `${requirement.label} is missing the CI job name.`, nextStep: "Record the CI job name that produced the artifact." })
+    } else if (item.jobName.trim() !== item.jobName) {
+      findings.push({ evidenceField: requirement.evidenceField, message: `${requirement.label} CI job name must be canonical without surrounding whitespace.`, nextStep: "Record the real CI job name that produced the artifact without surrounding whitespace." })
     } else if (isWeakContextEvidenceReference(item.jobName)) {
       findings.push({ evidenceField: requirement.evidenceField, message: `${requirement.label} CI job name is placeholder evidence.`, nextStep: "Record the real CI job name that produced the artifact." })
     }
@@ -1060,38 +1389,56 @@ export function evaluateAstraMacroCiArtifactPacket(
     }
     if (isBlank(item.artifactId)) {
       findings.push({ evidenceField: requirement.evidenceField, message: `${requirement.label} is missing the artifact id.`, nextStep: "Record the uploaded artifact id from the target CI run." })
+    } else if (item.artifactId.trim() !== item.artifactId) {
+      findings.push({ evidenceField: requirement.evidenceField, message: `${requirement.label} artifact id must be canonical without surrounding whitespace.`, nextStep: "Record the real uploaded artifact id from the target CI run without surrounding whitespace." })
     } else if (isPlaceholderEvidenceReference(item.artifactId)) {
       findings.push({ evidenceField: requirement.evidenceField, message: `${requirement.label} artifact id is placeholder evidence.`, nextStep: "Record the real uploaded artifact id from the target CI run." })
-    } else if (isWeakDigestOrVersionReference(item.artifactId)) {
-      findings.push({ evidenceField: requirement.evidenceField, message: `${requirement.label} artifact id must be a stable artifact identity.`, nextStep: "Record the real uploaded artifact id from the target CI run." })
+    } else if (!isCiIdentityReference(item.artifactId)) {
+      findings.push({ evidenceField: requirement.evidenceField, message: `${requirement.label} artifact id must be an immutable uploaded artifact identity, not a generic version or date.`, nextStep: "Record the real uploaded artifact id from the target CI run." })
     }
     if (isBlank(item.artifactDigest)) {
       findings.push({ evidenceField: requirement.evidenceField, message: `${requirement.label} is missing the artifact digest/checksum.`, nextStep: "Record the artifact digest or checksum so the downloaded artifact can be verified." })
+    } else if (item.artifactDigest.trim() !== item.artifactDigest) {
+      findings.push({ evidenceField: requirement.evidenceField, message: `${requirement.label} artifact digest/checksum must be canonical without surrounding whitespace.`, nextStep: "Record the real artifact digest or checksum without surrounding whitespace so the downloaded artifact can be verified." })
     } else if (isPlaceholderEvidenceReference(item.artifactDigest)) {
       findings.push({ evidenceField: requirement.evidenceField, message: `${requirement.label} artifact digest/checksum is placeholder evidence.`, nextStep: "Record the real artifact digest or checksum so the downloaded artifact can be verified." })
-    } else if (isWeakDigestReference(item.artifactDigest)) {
-      findings.push({ evidenceField: requirement.evidenceField, message: `${requirement.label} artifact digest/checksum must be a stable digest, checksum, or artifact identity.`, nextStep: "Record the real artifact digest or checksum so the downloaded artifact can be verified." })
+    } else if (!isCanonicalDigestReference(item.artifactDigest)) {
+      findings.push({ evidenceField: requirement.evidenceField, message: `${requirement.label} artifact digest/checksum must be a canonical sha/checksum/digest-prefixed hex value.`, nextStep: "Record a canonical sha/checksum/digest-prefixed hex digest so the downloaded artifact can be verified." })
     }
     if (isBlank(item.artifactManifestPath)) {
       findings.push({ evidenceField: requirement.evidenceField, message: `${requirement.label} is missing the artifact manifest path.`, nextStep: "Attach or point to the manifest inside the uploaded artifact that lists command/lane results." })
     } else if (isPlaceholderEvidenceReference(item.artifactManifestPath)) {
       findings.push({ evidenceField: requirement.evidenceField, message: `${requirement.label} artifact manifest path is placeholder evidence.`, nextStep: "Attach the real artifact manifest path for the target CI artifact." })
-    } else if (!isEvidenceLikeReference(item.artifactManifestPath)) {
-      findings.push({ evidenceField: requirement.evidenceField, message: `${requirement.label} artifact manifest path must be a URL or repo artifact path.`, nextStep: "Attach a URL or repo path under docs/, data/, artifacts/, test-results/, or playwright-report/." })
+    } else if (!isCiArtifactManifestReference(item.artifactManifestPath, requirement.artifactName)) {
+      findings.push({ evidenceField: requirement.evidenceField, message: `${requirement.label} artifact manifest path must point to a ${requirement.artifactName} manifest.json artifact.`, nextStep: "Attach a URL or repo path under docs/, data/, artifacts/, test-results/, or playwright-report/ that names the uploaded artifact manifest." })
     }
+    const runUrlParts = ciRunUrlParts(item.runUrl)
+    const artifactUrlParts = ciArtifactUrlParts(item.artifactUrl)
     if (isBlank(item.runUrl)) {
       findings.push({ evidenceField: requirement.evidenceField, message: `${requirement.label} is missing the CI run URL.`, nextStep: "Attach the CI run URL for the target commit/SHA." })
     } else if (isPlaceholderEvidenceReference(item.runUrl)) {
       findings.push({ evidenceField: requirement.evidenceField, message: `${requirement.label} CI run URL is placeholder evidence.`, nextStep: "Attach the real CI run URL for the target commit/SHA." })
-    } else if (!isUrlReference(item.runUrl)) {
-      findings.push({ evidenceField: requirement.evidenceField, message: `${requirement.label} CI run URL must be a URL.`, nextStep: "Attach the https:// CI run URL for the target commit/SHA." })
+    } else if (!isCiRunUrlReference(item.runUrl)) {
+      findings.push({ evidenceField: requirement.evidenceField, message: `${requirement.label} CI run URL must be a GitHub Actions run URL.`, nextStep: "Attach the https://github.com/<owner>/<repo>/actions/runs/<run-id> URL for the target commit/SHA." })
+    } else if (!ciIdentityMatchesUrlSegment(item.runId, runUrlParts?.runId)) {
+      findings.push({ evidenceField: requirement.evidenceField, message: `${requirement.label} CI run id must match the GitHub Actions run URL.`, nextStep: "Use the immutable run id from the same https://github.com/<owner>/<repo>/actions/runs/<run-id> URL." })
     }
     if (isBlank(item.artifactUrl)) {
       findings.push({ evidenceField: requirement.evidenceField, message: `${requirement.label} is missing the downloadable artifact URL.`, nextStep: "Attach the downloadable artifact URL, not only local terminal output." })
     } else if (isPlaceholderEvidenceReference(item.artifactUrl)) {
       findings.push({ evidenceField: requirement.evidenceField, message: `${requirement.label} downloadable artifact URL is placeholder evidence.`, nextStep: "Attach the real downloadable artifact URL, not sample or placeholder evidence." })
-    } else if (!isUrlReference(item.artifactUrl)) {
-      findings.push({ evidenceField: requirement.evidenceField, message: `${requirement.label} downloadable artifact URL must be a URL.`, nextStep: "Attach the https:// downloadable artifact URL, not only local terminal output." })
+    } else if (!isCiArtifactUrlReference(item.artifactUrl)) {
+      findings.push({ evidenceField: requirement.evidenceField, message: `${requirement.label} downloadable artifact URL must be a GitHub Actions artifact URL.`, nextStep: "Attach the https://github.com/<owner>/<repo>/actions/.../artifacts/<artifact-id> URL, not only local terminal output." })
+    } else {
+      if (!ciIdentityMatchesUrlSegment(item.artifactId, artifactUrlParts?.artifactId)) {
+        findings.push({ evidenceField: requirement.evidenceField, message: `${requirement.label} artifact id must match the GitHub Actions artifact URL.`, nextStep: "Use the uploaded artifact id from the same https://github.com/<owner>/<repo>/actions/.../artifacts/<artifact-id> URL." })
+      }
+      if (runUrlParts && artifactUrlParts && runUrlParts.repo !== artifactUrlParts.repo) {
+        findings.push({ evidenceField: requirement.evidenceField, message: `${requirement.label} CI run URL and artifact URL must point to the same GitHub repository.`, nextStep: "Attach the run URL and artifact URL from the same target repository." })
+      }
+      if (artifactUrlParts?.runId !== undefined && !ciIdentityMatchesUrlSegment(item.runId, artifactUrlParts.runId)) {
+        findings.push({ evidenceField: requirement.evidenceField, message: `${requirement.label} CI run id must match the run segment in the artifact URL.`, nextStep: "Attach an artifact URL from the same GitHub Actions run as the recorded run id." })
+      }
     }
     if (isBlank(item.commitSha)) {
       findings.push({ evidenceField: requirement.evidenceField, message: `${requirement.label} is missing the target commit/SHA.`, nextStep: "Record the commit/SHA covered by the CI run." })
@@ -1102,8 +1449,8 @@ export function evaluateAstraMacroCiArtifactPacket(
     }
     if (isBlank(item.ownerDate)) {
       findings.push({ evidenceField: requirement.evidenceField, message: `${requirement.label} is missing owner/date.`, nextStep: "Record who attached/reviewed the artifact and when." })
-    } else if (!includesIsoDate(item.ownerDate)) {
-      findings.push({ evidenceField: requirement.evidenceField, message: `${requirement.label} owner/date must include a YYYY-MM-DD date.`, nextStep: "Record who attached/reviewed the artifact and when using YYYY-MM-DD." })
+    } else if (!hasOwnerIdentityWithIsoDate(item.ownerDate)) {
+      findings.push({ evidenceField: requirement.evidenceField, message: `${requirement.label} owner/date must identify a real owner and include a YYYY-MM-DD date.`, nextStep: "Record the real CI artifact owner and review date using YYYY-MM-DD." })
     }
 
     const missingCoverage = requirement.requiredCoverage.filter((token) => !includesCoverageToken(item.coverage, token))
@@ -1124,16 +1471,27 @@ export function evaluateAstraMacroManualQaEvidencePacket(
 ): AstraMacroManualQaEvidenceDecision {
   const findings: AstraMacroManualQaFinding[] = []
   const allowedVerdicts = new Set<string>(["pass", "pass-with-downgrade", "fail", "not-run"])
-  const expectedRowKeys = new Set(
+  const expectedRowsByIdentity = new Map<string, { section: number; qaRow: string }>(
     ASTRA_MACRO_MANUAL_QA_REQUIREMENTS.flatMap((requirement) =>
-      requirement.qaRows.map((qaRow) => `${requirement.section}\u0000${qaRow}`),
+      requirement.qaRows.map((qaRow) => [`${requirement.section}\u0000${qaRow.trim().toLowerCase()}`, { section: requirement.section, qaRow }] as const),
     ),
   )
   const rowsByKey = new Map<string, AstraMacroManualQaEvidenceRow>()
+  const seenEvidenceLinks = new Map<string, string>()
 
   for (const row of rows) {
-    const key = `${row.section}\u0000${row.qaRow}`
-    if (!expectedRowKeys.has(key)) {
+    const normalizedQaRow = row.qaRow.trim()
+    const rowIdentity = `${row.section}\u0000${normalizedQaRow.toLowerCase()}`
+    const canonicalRow = expectedRowsByIdentity.get(rowIdentity)
+    if (normalizedQaRow !== row.qaRow || (canonicalRow !== undefined && canonicalRow.qaRow !== row.qaRow)) {
+      findings.push({
+        section: row.section,
+        qaRow: row.qaRow,
+        message: `Section ${row.section} / ${row.qaRow} must use canonical manual QA row text without surrounding whitespace.`,
+        nextStep: "Use the exact section/row pair from ASTRA_MACRO_MANUAL_QA_REQUIREMENTS.",
+      })
+    }
+    if (!canonicalRow) {
       findings.push({
         section: row.section,
         qaRow: row.qaRow,
@@ -1142,7 +1500,8 @@ export function evaluateAstraMacroManualQaEvidencePacket(
       })
       continue
     }
-    if (rowsByKey.has(key)) {
+    const canonicalKey = `${canonicalRow.section}\u0000${canonicalRow.qaRow}`
+    if (rowsByKey.has(canonicalKey)) {
       findings.push({
         section: row.section,
         qaRow: row.qaRow,
@@ -1151,7 +1510,22 @@ export function evaluateAstraMacroManualQaEvidencePacket(
       })
       continue
     }
-    rowsByKey.set(key, row)
+    const evidenceLink = row.evidenceLink.trim()
+    const evidenceLinkIdentity = evidenceReferenceDuplicateIdentity(row.evidenceLink)
+    if (evidenceLink.length > 0) {
+      const existingRowKey = seenEvidenceLinks.get(evidenceLinkIdentity)
+      if (existingRowKey && existingRowKey !== canonicalKey) {
+        findings.push({
+          section: row.section,
+          qaRow: row.qaRow,
+          message: `Section ${row.section} / ${row.qaRow} reuses manual QA evidence link ${evidenceLink}.`,
+          nextStep: "Attach row-specific manual QA evidence so every checklist row can be audited independently.",
+        })
+      }
+      seenEvidenceLinks.set(evidenceLinkIdentity, canonicalKey)
+    }
+
+    rowsByKey.set(canonicalKey, { ...row, section: canonicalRow.section, qaRow: canonicalRow.qaRow })
   }
 
   for (const requirement of ASTRA_MACRO_MANUAL_QA_REQUIREMENTS) {
@@ -1189,13 +1563,15 @@ export function evaluateAstraMacroManualQaEvidencePacket(
 
       if (isBlank(row.ownerDate)) {
         findings.push({ section: requirement.section, qaRow, message: `Section ${requirement.section} / ${qaRow} is missing owner/date.`, nextStep: "Record owner/date for this manual QA row." })
-      } else if (!includesIsoDate(row.ownerDate)) {
-        findings.push({ section: requirement.section, qaRow, message: `Section ${requirement.section} / ${qaRow} owner/date must include a YYYY-MM-DD date.`, nextStep: "Record owner/date with an ISO-style review date for this manual QA row." })
+      } else if (!hasOwnerIdentityWithIsoDate(row.ownerDate)) {
+        findings.push({ section: requirement.section, qaRow, message: `Section ${requirement.section} / ${qaRow} owner/date must identify a real owner and include a YYYY-MM-DD date.`, nextStep: "Record a real QA owner/date using YYYY-MM-DD." })
       }
       if (isBlank(row.environment)) {
         findings.push({ section: requirement.section, qaRow, message: `Section ${requirement.section} / ${qaRow} is missing environment.`, nextStep: "Record browser, OS, build, and relevant relay/API environment." })
-      } else if (isWeakContextEvidenceReference(row.environment)) {
-        findings.push({ section: requirement.section, qaRow, message: `Section ${requirement.section} / ${qaRow} environment is placeholder evidence.`, nextStep: "Record the real browser, OS, build, and relevant relay/API environment." })
+      } else if (row.environment.trim() !== row.environment) {
+        findings.push({ section: requirement.section, qaRow, message: `Section ${requirement.section} / ${qaRow} environment must be canonical without surrounding whitespace.`, nextStep: "Record the real browser, OS, build, and relevant relay/API environment without surrounding whitespace." })
+      } else if (isWeakContextEvidenceReference(row.environment) || !isSpecificManualQaEnvironment(row.environment, requirement.section, qaRow)) {
+        findings.push({ section: requirement.section, qaRow, message: `Section ${requirement.section} / ${qaRow} environment must include real browser, OS, build/runtime, and row-specific QA context.`, nextStep: "Record the real browser, OS, build, and section/row-specific manual QA context." })
       }
       if (isBlank(row.evidenceLink)) {
         findings.push({ section: requirement.section, qaRow, message: `Section ${requirement.section} / ${qaRow} is missing evidence link.`, nextStep: "Attach screenshot, recording, run folder, log excerpt, or written QA note." })
@@ -1217,11 +1593,15 @@ export function evaluateAstraMacroReleaseApprovalPacket(
 
   if (isBlank(evidence.approver)) {
     findings.push({ message: "Release approval is missing approver.", nextStep: "Record the accountable owner or release approver." })
+  } else if (evidence.approver.trim() !== evidence.approver) {
+    findings.push({ message: "Release approval approver must be canonical without surrounding whitespace.", nextStep: "Record the accountable owner or release approver without surrounding whitespace." })
+  } else if (isPlaceholderIdentityReference(evidence.approver)) {
+    findings.push({ message: "Release approval approver is placeholder evidence.", nextStep: "Record the accountable owner or release approver." })
   }
   if (isBlank(evidence.approvalDate)) {
     findings.push({ message: "Release approval is missing approval date.", nextStep: "Record the approval date." })
-  } else if (!includesIsoDate(evidence.approvalDate)) {
-    findings.push({ message: "Release approval date must include a YYYY-MM-DD date.", nextStep: "Record the owner approval date using YYYY-MM-DD." })
+  } else if (isWeakContextEvidenceReference(evidence.approvalDate) || !isExactIsoDate(evidence.approvalDate)) {
+    findings.push({ message: "Release approval date must be an exact valid YYYY-MM-DD date.", nextStep: "Record the owner approval date using YYYY-MM-DD." })
   }
   if (isBlank(evidence.approvalRecordLink)) {
     findings.push({ message: "Release approval is missing an approval record link.", nextStep: "Attach the signed issue/comment/document that records approval." })
@@ -1237,7 +1617,9 @@ export function evaluateAstraMacroReleaseApprovalPacket(
   } else if (!isCommitShaLike(evidence.targetCommitSha)) {
     findings.push({ message: "Release approval target commit/SHA must be a 7-40 character non-zero hex SHA.", nextStep: "Record the exact git commit SHA being approved." })
   }
-  if (evidence.decision === "rejected") {
+  if (!["approved_with_downgrades", "approved_final", "rejected"].includes(evidence.decision)) {
+    findings.push({ message: "Release approval decision must be approved_with_downgrades, approved_final, or rejected.", nextStep: "Use an explicit owner release decision enum value from the approval packet schema." })
+  } else if (evidence.decision === "rejected") {
     findings.push({ message: "Release approval decision is rejected.", nextStep: "Do not mark ownerReleaseApprovalRecorded true until the owner approves this target commit/worktree." })
   }
   if (evidence.decision === "approved_final" && evidence.acknowledgesRemainingFinalBlockers) {
@@ -1250,8 +1632,46 @@ export function evaluateAstraMacroReleaseApprovalPacket(
     findings.push({ message: "Release approval does not acknowledge required downgrade copy.", nextStep: "Record that public/release copy must reuse the downgrade boundaries until stronger evidence is attached." })
   }
 
+  const requiredReviewedArtifactIdentities = new Map(
+    ASTRA_MACRO_RELEASE_APPROVAL_REQUIREMENT.requiredReviewedArtifacts.map((artifact) => [evidenceReferenceDuplicateIdentity(artifact), artifact]),
+  )
+  const reviewedArtifactIdentities = new Set<string>()
+  const approvalRecordIdentity = evidenceReferenceDuplicateIdentity(evidence.approvalRecordLink)
+  for (const artifact of evidence.reviewedArtifacts) {
+    const artifactIdentity = evidenceReferenceDuplicateIdentity(artifact)
+    const canonicalArtifact = requiredReviewedArtifactIdentities.get(artifactIdentity)
+    if (artifact.trim() !== artifact || (canonicalArtifact !== undefined && canonicalArtifact !== artifact)) {
+      findings.push({
+        message: `Release approval reviewed artifact ${artifact} must use canonical artifact path without surrounding whitespace.`,
+        nextStep: ASTRA_MACRO_RELEASE_APPROVAL_REQUIREMENT.requiredEvidence,
+      })
+    }
+    if (canonicalArtifact === undefined) {
+      findings.push({
+        message: `Release approval reviewed artifact ${artifact} is not one of the required Gate 4/RC/final evidence artifacts.`,
+        nextStep: ASTRA_MACRO_RELEASE_APPROVAL_REQUIREMENT.requiredEvidence,
+      })
+    }
+    if (reviewedArtifactIdentities.has(artifactIdentity)) {
+      findings.push({
+        message: `Release approval reviewed artifact ${artifact} is duplicated.`,
+        nextStep: ASTRA_MACRO_RELEASE_APPROVAL_REQUIREMENT.requiredEvidence,
+      })
+    }
+    if (
+      isEvidenceLikeReference(evidence.approvalRecordLink)
+      && approvalRecordIdentity === artifactIdentity
+    ) {
+      findings.push({
+        message: `Release approval record link reuses reviewed artifact ${artifact}.`,
+        nextStep: "Attach a distinct signed approval issue/comment/document separate from the artifacts being reviewed.",
+      })
+    }
+    reviewedArtifactIdentities.add(artifactIdentity)
+  }
+
   const missingReviewedArtifacts = ASTRA_MACRO_RELEASE_APPROVAL_REQUIREMENT.requiredReviewedArtifacts.filter(
-    (artifact) => !evidence.reviewedArtifacts.includes(artifact),
+    (artifact) => !reviewedArtifactIdentities.has(evidenceReferenceDuplicateIdentity(artifact)),
   )
   if (missingReviewedArtifacts.length > 0) {
     findings.push({
@@ -1268,12 +1688,23 @@ export function evaluateAstraMacroLaunchArtifactPacket(
 ): AstraMacroLaunchArtifactPacketDecision {
   const findings: AstraMacroLaunchArtifactPacketFinding[] = []
   const evidenceByRequirement = new Map<AstraMacroLaunchArtifactRequirementId, AstraMacroLaunchArtifactPacketEvidence>()
-  const requirementById = new Map(ASTRA_MACRO_LAUNCH_ARTIFACT_REQUIREMENTS.map((requirement) => [requirement.id, requirement]))
+  const requirementById = new Map(ASTRA_MACRO_LAUNCH_ARTIFACT_REQUIREMENTS.map((requirement) => [requirement.id.toLowerCase(), requirement]))
   const seenArtifactIds = new Map<string, AstraMacroLaunchArtifactRequirementId>()
+  const seenArtifactDigestOrVersions = new Map<string, AstraMacroLaunchArtifactRequirementId>()
   const seenEvidenceLinks = new Map<string, AstraMacroLaunchArtifactRequirementId>()
 
   for (const item of evidence) {
-    const requirement = requirementById.get(item.requirementId)
+    const normalizedRequirementId = item.requirementId.trim()
+    const requirementIdIdentity = normalizedRequirementId.toLowerCase()
+    const requirement = requirementById.get(requirementIdIdentity)
+    if (normalizedRequirementId !== item.requirementId || (requirement !== undefined && requirement.id !== item.requirementId)) {
+      findings.push({
+        requirementId: item.requirementId,
+        group: requirement?.group ?? "store_submission",
+        message: `${item.requirementId} must use canonical launch artifact requirement id casing without surrounding whitespace.`,
+        nextStep: "Use the exact requirement id from ASTRA_MACRO_LAUNCH_ARTIFACT_REQUIREMENTS.",
+      })
+    }
     if (!requirement) {
       findings.push({
         requirementId: item.requirementId,
@@ -1283,10 +1714,10 @@ export function evaluateAstraMacroLaunchArtifactPacket(
       })
       continue
     }
-    if (evidenceByRequirement.has(item.requirementId)) {
+    if (evidenceByRequirement.has(requirement.id)) {
       findings.push({
         requirementId: item.requirementId,
-        group: requirement?.group ?? "store_submission",
+        group: requirement.group,
         message: `${item.requirementId} has duplicate launch artifact evidence rows.`,
         nextStep: "Keep one launch artifact evidence row per billing/legal/store/GTM requirement.",
       })
@@ -1294,34 +1725,51 @@ export function evaluateAstraMacroLaunchArtifactPacket(
     }
 
     const artifactId = item.artifactId.trim()
+    const artifactIdIdentity = launchArtifactIdDuplicateIdentity(item.artifactId)
     if (artifactId.length > 0) {
-      const existingRequirementId = seenArtifactIds.get(artifactId)
-      if (existingRequirementId && existingRequirementId !== item.requirementId) {
+      const existingRequirementId = seenArtifactIds.get(artifactIdIdentity)
+      if (existingRequirementId && existingRequirementId !== requirement.id) {
         findings.push({
-          requirementId: item.requirementId,
+          requirementId: requirement.id,
           group: requirement.group,
-          message: `${item.requirementId} reuses launch artifact id ${artifactId}.`,
+          message: `${requirement.id} reuses launch artifact id ${artifactId}.`,
           nextStep: "Attach one unique external artifact id, run id, upload id, approval record id, or media id per launch requirement.",
         })
       }
-      seenArtifactIds.set(artifactId, item.requirementId)
+      seenArtifactIds.set(artifactIdIdentity, requirement.id)
+    }
+
+    const artifactDigestOrVersion = item.artifactDigestOrVersion.trim()
+    const artifactDigestOrVersionIdentity = digestOrVersionIdentity(item.artifactDigestOrVersion)
+    if (artifactDigestOrVersion.length > 0) {
+      const existingRequirementId = seenArtifactDigestOrVersions.get(artifactDigestOrVersionIdentity)
+      if (existingRequirementId && existingRequirementId !== requirement.id) {
+        findings.push({
+          requirementId: requirement.id,
+          group: requirement.group,
+          message: `${requirement.id} reuses launch artifact digest/version ${artifactDigestOrVersion}.`,
+          nextStep: "Attach distinct digest/checksum or version values for independent billing, legal, store, and GTM launch artifacts.",
+        })
+      }
+      seenArtifactDigestOrVersions.set(artifactDigestOrVersionIdentity, requirement.id)
     }
 
     const evidenceLink = item.evidenceLink.trim()
+    const evidenceLinkIdentity = evidenceReferenceDuplicateIdentity(item.evidenceLink)
     if (evidenceLink.length > 0) {
-      const existingRequirementId = seenEvidenceLinks.get(evidenceLink)
-      if (existingRequirementId && existingRequirementId !== item.requirementId) {
+      const existingRequirementId = seenEvidenceLinks.get(evidenceLinkIdentity)
+      if (existingRequirementId && existingRequirementId !== requirement.id) {
         findings.push({
-          requirementId: item.requirementId,
+          requirementId: requirement.id,
           group: requirement.group,
-          message: `${item.requirementId} reuses launch artifact evidence link ${evidenceLink}.`,
+          message: `${requirement.id} reuses launch artifact evidence link ${evidenceLink}.`,
           nextStep: "Attach requirement-specific billing, legal, store, or GTM evidence so every launch claim can be audited independently.",
         })
       }
-      seenEvidenceLinks.set(evidenceLink, item.requirementId)
+      seenEvidenceLinks.set(evidenceLinkIdentity, requirement.id)
     }
 
-    evidenceByRequirement.set(item.requirementId, item)
+    evidenceByRequirement.set(requirement.id, { ...item, requirementId: requirement.id })
   }
 
   for (const requirement of ASTRA_MACRO_LAUNCH_ARTIFACT_REQUIREMENTS) {
@@ -1351,11 +1799,25 @@ export function evaluateAstraMacroLaunchArtifactPacket(
         message: `${requirement.label} is missing artifact type.`,
         nextStep: "Record whether the proof is a billing provider record, legal approval, store-console record, signed build artifact, screenshot set, or GTM media artifact.",
       })
+    } else if (item.artifactType.trim() !== item.artifactType) {
+      findings.push({
+        requirementId: requirement.id,
+        group: requirement.group,
+        message: `${requirement.label} artifact type must be canonical without surrounding whitespace.`,
+        nextStep: "Record the real artifact type without surrounding whitespace.",
+      })
     } else if (isWeakContextEvidenceReference(item.artifactType)) {
       findings.push({
         requirementId: requirement.id,
         group: requirement.group,
         message: `${requirement.label} artifact type is placeholder evidence.`,
+        nextStep: requirement.requiredEvidence,
+      })
+    } else if (!isSpecificLaunchArtifactType(item.artifactType, requirement)) {
+      findings.push({
+        requirementId: requirement.id,
+        group: requirement.group,
+        message: `${requirement.label} artifact type must identify a concrete ${requirement.group} launch artifact surface for ${requirement.id}.`,
         nextStep: requirement.requiredEvidence,
       })
     }
@@ -1365,6 +1827,13 @@ export function evaluateAstraMacroLaunchArtifactPacket(
         group: requirement.group,
         message: `${requirement.label} is missing artifact id.`,
         nextStep: "Record the external artifact id, run id, upload id, approval record id, or media id for this launch proof.",
+      })
+    } else if (item.artifactId.trim() !== item.artifactId) {
+      findings.push({
+        requirementId: requirement.id,
+        group: requirement.group,
+        message: `${requirement.label} artifact id must be canonical without surrounding whitespace.`,
+        nextStep: "Record the real external artifact id, run id, upload id, approval record id, or media id without surrounding whitespace.",
       })
     } else if (isPlaceholderEvidenceReference(item.artifactId)) {
       findings.push({
@@ -1388,12 +1857,26 @@ export function evaluateAstraMacroLaunchArtifactPacket(
         message: `${requirement.label} is missing artifact digest or version.`,
         nextStep: "Record a digest, checksum, build hash, policy version, store version, or media version tying the artifact to the target release.",
       })
+    } else if (item.artifactDigestOrVersion.trim() !== item.artifactDigestOrVersion) {
+      findings.push({
+        requirementId: requirement.id,
+        group: requirement.group,
+        message: `${requirement.label} artifact digest or version must be canonical without surrounding whitespace.`,
+        nextStep: "Record a stable external artifact digest, checksum, build hash, policy version, store version, or media version without surrounding whitespace.",
+      })
     } else if (isPlaceholderEvidenceReference(item.artifactDigestOrVersion)) {
       findings.push({
         requirementId: requirement.id,
         group: requirement.group,
         message: `${requirement.label} artifact digest or version is placeholder evidence.`,
         nextStep: requirement.requiredEvidence,
+      })
+    } else if (isDigestOrChecksumReference(item.artifactDigestOrVersion) && !isCanonicalDigestReference(item.artifactDigestOrVersion)) {
+      findings.push({
+        requirementId: requirement.id,
+        group: requirement.group,
+        message: `${requirement.label} artifact digest or version checksum must be a canonical sha/checksum/digest-prefixed hex value.`,
+        nextStep: "Record a canonical sha/checksum/digest-prefixed hex digest or use a real stable version/build reference.",
       })
     } else if (isWeakDigestOrVersionReference(item.artifactDigestOrVersion)) {
       findings.push({
@@ -1410,11 +1893,25 @@ export function evaluateAstraMacroLaunchArtifactPacket(
         message: `${requirement.label} is missing target channel.`,
         nextStep: "Record the billing provider mode, legal/public URL context, browser/mobile store channel, or GTM launch channel.",
       })
+    } else if (item.targetChannel.trim() !== item.targetChannel) {
+      findings.push({
+        requirementId: requirement.id,
+        group: requirement.group,
+        message: `${requirement.label} target channel must be canonical without surrounding whitespace.`,
+        nextStep: "Record the real target channel without surrounding whitespace.",
+      })
     } else if (isWeakContextEvidenceReference(item.targetChannel)) {
       findings.push({
         requirementId: requirement.id,
         group: requirement.group,
         message: `${requirement.label} target channel is placeholder evidence.`,
+        nextStep: requirement.requiredEvidence,
+      })
+    } else if (!isSpecificLaunchTargetChannel(item.targetChannel, requirement)) {
+      findings.push({
+        requirementId: requirement.id,
+        group: requirement.group,
+        message: `${requirement.label} target channel must identify a concrete ${requirement.group} launch channel for ${requirement.id}.`,
         nextStep: requirement.requiredEvidence,
       })
     }
@@ -1447,12 +1944,12 @@ export function evaluateAstraMacroLaunchArtifactPacket(
         message: `${requirement.label} is missing owner/date.`,
         nextStep: "Record the owner and date for this launch artifact evidence.",
       })
-    } else if (!includesIsoDate(item.ownerDate)) {
+    } else if (!hasOwnerIdentityWithIsoDate(item.ownerDate)) {
       findings.push({
         requirementId: requirement.id,
         group: requirement.group,
-        message: `${requirement.label} owner/date must include a YYYY-MM-DD date.`,
-        nextStep: "Record the launch artifact owner and review date using YYYY-MM-DD.",
+        message: `${requirement.label} owner/date must identify a real owner and include a YYYY-MM-DD date.`,
+        nextStep: "Record the real launch artifact owner and review date using YYYY-MM-DD.",
       })
     }
     if (isBlank(item.environment)) {
@@ -1462,12 +1959,26 @@ export function evaluateAstraMacroLaunchArtifactPacket(
         message: `${requirement.label} is missing environment or target channel context.`,
         nextStep: "Record target environment, billing provider, store channel, or GTM channel context.",
       })
+    } else if (item.environment.trim() !== item.environment) {
+      findings.push({
+        requirementId: requirement.id,
+        group: requirement.group,
+        message: `${requirement.label} environment or target channel context must be canonical without surrounding whitespace.`,
+        nextStep: "Record the real target environment, billing provider, store channel, or GTM channel context without surrounding whitespace.",
+      })
     } else if (isWeakContextEvidenceReference(item.environment)) {
       findings.push({
         requirementId: requirement.id,
         group: requirement.group,
         message: `${requirement.label} environment or target channel context is placeholder evidence.`,
         nextStep: "Record the real target environment, billing provider, store channel, or GTM channel context.",
+      })
+    } else if (!isSpecificLaunchArtifactEnvironment(item.environment, requirement)) {
+      findings.push({
+        requirementId: requirement.id,
+        group: requirement.group,
+        message: `${requirement.label} environment or target channel context must include target-release channel plus ${requirement.id} context.`,
+        nextStep: requirement.requiredEvidence,
       })
     }
   }
@@ -1492,44 +2003,44 @@ export function evaluateAstraMacroPlanCompletion(
   if (!evidence.ciQualityArtifactsAttached) {
     blockers.push({
       code: "ci_quality_artifacts",
-      message: "Attach CI `quality-gate-results` artifact packet rows with CI run URL, success workflow/job conclusions, stable non-weak run/job/artifact identity, distinct artifact id/URL, stable non-weak artifact digest/checksum, URL or repo artifact-path manifest, 7-40 character non-zero hex target commit/SHA, owner/date containing a real calendar YYYY-MM-DD, and required quality-command coverage.",
+      message: "Attach CI `quality-gate-results` artifact packet rows with CI run URL, success workflow/job conclusions, stable non-weak run/job/artifact identity, distinct artifact id/URL, stable non-weak artifact digest/checksum, URL or repo artifact-path manifest, 7-40 character non-zero hex target commit/SHA, non-placeholder owner/date containing a real calendar YYYY-MM-DD, and required quality-command coverage.",
     })
   }
 
   if (!evidence.ciLiveBrowserArtifactsAttached) {
     blockers.push({
       code: "ci_live_browser_artifacts",
-      message: "Attach CI `live-bench-results` uploaded artifact packet rows with CI run URL, success workflow/job conclusions, stable non-weak run/job/artifact identity, distinct artifact id/URL, stable non-weak artifact digest/checksum, URL or repo artifact-path manifest, 7-40 character non-zero hex target commit/SHA, owner/date containing a real calendar YYYY-MM-DD, and required release-proof lane coverage.",
+      message: "Attach CI `live-bench-results` uploaded artifact packet rows with CI run URL, success workflow/job conclusions, stable non-weak run/job/artifact identity, distinct artifact id/URL, stable non-weak artifact digest/checksum, URL or repo artifact-path manifest, 7-40 character non-zero hex target commit/SHA, non-placeholder owner/date containing a real calendar YYYY-MM-DD, and required release-proof lane coverage.",
     })
   }
 
   if (!evidence.ownerReleaseApprovalRecorded) {
     blockers.push({
       code: "owner_release_approval",
-      message: "Record owner release approval with approver/date containing a real calendar YYYY-MM-DD, URL or repo artifact-path approval record, 7-40 character non-zero hex target commit/SHA, reviewed Gate 4/RC/final-gate artifacts, and remaining-blocker/downgrade acknowledgements.",
+      message: "Record owner release approval with non-placeholder approver/date containing a real calendar YYYY-MM-DD, URL or repo artifact-path approval record, 7-40 character non-zero hex target commit/SHA, reviewed Gate 4/RC/final-gate artifacts, and remaining-blocker/downgrade acknowledgements.",
     })
   }
 
   if (!evidence.manualQaChecklistComplete) {
     blockers.push({
       code: "manual_qa_checklist",
-      message: "Fill every Section 6/7/13/14/24/32 manual/browser QA row with owner/date containing a real calendar YYYY-MM-DD, real browser/build environment, URL or repo artifact-path evidence link, and `pass` or `pass-with-downgrade` verdict.",
+      message: "Fill every Section 6/7/13/14/24/32 manual/browser QA row with non-placeholder owner/date containing a real calendar YYYY-MM-DD, real browser/build environment, URL or repo artifact-path evidence link, and `pass` or `pass-with-downgrade` verdict.",
     })
   }
 
   if (!evidence.humanScoredAiQualityReportAttached) {
     blockers.push({
       code: "human_scored_ai_quality",
-      message: "Attach a dated human-scored AI quality report with reviewer/date containing a real calendar YYYY-MM-DD, real target environment, stable non-weak run metadata and fixture manifest version, URL or repo artifact-path live provider samples and blocker triage, finite sample counts matching summarized P0 samples, trend, and release decision before production quality claims.",
+      message: "Attach a dated human-scored AI quality report with non-placeholder reviewer/date containing a real calendar YYYY-MM-DD, real target environment, stable non-weak run metadata and fixture manifest version, URL or repo artifact-path live provider samples and blocker triage, finite sample counts matching summarized P0 samples, trend, and release decision before production quality claims.",
     })
   }
 
   if (!evidence.billingLegalStoreGtmArtifactsAttached) {
-    blockers.push({ code: "billing_legal_store_gtm_artifacts", message: "Attach billing, legal, store submission, and GTM launch artifact rows with artifact type/id, stable non-weak digest or version, target channel, claim boundary, owner/date containing a real calendar YYYY-MM-DD, real environment/channel context, and URL or repo artifact-path evidence link before launch-complete claims." })
+    blockers.push({ code: "billing_legal_store_gtm_artifacts", message: "Attach billing, legal, store submission, and GTM launch artifact rows with artifact type/id, stable non-weak digest or version, target channel, claim boundary, non-placeholder owner/date containing a real calendar YYYY-MM-DD, real environment/channel context, and URL or repo artifact-path evidence link before launch-complete claims." })
   }
 
   if (!evidence.productionMetricsExportAttached) {
-    blockers.push({ code: "production_metrics_export", message: "Attach production/cohort metric dashboard exports with valid non-reversed shared YYYY-MM-DD..YYYY-MM-DD date range, real cohort/source/export id, ISO exported-at timestamp, stable non-weak digest/checksum, real query version, category-aligned non-duplicated metric ids, URL or repo artifact-path evidence/privacy links, and owner/date containing a real calendar YYYY-MM-DD before metric maturity claims." })
+    blockers.push({ code: "production_metrics_export", message: "Attach production/cohort metric dashboard exports with valid non-reversed canonical shared YYYY-MM-DD..YYYY-MM-DD date range, real cohort/source/export id without surrounding whitespace, timezone-bearing ISO exported-at timestamp, stable non-weak digest/checksum, stable non-weak query version, category-aligned non-duplicated metric ids, URL or repo artifact-path evidence/privacy links, non-placeholder owner/date containing a real calendar YYYY-MM-DD, and product-metrics readiness evidence accepted by evaluateAstraProductMetricsReadiness() with non-placeholder label, owner/date, and URL or repo artifact-path evidence link before metric maturity claims." })
   }
 
   return {

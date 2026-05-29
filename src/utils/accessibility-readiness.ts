@@ -1,3 +1,5 @@
+import { evidenceReferenceDuplicateIdentity, isEvidenceLikeReference } from "./evidence-reference"
+
 export type AstraAccessibilitySurfaceId =
   | "popup"
   | "onboarding"
@@ -67,6 +69,10 @@ export type AstraAccessibilityManualEvidenceFindingCode =
   | "missing_environment"
   | "missing_evidence_link"
   | "placeholder_evidence_link"
+  | "duplicate_evidence_link"
+  | "invalid_owner"
+  | "invalid_environment"
+  | "invalid_evidence_link"
   | "failed_row"
 
 export interface AstraAccessibilityRequirementDefinition {
@@ -523,12 +529,87 @@ function isPlaceholderEvidenceReference(value: string): boolean {
   return normalizedValue.includes("example") || normalizedValue.includes("placeholder") || normalizedValue.includes("todo")
 }
 
+function includesExactIsoDate(value: string): boolean {
+  const matches = value.match(/\d{4}-\d{2}-\d{2}/g) ?? []
+  return matches.some((match) => {
+    const date = new Date(`${match}T00:00:00.000Z`)
+    return !Number.isNaN(date.getTime()) && date.toISOString().slice(0, 10) === match
+  })
+}
+
+function isWeakContextEvidenceReference(value: string): boolean {
+  const normalizedValue = value.trim().toLowerCase()
+  return normalizedValue.length === 0
+    || /\b(?:todo|tbd|placeholder|example|sample|fake|dummy|draft|local|dev|unknown|n\/a|na|none)\b/.test(normalizedValue)
+}
+
+function hasSpecificOwnerIdentityWithIsoDate(value: string): boolean {
+  if (value.trim() !== value || !includesExactIsoDate(value) || isWeakContextEvidenceReference(value)) return false
+  const ownerText = value
+    .replace(/\d{4}-\d{2}-\d{2}/g, "")
+    .replace(/[—–-]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+    .toLowerCase()
+  if (/^(?:owner|release owner|qa owner|tester|accessibility owner|accessibility qa)$/i.test(ownerText)) return false
+  return /[a-z0-9]/i.test(ownerText)
+}
+
+function isSpecificAccessibilityEnvironment(value: string): boolean {
+  const normalizedValue = value.toLowerCase()
+  const hasBrowser = /\b(?:chrome|chromium|firefox|safari|edge)\b/.test(normalizedValue)
+  const hasOs = /\b(?:macos|windows|linux|ubuntu|android|ios)\b/.test(normalizedValue)
+  const hasBuildOrRuntime = /\b(?:build|extension|mv3|web app|candidate|rc|release)\b/.test(normalizedValue)
+  const hasAccessibilityContext = /\b(?:keyboard|screen reader|voiceover|nvda|jaws|contrast|scaled text|reduced motion|accessibility|manual)\b/.test(normalizedValue)
+  return hasBrowser && hasOs && hasBuildOrRuntime && hasAccessibilityContext
+}
+
+const ACCESSIBILITY_MANUAL_EVIDENCE_LINK_SEMANTIC_HINTS: Record<AstraAccessibilityManualEvidenceRowId, readonly string[]> = {
+  no_mouse_popup: ["popup keyboard", "popup no mouse", "keyboard popup"],
+  no_mouse_onboarding: ["onboarding keyboard", "onboarding no mouse", "keyboard onboarding"],
+  no_mouse_settings_options: ["settings keyboard", "options keyboard", "settings options", "keyboard settings"],
+  no_mouse_selection_toolbar: ["selection toolbar keyboard", "selection toolbar", "keyboard selection toolbar"],
+  no_mouse_library_review: ["library review keyboard", "library review", "keyboard library review"],
+  contrast_scaled_text: ["contrast scaled text", "scaled text contrast", "scaled text", "contrast"],
+  reduced_motion: ["reduced motion", "prefers reduced motion"],
+  screen_reader_spot_check: ["screen reader spot check", "screen reader", "voiceover", "nvda", "jaws"],
+}
+
+function normalizeAccessibilityEvidenceSemanticText(value: string): string {
+  let decodedValue = value
+  try {
+    decodedValue = decodeURIComponent(value)
+  } catch {
+    decodedValue = value
+  }
+  return decodedValue
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+}
+
+function evidenceLinkMatchesManualAccessibilityRow(
+  requiredRow: AstraAccessibilityManualEvidenceRowDefinition,
+  evidenceLink: string,
+): boolean {
+  const normalizedLink = normalizeAccessibilityEvidenceSemanticText(evidenceLink)
+  const semanticPhrases = [
+    requiredRow.id,
+    requiredRow.label,
+    ...ACCESSIBILITY_MANUAL_EVIDENCE_LINK_SEMANTIC_HINTS[requiredRow.id],
+  ].map(normalizeAccessibilityEvidenceSemanticText)
+
+  return semanticPhrases.some((phrase) => phrase.length > 0 && normalizedLink.includes(phrase))
+}
+
 export function evaluateAstraAccessibilityManualEvidencePacket(
   rows: readonly AstraAccessibilityManualEvidenceRowResult[],
 ): AstraAccessibilityManualEvidenceDecision {
   const findings: AstraAccessibilityManualEvidenceFinding[] = []
   const expectedRowIds = new Set<AstraAccessibilityManualEvidenceRowId>(ASTRA_ACCESSIBILITY_MANUAL_EVIDENCE_ROWS.map((row) => row.id))
   const rowsById = new Map<AstraAccessibilityManualEvidenceRowId, AstraAccessibilityManualEvidenceRowResult>()
+  const seenEvidenceLinks = new Map<string, AstraAccessibilityManualEvidenceRowId>()
 
   for (const row of rows) {
     if (!expectedRowIds.has(row.id)) {
@@ -585,14 +666,34 @@ export function evaluateAstraAccessibilityManualEvidencePacket(
     if (row.verdict !== "not_run") {
       if (blank(row.ownerDate)) {
         findings.push(makeManualEvidenceFinding("missing_owner", row.id, `${requiredRow.label} is missing owner/date.`, "Record owner and date for the manual run."))
+      } else if (!hasSpecificOwnerIdentityWithIsoDate(row.ownerDate)) {
+        findings.push(makeManualEvidenceFinding("invalid_owner", row.id, `${requiredRow.label} owner/date must identify a real owner and include a YYYY-MM-DD date.`, "Record a specific reviewer identity and exact manual-run date."))
       }
       if (blank(row.environment)) {
         findings.push(makeManualEvidenceFinding("missing_environment", row.id, `${requiredRow.label} is missing environment.`, "Record browser, OS, build, and assistive-technology context where relevant."))
+      } else if (row.environment.trim() !== row.environment || isWeakContextEvidenceReference(row.environment) || !isSpecificAccessibilityEnvironment(row.environment)) {
+        findings.push(makeManualEvidenceFinding("invalid_environment", row.id, `${requiredRow.label} environment must include real browser, OS, build/runtime, and accessibility context.`, "Record browser, OS, build, and the keyboard/screen-reader/contrast/reduced-motion context for the run."))
       }
       if (blank(row.evidenceLink)) {
         findings.push(makeManualEvidenceFinding("missing_evidence_link", row.id, `${requiredRow.label} is missing evidence link.`, "Attach screenshots, notes, logs, video, or checklist evidence for the run."))
       } else if (isPlaceholderEvidenceReference(row.evidenceLink)) {
         findings.push(makeManualEvidenceFinding("placeholder_evidence_link", row.id, `${requiredRow.label} evidence link is placeholder evidence.`, "Attach the real screenshots, notes, logs, video, or checklist evidence for the run."))
+      } else if (!isEvidenceLikeReference(row.evidenceLink)) {
+        findings.push(makeManualEvidenceFinding("invalid_evidence_link", row.id, `${requiredRow.label} evidence link must be a public HTTPS URL or repo artifact path.`, "Attach a public HTTPS evidence URL or a repo artifact under docs/, data/, artifacts/, test-results/, or playwright-report/."))
+      } else if (!evidenceLinkMatchesManualAccessibilityRow(requiredRow, row.evidenceLink)) {
+        findings.push(makeManualEvidenceFinding("invalid_evidence_link", row.id, `${requiredRow.label} evidence link must identify row-specific manual accessibility evidence.`, "Attach evidence whose URL or repo artifact path names this manual accessibility row, surface, or assistive-technology check."))
+      } else {
+        const evidenceLinkIdentity = evidenceReferenceDuplicateIdentity(row.evidenceLink)
+        const existingRowId = seenEvidenceLinks.get(evidenceLinkIdentity)
+        if (existingRowId && existingRowId !== row.id) {
+          findings.push(makeManualEvidenceFinding(
+            "duplicate_evidence_link",
+            row.id,
+            `${requiredRow.label} reuses manual accessibility evidence link ${row.evidenceLink}.`,
+            "Attach row-specific manual accessibility evidence so every accessibility walkthrough row can be audited independently.",
+          ))
+        }
+        seenEvidenceLinks.set(evidenceLinkIdentity, row.id)
       }
     }
   }

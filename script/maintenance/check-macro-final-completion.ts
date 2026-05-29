@@ -1,5 +1,14 @@
+import { existsSync } from "node:fs"
 import { readFile } from "node:fs/promises"
+import { dirname, resolve } from "node:path"
+import { fileURLToPath } from "node:url"
 
+import {
+  type EvidenceReferenceOptions,
+  evidenceReferenceDuplicateIdentity,
+  isEvidenceLikeReference,
+  isRepoArtifactPathReference,
+} from "../../src/utils/evidence-reference"
 import {
   ASTRA_AI_QUALITY_ABILITY_CATEGORIES,
   ASTRA_AI_QUALITY_ERROR_TAXONOMY,
@@ -7,12 +16,12 @@ import {
 } from "../../src/utils/ai-quality-system"
 import type { AiQualityRunSummary } from "../../src/utils/ai-quality-system"
 import type {
-  AstraMacroOperationalEvidenceAreaId,
   AstraMacroOperationalEvidenceCompletionPacketRow,
   AstraMacroPlanCompletionEvidence,
 } from "../../src/utils/macro-operational-evidence"
 import {
   ASTRA_PRODUCTION_METRIC_EXPORT_REQUIREMENTS,
+  evaluateAstraProductMetricsReadiness,
   evaluateAstraProductionMetricsExportPacket,
 } from "../../src/utils/product-metrics"
 import {
@@ -31,6 +40,8 @@ import {
   renderAstraMacroPlanCompletionGateNote,
 } from "../../src/utils/macro-operational-evidence"
 
+const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "../..")
+
 const FINAL_COMPLETION_EVIDENCE_PATH = "docs/reviews/macro-final-completion-evidence-2026-05-28.json"
 const FINAL_COMPLETION_GATE_PATH = "docs/reviews/macro-final-completion-gate-2026-05-28.md"
 const FINAL_EVIDENCE_INTAKE_PATH = "docs/reviews/macro-final-evidence-intake-2026-05-28.md"
@@ -41,6 +52,7 @@ const OWNER_RELEASE_APPROVAL_PACKET_PATH = "docs/reviews/macro-owner-release-app
 const LAUNCH_ARTIFACT_PACKET_PATH = "docs/reviews/macro-launch-artifact-packet-2026-05-28.json"
 const AI_QUALITY_HUMAN_SCORED_PACKET_PATH = "docs/reviews/macro-ai-quality-human-scored-packet-2026-05-28.json"
 const PRODUCTION_METRICS_EXPORT_PACKET_PATH = "docs/reviews/macro-production-metrics-export-packet-2026-05-28.json"
+const PRODUCT_METRICS_READINESS_PACKET_PATH = "docs/reviews/macro-product-metrics-readiness-packet-2026-05-28.json"
 
 const FINAL_COMPLETION_EVIDENCE_KEYS = [
   "ciQualityArtifactsAttached",
@@ -64,114 +76,20 @@ const REQUIRED_EVIDENCE_LINK_PATHS: Record<FinalCompletionEvidenceKey, string[]>
   manualQaChecklistComplete: [MANUAL_QA_CHECKLIST_PATH],
   humanScoredAiQualityReportAttached: [AI_QUALITY_HUMAN_SCORED_PACKET_PATH],
   billingLegalStoreGtmArtifactsAttached: [LAUNCH_ARTIFACT_PACKET_PATH],
-  productionMetricsExportAttached: [PRODUCTION_METRICS_EXPORT_PACKET_PATH],
+  productionMetricsExportAttached: [PRODUCTION_METRICS_EXPORT_PACKET_PATH, PRODUCT_METRICS_READINESS_PACKET_PATH],
 }
 
-const REQUIRED_EVIDENCE_LINK_PATTERNS: Record<FinalCompletionEvidenceKey, RegExp[]> = {
-  ciQualityArtifactsAttached: [
-    /quality-gate-results/i,
-    /quality/i,
-    /run|workflow|job/i,
-    /artifact/i,
-    /commit|sha/i,
-    /pnpm check:repo-knowledge/i,
-    /pnpm check:zod-entrypoints/i,
-    /pnpm check:macro-final-completion/i,
-    /pnpm type-check/i,
-    /pnpm lint:ci/i,
-    /pnpm test/i,
-    /pnpm bench/i,
-  ],
-  ciLiveBrowserArtifactsAttached: [
-    /live-bench-results/i,
-    /live-browser/i,
-    /run|workflow|job/i,
-    /artifact/i,
-    /commit|sha/i,
-    /source-core/i,
-    /extension-core/i,
-    /learning-loop/i,
-    /document-proof/i,
-    /youtube-proof/i,
-    /youtube-holdout/i,
-  ],
-  ownerReleaseApprovalRecorded: [
-    /macro-gate-4-claim-review/i,
-    /macro-rc-evidence-packet/i,
-    /macro-final-completion-gate/i,
-    /approver|owner/i,
-    /approval/i,
-    /YYYY-MM-DD|date/i,
-    /URL|repo artifact path|record link/i,
-    /commit|sha/i,
-    /remaining final blockers|complete:\s*no|blocker/i,
-    /downgrade/i,
-  ],
-  manualQaChecklistComplete: [
-    /macro-manual-qa-evidence-checklist/i,
-    /manual QA|manual\/browser QA/i,
-    /section 6/i,
-    /section 7/i,
-    /section 13/i,
-    /section 14/i,
-    /section 24/i,
-    /section 32/i,
-    /owner|date/i,
-    /environment/i,
-    /evidence/i,
-    /pass-with-downgrade|pass/i,
-  ],
-  humanScoredAiQualityReportAttached: [
-    /human-scored|human scored|human/i,
-    /ai-quality|quality/i,
-    /evaluateAiQualityHumanScoredReportEvidence/i,
-    /reviewer|review date|reviewed/i,
-    /run id|rubric version|run metadata/i,
-    /fixture manifest/i,
-    /live provider|provider sample/i,
-    /scored|P0/i,
-    /blocker triage/i,
-    /trend/i,
-    /release decision|approve_with_downgrade|approve|block/i,
-    /threshold|release readiness/i,
-  ],
-  billingLegalStoreGtmArtifactsAttached: [
-    /evaluateAstraMacroLaunchArtifactPacket/i,
-    /billing/i,
-    /checkout/i,
-    /webhook/i,
-    /entitlement|quota/i,
-    /cancellation|refund/i,
-    /legal|privacy|terms/i,
-    /AI notice|AI limitation/i,
-    /support\/contact|support contact|incident/i,
-    /store/i,
-    /zip hash|package hash|build provenance/i,
-    /upload|submission/i,
-    /reviewer/i,
-    /screenshots/i,
-    /gtm|demo/i,
-    /storyboard/i,
-    /copy claim review|claim review/i,
-    /artifact type|artifact id|artifact identity/i,
-    /digest|checksum|version/i,
-    /claim boundary|billing.*legal.*store.*gtm/i,
-    /owner|date/i,
-    /environment|channel/i,
-    /evidence/i,
-  ],
-  productionMetricsExportAttached: [
-    /activation/i,
-    /understanding/i,
-    /learning/i,
-    /membership/i,
-    /date range|date-range/i,
-    /cohort/i,
-    /dashboard|query/i,
-    /privacy/i,
-    /owner/i,
-    /export|analytics|metric/i,
-  ],
+function fieldRequiresEvidenceLinkIdentity(field: FinalCompletionEvidenceKey, duplicateIdentity: string): boolean {
+  return REQUIRED_EVIDENCE_LINK_PATHS[field].some((path) => evidenceReferenceDuplicateIdentity(path) === duplicateIdentity)
+}
+
+function fieldsCanShareEvidenceLinkIdentity(
+  existingField: FinalCompletionEvidenceKey,
+  currentField: FinalCompletionEvidenceKey,
+  duplicateIdentity: string,
+): boolean {
+  return fieldRequiresEvidenceLinkIdentity(existingField, duplicateIdentity)
+    && fieldRequiresEvidenceLinkIdentity(currentField, duplicateIdentity)
 }
 
 const REQUIRED_EVIDENCE_INTAKE_TERMS = [
@@ -183,16 +101,20 @@ const REQUIRED_EVIDENCE_INTAKE_TERMS = [
   "requirement-evidence notes",
   "evidenceLinks",
   "matching machine-readable packet path",
+  "Semantic evidence requirements are enforced by parsing the machine-readable packet/checklist",
+  "not by requiring descriptive words in the link string itself",
   "each be a URL or repo artifact path",
-  "not a local-only, private-network, loopback, malformed, or path-traversal reference",
+  "not a local-only, private-network, loopback, malformed, surrounding, embedded, or percent-encoded whitespace/control-character, or path-traversal reference",
   "placeholder evidence",
   "duplicate evidence link",
   "false fields must keep evidenceLinks empty",
   "URL or repo artifact-path evidence link",
+  "repo artifact paths must exist in the worktree",
   "present exactly once",
   "checklist structure",
+  "not inside fenced examples or blockquotes",
   "pre-claim packet structure",
-  "ISO `generatedAt` timestamps",
+  "timezone-bearing ISO `generatedAt` timestamps",
   "untracked row",
   "duplicate row",
   "placeholder/sample",
@@ -283,12 +205,15 @@ const REQUIRED_EVIDENCE_INTAKE_TERMS = [
   "shared release date range",
   "shared release cohort",
   "macro-production-metrics-export-packet-2026-05-28.json",
+  "macro-product-metrics-readiness-packet-2026-05-28.json",
+  "evaluateAstraProductMetricsReadiness()",
   "Activation",
   "Understanding",
   "Learning",
   "Membership",
   "date range",
   "YYYY-MM-DD..YYYY-MM-DD",
+  "canonical shared date range and cohort definition without surrounding whitespace",
   "cohort definition",
   "dashboard/query source",
   "export id",
@@ -437,6 +362,29 @@ type ProductionMetricsExportPacket = {
   rows: ProductionMetricsExportPacketRow[]
 }
 
+type ProductMetricsReadinessEvidence = Parameters<typeof evaluateAstraProductMetricsReadiness>[0]
+
+type ProductMetricsReadinessPacket = {
+  schema: "astra-macro-product-metrics-readiness-packet.v1"
+  generatedAt: string
+  label: string
+  ownerDate: string
+  evidenceLink: string
+  evidence: ProductMetricsReadinessEvidence
+}
+
+const PRODUCT_METRICS_READINESS_EVIDENCE_KEYS = [
+  "productQuestionsHaveMetricCoverage",
+  "activationMetricsCovered",
+  "understandingMetricsCovered",
+  "learningMetricsCovered",
+  "membershipMetricsCovered",
+  "telemetryAvoidsSensitiveRawText",
+  "telemetryPrefersEventsOverContent",
+  "privacyModeReducesTelemetryDetail",
+  "userDataControlsAreClear",
+] as const satisfies ReadonlyArray<keyof ProductMetricsReadinessEvidence>
+
 type ManualQaChecklistRow = {
   section: number
   qaRow: string
@@ -456,13 +404,14 @@ function isPlaceholderEvidenceReference(value: string): boolean {
     || normalizedValue.includes("placeholder")
     || normalizedValue.includes("todo")
     || /\b(?:mock|draft|tbd|pending|temp|temporary)\b/.test(normalizedValue)
+    || /\b(?:(?:fake|dummy|latest|dev|local)[-_ ]?(?:proof|evidence|artifact|report)|(?<!provider[-_ ])sample[-_ ]?(?:proof|evidence|artifact|report)|(?:proof|evidence|artifact|report)[-_ ]?(?:sample|fake|dummy|latest|dev|local))\b/.test(normalizedValue)
 }
 
 function digestOrVersionIdentity(value: string): string {
   return value
     .trim()
     .toLowerCase()
-    .replace(/^(?:sha(?:256|384|512)?|checksum|digest|version|build|artifact|run|rubric|fixture|manifest|export|query)[:=/ -]+/, "")
+    .replace(/^(?:(?:sha(?:256|384|512)?|checksum|digest|version|build|artifact|run|rubric|fixture|manifest|export|query)[:=/ -]+)+/, "")
 }
 
 function hasWeakEvidenceKeyword(value: string): boolean {
@@ -486,12 +435,55 @@ function isStableVersionReference(value: string): boolean {
   const compactValue = normalizedValue.replace(/[^a-z0-9]/g, "")
   if (!/\d/.test(compactValue) || /^0+$/.test(compactValue) || /^([a-z0-9])\1+$/.test(compactValue)) return false
   if (/^v?\d+\.\d+\.\d+(?:[-+][a-z0-9.-]+)?$/i.test(normalizedValue)) return true
+  if (/^[1-9]\d{5,}$/.test(normalizedValue)) return true
   if (/^20\d{2}-\d{2}-\d{2}$/.test(normalizedValue)) return includesIsoDate(normalizedValue)
   return /^[a-z][a-z0-9]*(?:[-_.][a-z0-9]+)+$/i.test(normalizedValue)
 }
 
 function isWeakDigestOrVersionReference(value: string): boolean {
   return isWeakDigestReference(value) && !isStableVersionReference(value)
+}
+
+function hasNonWeakIdentityCore(value: string): boolean {
+  const compactValue = value.replace(/[^a-z0-9]/g, "")
+  return /\d/.test(compactValue) && !/^0+$/.test(compactValue) && !/^([a-z0-9])\1+$/.test(compactValue)
+}
+
+function isUuidReference(value: string): boolean {
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value.trim())
+}
+
+function isPrefixedNumericIdentityReference(value: string): boolean {
+  const normalizedValue = value.trim().toLowerCase()
+  if (!/^[a-z][a-z0-9]*(?:[-_.:][a-z0-9]+)+$/.test(normalizedValue)) return false
+  const numericParts = normalizedValue.match(/\d+/g) ?? []
+  return numericParts.some((part) => part.length >= 4 && !/^0+$/.test(part))
+}
+
+function isDateStampedIdentityReference(value: string): boolean {
+  const normalizedValue = value.trim().toLowerCase()
+  return /[a-z]/.test(normalizedValue) && includesIsoDate(normalizedValue)
+}
+
+function isStableExportIdentityReference(value: string): boolean {
+  const normalizedValue = value.trim().toLowerCase()
+  if (isWeakContextEvidenceReference(normalizedValue)) return false
+
+  const identityValue = digestOrVersionIdentity(value)
+  const compactValue = identityValue.replace(/[^a-z0-9]/g, "")
+  if (!hasNonWeakIdentityCore(identityValue)) return false
+  return compactValue.length >= 12
+    || isUuidReference(identityValue)
+    || isPrefixedNumericIdentityReference(identityValue)
+    || isDateStampedIdentityReference(identityValue)
+}
+
+function isStableQueryVersionReference(value: string): boolean {
+  if (isStableExportIdentityReference(value)) return true
+  const identityValue = digestOrVersionIdentity(value)
+  if (isWeakContextEvidenceReference(identityValue)) return false
+  return /^v?\d+\.\d+\.\d+(?:[-+][a-z0-9.-]+)?$/i.test(identityValue)
+    || (/^20\d{2}-\d{2}-\d{2}$/.test(identityValue) && includesIsoDate(identityValue))
 }
 
 function isWeakContextEvidenceReference(value: string): boolean {
@@ -502,6 +494,49 @@ function isWeakContextEvidenceReference(value: string): boolean {
 function includesIsoDate(value: string): boolean {
   const match = /\b(20\d{2}-\d{2}-\d{2})\b/.exec(value)
   return match ? parseIsoDate(match[1]) !== null : false
+}
+
+function hasOwnerIdentityWithIsoDate(value: string): boolean {
+  if (value.trim() !== value || !includesIsoDate(value) || isWeakContextEvidenceReference(value)) return false
+  const ownerText = value
+    .replace(/\b20\d{2}-\d{2}-\d{2}\b/g, " ")
+    .replace(/[—–:|/(),._-]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+  const ownerIdentity = ownerText.toLowerCase()
+  if (/^(?:owner|release owner|qa owner|tester|metrics owner)$/.test(ownerIdentity)) return false
+  return /[a-z][a-z0-9@.-]{1,}/i.test(ownerText)
+}
+
+function manualQaRowContextMatches(value: string, section: number, qaRow: string): boolean {
+  const normalizedValue = value.toLowerCase()
+  const normalizedRow = qaRow.toLowerCase()
+  switch (section) {
+    case 6:
+      return /\b(?:source|library|asset|delete|export|pdf|epub|subtitle|video|theme|return)\b/.test(normalizedValue)
+    case 7:
+      return /\b(?:personalization|profile|privacy|memory|excluded|options|review|fallback)\b/.test(normalizedValue)
+    case 13:
+      return /\b(?:copy|onboarding|popup|deep read|library|review|error|boundary|store|landing)\b/.test(normalizedValue)
+    case 14:
+      return /\b(?:support|help|status|incident|owner|limitations|report)\b/.test(normalizedValue)
+    case 24:
+      return /\b(?:ai|provider|fixture|scoring|sample|triage|trend|decision|quality)\b/.test(normalizedValue)
+    case 32:
+      return /\b(?:accessibility|keyboard|screen reader|voiceover|nvda|jaws|contrast|scaled text|reduced motion|mouse)\b/.test(normalizedValue)
+    default:
+      return normalizedRow.length > 0 && normalizedRow.split(/[^a-z0-9]+/).filter((part) => part.length >= 5).some((part) => normalizedValue.includes(part))
+  }
+}
+
+function isSpecificManualQaEnvironment(value: string, section: number, qaRow: string): boolean {
+  const normalizedValue = value.toLowerCase()
+  const hasBrowser = /\b(?:chrome|chromium|firefox|safari|edge)\b/.test(normalizedValue)
+  const hasOs = /\b(?:macos|windows|linux|ubuntu|android|ios)\b/.test(normalizedValue)
+  return hasBrowser
+    && hasOs
+    && /\b(?:build|extension|relay|api|web app|candidate|rc)\b/.test(normalizedValue)
+    && manualQaRowContextMatches(value, section, qaRow)
 }
 
 function parseIsoDate(value: string): number | null {
@@ -520,11 +555,10 @@ function parseIsoDate(value: string): number | null {
 }
 
 function isIsoTimestamp(value: string): boolean {
-  const trimmedValue = value.trim()
-  if (!/^20\d{2}-\d{2}-\d{2}T/.test(trimmedValue) || Number.isNaN(Date.parse(trimmedValue))) {
+  if (!/^20\d{2}-\d{2}-\d{2}T(?:[01]\d|2[0-3]):[0-5]\d:[0-5]\d(?:\.\d{1,9})?(?:Z|[+-](?:[01]\d|2[0-3]):[0-5]\d)$/.test(value) || Number.isNaN(Date.parse(value))) {
     return false
   }
-  return parseIsoDate(trimmedValue.slice(0, 10)) !== null
+  return parseIsoDate(value.slice(0, 10)) !== null
 }
 
 function validateIsoGeneratedAt(value: unknown, path: string, findings: string[]): string {
@@ -538,43 +572,139 @@ function validateIsoGeneratedAt(value: unknown, path: string, findings: string[]
   return value
 }
 
-function isEvidenceLikeReference(value: string): boolean {
-  const trimmedValue = value.trim()
-  if (/^https?:\/\//.test(trimmedValue)) return /^https:\/\//.test(trimmedValue) && !isLocalUrlReference(trimmedValue)
-  return isRepoArtifactPathReference(trimmedValue)
+function validatePacketLabel(value: unknown, path: string, findings: string[]): string {
+  if (typeof value !== "string" || value.trim().length === 0) {
+    findings.push(`${path}: expected a non-empty string.`)
+    return ""
+  }
+  if (value.trim() !== value || isPlaceholderEvidenceReference(value)) {
+    findings.push(`${path}: expected a canonical non-placeholder label.`)
+  }
+  return value
 }
 
-function isRepoArtifactPathReference(value: string): boolean {
-  if (!/^(docs\/|data\/|artifacts\/|test-results\/|playwright-report\/)/.test(value)) return false
-  if (value.startsWith("/") || value.includes("\\") || value.includes("?") || value.includes("#") || /%(?:2e|2f|5c)/i.test(value)) return false
-
-  const segments = value.split("/")
-  return segments.every((segment) => segment.length > 0 && segment !== "." && segment !== "..")
+function isUnattemptedIntakeLabel(value: string): boolean {
+  return /\bintake$/i.test(value.trim())
 }
 
-function isLocalUrlReference(value: string): boolean {
+function packetLabelIndicatesAttemptedEvidence(value: string): boolean {
+  return value.trim().length > 0 && !isUnattemptedIntakeLabel(value)
+}
+
+function evidenceLinkMatchesRequiredPath(link: string, requiredPath: string): boolean {
+  return isRepoArtifactPathReference(link) && link === requiredPath
+}
+
+function repoPath(value: string): string {
+  return resolve(REPO_ROOT, value)
+}
+
+interface JsonObjectScanFrame {
+  keys: Set<string>
+  expectKey: boolean
+}
+
+function readJsonStringToken(text: string, start: number): { value: string; end: number } | null {
+  if (text[start] !== '"') return null
+  let value = ""
+  for (let index = start + 1; index < text.length; index += 1) {
+    const char = text[index]
+    if (char === '"') return { value, end: index + 1 }
+    if (char !== "\\") {
+      value += char
+      continue
+    }
+    const escaped = text[index + 1]
+    if (escaped === undefined) return null
+    if (escaped === "u") {
+      const hex = text.slice(index + 2, index + 6)
+      if (!/^[0-9a-f]{4}$/i.test(hex)) return null
+      value += String.fromCharCode(Number.parseInt(hex, 16))
+      index += 5
+      continue
+    }
+    const escapeValues: Record<string, string> = { '"': '"', "\\": "\\", "/": "/", b: "\b", f: "\f", n: "\n", r: "\r", t: "\t" }
+    if (!(escaped in escapeValues)) return null
+    value += escapeValues[escaped]
+    index += 1
+  }
+  return null
+}
+
+function nextNonWhitespaceIndex(text: string, start: number): number {
+  let index = start
+  while (index < text.length && /\s/.test(text[index] ?? "")) index += 1
+  return index
+}
+
+function duplicateJsonObjectKeyFindings(text: string, path: string): string[] {
+  const findings: string[] = []
+  const stack: Array<JsonObjectScanFrame | "array"> = []
+
+  for (let index = 0; index < text.length; index += 1) {
+    const char = text[index]
+    if (/\s/.test(char ?? "")) continue
+
+    if (char === '"') {
+      const token = readJsonStringToken(text, index)
+      if (!token) break
+      const current = stack[stack.length - 1]
+      if (current !== undefined && current !== "array" && current.expectKey && text[nextNonWhitespaceIndex(text, token.end)] === ":") {
+        if (current.keys.has(token.value)) {
+          findings.push(`${path}: duplicate JSON object key \`${token.value}\`.`)
+        }
+        current.keys.add(token.value)
+        current.expectKey = false
+      }
+      index = token.end - 1
+      continue
+    }
+
+    if (char === "{") {
+      stack.push({ keys: new Set<string>(), expectKey: true })
+      continue
+    }
+    if (char === "[") {
+      stack.push("array")
+      continue
+    }
+    if (char === "}" || char === "]") {
+      stack.pop()
+      continue
+    }
+    if (char === ",") {
+      const current = stack[stack.length - 1]
+      if (current !== undefined && current !== "array") current.expectKey = true
+    }
+  }
+
+  return findings
+}
+
+function parseJsonEvidence(text: string, path: string, findings: string[]): unknown {
+  findings.push(...duplicateJsonObjectKeyFindings(text, path))
   try {
-    const hostname = new URL(value).hostname.toLowerCase()
-    return hostname.length === 0
-      || hostname === "localhost"
-      || hostname.endsWith(".localhost")
-      || hostname === "0.0.0.0"
-      || /^127(?:\.\d{1,3}){3}$/.test(hostname)
-      || /^10(?:\.\d{1,3}){3}$/.test(hostname)
-      || /^192\.168(?:\.\d{1,3}){2}$/.test(hostname)
-      || /^172\.(?:1[6-9]|2\d|3[0-1])(?:\.\d{1,3}){2}$/.test(hostname)
-      || /^169\.254(?:\.\d{1,3}){2}$/.test(hostname)
-      || isPrivateIpv6Hostname(hostname)
-  } catch {
-    return true
+    return JSON.parse(text) as unknown
+  } catch (error) {
+    findings.push(`${path}: invalid JSON: ${(error as Error).message}`)
+    return undefined
   }
 }
 
-function isPrivateIpv6Hostname(hostname: string): boolean {
-  const normalizedHostname = hostname.replace(/^\[|\]$/g, "")
-  return normalizedHostname === "::1"
-    || /^f[cd][0-9a-f]{2}:/i.test(normalizedHostname)
-    || /^fe[89ab][0-9a-f]:/i.test(normalizedHostname)
+function repoArtifactPathExists(value: string): boolean {
+  return existsSync(repoPath(value))
+}
+
+function validateExistingEvidenceReference(
+  value: string,
+  path: string,
+  findings: string[],
+  options: EvidenceReferenceOptions = {},
+): void {
+  if (value.trim().length === 0 || !isEvidenceLikeReference(value, options)) return
+  if (isRepoArtifactPathReference(value, options) && !repoArtifactPathExists(value)) {
+    findings.push(`${path}: repo artifact path does not exist.`)
+  }
 }
 
 function validateExactKeys(value: Record<string, unknown>, expectedKeys: readonly string[], path: string, findings: string[]): void {
@@ -606,9 +736,7 @@ function validateEvidenceArtifact(value: unknown, findings: string[]): FinalComp
     findings.push("artifact.schema: expected astra-macro-final-completion-evidence.v1.")
   }
   validateIsoGeneratedAt(value.generatedAt, "artifact.generatedAt", findings)
-  if (typeof value.label !== "string" || value.label.trim().length === 0) {
-    findings.push("artifact.label: expected a non-empty string.")
-  }
+  validatePacketLabel(value.label, "artifact.label", findings)
   if (!isRecord(value.evidence)) {
     findings.push("artifact.evidence: expected an object.")
     return null
@@ -623,6 +751,7 @@ function validateEvidenceArtifact(value: unknown, findings: string[]): FinalComp
 
   const evidence = {} as AstraMacroPlanCompletionEvidence
   const evidenceLinks = {} as Record<FinalCompletionEvidenceKey, string[]>
+  const crossFieldEvidenceLinks = new Map<string, FinalCompletionEvidenceKey>()
 
   for (const key of FINAL_COMPLETION_EVIDENCE_KEYS) {
     const evidenceValue = value.evidence[key]
@@ -647,16 +776,26 @@ function validateEvidenceArtifact(value: unknown, findings: string[]): FinalComp
     }
     const seenLinks = new Set<string>()
     for (const [index, link] of links.entries()) {
-      if (seenLinks.has(link)) {
+      const normalizedLink = link.trim()
+      const duplicateIdentity = evidenceReferenceDuplicateIdentity(link)
+      if (seenLinks.has(duplicateIdentity)) {
         findings.push(`artifact.evidenceLinks.${key}[${index}]: duplicate evidence link.`)
       }
-      seenLinks.add(link)
-      if (link.trim().length === 0) {
+      seenLinks.add(duplicateIdentity)
+      const existingField = crossFieldEvidenceLinks.get(duplicateIdentity)
+      if (existingField !== undefined && existingField !== key && !fieldsCanShareEvidenceLinkIdentity(existingField, key, duplicateIdentity)) {
+        findings.push(`artifact.evidenceLinks.${key}[${index}]: duplicate evidence link already used by ${existingField}.`)
+      } else if (existingField === undefined) {
+        crossFieldEvidenceLinks.set(duplicateIdentity, key)
+      }
+      if (normalizedLink.length === 0) {
         findings.push(`artifact.evidenceLinks.${key}[${index}]: expected non-empty link.`)
-      } else if (isPlaceholderEvidenceReference(link)) {
+      } else if (isPlaceholderEvidenceReference(normalizedLink)) {
         findings.push(`artifact.evidenceLinks.${key}[${index}]: placeholder evidence links are not allowed.`)
       } else if (!isEvidenceLikeReference(link)) {
         findings.push(`artifact.evidenceLinks.${key}[${index}]: expected URL or repo artifact path.`)
+      } else {
+        validateExistingEvidenceReference(link, `artifact.evidenceLinks.${key}[${index}]`, findings)
       }
     }
     if (!evidence[key] && links.length > 0) {
@@ -667,13 +806,8 @@ function validateEvidenceArtifact(value: unknown, findings: string[]): FinalComp
     }
     if (evidence[key]) {
       for (const requiredPath of REQUIRED_EVIDENCE_LINK_PATHS[key]) {
-        if (!links.some((link) => link.includes(requiredPath))) {
+        if (!links.some((link) => evidenceLinkMatchesRequiredPath(link, requiredPath))) {
           findings.push(`artifact.evidenceLinks.${key}: expected a matching machine-readable packet path ${requiredPath}.`)
-        }
-      }
-      for (const pattern of REQUIRED_EVIDENCE_LINK_PATTERNS[key]) {
-        if (!links.some((link) => pattern.test(link))) {
-          findings.push(`artifact.evidenceLinks.${key}: expected at least one link matching ${pattern}.`)
         }
       }
     }
@@ -701,9 +835,7 @@ function validateOperationalEvidenceCompletionPacket(value: unknown, findings: s
     findings.push("operationalPacket.schema: expected astra-macro-operational-evidence-completion-packet.v1.")
   }
   validateIsoGeneratedAt(value.generatedAt, "operationalPacket.generatedAt", findings)
-  if (typeof value.label !== "string" || value.label.trim().length === 0) {
-    findings.push("operationalPacket.label: expected a non-empty string.")
-  }
+  validatePacketLabel(value.label, "operationalPacket.label", findings)
   if (!Array.isArray(value.rows)) {
     findings.push("operationalPacket.rows: expected array.")
     return null
@@ -749,26 +881,34 @@ function validateOperationalCompletionPacketPreclaimRows(packet: OperationalEvid
   const trackedRows: AstraMacroOperationalEvidenceCompletionPacketRow[] = []
 
   for (const row of packet.rows) {
-    if (!expectedAreaIds.has(row.areaId)) {
+    const normalizedAreaId = row.areaId.trim()
+    const areaIdIdentity = normalizedAreaId.toLowerCase()
+    const canonicalAreaId = ASTRA_MACRO_OPERATIONAL_EVIDENCE.find((item) => item.id.toLowerCase() === areaIdIdentity)?.id
+    if (normalizedAreaId !== row.areaId || (canonicalAreaId !== undefined && canonicalAreaId !== row.areaId)) {
+      findings.push(`operationalPacket.rows.${row.areaId}: area id must use canonical casing without surrounding whitespace.`)
+    }
+    if (canonicalAreaId === undefined || !expectedAreaIds.has(canonicalAreaId)) {
       findings.push(`operationalPacket.rows.${row.areaId}: untracked operational evidence area.`)
     } else if (row.verdict === "proved" || row.verdict === "not-proved") {
       trackedRows.push({
         ...row,
-        areaId: row.areaId as AstraMacroOperationalEvidenceAreaId,
+        areaId: canonicalAreaId,
         verdict: row.verdict,
       })
     }
-    if (seenAreaIds.has(row.areaId)) {
+    if (seenAreaIds.has(areaIdIdentity)) {
       findings.push(`operationalPacket.rows.${row.areaId}: duplicate operational evidence row.`)
     }
-    seenAreaIds.add(row.areaId)
+    seenAreaIds.add(areaIdIdentity)
 
     if (row.evidenceLink && isPlaceholderEvidenceReference(row.evidenceLink)) {
       findings.push(`operationalPacket.rows.${row.areaId}: placeholder evidence links are not allowed.`)
+    } else {
+      validateExistingEvidenceReference(row.evidenceLink, `operationalPacket.rows.${row.areaId}.evidenceLink`, findings)
     }
   }
 
-  if (packet.rows.length > 0) {
+  if (packet.rows.length > 0 || packetLabelIndicatesAttemptedEvidence(packet.label)) {
     const packetDecision = evaluateAstraMacroOperationalEvidenceCompletionPacket(trackedRows)
     if (!packetDecision.complete) {
       findings.push(
@@ -792,9 +932,7 @@ function validateCiArtifactPacket(value: unknown, findings: string[]): CiArtifac
     findings.push("ciArtifactPacket.schema: expected astra-macro-ci-artifact-packet.v1.")
   }
   validateIsoGeneratedAt(value.generatedAt, "ciArtifactPacket.generatedAt", findings)
-  if (typeof value.label !== "string" || value.label.trim().length === 0) {
-    findings.push("ciArtifactPacket.label: expected a non-empty string.")
-  }
+  validatePacketLabel(value.label, "ciArtifactPacket.label", findings)
   if (!Array.isArray(value.rows)) {
     findings.push("ciArtifactPacket.rows: expected array.")
     return null
@@ -852,13 +990,21 @@ function validateCiArtifactPacketPreclaimRows(packet: CiArtifactPacket, findings
   const commitShas = new Set<string>()
 
   for (const row of packet.rows) {
-    if (!expectedEvidenceFields.has(row.evidenceField)) {
+    const normalizedEvidenceField = row.evidenceField.trim()
+    const evidenceFieldIdentity = normalizedEvidenceField.toLowerCase()
+    const canonicalEvidenceField = ASTRA_MACRO_CI_ARTIFACT_REQUIREMENTS.find(
+      (requirement) => requirement.evidenceField.toLowerCase() === evidenceFieldIdentity,
+    )?.evidenceField
+    if (normalizedEvidenceField !== row.evidenceField || (canonicalEvidenceField !== undefined && canonicalEvidenceField !== row.evidenceField)) {
+      findings.push(`ciArtifactPacket.rows.${row.evidenceField}: evidence field must use canonical casing without surrounding whitespace.`)
+    }
+    if (canonicalEvidenceField === undefined || !expectedEvidenceFields.has(canonicalEvidenceField)) {
       findings.push(`ciArtifactPacket.rows.${row.evidenceField}: untracked CI artifact evidence field.`)
     }
-    if (seenEvidenceFields.has(row.evidenceField)) {
+    if (seenEvidenceFields.has(evidenceFieldIdentity)) {
       findings.push(`ciArtifactPacket.rows.${row.evidenceField}: duplicate CI artifact evidence row.`)
     }
-    seenEvidenceFields.add(row.evidenceField)
+    seenEvidenceFields.add(evidenceFieldIdentity)
 
     if (row.commitSha.trim().length > 0) {
       commitShas.add(row.commitSha.trim().toLowerCase())
@@ -869,6 +1015,7 @@ function validateCiArtifactPacketPreclaimRows(packet: CiArtifactPacket, findings
         findings.push(`ciArtifactPacket.rows.${row.evidenceField}.${field}: placeholder evidence links are not allowed.`)
       }
     }
+    validateExistingEvidenceReference(row.artifactManifestPath, `ciArtifactPacket.rows.${row.evidenceField}.artifactManifestPath`, findings)
     for (const field of ["runId", "artifactId"] as const) {
       if (row[field] && isWeakDigestOrVersionReference(row[field])) {
         findings.push(`ciArtifactPacket.rows.${row.evidenceField}.${field}: stable non-weak identity is required.`)
@@ -886,7 +1033,7 @@ function validateCiArtifactPacketPreclaimRows(packet: CiArtifactPacket, findings
     findings.push("ciArtifactPacket.rows: CI artifact rows must all target the same target commit/SHA.")
   }
 
-  if (packet.rows.length > 0) {
+  if (packet.rows.length > 0 || packetLabelIndicatesAttemptedEvidence(packet.label)) {
     const ciDecision = evaluateAstraMacroCiArtifactPacket(
       packet.rows as Parameters<typeof evaluateAstraMacroCiArtifactPacket>[0],
     )
@@ -910,9 +1057,7 @@ function validateOwnerReleaseApprovalPacket(value: unknown, findings: string[]):
     findings.push("ownerReleaseApprovalPacket.schema: expected astra-macro-owner-release-approval-packet.v1.")
   }
   validateIsoGeneratedAt(value.generatedAt, "ownerReleaseApprovalPacket.generatedAt", findings)
-  if (typeof value.label !== "string" || value.label.trim().length === 0) {
-    findings.push("ownerReleaseApprovalPacket.label: expected a non-empty string.")
-  }
+  validatePacketLabel(value.label, "ownerReleaseApprovalPacket.label", findings)
   if (!isRecord(value.approval)) {
     findings.push("ownerReleaseApprovalPacket.approval: expected object.")
     return null
@@ -963,6 +1108,7 @@ function validateOwnerReleaseApprovalPacket(value: unknown, findings: string[]):
 function ownerReleaseApprovalPacketAttempted(packet: OwnerReleaseApprovalPacket): boolean {
   const approval = packet.approval
   return (
+    packetLabelIndicatesAttemptedEvidence(packet.label) ||
     approval.approver.trim().length > 0 ||
     approval.approvalDate.trim().length > 0 ||
     approval.approvalRecordLink.trim().length > 0 ||
@@ -979,24 +1125,35 @@ function validateOwnerReleaseApprovalPacketPreclaim(packet: OwnerReleaseApproval
     return
   }
 
-  const expectedReviewedArtifacts = new Set<string>(ASTRA_MACRO_RELEASE_APPROVAL_REQUIREMENT.requiredReviewedArtifacts)
+  const expectedReviewedArtifactsByIdentity = new Map(
+    ASTRA_MACRO_RELEASE_APPROVAL_REQUIREMENT.requiredReviewedArtifacts.map((artifact) => [evidenceReferenceDuplicateIdentity(artifact), artifact]),
+  )
   const seenReviewedArtifacts = new Set<string>()
 
   for (const artifact of packet.approval.reviewedArtifacts) {
-    if (!expectedReviewedArtifacts.has(artifact)) {
+    const artifactIdentity = evidenceReferenceDuplicateIdentity(artifact)
+    const canonicalArtifact = expectedReviewedArtifactsByIdentity.get(artifactIdentity)
+    if (artifact.trim() !== artifact || (canonicalArtifact !== undefined && canonicalArtifact !== artifact)) {
+      findings.push(`ownerReleaseApprovalPacket.reviewedArtifacts.${artifact}: reviewed artifact must use canonical path without surrounding whitespace.`)
+    }
+    if (canonicalArtifact === undefined) {
       findings.push(`ownerReleaseApprovalPacket.reviewedArtifacts.${artifact}: untracked reviewed artifact.`)
     }
-    if (seenReviewedArtifacts.has(artifact)) {
+    if (seenReviewedArtifacts.has(artifactIdentity)) {
       findings.push(`ownerReleaseApprovalPacket.reviewedArtifacts.${artifact}: duplicate reviewed artifact.`)
     }
-    seenReviewedArtifacts.add(artifact)
+    seenReviewedArtifacts.add(artifactIdentity)
     if (isPlaceholderEvidenceReference(artifact)) {
       findings.push(`ownerReleaseApprovalPacket.reviewedArtifacts.${artifact}: placeholder reviewed artifacts are not allowed.`)
+    } else {
+      validateExistingEvidenceReference(artifact, `ownerReleaseApprovalPacket.reviewedArtifacts.${artifact}`, findings)
     }
   }
 
   if (packet.approval.approvalRecordLink && isPlaceholderEvidenceReference(packet.approval.approvalRecordLink)) {
     findings.push("ownerReleaseApprovalPacket.approval.approvalRecordLink: placeholder evidence links are not allowed.")
+  } else {
+    validateExistingEvidenceReference(packet.approval.approvalRecordLink, "ownerReleaseApprovalPacket.approval.approvalRecordLink", findings)
   }
 
   const approvalDecision = evaluateAstraMacroReleaseApprovalPacket(
@@ -1044,9 +1201,7 @@ function validateLaunchArtifactPacket(value: unknown, findings: string[]): Launc
     findings.push("launchArtifactPacket.schema: expected astra-macro-launch-artifact-packet.v1.")
   }
   validateIsoGeneratedAt(value.generatedAt, "launchArtifactPacket.generatedAt", findings)
-  if (typeof value.label !== "string" || value.label.trim().length === 0) {
-    findings.push("launchArtifactPacket.label: expected a non-empty string.")
-  }
+  validatePacketLabel(value.label, "launchArtifactPacket.label", findings)
   if (!Array.isArray(value.rows)) {
     findings.push("launchArtifactPacket.rows: expected array.")
     return null
@@ -1090,16 +1245,26 @@ function validateLaunchArtifactPacketPreclaimRows(packet: LaunchArtifactPacket, 
   const seenRequirementIds = new Set<string>()
 
   for (const row of packet.rows) {
-    if (!expectedRequirementIds.has(row.requirementId)) {
+    const normalizedRequirementId = row.requirementId.trim()
+    const requirementIdIdentity = normalizedRequirementId.toLowerCase()
+    const canonicalRequirementId = ASTRA_MACRO_LAUNCH_ARTIFACT_REQUIREMENTS.find(
+      (requirement) => requirement.id.toLowerCase() === requirementIdIdentity,
+    )?.id
+    if (normalizedRequirementId !== row.requirementId || (canonicalRequirementId !== undefined && canonicalRequirementId !== row.requirementId)) {
+      findings.push(`launchArtifactPacket.rows.${row.requirementId}: requirement id must use canonical casing without surrounding whitespace.`)
+    }
+    if (canonicalRequirementId === undefined || !expectedRequirementIds.has(canonicalRequirementId)) {
       findings.push(`launchArtifactPacket.rows.${row.requirementId}: untracked launch artifact requirement.`)
     }
-    if (seenRequirementIds.has(row.requirementId)) {
+    if (seenRequirementIds.has(requirementIdIdentity)) {
       findings.push(`launchArtifactPacket.rows.${row.requirementId}: duplicate launch artifact row.`)
     }
-    seenRequirementIds.add(row.requirementId)
+    seenRequirementIds.add(requirementIdIdentity)
 
     if (row.evidenceLink && isPlaceholderEvidenceReference(row.evidenceLink)) {
       findings.push(`launchArtifactPacket.rows.${row.requirementId}: placeholder evidence links are not allowed.`)
+    } else {
+      validateExistingEvidenceReference(row.evidenceLink, `launchArtifactPacket.rows.${row.requirementId}.evidenceLink`, findings)
     }
     for (const field of ["artifactType", "targetChannel", "environment"] as const) {
       if (row[field] && isWeakContextEvidenceReference(row[field])) {
@@ -1114,7 +1279,7 @@ function validateLaunchArtifactPacketPreclaimRows(packet: LaunchArtifactPacket, 
     }
   }
 
-  if (packet.rows.length > 0) {
+  if (packet.rows.length > 0 || packetLabelIndicatesAttemptedEvidence(packet.label)) {
     const launchDecision = evaluateAstraMacroLaunchArtifactPacket(
       packet.rows as Parameters<typeof evaluateAstraMacroLaunchArtifactPacket>[0],
     )
@@ -1197,6 +1362,13 @@ function validateNullableConstrainedNumberField(value: unknown, path: string, fi
   return value === null || validateNumberConstraints(value, path, findings, options)
 }
 
+function isCanonicalAiQualityEvidenceId(value: string): boolean {
+  return value.trim() === value
+    && value.length > 0
+    && !isWeakContextEvidenceReference(value)
+    && /^[a-z0-9][a-z0-9:_-]*$/i.test(value)
+}
+
 function validateStringArrayField(value: unknown, path: string, findings: string[]): value is string[] {
   if (!Array.isArray(value)) {
     findings.push(`${path}: expected string array.`)
@@ -1267,6 +1439,8 @@ function validateAiQualityLowScoreBacklog(value: unknown, path: string, findings
     validateExactKeys(item, ["sampleId", "capability", "lowestScore", "errors", "recommendedBacklogLabel"], itemPath, findings)
     if (typeof item.sampleId !== "string") {
       findings.push(`${itemPath}.sampleId: expected string.`)
+    } else if (!isCanonicalAiQualityEvidenceId(item.sampleId)) {
+      findings.push(`${itemPath}.sampleId: expected canonical non-placeholder sample id.`)
     }
     if (typeof item.capability !== "string" || !allowedCapabilities.has(item.capability)) {
       findings.push(`${itemPath}.capability: expected known AI quality capability.`)
@@ -1274,6 +1448,8 @@ function validateAiQualityLowScoreBacklog(value: unknown, path: string, findings
     validateConstrainedNumberField(item.lowestScore, `${itemPath}.lowestScore`, findings, { min: 1, max: 5 })
     if (typeof item.recommendedBacklogLabel !== "string") {
       findings.push(`${itemPath}.recommendedBacklogLabel: expected string.`)
+    } else if (!isCanonicalAiQualityEvidenceId(item.recommendedBacklogLabel)) {
+      findings.push(`${itemPath}.recommendedBacklogLabel: expected canonical non-placeholder backlog label.`)
     }
     if (validateStringArrayField(item.errors, `${itemPath}.errors`, findings)) {
       item.errors.forEach((errorType, errorIndex) => {
@@ -1318,7 +1494,13 @@ function validateAiQualityRunSummary(value: unknown, findings: string[]): AiQual
 
   validateNumberRecord(value.capabilityCounts, ASTRA_AI_QUALITY_ABILITY_CATEGORIES, `${path}.capabilityCounts`, findings, { requireAllKeys: true, integer: true, min: 0 })
   validateNumberRecord(value.capabilityAverages, ASTRA_AI_QUALITY_ABILITY_CATEGORIES, `${path}.capabilityAverages`, findings, { min: 1, max: 5 })
-  validateStringArrayField(value.blockerSampleIds, `${path}.blockerSampleIds`, findings)
+  if (validateStringArrayField(value.blockerSampleIds, `${path}.blockerSampleIds`, findings)) {
+    value.blockerSampleIds.forEach((sampleId, index) => {
+      if (!isCanonicalAiQualityEvidenceId(sampleId)) {
+        findings.push(`${path}.blockerSampleIds.${index}: expected canonical non-placeholder sample id.`)
+      }
+    })
+  }
   validateNumberRecord(value.blockerErrorCounts, ASTRA_AI_QUALITY_ERROR_TAXONOMY.map((item) => item.type), `${path}.blockerErrorCounts`, findings, { integer: true, min: 0 })
   validateAiQualityLowScoreBacklog(value.lowScoreBacklog, `${path}.lowScoreBacklog`, findings)
 
@@ -1341,9 +1523,7 @@ function validateAiQualityHumanScoredPacket(value: unknown, findings: string[]):
     findings.push("aiQualityHumanScoredPacket.schema: expected astra-macro-ai-quality-human-scored-packet.v1.")
   }
   validateIsoGeneratedAt(value.generatedAt, "aiQualityHumanScoredPacket.generatedAt", findings)
-  if (typeof value.label !== "string" || value.label.trim().length === 0) {
-    findings.push("aiQualityHumanScoredPacket.label: expected a non-empty string.")
-  }
+  validatePacketLabel(value.label, "aiQualityHumanScoredPacket.label", findings)
   if (!isRecord(value.evidence)) {
     findings.push("aiQualityHumanScoredPacket.evidence: expected object.")
     return null
@@ -1409,6 +1589,7 @@ function aiQualityHumanScoredPacketAttempted(packet: AiQualityHumanScoredPacket)
   const evidence = packet.evidence
   const summary = evidence.summary
   return (
+    packetLabelIndicatesAttemptedEvidence(packet.label) ||
     evidence.reviewer.trim().length > 0 ||
     evidence.reviewedAt.trim().length > 0 ||
     evidence.environment.trim().length > 0 ||
@@ -1439,8 +1620,16 @@ function validateAiQualityHumanScoredPacketPreclaim(packet: AiQualityHumanScored
   for (const field of ["providerSampleEvidenceLink", "blockerTriageLink"] as const) {
     if (packet.evidence[field] && isPlaceholderEvidenceReference(packet.evidence[field])) {
       findings.push(`aiQualityHumanScoredPacket.evidence.${field}: placeholder evidence links are not allowed.`)
+    } else {
+      validateExistingEvidenceReference(packet.evidence[field], `aiQualityHumanScoredPacket.evidence.${field}`, findings)
     }
   }
+  validateExistingEvidenceReference(
+    packet.evidence.fixtureManifestPath,
+    "aiQualityHumanScoredPacket.evidence.fixtureManifestPath",
+    findings,
+    { allowTestFixtures: true },
+  )
   if (packet.evidence.environment && isWeakContextEvidenceReference(packet.evidence.environment)) {
     findings.push("aiQualityHumanScoredPacket.evidence.environment: real target environment is required.")
   }
@@ -1470,9 +1659,7 @@ function validateProductionMetricsExportPacket(value: unknown, findings: string[
     findings.push("productionMetricsExportPacket.schema: expected astra-macro-production-metrics-export-packet.v1.")
   }
   validateIsoGeneratedAt(value.generatedAt, "productionMetricsExportPacket.generatedAt", findings)
-  if (typeof value.label !== "string" || value.label.trim().length === 0) {
-    findings.push("productionMetricsExportPacket.label: expected a non-empty string.")
-  }
+  validatePacketLabel(value.label, "productionMetricsExportPacket.label", findings)
   if (!Array.isArray(value.rows)) {
     findings.push("productionMetricsExportPacket.rows: expected array.")
     return null
@@ -1517,22 +1704,143 @@ function validateProductionMetricsExportPacket(value: unknown, findings: string[
   }
 }
 
+function validateProductMetricsReadinessPacket(value: unknown, findings: string[]): ProductMetricsReadinessPacket | null {
+  if (!isRecord(value)) {
+    findings.push(`${PRODUCT_METRICS_READINESS_PACKET_PATH}: expected top-level object.`)
+    return null
+  }
+
+  validateExactKeys(value, ["schema", "generatedAt", "label", "ownerDate", "evidenceLink", "evidence"], "productMetricsReadinessPacket", findings)
+  if (value.schema !== "astra-macro-product-metrics-readiness-packet.v1") {
+    findings.push("productMetricsReadinessPacket.schema: expected astra-macro-product-metrics-readiness-packet.v1.")
+  }
+  validateIsoGeneratedAt(value.generatedAt, "productMetricsReadinessPacket.generatedAt", findings)
+  validatePacketLabel(value.label, "productMetricsReadinessPacket.label", findings)
+  if (typeof value.ownerDate !== "string") {
+    findings.push("productMetricsReadinessPacket.ownerDate: expected string.")
+  }
+  if (typeof value.evidenceLink !== "string") {
+    findings.push("productMetricsReadinessPacket.evidenceLink: expected string.")
+  }
+  if (!isRecord(value.evidence)) {
+    findings.push("productMetricsReadinessPacket.evidence: expected object.")
+    return null
+  }
+
+  const evidenceRecord = value.evidence
+  validateExactKeys(evidenceRecord, PRODUCT_METRICS_READINESS_EVIDENCE_KEYS, "productMetricsReadinessPacket.evidence", findings)
+  const evidence = Object.fromEntries(
+    PRODUCT_METRICS_READINESS_EVIDENCE_KEYS.map((key) => {
+      if (typeof evidenceRecord[key] !== "boolean") {
+        findings.push(`productMetricsReadinessPacket.evidence.${key}: expected boolean.`)
+      }
+      return [key, evidenceRecord[key] === true]
+    }),
+  ) as unknown as ProductMetricsReadinessEvidence
+
+  return {
+    schema: "astra-macro-product-metrics-readiness-packet.v1",
+    generatedAt: typeof value.generatedAt === "string" ? value.generatedAt : "",
+    label: typeof value.label === "string" ? value.label : "",
+    ownerDate: typeof value.ownerDate === "string" ? value.ownerDate : "",
+    evidenceLink: typeof value.evidenceLink === "string" ? value.evidenceLink : "",
+    evidence,
+  }
+}
+
+function productMetricsReadinessPacketAttempted(packet: ProductMetricsReadinessPacket): boolean {
+  return packetLabelIndicatesAttemptedEvidence(packet.label)
+    || packet.ownerDate.trim().length > 0
+    || packet.evidenceLink.trim().length > 0
+    || PRODUCT_METRICS_READINESS_EVIDENCE_KEYS.some((key) => packet.evidence[key])
+}
+
+function isSpecificProductMetricsReadinessLabel(value: string): boolean {
+  if (value.trim() !== value || isPlaceholderEvidenceReference(value)) return false
+  const normalizedValue = value.toLowerCase()
+  const namesProductMetricsReadiness = /\b(?:product metrics|metrics readiness|metric readiness|telemetry readiness)\b/.test(normalizedValue)
+  const namesTargetReleaseContext = /\b(?:target|release|rc|final gate|production|cohort)\b/.test(normalizedValue)
+  return namesProductMetricsReadiness && namesTargetReleaseContext
+}
+
+function validateProductMetricsReadinessPacketPreclaim(packet: ProductMetricsReadinessPacket, findings: string[]): void {
+  if (!productMetricsReadinessPacketAttempted(packet)) {
+    return
+  }
+
+  if (isPlaceholderEvidenceReference(packet.label)) {
+    findings.push("productMetricsReadinessPacket.label: placeholder readiness labels are not allowed once readiness evidence is attempted.")
+  } else if (!isSpecificProductMetricsReadinessLabel(packet.label)) {
+    findings.push("productMetricsReadinessPacket.label: attempted readiness evidence label must identify product metrics readiness and target release context.")
+  }
+  if (!hasOwnerIdentityWithIsoDate(packet.ownerDate)) {
+    findings.push("productMetricsReadinessPacket.ownerDate: attempted readiness evidence must identify a real owner and include YYYY-MM-DD.")
+  }
+  if (packet.evidenceLink && isPlaceholderEvidenceReference(packet.evidenceLink)) {
+    findings.push("productMetricsReadinessPacket.evidenceLink: placeholder evidence links are not allowed.")
+  } else if (!isEvidenceLikeReference(packet.evidenceLink)) {
+    findings.push("productMetricsReadinessPacket.evidenceLink: attempted readiness evidence must be a URL or repo artifact path.")
+  } else {
+    validateExistingEvidenceReference(packet.evidenceLink, "productMetricsReadinessPacket.evidenceLink", findings)
+  }
+
+  const readinessDecision = evaluateAstraProductMetricsReadiness(packet.evidence)
+  if (!readinessDecision.ready) {
+    findings.push("productMetricsReadinessPacket: attempted product metrics readiness evidence must satisfy evaluateAstraProductMetricsReadiness() before it can remain in the final evidence packet.")
+    for (const finding of readinessDecision.findings) {
+      findings.push(`productMetricsReadinessPacket ${finding.message}`)
+    }
+  }
+}
+
+function validateProductMetricsReadinessExportEvidenceDistinct(
+  productionMetricsExportPacket: ProductionMetricsExportPacket,
+  productMetricsReadinessPacket: ProductMetricsReadinessPacket,
+  findings: string[],
+): void {
+  if (productionMetricsExportPacket.rows.length === 0 || !productMetricsReadinessPacketAttempted(productMetricsReadinessPacket)) {
+    return
+  }
+  if (!isEvidenceLikeReference(productMetricsReadinessPacket.evidenceLink)) {
+    return
+  }
+
+  const readinessEvidenceIdentity = evidenceReferenceDuplicateIdentity(productMetricsReadinessPacket.evidenceLink)
+  for (const row of productionMetricsExportPacket.rows) {
+    for (const field of ["evidenceLink", "privacyReviewLink"] as const) {
+      if (isEvidenceLikeReference(row[field]) && evidenceReferenceDuplicateIdentity(row[field]) === readinessEvidenceIdentity) {
+        findings.push(`productMetricsReadinessPacket.evidenceLink: readiness evidence must be distinct from productionMetricsExportPacket.rows.${row.category}.${field}.`)
+      }
+    }
+  }
+}
+
 function validateProductionMetricsExportPacketPreclaimRows(packet: ProductionMetricsExportPacket, findings: string[]): void {
   const expectedCategories = new Set<string>(ASTRA_PRODUCTION_METRIC_EXPORT_REQUIREMENTS.map((requirement) => requirement.category))
   const seenCategories = new Set<string>()
 
   for (const row of packet.rows) {
-    if (!expectedCategories.has(row.category)) {
+    const normalizedCategory = row.category.trim()
+    const categoryIdentity = normalizedCategory.toLowerCase()
+    const canonicalCategory = ASTRA_PRODUCTION_METRIC_EXPORT_REQUIREMENTS.find(
+      (requirement) => requirement.category.toLowerCase() === categoryIdentity,
+    )?.category
+    if (normalizedCategory !== row.category || (canonicalCategory !== undefined && canonicalCategory !== row.category)) {
+      findings.push(`productionMetricsExportPacket.rows.${row.category}: category must use canonical casing without surrounding whitespace.`)
+    }
+    if (canonicalCategory === undefined || !expectedCategories.has(canonicalCategory)) {
       findings.push(`productionMetricsExportPacket.rows.${row.category}: untracked production metrics export category.`)
     }
-    if (seenCategories.has(row.category)) {
+    if (seenCategories.has(categoryIdentity)) {
       findings.push(`productionMetricsExportPacket.rows.${row.category}: duplicate production metrics export row.`)
     }
-    seenCategories.add(row.category)
+    seenCategories.add(categoryIdentity)
 
     for (const field of ["evidenceLink", "privacyReviewLink"] as const) {
       if (row[field] && isPlaceholderEvidenceReference(row[field])) {
         findings.push(`productionMetricsExportPacket.rows.${row.category}.${field}: placeholder evidence links are not allowed.`)
+      } else {
+        validateExistingEvidenceReference(row[field], `productionMetricsExportPacket.rows.${row.category}.${field}`, findings)
       }
     }
     for (const field of ["cohortDefinition", "dashboardOrQuerySource"] as const) {
@@ -1540,17 +1848,18 @@ function validateProductionMetricsExportPacketPreclaimRows(packet: ProductionMet
         findings.push(`productionMetricsExportPacket.rows.${row.category}.${field}: real cohort/source evidence is required.`)
       }
     }
-    for (const field of ["exportId", "queryVersion"] as const) {
-      if (row[field] && isWeakDigestReference(row[field])) {
-        findings.push(`productionMetricsExportPacket.rows.${row.category}.${field}: stable non-weak identity/version is required.`)
-      }
+    if (row.exportId && !isStableExportIdentityReference(row.exportId)) {
+      findings.push(`productionMetricsExportPacket.rows.${row.category}.exportId: stable non-weak export identity is required.`)
+    }
+    if (row.queryVersion && !isStableQueryVersionReference(row.queryVersion)) {
+      findings.push(`productionMetricsExportPacket.rows.${row.category}.queryVersion: stable non-weak query version is required.`)
     }
     if (row.exportDigest && isWeakDigestReference(row.exportDigest)) {
       findings.push(`productionMetricsExportPacket.rows.${row.category}.exportDigest: stable non-weak digest/checksum is required.`)
     }
   }
 
-  if (packet.rows.length > 0) {
+  if (packet.rows.length > 0 || packetLabelIndicatesAttemptedEvidence(packet.label)) {
     const metricsDecision = evaluateAstraProductionMetricsExportPacket(
       packet.rows as Parameters<typeof evaluateAstraProductionMetricsExportPacket>[0],
     )
@@ -1563,28 +1872,61 @@ function validateProductionMetricsExportPacketPreclaimRows(packet: ProductionMet
   }
 }
 
-function parseManualQaChecklistRows(markdown: string, findings: string[]): ManualQaChecklistRow[] {
-  return markdown
-    .split("\n## Section ")
-    .slice(1)
-    .flatMap((block) => {
-      const section = Number(block.match(/^(\d+)/)?.[1])
-      if (!Number.isFinite(section)) {
-        findings.push(`${MANUAL_QA_CHECKLIST_PATH}: could not parse section heading.`)
-        return []
-      }
+function manualQaChecklistDataLines(markdown: string): Array<{ section: number; line: string }> {
+  const dataLines: Array<{ section: number; line: string }> = []
+  let activeFenceMarker: string | null = null
+  let activeSection: number | null = null
+  let activeHtmlComment = false
 
-      return block
-        .split("\n")
-        .filter((line) => line.startsWith("| ") && !line.startsWith("| QA row ") && !line.startsWith("|---"))
-        .map((line) => line.trim().replace(/^\|/, "").replace(/\|$/, "").split("|").map((cell) => cell.trim()))
-        .map((cells) => {
-          if (cells.length !== 7) {
-            findings.push(`${MANUAL_QA_CHECKLIST_PATH} Section ${section}: expected 7 table cells, got ${cells.length}.`)
-          }
-          const [qaRow = "", , , ownerDate = "", environment = "", evidenceLink = "", verdict = ""] = cells
-          return { section, qaRow, ownerDate, environment, evidenceLink, verdict }
-        })
+  for (const line of markdown.split("\n")) {
+    const trimmedLine = line.trim()
+    if (activeHtmlComment) {
+      if (trimmedLine.includes("-->")) activeHtmlComment = false
+      continue
+    }
+    if (trimmedLine.startsWith("<!--")) {
+      if (!trimmedLine.includes("-->")) activeHtmlComment = true
+      continue
+    }
+    const fenceMatch = /^(?<marker>`{3,}|~{3,})/.exec(trimmedLine)
+    if (fenceMatch?.groups?.marker) {
+      const marker = fenceMatch.groups.marker
+      if (activeFenceMarker === null) {
+        activeFenceMarker = marker
+        continue
+      }
+      if (marker[0] === activeFenceMarker[0] && marker.length >= activeFenceMarker.length) {
+        activeFenceMarker = null
+      }
+      continue
+    }
+    if (activeFenceMarker !== null || trimmedLine.startsWith(">") || /^(?: {4,}|\t)/.test(line)) {
+      continue
+    }
+
+    const sectionMatch = /^## Section (?<section>\d+)\b/.exec(trimmedLine)
+    if (sectionMatch?.groups?.section) {
+      activeSection = Number(sectionMatch.groups.section)
+      continue
+    }
+
+    if (activeSection !== null && line.startsWith("| ") && !line.startsWith("| QA row ") && !line.startsWith("|---")) {
+      dataLines.push({ section: activeSection, line })
+    }
+  }
+
+  return dataLines
+}
+
+function parseManualQaChecklistRows(markdown: string, findings: string[]): ManualQaChecklistRow[] {
+  return manualQaChecklistDataLines(markdown)
+    .map(({ section, line }) => {
+      const cells = line.trim().replace(/^\|/, "").replace(/\|$/, "").split("|").map((cell) => cell.trim())
+      if (cells.length !== 7) {
+        findings.push(`${MANUAL_QA_CHECKLIST_PATH} Section ${section}: expected 7 table cells, got ${cells.length}.`)
+      }
+      const [qaRow = "", , , ownerDate = "", environment = "", evidenceLink = "", verdict = ""] = cells
+      return { section, qaRow, ownerDate, environment, evidenceLink, verdict }
     })
 }
 
@@ -1593,22 +1935,27 @@ function validateManualQaRows(rows: ManualQaChecklistRow[], findings: string[]):
     findings.push(`${MANUAL_QA_CHECKLIST_PATH}: expected at least one QA row.`)
   }
 
-  const expectedRows = new Set(
+  const expectedRowsByIdentity = new Map<string, { section: number; qaRow: string }>(
     ASTRA_MACRO_MANUAL_QA_REQUIREMENTS.flatMap((requirement) =>
-      requirement.qaRows.map((qaRow) => `${requirement.section}\u0000${qaRow}`),
+      requirement.qaRows.map((qaRow) => [`${requirement.section}\u0000${qaRow.trim().toLowerCase()}`, { section: requirement.section, qaRow }] as const),
     ),
   )
   const seenRows = new Set<string>()
 
   for (const row of rows) {
-    const rowKey = `${row.section}\u0000${row.qaRow}`
-    if (!expectedRows.has(rowKey)) {
+    const normalizedQaRow = row.qaRow.trim()
+    const rowIdentity = `${row.section}\u0000${normalizedQaRow.toLowerCase()}`
+    const canonicalRow = expectedRowsByIdentity.get(rowIdentity)
+    if (normalizedQaRow !== row.qaRow || (canonicalRow !== undefined && canonicalRow.qaRow !== row.qaRow)) {
+      findings.push(`Section ${row.section} / ${row.qaRow}: manual QA row text must use canonical casing without surrounding whitespace.`)
+    }
+    if (!canonicalRow) {
       findings.push(`Section ${row.section} / ${row.qaRow}: untracked manual QA row.`)
     }
-    if (seenRows.has(rowKey)) {
+    if (seenRows.has(rowIdentity)) {
       findings.push(`Section ${row.section} / ${row.qaRow}: duplicate manual QA row.`)
     }
-    seenRows.add(rowKey)
+    seenRows.add(rowIdentity)
 
     if (!ALLOWED_MANUAL_QA_VERDICTS.has(row.verdict)) {
       findings.push(`Section ${row.section} / ${row.qaRow}: unsupported verdict \`${row.verdict}\`.`)
@@ -1623,13 +1970,13 @@ function validateManualQaRows(rows: ManualQaChecklistRow[], findings: string[]):
 
     if (!row.ownerDate) {
       findings.push(`Section ${row.section} / ${row.qaRow}: non-not-run row requires owner/date.`)
-    } else if (!includesIsoDate(row.ownerDate)) {
-      findings.push(`Section ${row.section} / ${row.qaRow}: non-not-run row owner/date must include a YYYY-MM-DD date.`)
+    } else if (!hasOwnerIdentityWithIsoDate(row.ownerDate)) {
+      findings.push(`Section ${row.section} / ${row.qaRow}: non-not-run row owner/date must identify a real owner and include a YYYY-MM-DD date.`)
     }
     if (!row.environment) {
       findings.push(`Section ${row.section} / ${row.qaRow}: non-not-run row requires environment.`)
-    } else if (isWeakContextEvidenceReference(row.environment)) {
-      findings.push(`Section ${row.section} / ${row.qaRow}: non-not-run row requires real browser/build environment.`)
+    } else if (isWeakContextEvidenceReference(row.environment) || !isSpecificManualQaEnvironment(row.environment, row.section, row.qaRow)) {
+      findings.push(`Section ${row.section} / ${row.qaRow}: non-not-run row requires real browser, OS, build/runtime, and row-specific QA context.`)
     }
     if (!row.evidenceLink) {
       findings.push(`Section ${row.section} / ${row.qaRow}: non-not-run row requires evidence link.`)
@@ -1637,12 +1984,14 @@ function validateManualQaRows(rows: ManualQaChecklistRow[], findings: string[]):
       findings.push(`Section ${row.section} / ${row.qaRow}: non-not-run row uses placeholder evidence link.`)
     } else if (!isEvidenceLikeReference(row.evidenceLink)) {
       findings.push(`Section ${row.section} / ${row.qaRow}: non-not-run row evidence link must be a URL or repo artifact path.`)
+    } else {
+      validateExistingEvidenceReference(row.evidenceLink, `Section ${row.section} / ${row.qaRow} evidence link`, findings)
     }
   }
 
   for (const requirement of ASTRA_MACRO_MANUAL_QA_REQUIREMENTS) {
     for (const qaRow of requirement.qaRows) {
-      const rowKey = `${requirement.section}\u0000${qaRow}`
+      const rowKey = `${requirement.section}\u0000${qaRow.trim().toLowerCase()}`
       if (!seenRows.has(rowKey)) {
         findings.push(`Section ${requirement.section} / ${qaRow}: required manual QA row is missing from checklist structure.`)
       }
@@ -1680,65 +2029,26 @@ function validateFinalEvidenceIntakeDoc(markdown: string, findings: string[]): v
 
 async function main(): Promise<void> {
   const findings: string[] = []
-  const artifactText = await readFile(FINAL_COMPLETION_EVIDENCE_PATH, "utf8")
-  const gateText = await readFile(FINAL_COMPLETION_GATE_PATH, "utf8")
-  const finalEvidenceIntakeText = await readFile(FINAL_EVIDENCE_INTAKE_PATH, "utf8")
-  const checklistText = await readFile(MANUAL_QA_CHECKLIST_PATH, "utf8")
-  const operationalCompletionPacketText = await readFile(OPERATIONAL_COMPLETION_PACKET_PATH, "utf8")
-  const ciArtifactPacketText = await readFile(CI_ARTIFACT_PACKET_PATH, "utf8")
-  const ownerReleaseApprovalPacketText = await readFile(OWNER_RELEASE_APPROVAL_PACKET_PATH, "utf8")
-  const launchArtifactPacketText = await readFile(LAUNCH_ARTIFACT_PACKET_PATH, "utf8")
-  const aiQualityHumanScoredPacketText = await readFile(AI_QUALITY_HUMAN_SCORED_PACKET_PATH, "utf8")
-  const productionMetricsExportPacketText = await readFile(PRODUCTION_METRICS_EXPORT_PACKET_PATH, "utf8")
+  const artifactText = await readFile(repoPath(FINAL_COMPLETION_EVIDENCE_PATH), "utf8")
+  const gateText = await readFile(repoPath(FINAL_COMPLETION_GATE_PATH), "utf8")
+  const finalEvidenceIntakeText = await readFile(repoPath(FINAL_EVIDENCE_INTAKE_PATH), "utf8")
+  const checklistText = await readFile(repoPath(MANUAL_QA_CHECKLIST_PATH), "utf8")
+  const operationalCompletionPacketText = await readFile(repoPath(OPERATIONAL_COMPLETION_PACKET_PATH), "utf8")
+  const ciArtifactPacketText = await readFile(repoPath(CI_ARTIFACT_PACKET_PATH), "utf8")
+  const ownerReleaseApprovalPacketText = await readFile(repoPath(OWNER_RELEASE_APPROVAL_PACKET_PATH), "utf8")
+  const launchArtifactPacketText = await readFile(repoPath(LAUNCH_ARTIFACT_PACKET_PATH), "utf8")
+  const aiQualityHumanScoredPacketText = await readFile(repoPath(AI_QUALITY_HUMAN_SCORED_PACKET_PATH), "utf8")
+  const productionMetricsExportPacketText = await readFile(repoPath(PRODUCTION_METRICS_EXPORT_PACKET_PATH), "utf8")
+  const productMetricsReadinessPacketText = await readFile(repoPath(PRODUCT_METRICS_READINESS_PACKET_PATH), "utf8")
 
-  let parsedArtifact: unknown
-  try {
-    parsedArtifact = JSON.parse(artifactText)
-  } catch (error) {
-    findings.push(`${FINAL_COMPLETION_EVIDENCE_PATH}: invalid JSON: ${(error as Error).message}`)
-  }
-
-  let parsedOperationalCompletionPacket: unknown
-  try {
-    parsedOperationalCompletionPacket = JSON.parse(operationalCompletionPacketText)
-  } catch (error) {
-    findings.push(`${OPERATIONAL_COMPLETION_PACKET_PATH}: invalid JSON: ${(error as Error).message}`)
-  }
-
-  let parsedCiArtifactPacket: unknown
-  try {
-    parsedCiArtifactPacket = JSON.parse(ciArtifactPacketText)
-  } catch (error) {
-    findings.push(`${CI_ARTIFACT_PACKET_PATH}: invalid JSON: ${(error as Error).message}`)
-  }
-
-  let parsedOwnerReleaseApprovalPacket: unknown
-  try {
-    parsedOwnerReleaseApprovalPacket = JSON.parse(ownerReleaseApprovalPacketText)
-  } catch (error) {
-    findings.push(`${OWNER_RELEASE_APPROVAL_PACKET_PATH}: invalid JSON: ${(error as Error).message}`)
-  }
-
-  let parsedLaunchArtifactPacket: unknown
-  try {
-    parsedLaunchArtifactPacket = JSON.parse(launchArtifactPacketText)
-  } catch (error) {
-    findings.push(`${LAUNCH_ARTIFACT_PACKET_PATH}: invalid JSON: ${(error as Error).message}`)
-  }
-
-  let parsedAiQualityHumanScoredPacket: unknown
-  try {
-    parsedAiQualityHumanScoredPacket = JSON.parse(aiQualityHumanScoredPacketText)
-  } catch (error) {
-    findings.push(`${AI_QUALITY_HUMAN_SCORED_PACKET_PATH}: invalid JSON: ${(error as Error).message}`)
-  }
-
-  let parsedProductionMetricsExportPacket: unknown
-  try {
-    parsedProductionMetricsExportPacket = JSON.parse(productionMetricsExportPacketText)
-  } catch (error) {
-    findings.push(`${PRODUCTION_METRICS_EXPORT_PACKET_PATH}: invalid JSON: ${(error as Error).message}`)
-  }
+  const parsedArtifact = parseJsonEvidence(artifactText, FINAL_COMPLETION_EVIDENCE_PATH, findings)
+  const parsedOperationalCompletionPacket = parseJsonEvidence(operationalCompletionPacketText, OPERATIONAL_COMPLETION_PACKET_PATH, findings)
+  const parsedCiArtifactPacket = parseJsonEvidence(ciArtifactPacketText, CI_ARTIFACT_PACKET_PATH, findings)
+  const parsedOwnerReleaseApprovalPacket = parseJsonEvidence(ownerReleaseApprovalPacketText, OWNER_RELEASE_APPROVAL_PACKET_PATH, findings)
+  const parsedLaunchArtifactPacket = parseJsonEvidence(launchArtifactPacketText, LAUNCH_ARTIFACT_PACKET_PATH, findings)
+  const parsedAiQualityHumanScoredPacket = parseJsonEvidence(aiQualityHumanScoredPacketText, AI_QUALITY_HUMAN_SCORED_PACKET_PATH, findings)
+  const parsedProductionMetricsExportPacket = parseJsonEvidence(productionMetricsExportPacketText, PRODUCTION_METRICS_EXPORT_PACKET_PATH, findings)
+  const parsedProductMetricsReadinessPacket = parseJsonEvidence(productMetricsReadinessPacketText, PRODUCT_METRICS_READINESS_PACKET_PATH, findings)
 
   const artifact = validateEvidenceArtifact(parsedArtifact, findings)
   const operationalCompletionPacket = validateOperationalEvidenceCompletionPacket(parsedOperationalCompletionPacket, findings)
@@ -1747,6 +2057,7 @@ async function main(): Promise<void> {
   const launchArtifactPacket = validateLaunchArtifactPacket(parsedLaunchArtifactPacket, findings)
   const aiQualityHumanScoredPacket = validateAiQualityHumanScoredPacket(parsedAiQualityHumanScoredPacket, findings)
   const productionMetricsExportPacket = validateProductionMetricsExportPacket(parsedProductionMetricsExportPacket, findings)
+  const productMetricsReadinessPacket = validateProductMetricsReadinessPacket(parsedProductMetricsReadinessPacket, findings)
   validateFinalEvidenceIntakeDoc(finalEvidenceIntakeText, findings)
   if (operationalCompletionPacket) {
     validateOperationalCompletionPacketPreclaimRows(operationalCompletionPacket, findings)
@@ -1765,6 +2076,12 @@ async function main(): Promise<void> {
   }
   if (productionMetricsExportPacket) {
     validateProductionMetricsExportPacketPreclaimRows(productionMetricsExportPacket, findings)
+  }
+  if (productMetricsReadinessPacket) {
+    validateProductMetricsReadinessPacketPreclaim(productMetricsReadinessPacket, findings)
+  }
+  if (productionMetricsExportPacket && productMetricsReadinessPacket) {
+    validateProductMetricsReadinessExportEvidenceDistinct(productionMetricsExportPacket, productMetricsReadinessPacket, findings)
   }
   validateCrossPacketTargetCommitConsistency(ciArtifactPacket, ownerReleaseApprovalPacket, findings)
   const manualRows = parseManualQaChecklistRows(checklistText, findings)
@@ -1855,6 +2172,17 @@ async function main(): Promise<void> {
           findings.push("artifact.evidence.productionMetricsExportAttached: cannot be true until evaluateAstraProductionMetricsExportPacket() accepts the production metrics export packet.")
           for (const finding of metricsDecision.findings) {
             findings.push(`productionMetricsExportPacket ${finding.message}`)
+          }
+        }
+      }
+      if (!productMetricsReadinessPacket) {
+        findings.push("artifact.evidence.productionMetricsExportAttached: cannot be true without a valid product metrics readiness packet.")
+      } else {
+        const readinessDecision = evaluateAstraProductMetricsReadiness(productMetricsReadinessPacket.evidence)
+        if (!readinessDecision.ready) {
+          findings.push("artifact.evidence.productionMetricsExportAttached: cannot be true until evaluateAstraProductMetricsReadiness() accepts the product metrics readiness packet.")
+          for (const finding of readinessDecision.findings) {
+            findings.push(`productMetricsReadinessPacket ${finding.message}`)
           }
         }
       }

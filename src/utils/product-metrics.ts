@@ -1,3 +1,5 @@
+import { evidenceReferenceDuplicateIdentity, isEvidenceLikeReference } from "./evidence-reference"
+
 export type AstraMetricQuestionId =
   | "where_users_drop_off"
   | "which_entry_used_most"
@@ -54,7 +56,10 @@ export type AstraProductionMetricExportFindingCode =
   | "duplicate_category"
   | "unknown_category"
   | "duplicate_export_id"
+  | "duplicate_export_digest"
   | "duplicate_evidence_link"
+  | "duplicate_privacy_review_link"
+  | "duplicate_evidence_role_link"
   | "missing_date_range"
   | "invalid_date_range"
   | "missing_cohort_definition"
@@ -79,6 +84,7 @@ export type AstraProductionMetricExportFindingCode =
   | "invalid_owner_date"
   | "missing_privacy_review"
   | "invalid_privacy_review_link"
+  | "mismatched_category_evidence"
   | "inconsistent_date_range"
   | "inconsistent_cohort_definition"
 
@@ -272,6 +278,7 @@ function isPlaceholderEvidenceReference(value: string): boolean {
     || normalizedValue.includes("placeholder")
     || normalizedValue.includes("todo")
     || /\b(?:mock|draft|tbd|pending|temp|temporary)\b/.test(normalizedValue)
+    || /\b(?:(?:fake|dummy|latest|dev|local)[-_ ]?(?:proof|evidence|artifact|report)|(?<!provider[-_ ])sample[-_ ]?(?:proof|evidence|artifact|report)|(?:proof|evidence|artifact|report)[-_ ]?(?:sample|fake|dummy|latest|dev|local))\b/.test(normalizedValue)
 }
 
 function hasWeakEvidenceKeyword(value: string): boolean {
@@ -283,11 +290,55 @@ function isWeakContextEvidenceReference(value: string): boolean {
   return isPlaceholderEvidenceReference(normalizedValue) || hasWeakEvidenceKeyword(normalizedValue)
 }
 
+function isSpecificProductionMetricsCohort(value: string): boolean {
+  if (value.trim() !== value || isWeakContextEvidenceReference(value)) return false
+  const normalizedValue = value.toLowerCase()
+  const namesCohortScope = /\b(?:cohort|segment|population|release|rc|production|rollout)\b/.test(normalizedValue)
+  const hasAuditSpecificity = /\b(?:target|current commit|commit|sha|build|rc|release[-_ ]?(?:candidate|id|tag)|cohort[-_ ]?(?:id|v?\d)|segment[-_ ]?[a-z0-9]+|20\d{2}-\d{2}-\d{2}|v\d+(?:\.\d+){1,2})\b/.test(normalizedValue)
+  return namesCohortScope && hasAuditSpecificity
+}
+
+function isSpecificProductionMetricsSource(value: string): boolean {
+  if (value.trim() !== value || isWeakContextEvidenceReference(value)) return false
+  const normalizedValue = value.toLowerCase()
+  const namesMetricSource = /\b(?:warehouse|query|dashboard|analytics|export|looker|mode|metabase|bigquery|snowflake|redash)\b/.test(normalizedValue)
+  const hasStableSourceDetail = isEvidenceLikeReference(value)
+    || /(?:^|[^a-z0-9])(?:v\d+(?:\.\d+){0,2}|\d{4,}|20\d{2}-\d{2}-\d{2}|query[-_. ]?[a-z0-9]*\d|dashboard[-_. ]?[a-z0-9]*\d|export[-_. ]?[a-z0-9]*\d|metrics[-_. ]?[a-z0-9]*\d)\b/.test(normalizedValue)
+  return namesMetricSource && hasStableSourceDetail
+}
+
+function hasProductionMetricCategoryContext(value: string, category: AstraMetricCategoryId): boolean {
+  const candidates = [value]
+  try {
+    candidates.push(decodeURIComponent(value))
+  } catch {
+    // Malformed percent-encoding is rejected by evidence-reference validation where applicable.
+  }
+  const normalizedCandidates = candidates.map((candidate) => candidate
+    .toLowerCase()
+    .replace(/[_./:-]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim())
+  return normalizedCandidates.some((normalizedValue) => {
+    if (new RegExp(`\\b${category}\\b`).test(normalizedValue)) return true
+    switch (category) {
+      case "activation":
+        return /\b(?:onboarding|first value|first run|drop off|funnel|install|installed|signed in)\b/.test(normalizedValue)
+      case "understanding":
+        return /\b(?:understanding|latency|failure|retry|stopped|deeper explanation|quality speed)\b/.test(normalizedValue)
+      case "learning":
+        return /\b(?:learning|saved|review|cards|source return|weekly active learner|srs)\b/.test(normalizedValue)
+      case "membership":
+        return /\b(?:membership|paywall|conversion|trial|pro value|renewal|cancellation)\b/.test(normalizedValue)
+    }
+  })
+}
+
 function evidenceIdentityValue(value: string): string {
   return value
     .trim()
     .toLowerCase()
-    .replace(/^(?:sha(?:256|384|512)?|checksum|digest|version|build|artifact|export|query)[:=/ -]+/, "")
+      .replace(/^(?:(?:sha(?:256|384|512)?|checksum|digest|version|build|artifact|export|query|id)[:=/ -]+)+/, "")
 }
 
 function isWeakDigestReference(value: string): boolean {
@@ -300,19 +351,72 @@ function isWeakDigestReference(value: string): boolean {
     || hasWeakEvidenceKeyword(normalizedValue)
 }
 
+function isStableDigestReference(value: string): boolean {
+  if (value.trim() !== value || isWeakDigestReference(value)) return false
+  const normalizedValue = value.trim().toLowerCase()
+  const identityValue = evidenceIdentityValue(value)
+  const compactValue = identityValue.replace(/[^a-f0-9]/g, "")
+  const hasDigestPrefix = /^(?:sha(?:256|384|512)?|checksum|digest)[:=/ -]+/.test(normalizedValue)
+  return hasDigestPrefix && compactValue === identityValue.replace(/[^a-z0-9]/g, "") && /^(?:[a-f0-9]{32}|[a-f0-9]{40}|[a-f0-9]{64}|[a-f0-9]{96}|[a-f0-9]{128})$/.test(compactValue)
+}
+
+function hasNonWeakIdentityCore(value: string): boolean {
+  const compactValue = value.replace(/[^a-z0-9]/g, "")
+  return /\d/.test(compactValue) && !/^0+$/.test(compactValue) && !/^([a-z0-9])\1+$/.test(compactValue)
+}
+
+function isUuidReference(value: string): boolean {
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value.trim())
+}
+
+function isPrefixedNumericIdentityReference(value: string): boolean {
+  const normalizedValue = value.trim().toLowerCase()
+  if (!/^[a-z][a-z0-9]*(?:[-_.:][a-z0-9]+)+$/.test(normalizedValue)) return false
+  const numericParts = normalizedValue.match(/\d+/g) ?? []
+  return numericParts.some((part) => part.length >= 4 && !/^0+$/.test(part))
+}
+
+function isDateStampedIdentityReference(value: string): boolean {
+  const normalizedValue = value.trim().toLowerCase()
+  return /[a-z]/.test(normalizedValue) && includesIsoDate(normalizedValue)
+}
+
 function isStableExportIdentityReference(value: string): boolean {
   const normalizedValue = value.trim().toLowerCase()
-  const compactValue = evidenceIdentityValue(value).replace(/[^a-z0-9]/g, "")
-  return compactValue.length >= 4
-    && /\d/.test(compactValue)
-    && !/^0+$/.test(compactValue)
-    && !/^([a-z0-9])\1+$/.test(compactValue)
-    && !isWeakContextEvidenceReference(normalizedValue)
+  if (isWeakContextEvidenceReference(normalizedValue)) return false
+
+  const identityValue = evidenceIdentityValue(value)
+  const compactValue = identityValue.replace(/[^a-z0-9]/g, "")
+  if (!hasNonWeakIdentityCore(identityValue)) return false
+  return compactValue.length >= 12
+    || isUuidReference(identityValue)
+    || isPrefixedNumericIdentityReference(identityValue)
+    || isDateStampedIdentityReference(identityValue)
+}
+
+function isStableQueryVersionReference(value: string): boolean {
+  if (isStableExportIdentityReference(value)) return true
+  const identityValue = evidenceIdentityValue(value)
+  if (isWeakContextEvidenceReference(identityValue)) return false
+  return /^v?\d+\.\d+\.\d+(?:[-+][a-z0-9.-]+)?$/i.test(identityValue)
+    || (/^20\d{2}-\d{2}-\d{2}$/.test(identityValue) && includesIsoDate(identityValue))
 }
 
 function includesIsoDate(value: string): boolean {
   const match = /\b(20\d{2}-\d{2}-\d{2})\b/.exec(value)
   return match ? parseIsoDate(match[1]) !== null : false
+}
+
+function hasOwnerIdentityWithIsoDate(value: string): boolean {
+  if (value.trim() !== value || !includesIsoDate(value) || isWeakContextEvidenceReference(value)) return false
+  const ownerText = value
+    .replace(/\b20\d{2}-\d{2}-\d{2}\b/g, " ")
+    .replace(/[—–:|/(),._-]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+  const ownerIdentity = ownerText.toLowerCase()
+  if (/^(?:owner|release owner|qa owner|tester|metrics owner)$/.test(ownerIdentity)) return false
+  return /[a-z][a-z0-9@.-]{1,}/i.test(ownerText)
 }
 
 function parseIsoDate(value: string): number | null {
@@ -331,7 +435,8 @@ function parseIsoDate(value: string): number | null {
 }
 
 function isIsoDateRange(value: string): boolean {
-  const [startText, endText] = value.trim().split("..")
+  if (value.trim() !== value) return false
+  const [startText, endText] = value.split("..")
   if (!startText || !endText) return false
   const start = parseIsoDate(startText)
   const end = parseIsoDate(endText)
@@ -339,50 +444,10 @@ function isIsoDateRange(value: string): boolean {
 }
 
 function isIsoTimestamp(value: string): boolean {
-  const trimmedValue = value.trim()
-  if (!/^20\d{2}-\d{2}-\d{2}T/.test(trimmedValue) || Number.isNaN(Date.parse(trimmedValue))) {
+  if (!/^20\d{2}-\d{2}-\d{2}T(?:[01]\d|2[0-3]):[0-5]\d:[0-5]\d(?:\.\d{1,9})?(?:Z|[+-](?:[01]\d|2[0-3]):[0-5]\d)$/.test(value) || Number.isNaN(Date.parse(value))) {
     return false
   }
-  return parseIsoDate(trimmedValue.slice(0, 10)) !== null
-}
-
-function isEvidenceLikeReference(value: string): boolean {
-  const trimmedValue = value.trim()
-  if (/^https?:\/\//.test(trimmedValue)) return /^https:\/\//.test(trimmedValue) && !isLocalUrlReference(trimmedValue)
-  return isRepoArtifactPathReference(trimmedValue)
-}
-
-function isRepoArtifactPathReference(value: string): boolean {
-  if (!/^(docs\/|data\/|artifacts\/|test-results\/|playwright-report\/)/.test(value)) return false
-  if (value.startsWith("/") || value.includes("\\") || value.includes("?") || value.includes("#") || /%(?:2e|2f|5c)/i.test(value)) return false
-
-  const segments = value.split("/")
-  return segments.every((segment) => segment.length > 0 && segment !== "." && segment !== "..")
-}
-
-function isLocalUrlReference(value: string): boolean {
-  try {
-    const hostname = new URL(value).hostname.toLowerCase()
-    return hostname.length === 0
-      || hostname === "localhost"
-      || hostname.endsWith(".localhost")
-      || hostname === "0.0.0.0"
-      || /^127(?:\.\d{1,3}){3}$/.test(hostname)
-      || /^10(?:\.\d{1,3}){3}$/.test(hostname)
-      || /^192\.168(?:\.\d{1,3}){2}$/.test(hostname)
-      || /^172\.(?:1[6-9]|2\d|3[0-1])(?:\.\d{1,3}){2}$/.test(hostname)
-      || /^169\.254(?:\.\d{1,3}){2}$/.test(hostname)
-      || isPrivateIpv6Hostname(hostname)
-  } catch {
-    return true
-  }
-}
-
-function isPrivateIpv6Hostname(hostname: string): boolean {
-  const normalizedHostname = hostname.replace(/^\[|\]$/g, "")
-  return normalizedHostname === "::1"
-    || /^f[cd][0-9a-f]{2}:/i.test(normalizedHostname)
-    || /^fe[89ab][0-9a-f]:/i.test(normalizedHostname)
+  return parseIsoDate(value.slice(0, 10)) !== null
 }
 
 export function evaluateAstraProductionMetricsExportPacket(
@@ -391,12 +456,25 @@ export function evaluateAstraProductionMetricsExportPacket(
   const findings: AstraProductionMetricExportFinding[] = []
   const rowsByCategory = new Map<AstraMetricCategoryId, AstraProductionMetricExportEvidenceRow>()
   const expectedCategories = new Set(ASTRA_PRODUCTION_METRIC_EXPORT_REQUIREMENTS.map((requirement) => requirement.category))
-  const metricById = new Map(ASTRA_PRODUCT_METRICS.map((metric) => [metric.id, metric]))
+  const metricByIdentity = new Map(ASTRA_PRODUCT_METRICS.map((metric) => [metric.id.toLowerCase(), metric]))
   const seenExportIds = new Map<string, AstraMetricCategoryId>()
+  const seenExportDigests = new Map<string, AstraMetricCategoryId>()
   const seenEvidenceLinks = new Map<string, AstraMetricCategoryId>()
+  const seenPrivacyReviewLinks = new Map<string, AstraMetricCategoryId>()
 
   for (const row of rows) {
-    if (!expectedCategories.has(row.category)) {
+    const normalizedCategory = row.category.trim()
+    const categoryIdentity = normalizedCategory.toLowerCase()
+    const canonicalCategory = ASTRA_PRODUCTION_METRIC_EXPORT_REQUIREMENTS.find((requirement) => requirement.category.toLowerCase() === categoryIdentity)?.category
+    if (normalizedCategory !== row.category || (canonicalCategory !== undefined && canonicalCategory !== row.category)) {
+      findings.push({
+        code: "unknown_category",
+        category: row.category,
+        message: `${row.category} must use canonical production metric export category casing without surrounding whitespace.`,
+        nextStep: "Use activation, understanding, learning, or membership exactly as defined.",
+      })
+    }
+    if (canonicalCategory === undefined || !expectedCategories.has(canonicalCategory)) {
       findings.push({
         code: "unknown_category",
         category: row.category,
@@ -405,7 +483,7 @@ export function evaluateAstraProductionMetricsExportPacket(
       })
       continue
     }
-    if (rowsByCategory.has(row.category)) {
+    if (rowsByCategory.has(canonicalCategory)) {
       findings.push({
         code: "duplicate_category",
         category: row.category,
@@ -415,34 +493,84 @@ export function evaluateAstraProductionMetricsExportPacket(
       continue
     }
     const exportId = row.exportId.trim()
+    const exportIdIdentity = evidenceIdentityValue(row.exportId)
     if (exportId.length > 0) {
-      const existingCategory = seenExportIds.get(exportId)
-      if (existingCategory && existingCategory !== row.category) {
+      const existingCategory = seenExportIds.get(exportIdIdentity)
+      if (existingCategory && existingCategory !== canonicalCategory) {
         findings.push({
           code: "duplicate_export_id",
-          category: row.category,
-          message: `${row.category} production metric export reuses export id ${exportId}.`,
+          category: canonicalCategory,
+          message: `${canonicalCategory} production metric export reuses export id ${exportId}.`,
           nextStep: "Attach one unique export id per category-specific dashboard/query export.",
         })
       }
-      seenExportIds.set(exportId, row.category)
+      seenExportIds.set(exportIdIdentity, canonicalCategory)
+    }
+
+    const exportDigest = row.exportDigest.trim()
+    const exportDigestIdentity = evidenceIdentityValue(row.exportDigest).replace(/[^a-z0-9]/g, "")
+    if (exportDigest.length > 0) {
+      const existingCategory = seenExportDigests.get(exportDigestIdentity)
+      if (existingCategory && existingCategory !== canonicalCategory) {
+        findings.push({
+          code: "duplicate_export_digest",
+          category: canonicalCategory,
+          message: `${canonicalCategory} production metric export reuses export digest ${exportDigest}.`,
+          nextStep: "Attach one unique checksum per category-specific dashboard/query export artifact.",
+        })
+      }
+      seenExportDigests.set(exportDigestIdentity, canonicalCategory)
     }
 
     const evidenceLink = row.evidenceLink.trim()
+    const evidenceLinkIdentity = evidenceReferenceDuplicateIdentity(row.evidenceLink)
     if (evidenceLink.length > 0) {
-      const existingCategory = seenEvidenceLinks.get(evidenceLink)
-      if (existingCategory && existingCategory !== row.category) {
+      const existingCategory = seenEvidenceLinks.get(evidenceLinkIdentity)
+      if (existingCategory && existingCategory !== canonicalCategory) {
         findings.push({
           code: "duplicate_evidence_link",
-          category: row.category,
-          message: `${row.category} production metric export reuses evidence link ${evidenceLink}.`,
+          category: canonicalCategory,
+          message: `${canonicalCategory} production metric export reuses evidence link ${evidenceLink}.`,
           nextStep: "Attach category-specific export evidence so Activation, Understanding, Learning, and Membership proof can be audited independently.",
         })
       }
-      seenEvidenceLinks.set(evidenceLink, row.category)
+      const existingPrivacyCategory = seenPrivacyReviewLinks.get(evidenceLinkIdentity)
+      if (existingPrivacyCategory) {
+        findings.push({
+          code: "duplicate_evidence_role_link",
+          category: canonicalCategory,
+          message: `${canonicalCategory} production metric export reuses privacy-review evidence as export evidence ${evidenceLink}.`,
+          nextStep: "Attach distinct export evidence and privacy-review evidence so metric values and privacy boundaries can be audited independently.",
+        })
+      }
+      seenEvidenceLinks.set(evidenceLinkIdentity, canonicalCategory)
     }
 
-    rowsByCategory.set(row.category, row)
+    const privacyReviewLink = row.privacyReviewLink.trim()
+    const privacyReviewLinkIdentity = evidenceReferenceDuplicateIdentity(row.privacyReviewLink)
+    if (privacyReviewLink.length > 0) {
+      const existingCategory = seenPrivacyReviewLinks.get(privacyReviewLinkIdentity)
+      if (existingCategory && existingCategory !== canonicalCategory) {
+        findings.push({
+          code: "duplicate_privacy_review_link",
+          category: canonicalCategory,
+          message: `${canonicalCategory} production metric export reuses privacy review link ${privacyReviewLink}.`,
+          nextStep: "Attach category-specific privacy review evidence so each production metrics export can be audited independently.",
+        })
+      }
+      const existingEvidenceCategory = seenEvidenceLinks.get(privacyReviewLinkIdentity)
+      if (existingEvidenceCategory) {
+        findings.push({
+          code: "duplicate_evidence_role_link",
+          category: canonicalCategory,
+          message: `${canonicalCategory} production metric export reuses export evidence as privacy review ${privacyReviewLink}.`,
+          nextStep: "Attach distinct export evidence and privacy-review evidence so metric values and privacy boundaries can be audited independently.",
+        })
+      }
+      seenPrivacyReviewLinks.set(privacyReviewLinkIdentity, canonicalCategory)
+    }
+
+    rowsByCategory.set(canonicalCategory, { ...row, category: canonicalCategory })
   }
 
   const dateRanges = new Set(Array.from(rowsByCategory.values()).map((row) => row.dateRange.trim()).filter((dateRange) => dateRange.length > 0))
@@ -484,18 +612,20 @@ export function evaluateAstraProductionMetricsExportPacket(
     }
     if (isBlank(row.cohortDefinition)) {
       findings.push({ code: "missing_cohort_definition", category: row.category, message: `${row.category} export is missing cohort definition.`, nextStep: "Record the release cohort or query cohort definition." })
-    } else if (isWeakContextEvidenceReference(row.cohortDefinition)) {
-      findings.push({ code: "invalid_cohort_definition", category: row.category, message: `${row.category} export cohort definition is placeholder evidence.`, nextStep: "Record the real release cohort or query cohort definition." })
+    } else if (!isSpecificProductionMetricsCohort(row.cohortDefinition)) {
+      findings.push({ code: "invalid_cohort_definition", category: row.category, message: `${row.category} export cohort definition must identify the real release cohort with auditable scope.`, nextStep: "Record the real release cohort or query cohort definition with target, RC/build/commit/date, or equivalent stable cohort detail." })
     }
     if (isBlank(row.dashboardOrQuerySource)) {
       findings.push({ code: "missing_dashboard_or_query_source", category: row.category, message: `${row.category} export is missing dashboard or query source.`, nextStep: "Link or name the dashboard, warehouse query, or analytics export source." })
-    } else if (isWeakContextEvidenceReference(row.dashboardOrQuerySource)) {
-      findings.push({ code: "invalid_dashboard_or_query_source", category: row.category, message: `${row.category} export dashboard or query source is placeholder evidence.`, nextStep: "Link the real dashboard, warehouse query, or analytics export source." })
+    } else if (!isSpecificProductionMetricsSource(row.dashboardOrQuerySource)) {
+      findings.push({ code: "invalid_dashboard_or_query_source", category: row.category, message: `${row.category} export dashboard or query source must identify a real dashboard/query/export source.`, nextStep: "Link the real dashboard, warehouse query, or analytics export source with a stable source id, URL, version, or path." })
+    } else if (!hasProductionMetricCategoryContext(row.dashboardOrQuerySource, row.category)) {
+      findings.push({ code: "mismatched_category_evidence", category: row.category, message: `${row.category} export dashboard or query source must identify ${row.category} metrics evidence.`, nextStep: "Attach the category-specific dashboard, warehouse query, or analytics export source for this row." })
     }
     if (isBlank(row.exportId)) {
       findings.push({ code: "missing_export_id", category: row.category, message: `${row.category} export is missing export id.`, nextStep: "Record the dashboard/export/run id so the evidence can be traced." })
-    } else if (isPlaceholderEvidenceReference(row.exportId)) {
-      findings.push({ code: "invalid_export_id", category: row.category, message: `${row.category} export id is placeholder evidence.`, nextStep: "Record the real dashboard/export/run id so the evidence can be traced." })
+    } else if (row.exportId.trim() !== row.exportId || isPlaceholderEvidenceReference(row.exportId)) {
+      findings.push({ code: "invalid_export_id", category: row.category, message: `${row.category} export id is placeholder evidence or not canonical.`, nextStep: "Record the real dashboard/export/run id without surrounding whitespace so the evidence can be traced." })
     } else if (!isStableExportIdentityReference(row.exportId)) {
       findings.push({ code: "invalid_export_id", category: row.category, message: `${row.category} export id must be a stable export identity.`, nextStep: "Record the real dashboard/export/run id so the evidence can be traced." })
     }
@@ -506,31 +636,54 @@ export function evaluateAstraProductionMetricsExportPacket(
     }
     if (isBlank(row.exportDigest)) {
       findings.push({ code: "missing_export_digest", category: row.category, message: `${row.category} export is missing digest/checksum.`, nextStep: "Record a digest or checksum for the attached dashboard/query export artifact." })
-    } else if (isWeakDigestReference(row.exportDigest)) {
-      findings.push({ code: "invalid_export_digest", category: row.category, message: `${row.category} export digest/checksum must be a stable digest, checksum, or export artifact identity.`, nextStep: "Record a stable digest or checksum for the attached dashboard/query export artifact." })
+    } else if (!isStableDigestReference(row.exportDigest)) {
+      findings.push({ code: "invalid_export_digest", category: row.category, message: `${row.category} export digest/checksum must be a canonical stable checksum value.`, nextStep: "Record a sha/checksum/digest-prefixed hex digest for the attached dashboard/query export artifact." })
     }
     if (isBlank(row.queryVersion)) {
       findings.push({ code: "missing_query_version", category: row.category, message: `${row.category} export is missing query version.`, nextStep: "Record the dashboard/query version used to generate the export." })
-    } else if (isPlaceholderEvidenceReference(row.queryVersion)) {
-      findings.push({ code: "invalid_query_version", category: row.category, message: `${row.category} export query version is placeholder evidence.`, nextStep: "Record the real dashboard/query version used to generate the export." })
-    } else if (!isStableExportIdentityReference(row.queryVersion)) {
+    } else if (row.queryVersion.trim() !== row.queryVersion || isPlaceholderEvidenceReference(row.queryVersion)) {
+      findings.push({ code: "invalid_query_version", category: row.category, message: `${row.category} export query version is placeholder evidence or not canonical.`, nextStep: "Record the real dashboard/query version without surrounding whitespace used to generate the export." })
+    } else if (!isStableQueryVersionReference(row.queryVersion)) {
       findings.push({ code: "invalid_query_version", category: row.category, message: `${row.category} export query version must be a stable query version.`, nextStep: "Record the real dashboard/query version used to generate the export." })
     }
     if (row.metricIds.length === 0) {
       findings.push({ code: "missing_metric_ids", category: row.category, message: `${row.category} export is missing metric ids.`, nextStep: "List the canonical metric ids included in the category export." })
     }
-    const seenMetricIds = new Set<AstraMetricId | string>()
+    const seenMetricIds = new Set<string>()
+    let metricIdsStructurallyValid = row.metricIds.length > 0
     for (const metricId of row.metricIds) {
-      if (seenMetricIds.has(metricId)) {
+      const normalizedMetricId = metricId.trim()
+      const metricIdIdentity = normalizedMetricId.toLowerCase()
+      const metric = metricByIdentity.get(metricIdIdentity)
+      if (metric && (normalizedMetricId !== metricId || metric.id !== metricId)) {
+        metricIdsStructurallyValid = false
+        findings.push({ code: "unknown_metric_id", category: row.category, message: `${row.category} export metric id ${metricId} must use canonical casing without surrounding whitespace.`, nextStep: "Use metric ids from ASTRA_PRODUCT_METRICS exactly as defined." })
+      }
+      if (seenMetricIds.has(metricIdIdentity)) {
+        metricIdsStructurallyValid = false
         findings.push({ code: "duplicate_metric_id", category: row.category, message: `${row.category} export repeats metric id ${metricId}.`, nextStep: "List each canonical metric id at most once per category export." })
         continue
       }
-      seenMetricIds.add(metricId)
-      const metric = metricById.get(metricId)
+      seenMetricIds.add(metricIdIdentity)
       if (!metric) {
+        metricIdsStructurallyValid = false
         findings.push({ code: "unknown_metric_id", category: row.category, message: `${row.category} export includes unknown metric id ${metricId}.`, nextStep: "Use metric ids from ASTRA_PRODUCT_METRICS." })
       } else if (metric.category !== row.category) {
+        metricIdsStructurallyValid = false
         findings.push({ code: "mismatched_metric_category", category: row.category, message: `${row.category} export includes ${metricId}, which belongs to ${metric.category}.`, nextStep: "Keep metric ids aligned to the row category." })
+      }
+    }
+    if (metricIdsStructurallyValid) {
+      const missingMetricIds = getAstraProductMetricsByCategory(row.category)
+        .map((metric) => metric.id)
+        .filter((metricId) => !seenMetricIds.has(metricId))
+      if (missingMetricIds.length > 0) {
+        findings.push({
+          code: "missing_metric_ids",
+          category: row.category,
+          message: `${row.category} export is missing required metric ids: ${missingMetricIds.join(", ")}.`,
+          nextStep: "List every canonical metric id for the category export so partial dashboards cannot satisfy production evidence.",
+        })
       }
     }
     if (isBlank(row.evidenceLink)) {
@@ -539,11 +692,13 @@ export function evaluateAstraProductionMetricsExportPacket(
       findings.push({ code: "missing_evidence_link", category: row.category, message: `${row.category} export evidence link is placeholder evidence.`, nextStep: "Attach the real dashboard screenshot, analytics export, or query output evidence." })
     } else if (!isEvidenceLikeReference(row.evidenceLink)) {
       findings.push({ code: "invalid_evidence_link", category: row.category, message: `${row.category} export evidence link must be a URL or repo artifact path.`, nextStep: "Attach dashboard screenshot, analytics export, or query output evidence as a URL or repo artifact path." })
+    } else if (!hasProductionMetricCategoryContext(row.evidenceLink, row.category)) {
+      findings.push({ code: "mismatched_category_evidence", category: row.category, message: `${row.category} export evidence link must identify ${row.category} metrics evidence.`, nextStep: "Attach category-specific dashboard screenshot, analytics export, or query output evidence for this row." })
     }
     if (isBlank(row.ownerDate)) {
       findings.push({ code: "missing_owner", category: row.category, message: `${row.category} export is missing owner/date.`, nextStep: "Record the metrics owner and export date." })
-    } else if (!includesIsoDate(row.ownerDate)) {
-      findings.push({ code: "invalid_owner_date", category: row.category, message: `${row.category} export owner/date must include YYYY-MM-DD.`, nextStep: "Record the metrics owner with the dated export review." })
+    } else if (!hasOwnerIdentityWithIsoDate(row.ownerDate)) {
+      findings.push({ code: "invalid_owner_date", category: row.category, message: `${row.category} export owner/date must identify a real owner and include YYYY-MM-DD.`, nextStep: "Record the real metrics owner/date using YYYY-MM-DD." })
     }
     if (isBlank(row.privacyReviewLink)) {
       findings.push({ code: "missing_privacy_review", category: row.category, message: `${row.category} export is missing privacy review link.`, nextStep: "Attach privacy review showing production queries preserve metadata-only boundaries." })
@@ -551,6 +706,8 @@ export function evaluateAstraProductionMetricsExportPacket(
       findings.push({ code: "missing_privacy_review", category: row.category, message: `${row.category} privacy review link is placeholder evidence.`, nextStep: "Attach the real privacy review showing production queries preserve metadata-only boundaries." })
     } else if (!isEvidenceLikeReference(row.privacyReviewLink)) {
       findings.push({ code: "invalid_privacy_review_link", category: row.category, message: `${row.category} privacy review link must be a URL or repo artifact path.`, nextStep: "Attach privacy review evidence as a URL or repo artifact path." })
+    } else if (!hasProductionMetricCategoryContext(row.privacyReviewLink, row.category)) {
+      findings.push({ code: "mismatched_category_evidence", category: row.category, message: `${row.category} privacy review link must identify ${row.category} metrics evidence.`, nextStep: "Attach category-specific privacy review evidence for this row." })
     }
   }
 
@@ -572,7 +729,7 @@ const READINESS_CHECKS: Array<{
   { code: "no_sensitive_raw_text", evidenceKey: "telemetryAvoidsSensitiveRawText", severity: "block", message: "Telemetry may record sensitive raw text.", nextStep: "Default to metadata-only event fields and explicitly exclude raw page, transcript, file, prompt, output, saved snippet, and full URL path data." },
   { code: "events_over_content", evidenceKey: "telemetryPrefersEventsOverContent", severity: "block", message: "Telemetry relies on content instead of events/categories.", nextStep: "Use event names, counts, buckets, and categories for release dashboards." },
   { code: "privacy_mode_reduces_detail", evidenceKey: "privacyModeReducesTelemetryDetail", severity: "block", message: "Privacy Mode does not reduce telemetry detail.", nextStep: "Reduce Privacy Mode telemetry to coarse source type and non-sensitive status or local-only summaries." },
-  { code: "user_data_controls_clear", evidenceKey: "userDataControlsAreClear", severity: "warn", message: "Metrics surfaces do not point users to data controls.", nextStep: "Link relevant metrics/digest/support surfaces to Privacy Mode, export/delete, reminder, and support-bundle controls." },
+  { code: "user_data_controls_clear", evidenceKey: "userDataControlsAreClear", severity: "block", message: "Metrics surfaces do not point users to data controls.", nextStep: "Expose Privacy Mode, export/delete, reminder controls, and support-bundle preview paths around metric surfaces." },
 ]
 
 export function evaluateAstraProductMetricsReadiness(evidence: AstraProductMetricsReadinessEvidence): AstraProductMetricsReadinessDecision {

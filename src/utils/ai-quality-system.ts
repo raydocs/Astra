@@ -1,3 +1,5 @@
+import { evidenceReferenceDuplicateIdentity, isEvidenceLikeReference } from "./evidence-reference"
+
 export type AiQualityCapability =
   | "translation"
   | "explanation"
@@ -132,8 +134,10 @@ export type AiQualityHumanScoredReportFindingCode =
   | "missing_scores"
   | "missing_blocker_triage"
   | "invalid_blocker_triage_reference"
+  | "duplicate_evidence_reference"
   | "missing_trend"
   | "missing_release_decision"
+  | "blocking_release_decision"
   | "invalid_run_summary"
   | "not_release_ready"
 
@@ -511,12 +515,29 @@ function isBlank(value: string): boolean {
   return value.trim().length === 0
 }
 
+function hasSurroundingWhitespace(value: string): boolean {
+  return value.trim() !== value
+}
+
 function isPlaceholderEvidenceReference(value: string): boolean {
   const normalizedValue = value.toLowerCase()
   return normalizedValue.includes("example")
     || normalizedValue.includes("placeholder")
     || normalizedValue.includes("todo")
     || /\b(?:mock|draft|tbd|pending|temp|temporary)\b/.test(normalizedValue)
+    || /\b(?:(?:fake|dummy|latest|dev|local)[-_ ]?(?:proof|evidence|artifact|report)|(?<!provider[-_ ])sample[-_ ]?(?:proof|evidence|artifact|report)|(?:proof|evidence|artifact|report)[-_ ]?(?:sample|fake|dummy|latest|dev|local))\b/.test(normalizedValue)
+}
+
+function isPlaceholderIdentityReference(value: string): boolean {
+  if (hasSurroundingWhitespace(value)) return true
+  const identityText = value.includes("@") ? value.split("@")[0] : value
+  const normalizedIdentityText = identityText
+    .replace(/[—–_-]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+    .toLowerCase()
+  return /\b(?:example|placeholder|todo|mock|draft|tbd|pending|temp|temporary|none|n\/a|na)\b/i.test(normalizedIdentityText)
+    || /^(?:owner|reviewer|tester|qa|quality reviewer|human reviewer|ai reviewer|release reviewer)$/.test(normalizedIdentityText)
 }
 
 function hasWeakEvidenceKeyword(value: string): boolean {
@@ -525,19 +546,28 @@ function hasWeakEvidenceKeyword(value: string): boolean {
 
 function isWeakIdentityOrVersionReference(value: string): boolean {
   const normalizedValue = value.trim().toLowerCase()
-  const identityValue = normalizedValue
-    .replace(/^(?:version|build|run|rubric|fixture|manifest)[:=/ -]+/, "")
-    .replace(/[^a-z0-9]/g, "")
+  const stableValue = normalizedValue.replace(/^(?:version|build|run|rubric|fixture|manifest)[:=/ -]+/, "")
+  const identityValue = stableValue.replace(/[^a-z0-9]/g, "")
+
+  if (hasWeakEvidenceKeyword(normalizedValue) || identityValue.length === 0 || /^0+$/.test(identityValue) || /^([a-z0-9])\1+$/.test(identityValue)) return true
+  if (/^v?\d+\.\d+\.\d+(?:[-+][a-z0-9.-]+)?$/i.test(stableValue)) return false
+  if (/^[1-9]\d{5,}$/.test(stableValue)) return false
+  if (/^20\d{2}-\d{2}-\d{2}$/.test(stableValue) && includesIsoDate(stableValue)) return false
+  if (/^[a-z][a-z0-9]*(?:[-_.:][a-z0-9]+)+$/i.test(stableValue) && /\d/.test(identityValue)) return false
 
   return identityValue.length < 12
-    || /^0+$/.test(identityValue)
-    || /^([a-z0-9])\1+$/.test(identityValue)
-    || hasWeakEvidenceKeyword(normalizedValue)
 }
 
 function isWeakContextEvidenceReference(value: string): boolean {
   const normalizedValue = value.trim().toLowerCase()
   return isPlaceholderEvidenceReference(normalizedValue) || hasWeakEvidenceKeyword(normalizedValue)
+}
+
+function isSpecificAiQualityEnvironment(value: string): boolean {
+  const normalizedValue = value.toLowerCase()
+  const hasReleaseContext = /\b(?:target|release|rc|candidate|production)\b/.test(normalizedValue)
+  const hasProviderOrRuntimeContext = /\b(?:relay|provider|providers|model|config|scoring|rubric|quality|managed)\b/.test(normalizedValue)
+  return hasReleaseContext && hasProviderOrRuntimeContext
 }
 
 function includesIsoDate(value: string): boolean {
@@ -555,52 +585,51 @@ function includesIsoDate(value: string): boolean {
     && date.getUTCDate() === day
 }
 
+function isExactIsoDate(value: string): boolean {
+  return /^20\d{2}-\d{2}-\d{2}$/.test(value) && includesIsoDate(value)
+}
+
+function isIsoTimestamp(value: string): boolean {
+  if (!/^20\d{2}-\d{2}-\d{2}T(?:[01]\d|2[0-3]):[0-5]\d:[0-5]\d(?:\.\d{1,9})?(?:Z|[+-](?:[01]\d|2[0-3]):[0-5]\d)$/.test(value) || Number.isNaN(Date.parse(value))) {
+    return false
+  }
+  return includesIsoDate(value.slice(0, 10))
+}
+
 function isFixtureManifestReference(value: string): boolean {
-  const trimmedValue = value.trim()
-  if (/^https?:\/\//.test(trimmedValue)) return /^https:\/\//.test(trimmedValue) && !isLocalUrlReference(trimmedValue)
-  return isRepoArtifactPathReference(trimmedValue, { allowTestFixtures: true })
+  return isEvidenceLikeReference(value, { allowTestFixtures: true })
 }
 
 function isEvidenceArtifactReference(value: string): boolean {
-  const trimmedValue = value.trim()
-  if (/^https?:\/\//.test(trimmedValue)) return /^https:\/\//.test(trimmedValue) && !isLocalUrlReference(trimmedValue)
-  return isRepoArtifactPathReference(trimmedValue)
+  return isEvidenceLikeReference(value)
 }
 
-function isRepoArtifactPathReference(value: string, options: { allowTestFixtures?: boolean } = {}): boolean {
-  const prefixPattern = options.allowTestFixtures
-    ? /^(docs\/|data\/|artifacts\/|test-results\/|playwright-report\/|test\/fixtures\/)/
-    : /^(docs\/|data\/|artifacts\/|test-results\/|playwright-report\/)/
-  if (!prefixPattern.test(value)) return false
-  if (value.startsWith("/") || value.includes("\\") || value.includes("?") || value.includes("#") || /%(?:2e|2f|5c)/i.test(value)) return false
-
-  const segments = value.split("/")
-  return segments.every((segment) => segment.length > 0 && segment !== "." && segment !== "..")
-}
-
-function isLocalUrlReference(value: string): boolean {
+function evidenceReferenceSemanticCandidates(value: string): string[] {
+  const candidates = [value]
   try {
-    const hostname = new URL(value).hostname.toLowerCase()
-    return hostname.length === 0
-      || hostname === "localhost"
-      || hostname.endsWith(".localhost")
-      || hostname === "0.0.0.0"
-      || /^127(?:\.\d{1,3}){3}$/.test(hostname)
-      || /^10(?:\.\d{1,3}){3}$/.test(hostname)
-      || /^192\.168(?:\.\d{1,3}){2}$/.test(hostname)
-      || /^172\.(?:1[6-9]|2\d|3[0-1])(?:\.\d{1,3}){2}$/.test(hostname)
-      || /^169\.254(?:\.\d{1,3}){2}$/.test(hostname)
-      || isPrivateIpv6Hostname(hostname)
+    candidates.push(decodeURIComponent(value))
   } catch {
-    return true
+    // Malformed percent-encoding is rejected by evidence reference validation.
   }
+  return candidates.map((candidate) => candidate
+    .toLowerCase()
+    .replace(/[_./:-]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim())
 }
 
-function isPrivateIpv6Hostname(hostname: string): boolean {
-  const normalizedHostname = hostname.replace(/^\[|\]$/g, "")
-  return normalizedHostname === "::1"
-    || /^f[cd][0-9a-f]{2}:/i.test(normalizedHostname)
-    || /^fe[89ab][0-9a-f]:/i.test(normalizedHostname)
+function isLiveProviderSampleEvidenceReference(value: string): boolean {
+  return evidenceReferenceSemanticCandidates(value).some((candidate) => (
+    /\b(?:provider|live provider|model|managed provider)\b/.test(candidate)
+    && /\b(?:sample|samples|scored samples|quality samples|run)\b/.test(candidate)
+  ))
+}
+
+function isBlockerTriageEvidenceReference(value: string): boolean {
+  return evidenceReferenceSemanticCandidates(value).some((candidate) => (
+    /\b(?:blocker|triage|backlog|severity|release disposition)\b/.test(candidate)
+    && /\b(?:triage|blocker|backlog|sample|samples|disposition)\b/.test(candidate)
+  ))
 }
 
 function isNonNegativeInteger(value: number): boolean {
@@ -627,6 +656,71 @@ function recordValuesAreScores(record: Partial<Record<string, number>>): boolean
   return Object.values(record).every((value) => typeof value === "number" && isScore(value))
 }
 
+function hasUniqueCanonicalEvidenceIds(values: readonly string[]): boolean {
+  const normalizedValues = values.map((value) => value.trim())
+  const identityValues = normalizedValues.map((value) => value.toLowerCase())
+  return normalizedValues.every((value, index) =>
+    value.length > 0
+    && value === values[index]
+    && value === value.toLowerCase()
+    && !isWeakContextEvidenceReference(value)
+    && /^[a-z0-9][a-z0-9:_-]*$/.test(value),
+  ) && new Set(identityValues).size === identityValues.length
+}
+
+function isCanonicalLowScoreBacklogItem(item: AiQualityLowScoreBacklogItem): boolean {
+  return hasUniqueCanonicalEvidenceIds([item.sampleId])
+    && item.recommendedBacklogLabel === item.recommendedBacklogLabel.toLowerCase()
+    && /^[a-z0-9][a-z0-9:_-]*$/.test(item.recommendedBacklogLabel)
+    && !isWeakContextEvidenceReference(item.recommendedBacklogLabel)
+    && ASTRA_AI_QUALITY_ABILITY_CATEGORIES.includes(item.capability)
+    && item.errors.every((error) => ASTRA_AI_QUALITY_ERROR_TAXONOMY.some((definition) => definition.type === error))
+}
+
+function rateMatchesCounts(rate: number | null, numerator: number, denominator: number): boolean {
+  if (denominator === 0) return rate === null && numerator === 0
+  return numerator <= denominator && rate === roundedRate(numerator / denominator)
+}
+
+function blockerBacklogSampleIdsMatchSummary(summary: AiQualityRunSummary): boolean {
+  const blockerSampleIds = new Set(summary.blockerSampleIds)
+  const backlogBlockerSampleIds = new Set(
+    summary.lowScoreBacklog
+      .filter((item) => item.errors.some((error) => BLOCKER_ERROR_TYPES.has(error)))
+      .map((item) => item.sampleId),
+  )
+  return [...backlogBlockerSampleIds].every((sampleId) => blockerSampleIds.has(sampleId))
+    && [...blockerSampleIds].every((sampleId) => summary.lowScoreBacklog.some((item) => item.sampleId === sampleId))
+}
+
+function blockerErrorCountsMatchBacklog(summary: AiQualityRunSummary): boolean {
+  const rebuiltCounts: Partial<Record<AiQualityErrorType, number>> = {}
+  for (const item of summary.lowScoreBacklog) {
+    for (const error of item.errors) {
+      if (BLOCKER_ERROR_TYPES.has(error)) {
+        rebuiltCounts[error] = (rebuiltCounts[error] ?? 0) + 1
+      }
+    }
+  }
+  return ASTRA_AI_QUALITY_ERROR_TAXONOMY.every((definition) => {
+    const expected = BLOCKER_ERROR_TYPES.has(definition.type) ? rebuiltCounts[definition.type] ?? 0 : 0
+    return (summary.blockerErrorCounts[definition.type] ?? 0) === expected
+  })
+}
+
+function severeLowScoreBacklogItemsAreBlockerTriaged(summary: AiQualityRunSummary): boolean {
+  return summary.lowScoreBacklog.every((item) => {
+    if (item.lowestScore > 1) return true
+    return item.errors.some((error) => BLOCKER_ERROR_TYPES.has(error))
+      && summary.blockerSampleIds.includes(item.sampleId)
+  })
+}
+
+function aiQualityRunSummaryMetadataValid(summary: AiQualityRunSummary, evidenceRunId: string): boolean {
+  return (summary.runId === undefined || summary.runId === evidenceRunId)
+    && (summary.generatedAt === undefined || isIsoTimestamp(summary.generatedAt))
+}
+
 function aiQualityRunSummaryNumbersValid(summary: AiQualityRunSummary): boolean {
   const countFields = [
     summary.sampleCount,
@@ -637,6 +731,15 @@ function aiQualityRunSummaryNumbersValid(summary: AiQualityRunSummary): boolean 
     summary.safetyPassedCount,
     summary.safetyEvaluatedCount,
   ]
+  const capabilityCounts = ASTRA_AI_QUALITY_ABILITY_CATEGORIES.map((capability) => summary.capabilityCounts[capability] ?? 0)
+  const capabilityCount = capabilityCounts.filter((count) => count > 0).length
+  const capabilitySampleCount = capabilityCounts.reduce((sum, count) => sum + count, 0)
+  const blockerErrorCount = Object.values(summary.blockerErrorCounts).reduce((sum, count) => sum + (count ?? 0), 0)
+  const blockerBacklogCount = summary.lowScoreBacklog.filter((item) => item.errors.some((error) => BLOCKER_ERROR_TYPES.has(error))).length
+  const capabilityAveragesMatchCounts = ASTRA_AI_QUALITY_ABILITY_CATEGORIES.every((capability) => {
+    const count = summary.capabilityCounts[capability] ?? 0
+    return count > 0 ? typeof summary.capabilityAverages[capability] === "number" : typeof summary.capabilityAverages[capability] === "undefined"
+  })
 
   return countFields.every(isNonNegativeInteger)
     && recordValuesAreNonNegativeIntegers(summary.capabilityCounts)
@@ -645,7 +748,22 @@ function aiQualityRunSummaryNumbersValid(summary: AiQualityRunSummary): boolean 
     && isScoreOrNull(summary.averageScore)
     && isRateOrNull(summary.reviewCardReusableRate)
     && isRateOrNull(summary.safetyPassRate)
-    && summary.lowScoreBacklog.every((item) => isScore(item.lowestScore))
+    && summary.p0SampleCount <= summary.sampleCount
+    && (summary.sampleCount === 0 ? summary.averageScore === null : summary.averageScore !== null)
+    && summary.capabilityCount === capabilityCount
+    && capabilitySampleCount === summary.sampleCount
+    && capabilityAveragesMatchCounts
+    && summary.reviewCardEvaluatedCount <= summary.sampleCount
+    && summary.safetyEvaluatedCount <= summary.sampleCount
+    && rateMatchesCounts(summary.reviewCardReusableRate, summary.reviewCardReusableCount, summary.reviewCardEvaluatedCount)
+    && rateMatchesCounts(summary.safetyPassRate, summary.safetyPassedCount, summary.safetyEvaluatedCount)
+    && (blockerErrorCount === 0 || (summary.blockerSampleIds.length > 0 && blockerBacklogCount > 0))
+    && blockerBacklogSampleIdsMatchSummary(summary)
+    && blockerErrorCountsMatchBacklog(summary)
+    && severeLowScoreBacklogItemsAreBlockerTriaged(summary)
+    && hasUniqueCanonicalEvidenceIds(summary.blockerSampleIds)
+    && hasUniqueCanonicalEvidenceIds(summary.lowScoreBacklog.map((item) => item.sampleId))
+    && summary.lowScoreBacklog.every((item) => isScore(item.lowestScore) && isCanonicalLowScoreBacklogItem(item))
 }
 
 export function evaluateAiQualityHumanScoredReportEvidence(
@@ -659,12 +777,21 @@ export function evaluateAiQualityHumanScoredReportEvidence(
       "Human-scored AI quality report is missing reviewer/date evidence.",
       "Record reviewer, review date, and ownership for the target release run.",
     ))
-  } else if (!includesIsoDate(evidence.reviewedAt)) {
-    findings.push(makeHumanReportFinding(
-      "invalid_review_date",
-      "Human-scored AI quality report review date must include YYYY-MM-DD.",
-      "Record a dated review owner string tied to the target release run.",
-    ))
+  } else {
+    if (isPlaceholderIdentityReference(evidence.reviewer)) {
+      findings.push(makeHumanReportFinding(
+        "missing_reviewer",
+        "Human-scored AI quality report reviewer is placeholder evidence.",
+        "Record the accountable reviewer for the target release run.",
+      ))
+    }
+    if (isWeakContextEvidenceReference(evidence.reviewedAt) || !isExactIsoDate(evidence.reviewedAt)) {
+      findings.push(makeHumanReportFinding(
+        "invalid_review_date",
+        "Human-scored AI quality report review date must be an exact valid YYYY-MM-DD date.",
+        "Record the target release review date as YYYY-MM-DD.",
+      ))
+    }
   }
 
   if (isBlank(evidence.environment)) {
@@ -673,11 +800,17 @@ export function evaluateAiQualityHumanScoredReportEvidence(
       "Human-scored AI quality report is missing target environment evidence.",
       "Record the target release environment, provider, model/config, and scoring surface used for the report.",
     ))
-  } else if (isWeakContextEvidenceReference(evidence.environment)) {
+  } else if (hasSurroundingWhitespace(evidence.environment) || isWeakContextEvidenceReference(evidence.environment)) {
     findings.push(makeHumanReportFinding(
       "missing_environment",
-      "Human-scored AI quality report target environment is placeholder evidence.",
-      "Record the real target release environment, provider, model/config, and scoring surface used for the report.",
+      "Human-scored AI quality report target environment must be canonical non-placeholder evidence.",
+      "Record the real target release environment, provider, model/config, and scoring surface used for the report without surrounding whitespace.",
+    ))
+  } else if (!isSpecificAiQualityEnvironment(evidence.environment)) {
+    findings.push(makeHumanReportFinding(
+      "missing_environment",
+      "Human-scored AI quality report target environment must include release context plus provider/model/config/scoring details.",
+      "Record the target release environment, provider/model/config, and scoring surface used for the report.",
     ))
   }
 
@@ -687,11 +820,16 @@ export function evaluateAiQualityHumanScoredReportEvidence(
       "Human-scored AI quality report is missing run id or rubric version.",
       "Record a stable run id and the rubric version used for scoring.",
     ))
-  } else if (isPlaceholderEvidenceReference(evidence.runId) || isPlaceholderEvidenceReference(evidence.rubricVersion)) {
+  } else if (
+    hasSurroundingWhitespace(evidence.runId)
+    || hasSurroundingWhitespace(evidence.rubricVersion)
+    || isPlaceholderEvidenceReference(evidence.runId)
+    || isPlaceholderEvidenceReference(evidence.rubricVersion)
+  ) {
     findings.push(makeHumanReportFinding(
       "missing_run_metadata",
-      "Human-scored AI quality report run metadata is placeholder evidence.",
-      "Record a real run id and rubric version for the target release scoring run.",
+      "Human-scored AI quality report run metadata must be canonical non-placeholder evidence.",
+      "Record a real run id and rubric version for the target release scoring run without surrounding whitespace.",
     ))
   } else if (isWeakIdentityOrVersionReference(evidence.runId) || isWeakIdentityOrVersionReference(evidence.rubricVersion)) {
     findings.push(makeHumanReportFinding(
@@ -707,11 +845,15 @@ export function evaluateAiQualityHumanScoredReportEvidence(
       "Human-scored AI quality report is missing fixed fixture-manifest evidence.",
       "Attach the fixture manifest path/version so the result is reproducible.",
     ))
-  } else if (isPlaceholderEvidenceReference(evidence.fixtureManifestPath) || isPlaceholderEvidenceReference(evidence.fixtureManifestVersion)) {
+  } else if (
+    isPlaceholderEvidenceReference(evidence.fixtureManifestPath)
+    || hasSurroundingWhitespace(evidence.fixtureManifestVersion)
+    || isPlaceholderEvidenceReference(evidence.fixtureManifestVersion)
+  ) {
     findings.push(makeHumanReportFinding(
       "missing_fixture_manifest",
-      "Human-scored AI quality report fixture manifest evidence is placeholder evidence.",
-      "Attach the real fixture manifest path/version used for target release scoring.",
+      "Human-scored AI quality report fixture manifest evidence must be canonical non-placeholder evidence.",
+      "Attach the real fixture manifest path/version used for target release scoring without surrounding whitespace.",
     ))
   } else if (isWeakIdentityOrVersionReference(evidence.fixtureManifestVersion)) {
     findings.push(makeHumanReportFinding(
@@ -759,6 +901,12 @@ export function evaluateAiQualityHumanScoredReportEvidence(
       "Human-scored AI quality report live provider sample evidence must be a URL or repo artifact path, not a fixture-only path.",
       "Attach dated live-provider sample evidence as a URL or repo artifact path outside test/fixtures/.",
     ))
+  } else if (!isLiveProviderSampleEvidenceReference(evidence.providerSampleEvidenceLink)) {
+    findings.push(makeHumanReportFinding(
+      "invalid_live_provider_samples_reference",
+      "Human-scored AI quality report live provider sample evidence must identify live provider samples.",
+      "Attach dated live-provider sample evidence that names provider/model sample evidence for the target release run.",
+    ))
   }
 
   if (evidence.scoredSampleCount < ASTRA_AI_QUALITY_RELEASE_THRESHOLDS.minimumP0Samples) {
@@ -787,6 +935,40 @@ export function evaluateAiQualityHumanScoredReportEvidence(
       "Human-scored AI quality report blocker triage evidence must be a URL or repo artifact path, not a fixture-only path.",
       "Attach blocker triage evidence as a URL or repo artifact path outside test/fixtures/.",
     ))
+  } else if (!isBlockerTriageEvidenceReference(evidence.blockerTriageLink)) {
+    findings.push(makeHumanReportFinding(
+      "invalid_blocker_triage_reference",
+      "Human-scored AI quality report blocker triage evidence must identify blocker triage or backlog disposition.",
+      "Attach blocker triage evidence that names blocker samples, severity, backlog labels, and release disposition.",
+    ))
+  }
+
+  if (
+    isEvidenceArtifactReference(evidence.providerSampleEvidenceLink)
+    && isEvidenceArtifactReference(evidence.blockerTriageLink)
+    && evidenceReferenceDuplicateIdentity(evidence.providerSampleEvidenceLink) === evidenceReferenceDuplicateIdentity(evidence.blockerTriageLink)
+  ) {
+    findings.push(makeHumanReportFinding(
+      "duplicate_evidence_reference",
+      "Human-scored AI quality report reuses one evidence artifact for live provider samples and blocker triage.",
+      "Attach distinct evidence artifacts so live-provider samples and blocker triage can be audited independently.",
+    ))
+  }
+
+  if (isEvidenceArtifactReference(evidence.fixtureManifestPath)) {
+    const fixtureManifestIdentity = evidenceReferenceDuplicateIdentity(evidence.fixtureManifestPath)
+    for (const [fieldLabel, reference] of [
+      ["live provider samples", evidence.providerSampleEvidenceLink],
+      ["blocker triage", evidence.blockerTriageLink],
+    ] as const) {
+      if (isEvidenceArtifactReference(reference) && evidenceReferenceDuplicateIdentity(reference) === fixtureManifestIdentity) {
+        findings.push(makeHumanReportFinding(
+          "duplicate_evidence_reference",
+          `Human-scored AI quality report reuses the fixture manifest artifact for ${fieldLabel}.`,
+          "Attach distinct fixed-set manifest, live-provider sample, and blocker-triage evidence artifacts.",
+        ))
+      }
+    }
   }
 
   if (evidence.trendDirection === null) {
@@ -794,6 +976,15 @@ export function evaluateAiQualityHumanScoredReportEvidence(
       "missing_trend",
       "Human-scored AI quality report is missing trend direction.",
       "Compare the run against the previous fixed-set run or record it as a new baseline.",
+    ))
+  } else if (
+    evidence.trendDirection === "regressed"
+    && (evidence.releaseDecision === "approve" || evidence.releaseDecision === "approve_with_downgrade")
+  ) {
+    findings.push(makeHumanReportFinding(
+      "not_release_ready",
+      "Human-scored AI quality report trend regressed but the release decision still approves production quality claims.",
+      "Block the release or resolve the regression before using the report for production AI-quality claims.",
     ))
   }
 
@@ -803,13 +994,19 @@ export function evaluateAiQualityHumanScoredReportEvidence(
       "Human-scored AI quality report is missing release decision.",
       "Record approve, approve_with_downgrade, or block with owner notes.",
     ))
+  } else if (evidence.releaseDecision === "block") {
+    findings.push(makeHumanReportFinding(
+      "blocking_release_decision",
+      "Human-scored AI quality report release decision blocks production quality claims.",
+      "Resolve the blocking quality decision or keep downgrade/blocking release copy in place.",
+    ))
   }
 
-  if (!aiQualityRunSummaryNumbersValid(evidence.summary)) {
+  if (!aiQualityRunSummaryNumbersValid(evidence.summary) || !aiQualityRunSummaryMetadataValid(evidence.summary, evidence.runId)) {
     findings.push(makeHumanReportFinding(
       "invalid_run_summary",
-      "Human-scored AI quality report summary contains impossible numeric values.",
-      "Regenerate the run summary with non-negative integer counts, 0–1 rates, and 1–5 rubric scores.",
+      "Human-scored AI quality report summary contains impossible numeric values or mismatched run metadata.",
+      "Regenerate the run summary with non-negative integer counts, 0–1 rates, 1–5 rubric scores, matching run id, and timezone-bearing generated-at timestamp when present.",
     ))
   }
 

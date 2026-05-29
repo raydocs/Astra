@@ -44,7 +44,7 @@ const completeStateCopy: AstraAccessibilityStateCopyEvidence[] = [
 const completeManualEvidence = ASTRA_ACCESSIBILITY_MANUAL_EVIDENCE_ROWS.map((row) => ({
   id: row.id,
   verdict: "pass" as const,
-  ownerDate: "QA owner — 2026-05-28",
+  ownerDate: "qa-owner@astra.ai — 2026-05-28",
   environment: "Chrome MV3 build, macOS, keyboard-only walkthrough",
   evidenceLink: `docs/reviews/accessibility-manual/${row.id}.md`,
 }))
@@ -169,7 +169,7 @@ describe("Astra accessibility readiness contract", () => {
       {
         id: "untracked_accessibility_row" as never,
         verdict: "pass",
-        ownerDate: "QA owner — 2026-05-28",
+        ownerDate: "qa-owner@astra.ai — 2026-05-28",
         environment: "Chrome MV3 build, macOS, keyboard-only walkthrough",
         evidenceLink: "docs/reviews/accessibility-manual/untracked.md",
       },
@@ -185,6 +185,58 @@ describe("Astra accessibility readiness contract", () => {
       "duplicate_row",
       "unknown_row",
       "placeholder_evidence_link",
+    ])
+  })
+
+  it("rejects reused manual accessibility evidence links across rows", () => {
+    const sharedEvidenceLink = "docs/reviews/accessibility-manual/no_mouse_popup-no_mouse_onboarding.md"
+    const decision = evaluateAstraAccessibilityManualEvidencePacket([
+      {
+        ...completeManualEvidence[0],
+        evidenceLink: sharedEvidenceLink,
+      },
+      {
+        ...completeManualEvidence[1],
+        evidenceLink: sharedEvidenceLink,
+      },
+      ...completeManualEvidence.slice(2),
+    ])
+
+    expect(decision.acceptable).toBe(false)
+    expect(decision.findings.map((finding) => finding.code)).toEqual(["duplicate_evidence_link"])
+  })
+
+  it("rejects manual accessibility evidence links that point at a different row", () => {
+    const decision = evaluateAstraAccessibilityManualEvidencePacket([
+      {
+        ...completeManualEvidence[0],
+        evidenceLink: "docs/reviews/accessibility-manual/screen-reader-spot-check.md",
+      },
+      ...completeManualEvidence.slice(1),
+    ])
+
+    expect(decision.acceptable).toBe(false)
+    expect(decision.findings.map((finding) => [finding.code, finding.rowId])).toEqual([
+      ["invalid_evidence_link", "no_mouse_popup"],
+    ])
+  })
+
+  it("rejects generic owners, weak environments, and unsafe manual evidence links", () => {
+    const decision = evaluateAstraAccessibilityManualEvidencePacket([
+      {
+        ...completeManualEvidence[0],
+        ownerDate: "QA owner — 2026-05-28",
+        environment: "Chrome",
+        evidenceLink: "docs/reviews/draft-accessibility.md",
+      },
+      ...completeManualEvidence.slice(1),
+    ])
+
+    expect(decision.acceptable).toBe(false)
+    expect(decision.findings.map((finding) => finding.code)).toEqual([
+      "invalid_owner",
+      "invalid_environment",
+      "invalid_evidence_link",
     ])
   })
 
