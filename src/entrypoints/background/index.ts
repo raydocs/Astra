@@ -437,6 +437,15 @@ export default defineBackground({
           },
         })
         void tryAnonymousRegistration()
+
+        // First-success: open the zero-config sample lesson so the user
+        // experiences understand → save → review without hunting for a page.
+        // Stamp install time so the <60s first-value metric has a baseline.
+        // Wrapped in Promise.resolve so a non-promise mock return is safe too.
+        void Promise.resolve(browser.storage.local.set({ "astra.installed_at": Date.now() })).catch(() => {})
+        void Promise.resolve(
+          browser.tabs.create({ url: browser.runtime.getURL("/sample-lesson.html") }),
+        ).catch(() => {})
       }
 
       if (browser.contextMenus) {

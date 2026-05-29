@@ -12,8 +12,42 @@ type LessonStage = "understand" | "saved" | "review" | "complete"
 const SAMPLE_SOURCE_URL = "astra-sample://first-lesson/quiet-reading"
 const SAMPLE_SOURCE_TITLE = "Astra Sample Lesson: The Quiet Architecture of Reading"
 const SAMPLE_SENTENCE = "To inhabit a difficult sentence, you have to be willing to sit with it."
+const SAMPLE_ATTENTION_SENTENCE = "Reading well requires a kind of attention that the modern web has quietly eroded."
 const SAMPLE_TRANSLATION = "要真正进入一句难懂的话，你必须愿意在它面前停留。"
 const SAMPLE_EXPLANATION = "“Inhabit” means more than understand quickly: it suggests staying inside the sentence long enough to notice meaning, tone, and structure."
+
+// The sample saves three real, source-backed expressions so the first-success
+// moment matches the promise ("保存 3 个表达"). All three come from the sample
+// article above, so review later feels like returning to a real page.
+const STARTER_CARDS: Array<{
+  text: string
+  translation: string
+  explanation: string
+  sentence: string
+  sentenceIndex: number
+}> = [
+  {
+    text: "inhabit a difficult sentence",
+    translation: "真正进入一句难懂的话",
+    explanation: SAMPLE_EXPLANATION,
+    sentence: SAMPLE_SENTENCE,
+    sentenceIndex: 1,
+  },
+  {
+    text: "be willing to sit with it",
+    translation: "愿意静下心来慢慢琢磨它",
+    explanation: "“Sit with it” means staying with something patiently instead of rushing past — here, dwelling on a hard sentence until it opens up.",
+    sentence: SAMPLE_SENTENCE,
+    sentenceIndex: 1,
+  },
+  {
+    text: "quietly eroded",
+    translation: "悄然侵蚀、不知不觉地削弱",
+    explanation: "“Erode” is to wear away gradually; “quietly eroded” describes attention being worn down slowly and almost unnoticeably.",
+    sentence: SAMPLE_ATTENTION_SENTENCE,
+    sentenceIndex: 0,
+  },
+]
 
 const shellStyle: React.CSSProperties = {
   minHeight: "100vh",
@@ -102,7 +136,8 @@ function formatShareStatus(result: "shared" | "copied" | "unavailable", fallback
 
 export default function SampleLessonApp() {
   const [stage, setStage] = useState<LessonStage>("understand")
-  const [savedEntry, setSavedEntry] = useState<VocabularyEntry | null>(null)
+  const [savedEntries, setSavedEntries] = useState<VocabularyEntry[]>([])
+  const [reviewIndex, setReviewIndex] = useState(0)
   const [saving, setSaving] = useState(false)
   const [shareStatus, setShareStatus] = useState("")
   const [referralStatus, setReferralStatus] = useState("")
@@ -120,7 +155,7 @@ export default function SampleLessonApp() {
     })
   }, [])
 
-  const saveFirstCard = async () => {
+  const saveStarterCards = async () => {
     setSaving(true)
     try {
       const sourceItem = await upsertOwnedArticleFromUrl({
@@ -128,50 +163,60 @@ export default function SampleLessonApp() {
         title: SAMPLE_SOURCE_TITLE,
         status: "saved",
       })
-      const entry = await saveVocabularyEntry({
-        text: "inhabit a difficult sentence",
-        translation: SAMPLE_TRANSLATION,
-        explanation: SAMPLE_EXPLANATION,
-        context: SAMPLE_SENTENCE,
-        url: SAMPLE_SOURCE_URL,
-        hostname: "astra-sample",
-        srsBox: 1,
-        nextReviewAt: Date.now(),
-        reviewCount: 0,
-        lastReviewedAt: null,
-        sourceContext: {
-          surface: "sample_lesson",
-          pageTitle: SAMPLE_SOURCE_TITLE,
-          pageUrl: SAMPLE_SOURCE_URL,
+      const savedAt = Date.now()
+      const entries: VocabularyEntry[] = []
+      for (const card of STARTER_CARDS) {
+        const entry = await saveVocabularyEntry({
+          text: card.text,
+          translation: card.translation,
+          explanation: card.explanation,
+          context: card.sentence,
+          url: SAMPLE_SOURCE_URL,
           hostname: "astra-sample",
-          sentenceText: SAMPLE_SENTENCE,
-          sentenceIndex: 0,
-          articleExcerpt: "Reading well requires a kind of attention that the modern web has quietly eroded. To inhabit a difficult sentence, you have to be willing to sit with it.",
-          contentSummary: "A short guided sample article for Astra's first learning loop.",
-          ownedReadingItemId: sourceItem.id,
-          ownedReadingSourceType: sourceItem.sourceType,
-          ownedReadingTitle: sourceItem.title,
-          studyProgressRecordId: sourceItem.studyProgressRecordId ?? undefined,
-        },
-      })
-      setSavedEntry(entry)
+          srsBox: 1,
+          nextReviewAt: savedAt,
+          reviewCount: 0,
+          lastReviewedAt: null,
+          sourceContext: {
+            surface: "sample_lesson",
+            pageTitle: SAMPLE_SOURCE_TITLE,
+            pageUrl: SAMPLE_SOURCE_URL,
+            hostname: "astra-sample",
+            sentenceText: card.sentence,
+            sentenceIndex: card.sentenceIndex,
+            articleExcerpt: "Reading well requires a kind of attention that the modern web has quietly eroded. To inhabit a difficult sentence, you have to be willing to sit with it.",
+            contentSummary: "A short guided sample article for Astra's first learning loop.",
+            ownedReadingItemId: sourceItem.id,
+            ownedReadingSourceType: sourceItem.sourceType,
+            ownedReadingTitle: sourceItem.title,
+            studyProgressRecordId: sourceItem.studyProgressRecordId ?? undefined,
+          },
+        })
+        entries.push(entry)
+      }
+      setSavedEntries(entries)
+      setReviewIndex(0)
       setStage("saved")
       recordLearningLoopEvent("saved_snippet_created", {
         source: "sample_lesson",
         sourceType: "sample_article",
         hasReviewCard: true,
       })
-      void commitLearningContinuitySync("sample-lesson-first-card-saved")
+      void commitLearningContinuitySync("sample-lesson-first-cards-saved")
     } finally {
       setSaving(false)
     }
   }
 
-  const completeReview = () => {
+  const reviewNextCard = () => {
+    if (reviewIndex < savedEntries.length - 1) {
+      setReviewIndex((index) => index + 1)
+      return
+    }
     setStage("complete")
     recordLearningLoopEvent("review_session_completed", {
       source: "sample_lesson",
-      cardCount: 1,
+      cardCount: savedEntries.length || STARTER_CARDS.length,
       firstReview: true,
     })
   }
@@ -232,37 +277,37 @@ export default function SampleLessonApp() {
               <div style={{ padding: "12px 14px", borderRadius: 12, background: "var(--astra-bg-elevated)", border: "1px solid var(--astra-border)", margin: "14px 0", fontSize: 13, lineHeight: 1.55 }}>
                 <strong>Explanation:</strong> {SAMPLE_EXPLANATION}
               </div>
-              <button type="button" style={primaryButtonStyle} onClick={() => void saveFirstCard()} disabled={saving}>
-                {saving ? "Saving…" : "Save this sentence for review"}
+              <button type="button" style={primaryButtonStyle} onClick={() => void saveStarterCards()} disabled={saving}>
+                {saving ? "Saving…" : "Save 3 expressions for review"}
               </button>
             </div>
           )}
 
           {stage === "saved" && (
             <div data-testid="sample-lesson-saved-step">
-              <h2 style={{ fontSize: 22, margin: "10px 0 8px" }}>You just created your first review card.</h2>
+              <h2 style={{ fontSize: 22, margin: "10px 0 8px" }} lang="zh">你刚刚创建了 {savedEntries.length || STARTER_CARDS.length} 个学习卡片</h2>
               <p style={{ color: "var(--astra-text-secondary)", fontSize: 13, lineHeight: 1.6 }}>
-                Saved to your Library with source context. Now try the 1-card review so the loop is complete.
+                You just created {savedEntries.length || STARTER_CARDS.length} review cards, saved to your Library with their source context. Now run the quick review so the loop is complete.
               </p>
               <div data-testid="sample-lesson-source-handoff" style={{ padding: "10px 12px", borderRadius: 12, background: "var(--astra-info-bg)", border: "1px solid var(--astra-info-border)", color: "var(--astra-text-secondary)", fontSize: 12, lineHeight: 1.5, margin: "12px 0" }}>
-                Source added to Library: this sample article now has a saved card attached, just like a real page.
+                Source added to Library: this sample article now has {savedEntries.length || STARTER_CARDS.length} saved cards attached, just like a real page.
               </div>
-              <button type="button" style={primaryButtonStyle} onClick={() => setStage("review")}>
-                Start 1-card review
+              <button type="button" style={primaryButtonStyle} onClick={() => { setReviewIndex(0); setStage("review") }}>
+                Start review
               </button>
             </div>
           )}
 
           {stage === "review" && (
             <div data-testid="sample-lesson-review-step">
-              <h2 style={{ fontSize: 22, margin: "10px 0 8px" }}>Review card 1 of 1</h2>
+              <h2 style={{ fontSize: 22, margin: "10px 0 8px" }}>Review card {reviewIndex + 1} of {savedEntries.length || STARTER_CARDS.length}</h2>
               <div style={{ padding: "12px 14px", borderRadius: 12, background: "var(--astra-bg-elevated)", border: "1px solid var(--astra-border)", margin: "14px 0", lineHeight: 1.55 }}>
-                <div style={{ fontWeight: 800 }}>{savedEntry?.text ?? "inhabit a difficult sentence"}</div>
-                <div style={{ color: "var(--astra-text-secondary)", fontSize: 13, marginTop: 8 }}>{SAMPLE_TRANSLATION}</div>
+                <div style={{ fontWeight: 800 }}>{savedEntries[reviewIndex]?.text ?? STARTER_CARDS[reviewIndex]?.text}</div>
+                <div style={{ color: "var(--astra-text-secondary)", fontSize: 13, marginTop: 8 }}>{savedEntries[reviewIndex]?.translation ?? STARTER_CARDS[reviewIndex]?.translation}</div>
                 <div style={{ color: "var(--astra-text-muted)", fontSize: 12, marginTop: 8 }}>Source: {SAMPLE_SOURCE_TITLE}</div>
               </div>
-              <button type="button" style={primaryButtonStyle} onClick={completeReview}>
-                I reviewed this card
+              <button type="button" style={primaryButtonStyle} onClick={reviewNextCard}>
+                {reviewIndex < (savedEntries.length || STARTER_CARDS.length) - 1 ? "I reviewed this — next card" : "I reviewed this card"}
               </button>
             </div>
           )}
