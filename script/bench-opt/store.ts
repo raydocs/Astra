@@ -41,6 +41,13 @@ function getStorePaths(rootDir: string) {
   }
 }
 
+const UNSAFE_ARTIFACT_PATH_CHARS = /["*:<>?|\r\n]/g
+
+export function safeBenchOptArtifactFileStem(id: string): string {
+  const normalized = id.trim().replace(UNSAFE_ARTIFACT_PATH_CHARS, "-")
+  return normalized.length > 0 ? normalized : "unnamed"
+}
+
 export async function loadBenchOptStore(rootDir: string): Promise<BenchOptStoreIndex> {
   const { indexPath } = getStorePaths(rootDir)
 
@@ -78,7 +85,7 @@ async function saveBenchOptStoreIndex(rootDir: string, store: BenchOptStoreIndex
 export async function saveBenchOptExperiment(run: BenchOptExperimentRun, rootDir: string) {
   const { experimentsRoot } = getStorePaths(rootDir)
   await mkdir(experimentsRoot, { recursive: true })
-  const experimentPath = path.join(experimentsRoot, `${run.experimentId}.json`)
+  const experimentPath = path.join(experimentsRoot, `${safeBenchOptArtifactFileStem(run.experimentId)}.json`)
   await writeFile(experimentPath, JSON.stringify(run, null, 2))
 
   const store = await loadBenchOptStore(rootDir)
@@ -98,7 +105,7 @@ export async function saveBenchOptExperiment(run: BenchOptExperimentRun, rootDir
 export async function saveBenchOptChampion(record: BenchOptChampionRecord, rootDir: string) {
   const { championsRoot } = getStorePaths(rootDir)
   await mkdir(championsRoot, { recursive: true })
-  const championPath = path.join(championsRoot, `${record.championTrialId}.json`)
+  const championPath = path.join(championsRoot, `${safeBenchOptArtifactFileStem(record.championTrialId)}.json`)
   await writeFile(championPath, JSON.stringify(record, null, 2))
 
   const store = await loadBenchOptStore(rootDir)
@@ -122,20 +129,20 @@ export async function saveBenchOptSessionArtifacts(session: BenchOptSessionArtif
   await mkdir(compactionsRoot, { recursive: true })
   await mkdir(handoffsRoot, { recursive: true })
 
-  const sessionPath = path.join(sessionsRoot, `${session.state.sessionId}.json`)
-  const checkpointPath = path.join(checkpointsRoot, `${session.checkpoint.checkpointId}.json`)
+  const sessionPath = path.join(sessionsRoot, `${safeBenchOptArtifactFileStem(session.state.sessionId)}.json`)
+  const checkpointPath = path.join(checkpointsRoot, `${safeBenchOptArtifactFileStem(session.checkpoint.checkpointId)}.json`)
   await writeFile(sessionPath, JSON.stringify(session.state, null, 2))
   await writeFile(checkpointPath, JSON.stringify(session.checkpoint, null, 2))
 
   const compactionPath = session.compaction
-    ? path.join(compactionsRoot, `${session.compaction.compactionId}.json`)
+    ? path.join(compactionsRoot, `${safeBenchOptArtifactFileStem(session.compaction.compactionId)}.json`)
     : null
   if (session.compaction && compactionPath) {
     await writeFile(compactionPath, JSON.stringify(session.compaction, null, 2))
   }
 
   const handoffPath = session.handoff
-    ? path.join(handoffsRoot, `${session.handoff.handoffId}.json`)
+    ? path.join(handoffsRoot, `${safeBenchOptArtifactFileStem(session.handoff.handoffId)}.json`)
     : null
   if (session.handoff && handoffPath) {
     await writeFile(handoffPath, JSON.stringify(session.handoff, null, 2))
