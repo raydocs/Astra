@@ -46,6 +46,7 @@ import type { YouTubeTranscriptSnapshot } from "./youtube"
 function createSnapshot(): YouTubeTranscriptSnapshot {
   return {
     available: true,
+    noCaptions: false,
     title: "Astra video lesson",
     pageUrl: "https://www.youtube.com/watch?v=astra123",
     language: "en",
@@ -138,5 +139,48 @@ describe("video transcript panel Deep Read handoff", () => {
     expect(browserMock.tabs.create).toHaveBeenCalledWith({
       url: "/deep-read.html?pageUrl=https%3A%2F%2Fwww.youtube.com%2Fwatch%3Fv%3Dastra123",
     })
+  })
+
+  it("offers a paste-to-explain fallback instead of dead-ending when the video has no captions", async () => {
+    subscribeYouTubeTranscriptSnapshotMock.mockImplementation((listener: (snapshot: YouTubeTranscriptSnapshot | null) => void) => {
+      listener({
+        available: false,
+        noCaptions: true,
+        title: "Astra video lesson",
+        pageUrl: "https://www.youtube.com/watch?v=nocaps",
+        language: null,
+        currentTime: 0,
+        activeIndex: -1,
+        cues: [],
+      })
+      return vi.fn()
+    })
+    runInlineActionMock.mockResolvedValue({ ok: true, text: "This subtitle means hello." })
+
+    mountVideoTranscriptPanel({ targetLang: "zh-CN", serviceMode: "balanced" })
+
+    const panel = document.getElementById("astra-video-transcript-panel")!
+    expect(panel.querySelector("[data-astra-transcript-no-captions]")).toBeTruthy()
+
+    const textarea = panel.querySelector("[data-astra-transcript-no-captions-input]") as HTMLTextAreaElement | null
+    expect(textarea).toBeTruthy()
+    textarea!.value = "Hola, ¿cómo estás?"
+    textarea!.dispatchEvent(new Event("input"))
+
+    const explainBtn = panel.querySelector("[data-astra-transcript-no-captions-explain]") as HTMLButtonElement | null
+    expect(explainBtn).toBeTruthy()
+    explainBtn!.click()
+    await Promise.resolve()
+    await Promise.resolve()
+
+    expect(runInlineActionMock).toHaveBeenCalledWith(expect.objectContaining({
+      text: "Hola, ¿cómo estás?",
+      task: "explain",
+      targetLang: "zh-CN",
+      serviceMode: "balanced",
+    }))
+
+    expect(panel.querySelector("[data-astra-transcript-no-captions-explanation]")?.textContent)
+      .toContain("This subtitle means hello.")
   })
 })

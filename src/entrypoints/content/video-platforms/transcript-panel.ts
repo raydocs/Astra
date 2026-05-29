@@ -67,6 +67,10 @@ let summaryGenerationInFlight: Promise<void> | null = null
 let attemptedSummaryCueCount = 0
 let statusMessage = ""
 let statusTone: TranscriptPanelStatusTone = "info"
+// No-captions fallback: the subtitle text the user pasted + its explanation, so a
+// captionless video isn't a dead end (explain copied subtitle text instead).
+let pastedSubtitleText = ""
+let pastedSubtitleExplanation = ""
 const handleFullscreenChange = () => renderTranscriptPanel()
 
 function formatTimestamp(ms: number): string {
@@ -258,6 +262,37 @@ function injectTranscriptPanelStyles(): void {
     #${PANEL_ID} [data-astra-transcript-status],
     #${PANEL_ID} [data-astra-transcript-explanation] {
       color: #64748b;
+      font-size: 12px;
+    }
+
+    #${PANEL_ID} [data-astra-transcript-no-captions] {
+      display: grid;
+      gap: 8px;
+      border: 1px solid rgba(226, 232, 240, 0.96);
+      border-radius: 14px;
+      padding: 10px;
+      background: rgba(248, 250, 252, 0.86);
+    }
+
+    #${PANEL_ID} [data-astra-transcript-no-captions] p {
+      margin: 0;
+    }
+
+    #${PANEL_ID} [data-astra-transcript-no-captions] textarea {
+      width: 100%;
+      box-sizing: border-box;
+      border: 1px solid rgba(203, 213, 225, 0.9);
+      border-radius: 12px;
+      padding: 7px 9px;
+      color: #0f172a;
+      background: rgba(255, 255, 255, 0.96);
+      outline: none;
+      font: inherit;
+      resize: vertical;
+    }
+
+    #${PANEL_ID} [data-astra-transcript-no-captions-explanation] {
+      color: #334155;
       font-size: 12px;
     }
 
@@ -708,6 +743,29 @@ async function handleExplainCue(cue: YouTubeTranscriptCueSnapshot): Promise<void
   }
 }
 
+// No-captions fallback path: explain a line of subtitle text the user pasted in,
+// reusing the same inline-action explain pipeline as per-cue explanations.
+async function handleExplainPastedText(text: string): Promise<void> {
+  const options = activeOptions
+  const trimmed = text.trim()
+  if (!options || !trimmed) return
+  pastedSubtitleText = trimmed
+  setPanelStatus("Loading subtitle explanation…", "loading")
+  const result = await runInlineAction({
+    text: trimmed,
+    targetLang: options.targetLang,
+    serviceMode: options.serviceMode,
+    task: "explain",
+    selectionContext: "Pasted YouTube subtitle (captions unavailable)",
+  })
+  if (result.ok) {
+    pastedSubtitleExplanation = result.text
+    setPanelSuccess("explanation ready")
+  } else {
+    setPanelError(result.message, "try explaining the subtitle again")
+  }
+}
+
 async function handleSaveCue(cue: YouTubeTranscriptCueSnapshot): Promise<void> {
   const sourceUrl = buildVideoTimestampUrl(latestSnapshot?.pageUrl ?? window.location.href, cue.startMs)
   const savedItem: VideoNoteLearningItem = {
@@ -1013,8 +1071,20 @@ function renderTranscriptPanel(): void {
   const trimmedSearchQuery = searchQuery.trim()
   const resolvedStatusText = trimmedSearchQuery
     ? `Search active for “${trimmedSearchQuery}”: ${displayedCues.length} transcript row${displayedCues.length === 1 ? "" : "s"}.`
-    : statusMessage || (snapshot?.available ? `${displayedCues.length} transcript rows` : "Loading transcript rows from YouTube…")
-  const resolvedStatusTone: TranscriptPanelStatusTone = trimmedSearchQuery ? "info" : statusMessage ? statusTone : snapshot?.available ? "info" : "loading"
+    : statusMessage || (snapshot?.available
+      ? `${displayedCues.length} transcript rows`
+      : snapshot?.noCaptions
+        ? localizedLabel("transcriptNoCaptionsTitle", "Captions aren't available for this video")
+        : "Loading transcript rows from YouTube…")
+  const resolvedStatusTone: TranscriptPanelStatusTone = trimmedSearchQuery
+    ? "info"
+    : statusMessage
+      ? statusTone
+      : snapshot?.available
+        ? "info"
+        : snapshot?.noCaptions
+          ? "warning"
+          : "loading"
   const status = document.createElement("div")
   status.dataset.astraTranscriptStatus = "true"
   status.dataset.state = resolvedStatusTone
@@ -1023,6 +1093,48 @@ function renderTranscriptPanel(): void {
   status.setAttribute("aria-atomic", "true")
   status.textContent = resolvedStatusText
   panelRoot.appendChild(status)
+
+  // No captions on this video → don't dead-end on a perpetual "loading" list.
+  // Offer a human explanation + a paste box to explain copied subtitle text,
+  // reusing the inline-action explain pipeline.
+  if (snapshot?.noCaptions && !trimmedSearchQuery) {
+    const fallback = document.createElement("div")
+    fallback.dataset.astraTranscriptNoCaptions = "true"
+
+    const body = document.createElement("p")
+    body.textContent = localizedLabel(
+      "transcriptNoCaptionsBody",
+      "YouTube captions aren't available for this video. Paste a line you copied from the subtitles and Astra will explain it.",
+    )
+    fallback.appendChild(body)
+
+    const label = document.createElement("label")
+    label.textContent = localizedLabel("transcriptNoCaptionsPasteLabel", "Paste subtitle text")
+    const textarea = document.createElement("textarea")
+    textarea.dataset.astraTranscriptNoCaptionsInput = "true"
+    textarea.rows = 3
+    textarea.value = pastedSubtitleText
+    textarea.addEventListener("input", () => { pastedSubtitleText = textarea.value })
+    label.appendChild(textarea)
+    fallback.appendChild(label)
+
+    const explain = document.createElement("button")
+    explain.type = "button"
+    explain.dataset.astraTranscriptNoCaptionsExplain = "true"
+    explain.textContent = localizedLabel("transcriptNoCaptionsExplain", "Explain pasted text")
+    explain.addEventListener("click", () => { void handleExplainPastedText(textarea.value) })
+    fallback.appendChild(explain)
+
+    if (pastedSubtitleExplanation) {
+      const explanation = document.createElement("p")
+      explanation.dataset.astraTranscriptNoCaptionsExplanation = "true"
+      explanation.textContent = pastedSubtitleExplanation
+      fallback.appendChild(explanation)
+    }
+
+    panelRoot.appendChild(fallback)
+    return
+  }
 
   // Post-save nudge: a real next step, not a flat toast — "review N now" (reusing
   // the review deep-link) + "find it later in Vocabulary". Cleared on any other status.
@@ -1200,6 +1312,8 @@ export function unmountVideoTranscriptPanel(): void {
   attemptedSummaryCueCount = 0
   statusMessage = ""
   statusTone = "info"
+  pastedSubtitleText = ""
+  pastedSubtitleExplanation = ""
   panelRoot?.remove()
   panelRoot = null
 }

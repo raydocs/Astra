@@ -1593,6 +1593,18 @@
   "transcriptFindInVocabulary": {
     "message": "稍后在词汇表里找回"
   },
+  "transcriptNoCaptionsTitle": {
+    "message": "这个视频暂时没有字幕"
+  },
+  "transcriptNoCaptionsBody": {
+    "message": "这个视频暂时没有 YouTube 字幕。把你复制的字幕粘贴进来，Astra 会为你解释。"
+  },
+  "transcriptNoCaptionsPasteLabel": {
+    "message": "粘贴字幕文本"
+  },
+  "transcriptNoCaptionsExplain": {
+    "message": "解释粘贴的内容"
+  },
   "proMomentsCardTitle": {
     "message": "Pro 价值时刻"
   },

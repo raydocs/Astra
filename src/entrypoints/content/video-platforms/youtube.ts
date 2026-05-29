@@ -105,6 +105,8 @@ export interface YouTubeTranscriptCueSnapshot {
 
 export interface YouTubeTranscriptSnapshot {
   available: boolean
+  /** Settled "this video has no captions" signal (track missing, not just still loading). */
+  noCaptions: boolean
   title: string | null
   pageUrl: string
   language: string | null
@@ -1049,6 +1051,8 @@ export function startYouTubeHybridSubtitleSession(
 
     return {
       available: cues.length > 0,
+      // Settled no-captions only when the track is confirmed missing — not during load.
+      noCaptions: cues.length === 0 && anomalies.has("missing-track"),
       title: getYouTubeVideoNoteTitle(),
       pageUrl: window.location.href,
       language: normalizeLanguageCode(activeTrack?.languageCode) || null,
