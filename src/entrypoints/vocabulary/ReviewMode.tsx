@@ -10,6 +10,7 @@ import type { SrsFields, BoxDistribution, ReviewGrade } from "@/utils/srs/leitne
 import { buildVocabularyReviewStudyEvent, deriveStudyLoopViewModel, getStudyProgress, recordStudyEvent, type PersonalizedTeachingStrategy, type StudyLoopViewModel, type StudyStep } from "@/utils/storage/study-progress"
 import { deriveVocabularySourceDisplay, getPageReviewVocabularyEntries } from "@/utils/storage/vocabulary-core"
 import type { OwnedReadingItem } from "@/utils/storage/owned-reading"
+import { buildVideoTimestampUrl } from "@/utils/video-timestamp-url"
 import {
   buildOwnedReadingResumeTarget,
   describeOwnedReadingProgress,
@@ -169,19 +170,7 @@ function buildVideoTimestampReturnUrl(entry?: VocabularyEntry | null): string | 
   if (typeof timestampMs !== "number") return null
   const baseUrl = entry.sourceContext.pageUrl ?? entry.url
   if (!baseUrl?.trim()) return null
-
-  const seconds = Math.max(0, Math.floor(timestampMs / 1000))
-  try {
-    const url = new URL(baseUrl)
-    if (url.hostname.includes("youtube.com") || url.hostname === "youtu.be") {
-      url.searchParams.set("t", `${seconds}s`)
-    } else {
-      url.searchParams.set("t", String(seconds))
-    }
-    return url.toString()
-  } catch {
-    return baseUrl
-  }
+  return buildVideoTimestampUrl(baseUrl, timestampMs)
 }
 
 function formatLocalDayLabel(date: string): string {

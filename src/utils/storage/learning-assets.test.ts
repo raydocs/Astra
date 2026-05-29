@@ -4,6 +4,7 @@ import type { OwnedReadingItem } from "./owned-reading"
 import {
   buildLearningAssetProjection,
   buildLocalWeeklyDigestViewModel,
+  deriveVideoMomentCards,
   deriveWeeklyReviewableLearningMoments,
   reviewCardFromVocabularyEntry,
   savedSnippetFromVocabularyEntry,
@@ -251,5 +252,65 @@ describe("learning asset adapters", () => {
     expect(summary.weightedReviewableLearningMoments).toBe(3.7)
     expect(JSON.stringify(summary)).not.toContain("resilience")
     expect(JSON.stringify(summary)).not.toContain("The team showed")
+  })
+})
+
+describe("video moment cards (derived view)", () => {
+  const savedAt = Date.UTC(2026, 4, 25)
+  const videoEntry: VocabularyEntry = {
+    id: "vocab-video-1",
+    text: "be willing to sit with it",
+    translation: "愿意静下心来慢慢琢磨它",
+    explanation: "Stay with a hard idea patiently.",
+    context: "YouTube transcript · 2:05",
+    savedAt,
+    srsBox: 1,
+    nextReviewAt: savedAt,
+    reviewCount: 0,
+    lastReviewedAt: null,
+    sourceContext: {
+      surface: "video_transcript",
+      pageTitle: "The Quiet Architecture of Reading (talk)",
+      pageUrl: "https://www.youtube.com/watch?v=abc123",
+      hostname: "www.youtube.com",
+      sentenceText: "you have to be willing to sit with it",
+      videoTimestampMs: 125_000,
+    },
+  }
+
+  it("classifies a YouTube transcript save as a video_moment and carries the timestamp", () => {
+    const card = reviewCardFromVocabularyEntry(videoEntry)
+    expect(card.cardType).toBe("video_moment")
+
+    const snippet = savedSnippetFromVocabularyEntry(videoEntry)
+    expect(snippet.anchor.timestampMs).toBe(125_000)
+
+    const projection = buildLearningAssetProjection({ vocabularyEntries: [videoEntry] })
+    const source = projection.sourceContents[0]
+    expect(source?.type).toBe("video")
+    expect(source?.progress.lastPosition?.timestampMs).toBe(125_000)
+  })
+
+  it("derives a VideoMomentCard with a replay URL and formatted timestamp", () => {
+    const projection = buildLearningAssetProjection({ vocabularyEntries: [videoEntry] })
+    const moments = deriveVideoMomentCards(projection)
+
+    expect(moments).toHaveLength(1)
+    const moment = moments[0]!
+    expect(moment.videoTitle).toBe("The Quiet Architecture of Reading (talk)")
+    expect(moment.timestampMs).toBe(125_000)
+    expect(moment.formattedTimestamp).toBe("2:05")
+    expect(moment.replayUrl).toBe("https://www.youtube.com/watch?v=abc123&t=125s")
+    expect(moment.front).toBe("be willing to sit with it")
+  })
+
+  it("returns no video moments for a plain page save", () => {
+    const pageEntry: VocabularyEntry = {
+      ...videoEntry,
+      id: "vocab-page-1",
+      sourceContext: { surface: "popup_deep_read", pageTitle: "Article", pageUrl: "https://example.com/a", hostname: "example.com" },
+    }
+    const projection = buildLearningAssetProjection({ vocabularyEntries: [pageEntry] })
+    expect(deriveVideoMomentCards(projection)).toHaveLength(0)
   })
 })

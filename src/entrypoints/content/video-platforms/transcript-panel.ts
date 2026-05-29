@@ -1,6 +1,7 @@
 import { browser } from "#imports"
 import { copyTextToClipboard } from "@/utils/dom/clipboard"
 import { getDueVocabularyCount, saveVocabularyEntry } from "@/utils/storage/vocabulary"
+import { buildVideoTimestampUrl } from "@/utils/video-timestamp-url"
 import { runInlineAction } from "../inline-actions"
 import { saveDeepReadSession } from "@/utils/storage/deep-read-session"
 import {
@@ -77,21 +78,6 @@ function formatTimestamp(ms: number): string {
     return `${hours}:${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}`
   }
   return `${minutes}:${String(seconds).padStart(2, "0")}`
-}
-
-function buildVideoTimestampUrl(baseUrl: string, timestampMs: number): string {
-  const seconds = Math.max(0, Math.floor(timestampMs / 1000))
-  try {
-    const url = new URL(baseUrl)
-    if (url.hostname.includes("youtube.com") || url.hostname === "youtu.be") {
-      url.searchParams.set("t", `${seconds}s`)
-    } else {
-      url.searchParams.set("t", String(seconds))
-    }
-    return url.toString()
-  } catch {
-    return baseUrl
-  }
 }
 
 function formatCueForClipboard(cue: YouTubeTranscriptCueSnapshot): string {
