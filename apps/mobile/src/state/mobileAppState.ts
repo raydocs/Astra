@@ -1,8 +1,10 @@
 import type { MobileAstraClient, MobileAstraSession, MobileCloudDataDeleteCollection, MobileCloudDataDeleteJob, MobileDeviceIdentity, MobileSyncCollection, MobileSyncMutationRecord, MobileSyncPullResponse, MobileSyncPushResponse } from "../api/astraClient"
 import { buildMobileReviewSnapshotFromCloudVocabulary, type MobileCloudVocabularySnapshotInput, type MobileSyncedReviewScheduleRecord, type MobileSyncedVocabularyEntry } from "../domain/cloudVocabulary"
+import { applyReview, createDefaultSrsFields, type SrsFields } from "../domain/srs"
 import {
   EMPTY_OFFLINE_REVIEW_QUEUE,
   buildLegacyReviewScheduleMutation,
+  reviewRatingToGrade,
   compactSyncedReviewOperations,
   enqueueReviewEvent,
   getFlushableReviewOperations,
@@ -895,18 +897,42 @@ export function recordMobileReviewRating(params: {
   }
 }
 
+function srsFieldsFromSchedule(schedule: MobileSyncedReviewScheduleRecord | undefined, now: number): SrsFields {
+  if (!schedule) return createDefaultSrsFields(now)
+  return {
+    srsBox: schedule.srsBox,
+    nextReviewAt: schedule.nextReviewAt,
+    reviewCount: schedule.reviewCount,
+    lastReviewedAt: schedule.lastReviewedAt,
+  }
+}
+
 export function buildPendingMobileReviewMutations(state: MobileAppState, device: MobileDeviceIdentity) {
   const cardById = new Map(state.reviewSnapshot.reviewCards.map((card) => [card.cardId, card]))
+  const scheduleByEntryId = new Map(
+    (state.cloudVocabulary.reviewSchedules ?? []).map((schedule) => [schedule.vocabularyEntryId, schedule]),
+  )
+  // Working SRS state per vocabulary entry so multiple queued reviews of the same
+  // card chain through the scheduler instead of each starting from the cloud baseline.
+  const workingFields = new Map<string, SrsFields>()
   return getFlushableReviewOperations(state.offlineQueue)
     .map((operation) => {
       const card = cardById.get(operation.event.cardId) ?? operation.card
       if (!card) return null
+      const grade = reviewRatingToGrade(operation.event.rating)
+      const reviewedAtMs = new Date(operation.event.reviewedAt).getTime()
+      const previousFields = workingFields.get(card.itemId)
+        ?? srsFieldsFromSchedule(scheduleByEntryId.get(card.itemId), reviewedAtMs)
+      const fields = applyReview(previousFields, { grade }, reviewedAtMs)
+      workingFields.set(card.itemId, fields)
       return {
         operation,
         mutation: buildLegacyReviewScheduleMutation({
           operation,
           card,
           deviceId: device.deviceId,
+          fields,
+          grade,
         }),
       }
     })

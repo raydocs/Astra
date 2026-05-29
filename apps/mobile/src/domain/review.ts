@@ -1,3 +1,5 @@
+import { buildVideoTimestampUrl } from "./videoTimestamp"
+
 export type SourceContentType = "page" | "video" | "pdf" | "doc" | "book" | "writing" | "saved"
 export type SavedItemType = "word" | "phrase" | "sentence" | "correction"
 export type ReviewCardType = "word" | "sentence" | "cloze" | "audio" | "correction"
@@ -24,6 +26,7 @@ export interface SavedItem {
   explanation?: string
   context?: string
   savedAt: string
+  videoTimestampMs?: number
   privacyLevel?: "normal" | "private" | "local-only"
 }
 
@@ -127,7 +130,9 @@ export function buildTodayReviewQueue(snapshot: MobileReviewSnapshot, now = new 
         context: item.context ?? "",
         sourceTitle: source.title,
         sourceType: source.type,
-        sourceUrl: source.url,
+        sourceUrl: item.videoTimestampMs != null && source.url
+          ? buildVideoTimestampUrl(source.url, item.videoTimestampMs)
+          : source.url,
         dueAt: card.dueAt,
         state: card.state,
       } satisfies MobileReviewCardViewModel

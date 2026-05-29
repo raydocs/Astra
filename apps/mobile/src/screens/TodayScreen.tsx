@@ -20,6 +20,8 @@ import {
   type ReviewRating,
 } from "../domain/review"
 import type { OfflineReviewQueueState } from "../domain/offlineQueue"
+import type { MobileSyncedReviewScheduleRecord } from "../domain/cloudVocabulary"
+import { computeReviewStreak, reviewStreakCopy } from "../domain/streak"
 
 interface TodayScreenProps {
   onOpenLibrary: () => void
@@ -27,6 +29,7 @@ interface TodayScreenProps {
   sampleDeck?: boolean
   weeklyDigest?: MobileDigestSnapshot | null
   offlineQueue?: OfflineReviewQueueState
+  reviewSchedules?: MobileSyncedReviewScheduleRecord[]
   sourceReview?: { sourceId: string; title: string } | null
   onClearSourceReview?: () => void
   onRateCard?: (cardId: string, rating: ReviewRating) => void
@@ -36,12 +39,20 @@ interface TodayScreenProps {
   onViewSource?: (card: MobileReviewCardViewModel) => void
 }
 
-export function TodayScreen({ onOpenLibrary, snapshot = sampleMobileReviewSnapshot, sampleDeck = true, weeklyDigest = null, offlineQueue, sourceReview, onClearSourceReview, onRateCard, onMarkCardNotUseful, onShareCard, onSpeakCard, onViewSource }: TodayScreenProps) {
+export function TodayScreen({ onOpenLibrary, snapshot = sampleMobileReviewSnapshot, sampleDeck = true, weeklyDigest = null, offlineQueue, reviewSchedules, sourceReview, onClearSourceReview, onRateCard, onMarkCardNotUseful, onShareCard, onSpeakCard, onViewSource }: TodayScreenProps) {
   const [answered, setAnswered] = useState(false)
   const [sampleCompletedCardIds, setSampleCompletedCardIds] = useState<Set<string>>(() => new Set())
   const queueState = offlineQueue
   const queue = useMemo(() => buildTodayReviewQueue(snapshot, new Date(), sourceReview ? { sourceId: sourceReview.sourceId } : {}), [snapshot, sourceReview])
   const reviewEvents = useMemo(() => queueState?.operations.map((operation) => operation.event) ?? [], [queueState])
+  const streakDays = useMemo(() => {
+    if (sampleDeck) return 0
+    const timestamps = [
+      ...(reviewSchedules ?? []).map((schedule) => schedule.lastReviewedAt ?? 0),
+      ...reviewEvents.map((event) => new Date(event.reviewedAt).getTime()),
+    ]
+    return computeReviewStreak(timestamps, Date.now())
+  }, [reviewSchedules, reviewEvents, sampleDeck])
   const queuedCompletedCardIds = useMemo(() => new Set(reviewEvents.map((event) => event.cardId)), [reviewEvents])
   const localDigest = useMemo(() => buildWeeklyDigestSnapshot(snapshot, reviewEvents), [reviewEvents, snapshot])
   const digest = weeklyDigest ?? localDigest
@@ -101,6 +112,9 @@ export function TodayScreen({ onOpenLibrary, snapshot = sampleMobileReviewSnapsh
           <Text style={styles.pill}>{sampleDeck ? "sample" : `${queueState?.operations.length ?? 0} offline-ready`}</Text>
           <Text style={styles.pill}>{sourceReview ? "one source" : "source-backed"}</Text>
         </View>
+        {streakDays >= 2 && !sourceReview ? (
+          <Text style={styles.streakLine} accessibilityRole="text">{reviewStreakCopy(streakDays)}</Text>
+        ) : null}
         {sourceReview ? (
           <Pressable accessibilityRole="button" accessibilityLabel="Back to all Today cards" accessibilityHint="Return from this source review to the full Today review queue" style={styles.secondaryButton} onPress={onClearSourceReview}>
             <Text style={styles.secondaryButtonText}>Back to all Today cards</Text>
@@ -251,6 +265,7 @@ const styles = StyleSheet.create({
   sourceScopeText: { color: colors.graphite, fontSize: 14, fontWeight: "700", lineHeight: 20 },
   summaryRow: { flexDirection: "row", flexWrap: "wrap", gap: spacing.sm, marginTop: spacing.sm },
   pill: { borderColor: colors.border, borderRadius: radii.pill, borderWidth: 1, color: colors.ink, paddingHorizontal: spacing.md, paddingVertical: spacing.xs },
+  streakLine: { color: colors.sealRed, fontSize: 14, fontWeight: "700", marginTop: spacing.xs },
   progressRow: { flexDirection: "row", gap: spacing.xs, marginTop: spacing.sm },
   progressDot: { backgroundColor: colors.border, borderRadius: radii.pill, flex: 1, height: 6 },
   progressDotDone: { backgroundColor: colors.sealRed },

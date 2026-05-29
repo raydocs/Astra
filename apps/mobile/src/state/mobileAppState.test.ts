@@ -304,6 +304,12 @@ describe("mobile app state", () => {
       collection: "review_schedule",
       recordId: "item-resilient",
       deviceId: "device-mobile",
+      payload: {
+        srsBox: 2,
+        nextReviewAt: Date.UTC(2026, 4, 27, 12, 0, 0) + 2 * 24 * 60 * 60 * 1000,
+        reviewCount: 1,
+        lastReviewGrade: "good",
+      },
     })
 
     const synced = applyMobileReviewPushResult(rated, {
@@ -314,6 +320,45 @@ describe("mobile app state", () => {
     expect(synced.syncStatus).toBe("ready")
     expect(synced.lastSyncedAt).toBe("2026-05-27T12:05:00.000Z")
     expect(synced.syncCursors.review_schedule).toBeNull()
+  })
+
+  it("advances SRS from the card's current cloud schedule instead of resetting it to due-now", () => {
+    const reviewedAt = new Date("2026-05-30T12:00:00.000Z")
+    const cloudInput = {
+      entries: [{
+        id: "vocab-box2",
+        text: "resilient",
+        translation: "能恢复的；有韧性的",
+        savedAt: Date.UTC(2026, 4, 20, 9, 0, 0),
+      }],
+      reviewSchedules: [{
+        vocabularyEntryId: "vocab-box2",
+        nextReviewAt: Date.UTC(2026, 4, 30, 0, 0, 0),
+        srsBox: 2,
+        reviewCount: 3,
+        lastReviewedAt: Date.UTC(2026, 4, 28, 0, 0, 0),
+      }],
+    }
+    const seeded = applyCloudVocabularyToMobileState(DEFAULT_MOBILE_APP_STATE, cloudInput, reviewedAt)
+    const rated = recordMobileReviewRating({
+      state: seeded,
+      cardId: "card_vocab-box2",
+      rating: "good",
+      device,
+      now: reviewedAt,
+    })
+
+    const pending = buildPendingMobileReviewMutations(rated, device)
+    expect(pending).toHaveLength(1)
+    // box 2 + "good" -> box 3, scheduled 4 days out (not box 2, not due-now).
+    expect(pending[0].mutation.payload).toMatchObject({
+      vocabularyEntryId: "vocab-box2",
+      srsBox: 3,
+      nextReviewAt: reviewedAt.getTime() + 4 * 24 * 60 * 60 * 1000,
+      reviewCount: 4,
+      lastReviewGrade: "good",
+    })
+    expect((pending[0].mutation.payload as { nextReviewAt: number }).nextReviewAt).toBeGreaterThan(reviewedAt.getTime())
   })
 
   it("syncs pending review events through the mobile client", async () => {

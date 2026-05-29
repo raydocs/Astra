@@ -100,6 +100,7 @@ export function buildMobileReviewSnapshotFromCloudVocabulary(input: MobileCloudV
       explanation: entry.explanation?.trim(),
       context: entry.sourceContext?.sentenceText ?? entry.context,
       savedAt: new Date(entry.savedAt).toISOString(),
+      videoTimestampMs: entry.sourceContext?.videoTimestampMs,
       privacyLevel: "normal",
     })
 

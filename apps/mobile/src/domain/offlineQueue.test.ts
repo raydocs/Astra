@@ -11,8 +11,10 @@ import {
   markOperationSynced,
   markOperationsSyncing,
   parseOfflineReviewQueue,
+  reviewRatingToGrade,
   serializeOfflineReviewQueue,
 } from "./offlineQueue"
+import { applyReview, createDefaultSrsFields } from "./srs"
 
 describe("offline review queue", () => {
   const event = createReviewEvent({
@@ -46,38 +48,56 @@ describe("offline review queue", () => {
     expect(compactSyncedReviewOperations(synced).operations[0].status).toBe("synced")
   })
 
-  it("maps skipped cards into conservative review schedule mutations", () => {
+  it("maps mobile ratings to canonical SRS grades", () => {
+    expect(reviewRatingToGrade("again")).toBe("again")
+    expect(reviewRatingToGrade("skip")).toBe("again")
+    expect(reviewRatingToGrade("good")).toBe("good")
+    expect(reviewRatingToGrade("easy")).toBe("easy")
+  })
+
+  it("maps skipped cards into relearn schedule mutations (box 1, short interval)", () => {
+    const reviewedAt = new Date("2026-05-27T12:00:00.000Z")
     const skippedEvent = createReviewEvent({
       cardId: "card-resilient",
       rating: "skip",
       deviceId: "device-mobile",
       appVersion: "0.1.0-test",
       offline: true,
-      reviewedAt: new Date("2026-05-27T12:00:00.000Z"),
+      reviewedAt,
     })
     const queued = enqueueReviewEvent(EMPTY_OFFLINE_REVIEW_QUEUE, skippedEvent)
+    const grade = reviewRatingToGrade("skip")
+    const fields = applyReview(createDefaultSrsFields(reviewedAt.getTime()), { grade }, reviewedAt.getTime())
     const mutation = buildLegacyReviewScheduleMutation({
       operation: queued.operations[0],
       card: { cardId: "card-resilient", itemId: "vocab-resilient" },
       deviceId: "device-mobile",
+      fields,
+      grade,
     })
 
     expect(mutation.payload).toMatchObject({
       lastReviewGrade: "again",
       srsBox: 1,
-      mobileReviewEventId: skippedEvent.eventId,
+      nextReviewAt: reviewedAt.getTime() + 10 * 60 * 1000,
+      reviewCount: 1,
     })
   })
 
-  it("serializes safely and creates current review_schedule sync mutations", () => {
+  it("serializes the computed SRS schedule into a review_schedule mutation", () => {
     const queued = enqueueReviewEvent(EMPTY_OFFLINE_REVIEW_QUEUE, event)
     const restored = parseOfflineReviewQueue(serializeOfflineReviewQueue(queued))
     expect(restored.operations[0].event.cardId).toBe("card-resilient")
 
+    const reviewedAt = new Date(restored.operations[0].event.reviewedAt)
+    const grade = reviewRatingToGrade("good")
+    const fields = applyReview(createDefaultSrsFields(reviewedAt.getTime()), { grade }, reviewedAt.getTime())
     const mutation = buildLegacyReviewScheduleMutation({
       operation: restored.operations[0],
       card: { cardId: "card-resilient", itemId: "vocab-resilient" },
       deviceId: "device-mobile",
+      fields,
+      grade,
       clientUpdatedAt: new Date("2026-05-27T12:05:00.000Z"),
     })
     expect(mutation).toMatchObject({
@@ -87,8 +107,24 @@ describe("offline review queue", () => {
       payload: {
         vocabularyEntryId: "vocab-resilient",
         lastReviewGrade: "good",
-        mobileReviewEventId: event.eventId,
+        srsBox: 2,
+        nextReviewAt: reviewedAt.getTime() + 2 * 24 * 60 * 60 * 1000,
+        reviewCount: 1,
       },
     })
+    // Payload must carry EXACTLY the keys of the server's strict review_schedule
+    // schema (VocabularyReviewScheduleRecordSchema in src/utils/storage/vocabulary-core.ts).
+    // Any stray key (e.g. the old mobileReviewEventId) makes .strict().parse throw
+    // server-side → INVALID_SYNC_PAYLOAD and the review never persists.
+    expect(Object.keys(mutation.payload as Record<string, unknown>).sort()).toEqual([
+      "lastReviewGrade",
+      "lastReviewGradeAt",
+      "lastReviewedAt",
+      "nextReviewAt",
+      "reviewCount",
+      "srsBox",
+      "updatedAt",
+      "vocabularyEntryId",
+    ])
   })
 })

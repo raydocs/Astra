@@ -64,4 +64,27 @@ describe("cloud vocabulary mobile snapshot mapping", () => {
     ])
     expect(queue.find((card) => card.front === "resilient")?.sourceUrl).toBe("https://example.com/distributed-systems")
   })
+
+  it("deep-links a video card's source URL to the saved moment's timestamp", () => {
+    const snapshot = buildMobileReviewSnapshotFromCloudVocabulary({
+      entries: [{
+        id: "vocab-serendipity",
+        text: "serendipity",
+        translation: "意外发现美好事物的运气",
+        savedAt: Date.UTC(2026, 4, 27, 9, 0, 0),
+        sourceContext: {
+          surface: "video_transcript",
+          pageTitle: "How discoveries happen",
+          pageUrl: "https://www.youtube.com/watch?v=abc123",
+          videoTimestampMs: 165_000,
+        },
+      }],
+    })
+
+    expect(snapshot.savedItems[0]).toMatchObject({ itemId: "vocab-serendipity", videoTimestampMs: 165_000 })
+
+    const [card] = buildTodayReviewQueue(snapshot, new Date("2026-05-27T12:00:00.000Z"))
+    expect(card.sourceType).toBe("video")
+    expect(card.sourceUrl).toBe("https://www.youtube.com/watch?v=abc123&t=165s")
+  })
 })
