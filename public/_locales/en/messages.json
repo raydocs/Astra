@@ -1455,5 +1455,29 @@
   },
   "omnibox_defaultSuggestion": {
     "message": "Translate: %s"
+  },
+  "serviceModeAutomatic": {
+    "message": "Auto"
+  },
+  "serviceModeFast": {
+    "message": "Faster"
+  },
+  "serviceModeBalanced": {
+    "message": "Balanced"
+  },
+  "serviceModeBestQuality": {
+    "message": "Study mode"
+  },
+  "floatBallModeBilingual": {
+    "message": "Bilingual"
+  },
+  "floatBallModeTranslationOnly": {
+    "message": "Translation only"
+  },
+  "floatBallScopeFullPage": {
+    "message": "Full page"
+  },
+  "floatBallScopeImmersive": {
+    "message": "Immersive"
   }
 }

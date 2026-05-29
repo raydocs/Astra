@@ -3,7 +3,7 @@ import ReactDOM from "react-dom/client"
 import { browser } from "#imports"
 import { ErrorBoundary } from "@/components/ErrorBoundary"
 import { t } from "@/utils/i18n"
-import { getSafeAiUnavailableCopy, getServiceModeLabel } from "@/utils/copy-dictionary"
+import { getContentScopeLabel, getReadingModeLabel, getSafeAiUnavailableCopy, getServiceModeLabel } from "@/utils/copy-dictionary"
 import { retryFailedBlocks, stopPageTranslation, subscribePageTranslationState, translatePageElements } from "../page-translate"
 import { toggleCurrentTabTranslation } from "@/utils/extension/messages"
 import { IDLE_TRANSLATION_SNAPSHOT, type TranslationSnapshot } from "@/types/translation"
@@ -1116,12 +1116,12 @@ function QuietStatusPill() {
               {visual.reviewReady ? "Review" : "Settings"}
             </button>
             <button type="button" role="menuitem" style={quickActionStyle(fontScale)} onClick={(event) => { event.stopPropagation(); toggleReadingMode() }} onPointerUp={(event) => { event.stopPropagation() }}>
-              {translationMode === "bilingual" ? "Bilingual" : "Translation only"}
+              {getReadingModeLabel(translationMode === "bilingual" ? "bilingual" : "translation-only")}
             </button>
             {showAdvancedActions && (
             <>
             <button type="button" role="menuitem" style={quickActionStyle(fontScale)} onClick={(event) => { event.stopPropagation(); togglePageSurfaceMode() }} onPointerUp={(event) => { event.stopPropagation() }}>
-              {contentScope === "full_page" ? "Full page" : "Immersive"}
+              {getContentScopeLabel(contentScope === "full_page" ? "full_page" : "immersive")}
             </button>
             <button type="button" role="menuitem" style={quickActionStyle(fontScale)} onClick={(event) => { event.stopPropagation(); cycleServiceMode() }} onPointerUp={(event) => { event.stopPropagation() }}>
               {getServiceModeLabel(serviceMode)}

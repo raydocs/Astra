@@ -653,7 +653,7 @@ describe("OptionsApp — Sites section", () => {
     expect(container.textContent).not.toContain("Your membership includes")
     expect(container.textContent).toContain("Service preference")
     expect(container.textContent).toContain("Choose a simple reading style — not technical setup.")
-    expect(container.textContent).toContain("Best quality")
+    expect(container.textContent).toContain("Study mode")
     expect(container.textContent).not.toContain("API key")
     expect(container.textContent).not.toContain("OpenAI")
   })
@@ -756,7 +756,7 @@ describe("OptionsApp — Sites section", () => {
     })
 
     const bestQuality = Array.from(container.querySelectorAll("button"))
-      .find((button) => button.textContent?.includes("Best quality")) as HTMLButtonElement | undefined
+      .find((button) => button.textContent?.includes("Study mode")) as HTMLButtonElement | undefined
     expect(bestQuality).toBeTruthy()
 
     await act(async () => {

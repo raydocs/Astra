@@ -1454,5 +1454,29 @@
   },
   "omnibox_defaultSuggestion": {
     "message": "翻译：%s"
+  },
+  "serviceModeAutomatic": {
+    "message": "自动"
+  },
+  "serviceModeFast": {
+    "message": "快速理解"
+  },
+  "serviceModeBalanced": {
+    "message": "精准阅读"
+  },
+  "serviceModeBestQuality": {
+    "message": "学习模式"
+  },
+  "floatBallModeBilingual": {
+    "message": "双语"
+  },
+  "floatBallModeTranslationOnly": {
+    "message": "仅译文"
+  },
+  "floatBallScopeFullPage": {
+    "message": "整页"
+  },
+  "floatBallScopeImmersive": {
+    "message": "沉浸"
   }
 }

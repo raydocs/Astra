@@ -58,20 +58,58 @@ export function getUserCopy(key: CopyDictionaryKey): string {
 }
 
 /**
- * Single source of truth for the user-facing service-mode (Astra AI style)
- * labels. Ordinary users only ever see these human words — never provider,
- * model, or token language. Surfaces (options, popup controls, FloatBall) must
- * render labels via getServiceModeLabel rather than hard-coding strings.
+ * Single source of truth for the user-facing service-mode ("Astra AI style")
+ * labels. Ordinary users only ever see these human-intent words — never
+ * provider, model, token, or the raw "serviceMode" enum. Localized via i18n
+ * (en + zh); the English map below is also the fallback when i18n is
+ * unavailable (e.g. unit tests / non-extension contexts). Surfaces (options,
+ * popup controls, FloatBall) render via getServiceModeLabel, never hard-coded.
  */
 export const SERVICE_MODE_LABELS: Record<ServiceMode, string> = {
-  automatic: "Automatic",
-  fast: "Fast",
+  automatic: "Auto",
+  fast: "Faster",
   balanced: "Balanced",
-  best_quality: "Best quality",
+  best_quality: "Study mode",
+}
+
+const SERVICE_MODE_MESSAGE_KEYS: Record<ServiceMode, string> = {
+  automatic: "serviceModeAutomatic",
+  fast: "serviceModeFast",
+  balanced: "serviceModeBalanced",
+  best_quality: "serviceModeBestQuality",
+}
+
+// Localize via the extension i18n message table when available. Accessed through
+// globalThis (not WXT's "#imports") so this module stays usable in the web app /
+// unit tests, where there is no extension i18n and the English fallback is used.
+function localizedOrFallback(key: string, fallback: string): string {
+  try {
+    const i18n =
+      (globalThis as { chrome?: { i18n?: { getMessage?: (name: string) => string } } }).chrome?.i18n
+      ?? (globalThis as { browser?: { i18n?: { getMessage?: (name: string) => string } } }).browser?.i18n
+    const localized = i18n?.getMessage?.(key) ?? ""
+    return localized && localized !== key ? localized : fallback
+  } catch {
+    return fallback
+  }
 }
 
 export function getServiceModeLabel(mode: ServiceMode): string {
-  return SERVICE_MODE_LABELS[mode]
+  return localizedOrFallback(SERVICE_MODE_MESSAGE_KEYS[mode], SERVICE_MODE_LABELS[mode])
+}
+
+/** Reading layout the user sees on the FloatBall — human words, not enum values. */
+export function getReadingModeLabel(mode: "bilingual" | "translation-only"): string {
+  return mode === "bilingual"
+    ? localizedOrFallback("floatBallModeBilingual", "Bilingual")
+    : localizedOrFallback("floatBallModeTranslationOnly", "Translation only")
+}
+
+/** Page coverage label on the FloatBall — human words, not "contentScope". */
+export function getContentScopeLabel(scope: "full_page" | string): string {
+  return scope === "full_page"
+    ? localizedOrFallback("floatBallScopeFullPage", "Full page")
+    : localizedOrFallback("floatBallScopeImmersive", "Immersive")
 }
 
 export function findForbiddenUserCopyTerms(copy: string): ForbiddenUserCopyTerm[] {

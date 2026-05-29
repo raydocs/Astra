@@ -979,7 +979,7 @@ describe("FloatBall", () => {
     })
 
     const serviceModeButton = Array.from(button.querySelectorAll("button"))
-      .find((action) => action.textContent === "Automatic") as HTMLButtonElement | undefined
+      .find((action) => action.textContent === "Auto") as HTMLButtonElement | undefined
     expect(serviceModeButton).toBeTruthy()
 
     await act(async () => {
@@ -988,7 +988,7 @@ describe("FloatBall", () => {
     })
 
     expect(saveConfigMock).toHaveBeenLastCalledWith({ serviceMode: "fast" })
-    expect(serviceModeButton?.textContent).toBe("Fast")
+    expect(serviceModeButton?.textContent).toBe("Faster")
 
     await act(async () => {
       serviceModeButton?.click()
