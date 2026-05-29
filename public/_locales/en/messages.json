@@ -245,6 +245,9 @@
   "popup_deepReadAction": {
     "message": "Start deep read"
   },
+  "popup_trySampleArticle": {
+    "message": "Try Astra's sample article"
+  },
   "popup_contentAssetizationEyebrow": {
     "message": "Content asset"
   },

@@ -245,6 +245,9 @@
   "popup_deepReadAction": {
     "message": "开始深读"
   },
+  "popup_trySampleArticle": {
+    "message": "试试 Astra 的样例文章"
+  },
   "popup_contentAssetizationEyebrow": {
     "message": "内容资产"
   },

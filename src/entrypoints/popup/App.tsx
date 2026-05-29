@@ -2593,6 +2593,25 @@ export default function App() {
 
       <PopupArticleHero studyContext={popupHeroStudyContext} certEmptyFocus={showCertificationEmptyLibrarySurface} />
 
+      {showCompactEmptyLibrarySurface && !showCertificationEmptyLibrarySurface && (
+        <section className="astra-popup-group">
+          <button
+            type="button"
+            data-testid="popup-try-sample-article"
+            onClick={() => void browser.tabs.create({ url: browser.runtime.getURL("/sample-lesson.html" as "/popup.html") })}
+            className="astra-btn-outline-quiet"
+            style={{ width: "100%", padding: "10px 12px", fontSize: 13, display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 6 }}
+          >
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+              <path d="M6 3h9l5 5v13H6z" />
+              <path d="M14 3v6h6" />
+              <path d="M9 13h6M9 17h6" />
+            </svg>
+            {t("popup_trySampleArticle")}
+          </button>
+        </section>
+      )}
+
       <section className="astra-popup-group astra-popup-primary-group">
         <div className="astra-group-card astra-group-card--padded">
           {isIdle ? (
