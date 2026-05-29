@@ -660,6 +660,9 @@
   "status_status": {
     "message": "状态"
   },
+  "status_translating": {
+    "message": "正在翻译…"
+  },
   "status_targetLang": {
     "message": "目标语言"
   },

@@ -103,6 +103,7 @@ describe("TranslationStatusCard", () => {
           progress={progress}
           lastError={null}
           siteEnabled
+          showDiagnostics
           subtitleQualityControls={{
             ...DEFAULT_SUBTITLE_QUALITY_CONTROLS,
             popupPollIntervalMs: 2250,
@@ -235,6 +236,47 @@ describe("TranslationStatusCard", () => {
     })
 
     expect(onSubtitleDiagnosticsExport).toHaveBeenCalledTimes(2)
+  })
+
+  it("hides technical diagnostics and shows a human status for ordinary (non-dev) users", async () => {
+    await act(async () => {
+      root.render(
+        <TranslationStatusCard
+          phase="running"
+          targetLang="zh-CN"
+          presentation={{ mode: "bilingual", theme: "default" }}
+          hostname="example.com"
+          progress={{ totalBlocks: 4, queuedBlocks: 1, inFlightBlocks: 1, translatedBlocks: 2, failedBlocks: 0 }}
+          lastError={null}
+          siteEnabled
+          subtitleQuality={{
+            surface: "video",
+            active: true,
+            platform: "youtube",
+            pipeline: "youtube-hybrid",
+            source: "timedtext",
+            status: "ready",
+            anomalies: [],
+            translatedNodeCount: 1,
+            sourceTextLength: 18,
+            pendingRequestCount: 0,
+            cacheSize: 4,
+            capturedAt: Date.now(),
+          }}
+        />,
+      )
+      await Promise.resolve()
+    })
+
+    // Zero-config promise: no pipeline / QC / queue / mode-theme jargon, no raw phase enum.
+    expect(container.querySelector('[data-testid="subtitle-qc-panel"]')).toBeNull()
+    expect(container.textContent).not.toContain("youtube-hybrid")
+    expect(container.textContent).not.toContain("queued")
+    expect(container.textContent).not.toContain("bilingual / default")
+    expect(container.textContent).not.toContain("running")
+    // A human status line stands in for the raw phase, and useful rows remain.
+    expect(container.textContent).toContain("正在翻译…")
+    expect(container.textContent).toContain("2/4")
   })
 
   it("auto-applies adaptive local presets only when opted in, cooldown is ready, and manual lock is off", async () => {

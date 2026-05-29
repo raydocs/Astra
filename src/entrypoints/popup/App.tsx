@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react"
 import { browser } from "#imports"
 import { t } from "@/utils/i18n"
 import { getSafeAiUnavailableCopy, localizedOrFallback } from "@/utils/copy-dictionary"
+import { shouldShowDebugDiagnostics } from "@/utils/dev-diagnostics"
 import {
   buildLearningLoopAccountContinuityProofMoment,
   buildLearningLoopProValueMoments,
@@ -2798,6 +2799,7 @@ export default function App() {
         <div style={{ marginTop: 12 }}>
           <TranslationStatusCard
             phase={currentPhase}
+            showDiagnostics={shouldShowDebugDiagnostics()}
             targetLang={translationState?.targetLang ?? persistedResolvedSite.targetLang}
             presentation={currentPresentation}
             hostname={currentSite.hostname}
