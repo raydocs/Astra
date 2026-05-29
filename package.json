@@ -106,9 +106,9 @@
     "verify:mobile": "pnpm mobile:verify && pnpm test:mobile-domain"
   },
   "dependencies": {
-    "@ai-sdk/google": "^3.0.71",
-    "@ai-sdk/openai": "^3.0.63",
-    "ai": "^6.0.177",
+    "@ai-sdk/google": "^3.0.80",
+    "@ai-sdk/openai": "^3.0.66",
+    "ai": "^6.0.193",
     "dexie": "^4.4.2",
     "epubjs": "^0.3.93",
     "jsdom": "^29.1.0",
