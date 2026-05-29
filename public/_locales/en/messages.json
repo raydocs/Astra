@@ -1579,6 +1579,21 @@
   "upgradePrompt_continuity_summary": {
     "message": "Astra is exploring upgrade value around continuity, deeper reading, and fewer interruptions. This moment is about {moment} Tell us locally if that sounds useful when paid plans launch later."
   },
+  "transcriptSaveExpressions": {
+    "message": "Save 3 expressions to Review"
+  },
+  "transcriptSaveSummary": {
+    "message": "Save summary to Review"
+  },
+  "transcriptSaveWord": {
+    "message": "Save word to Review"
+  },
+  "transcriptReviewNow": {
+    "message": "Review now"
+  },
+  "transcriptFindInVocabulary": {
+    "message": "Find it later in your Vocabulary"
+  },
   "proMomentsCardTitle": {
     "message": "Pro value moments"
   },

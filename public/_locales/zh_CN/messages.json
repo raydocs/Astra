@@ -1578,6 +1578,21 @@
   "upgradePrompt_continuity_summary": {
     "message": "Astra 正在围绕学习连贯、更深入的阅读和更少的打断探索升级价值。比如这样的时刻：{moment} 如果付费方案上线后它对你有用，欢迎现在在本地告诉我们。"
   },
+  "transcriptSaveExpressions": {
+    "message": "保存这 3 个表达去复习"
+  },
+  "transcriptSaveSummary": {
+    "message": "保存摘要去复习"
+  },
+  "transcriptSaveWord": {
+    "message": "保存这个词去复习"
+  },
+  "transcriptReviewNow": {
+    "message": "现在复习"
+  },
+  "transcriptFindInVocabulary": {
+    "message": "稍后在词汇表里找回"
+  },
   "proMomentsCardTitle": {
     "message": "Pro 价值时刻"
   },

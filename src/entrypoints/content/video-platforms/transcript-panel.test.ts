@@ -11,6 +11,7 @@ const browserMock = vi.hoisted(() => ({
 const subscribeYouTubeTranscriptSnapshotMock = vi.hoisted(() => vi.fn())
 const saveDeepReadSessionMock = vi.hoisted(() => vi.fn())
 const saveVocabularyEntryMock = vi.hoisted(() => vi.fn())
+const getDueVocabularyCountMock = vi.hoisted(() => vi.fn())
 const runInlineActionMock = vi.hoisted(() => vi.fn())
 const copyTextToClipboardMock = vi.hoisted(() => vi.fn())
 
@@ -27,6 +28,7 @@ vi.mock("@/utils/storage/deep-read-session", () => ({
 }))
 
 vi.mock("@/utils/storage/vocabulary", () => ({
+  getDueVocabularyCount: getDueVocabularyCountMock,
   saveVocabularyEntry: saveVocabularyEntryMock,
 }))
 
@@ -66,6 +68,7 @@ describe("video transcript panel Deep Read handoff", () => {
     })
     saveDeepReadSessionMock.mockResolvedValue(null)
     saveVocabularyEntryMock.mockResolvedValue({ id: "entry-video-1" })
+    getDueVocabularyCountMock.mockResolvedValue(1)
     runInlineActionMock.mockResolvedValue({ ok: true, text: "Video summary" })
   })
 

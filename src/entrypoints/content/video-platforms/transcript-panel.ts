@@ -1,6 +1,6 @@
 import { browser } from "#imports"
 import { copyTextToClipboard } from "@/utils/dom/clipboard"
-import { saveVocabularyEntry } from "@/utils/storage/vocabulary"
+import { getDueVocabularyCount, saveVocabularyEntry } from "@/utils/storage/vocabulary"
 import { runInlineAction } from "../inline-actions"
 import { saveDeepReadSession } from "@/utils/storage/deep-read-session"
 import {
@@ -61,6 +61,7 @@ let videoLearningSummary: VideoLearningSummary | null = null
 let savedVideoSentences: VideoNoteLearningItem[] = []
 let savedVideoWords: VideoNoteLearningItem[] = []
 let latestSavedReviewEntryId: string | null = null
+let savedReviewNudge: { dueCount: number } | null = null
 let summaryGenerationInFlight: Promise<void> | null = null
 let attemptedSummaryCueCount = 0
 let statusMessage = ""
@@ -297,14 +298,42 @@ function getYouTubeVideoElement(): HTMLVideoElement | null {
   return first instanceof HTMLVideoElement ? first : null
 }
 
+// Localize via the extension i18n table when available; fall back to English
+// (also what unit tests see, since they don't load a locale). Self-contained so
+// the panel doesn't depend on a concurrently-edited shared module.
+function localizedLabel(key: string, fallback: string): string {
+  try {
+    const i18n =
+      (globalThis as { chrome?: { i18n?: { getMessage?: (name: string) => string } } }).chrome?.i18n
+      ?? (globalThis as { browser?: { i18n?: { getMessage?: (name: string) => string } } }).browser?.i18n
+    const localized = i18n?.getMessage?.(key) ?? ""
+    return localized && localized !== key ? localized : fallback
+  } catch {
+    return fallback
+  }
+}
+
 function setPanelStatus(message: string, tone: TranscriptPanelStatusTone = "info"): void {
   statusMessage = message
   statusTone = tone
+  // Any status change other than a fresh save clears the post-save nudge.
+  savedReviewNudge = null
   renderTranscriptPanel()
 }
 
 function setPanelSuccess(message: string): void {
   setPanelStatus(message.startsWith("Saved") || message.startsWith("Done") ? message : `Done — ${message}`, "success")
+}
+
+// Post-save nudge: rather than a flat "saved" toast, confirm in human language
+// and point to the next step (review now / find later), mirroring the rich nudge
+// the web React surfaces already show. Reuses the existing review deep-link.
+async function announceSaved(): Promise<void> {
+  const dueCount = await getDueVocabularyCount().catch(() => 0)
+  statusMessage = localizedLabel("learningSavedTitle", "Saved for review tonight")
+  statusTone = "success"
+  savedReviewNudge = { dueCount }
+  renderTranscriptPanel()
 }
 
 function setPanelWarning(message: string): void {
@@ -493,7 +522,7 @@ async function handleSaveSummaryToReview(): Promise<void> {
   })
   latestSavedReviewEntryId = savedEntry?.id ?? latestSavedReviewEntryId
   savedVideoSentences = [...savedVideoSentences, savedItem]
-  setPanelSuccess("Saved summary to Review")
+  await announceSaved()
 }
 
 async function handleSaveExpressionsToReview(count = 3): Promise<void> {
@@ -528,7 +557,7 @@ async function handleSaveExpressionsToReview(count = 3): Promise<void> {
       sourceSentence: expression,
     })),
   ]
-  setPanelSuccess(`Saved ${expressions.length} expressions to Review`)
+  await announceSaved()
 }
 
 async function handleCreateVideoNoteFromPanel(): Promise<void> {
@@ -634,7 +663,7 @@ async function handleSaveMiniDictionaryWord(): Promise<void> {
   })
   latestSavedReviewEntryId = savedEntry?.id ?? latestSavedReviewEntryId
   savedVideoWords = [...savedVideoWords, savedItem]
-  setPanelSuccess(`Saved “${dictionary.word}” to Review`)
+  await announceSaved()
 }
 
 function speakCue(cue: YouTubeTranscriptCueSnapshot): void {
@@ -723,7 +752,7 @@ async function handleSaveCue(cue: YouTubeTranscriptCueSnapshot): Promise<void> {
   })
   latestSavedReviewEntryId = savedEntry?.id ?? latestSavedReviewEntryId
   savedVideoSentences = [...savedVideoSentences, savedItem]
-  setPanelSuccess("Saved sentence to Review")
+  await announceSaved()
 }
 
 async function handleAddWordCue(cue: YouTubeTranscriptCueSnapshot): Promise<void> {
@@ -759,7 +788,7 @@ async function handleAddWordCue(cue: YouTubeTranscriptCueSnapshot): Promise<void
   })
   latestSavedReviewEntryId = savedEntry?.id ?? latestSavedReviewEntryId
   savedVideoWords = [...savedVideoWords, savedItem]
-  setPanelSuccess(`Saved “${word}” to Review`)
+  await announceSaved()
 }
 
 function formatTranscriptForDeepRead(snapshot: YouTubeTranscriptSnapshot): string {
@@ -879,7 +908,7 @@ function renderWordsSection(): HTMLElement {
   appendLearningCard(section, "10 expressions worth mastering", appendList(summary?.expressions ?? []))
   const saveThree = document.createElement("button")
   saveThree.type = "button"
-  saveThree.textContent = "Save 3 expressions to Review"
+  saveThree.textContent = localizedLabel("transcriptSaveExpressions", "Save 3 expressions to Review")
   saveThree.disabled = !summary?.expressions.length
   saveThree.addEventListener("click", () => { void handleSaveExpressionsToReview(3) })
   section.appendChild(saveThree)
@@ -895,7 +924,7 @@ function renderNotesSection(): HTMLElement {
   actions.dataset.astraTranscriptActions = "true"
   const saveSummary = document.createElement("button")
   saveSummary.type = "button"
-  saveSummary.textContent = "Save summary to Review"
+  saveSummary.textContent = localizedLabel("transcriptSaveSummary", "Save summary to Review")
   saveSummary.disabled = !summary
   saveSummary.addEventListener("click", () => { void handleSaveSummaryToReview() })
   const saveVideoNote = document.createElement("button")
@@ -1009,6 +1038,24 @@ function renderTranscriptPanel(): void {
   status.textContent = resolvedStatusText
   panelRoot.appendChild(status)
 
+  // Post-save nudge: a real next step, not a flat toast — "review N now" (reusing
+  // the review deep-link) + "find it later in Vocabulary". Cleared on any other status.
+  if (savedReviewNudge && resolvedStatusTone === "success") {
+    const nudge = document.createElement("div")
+    nudge.dataset.astraTranscriptSavedNudge = "true"
+    const reviewBtn = document.createElement("button")
+    reviewBtn.type = "button"
+    reviewBtn.dataset.astraTranscriptReviewNow = "true"
+    const reviewLabel = localizedLabel("transcriptReviewNow", "Review now")
+    reviewBtn.textContent = savedReviewNudge.dueCount > 0 ? `${reviewLabel} (${savedReviewNudge.dueCount})` : reviewLabel
+    reviewBtn.addEventListener("click", () => { openReview() })
+    const hint = document.createElement("span")
+    hint.dataset.astraTranscriptSavedHint = "true"
+    hint.textContent = localizedLabel("transcriptFindInVocabulary", "Find it later in your Vocabulary")
+    nudge.append(reviewBtn, hint)
+    panelRoot.appendChild(nudge)
+  }
+
   if (activeTab === "summary") {
     panelRoot.appendChild(renderLearningSummarySection(snapshot))
     return
@@ -1033,7 +1080,7 @@ function renderTranscriptPanel(): void {
     definition.textContent = miniDictionary.definition
     const saveWord = document.createElement("button")
     saveWord.type = "button"
-    saveWord.textContent = "Save word to Review"
+    saveWord.textContent = localizedLabel("transcriptSaveWord", "Save word to Review")
     saveWord.disabled = miniDictionary.loading
     saveWord.addEventListener("click", () => { void handleSaveMiniDictionaryWord() })
     dictionary.append(title, hint, definition, saveWord)

@@ -10,6 +10,7 @@ const {
   fetchMock,
   copyTextToClipboardMock,
   saveVocabularyEntryMock,
+  getDueVocabularyCountMock,
 } = vi.hoisted(() => ({
   runInlineActionMock: vi.fn(),
   readConfigMock: vi.fn(),
@@ -18,6 +19,7 @@ const {
   fetchMock: vi.fn(),
   copyTextToClipboardMock: vi.fn(),
   saveVocabularyEntryMock: vi.fn(),
+  getDueVocabularyCountMock: vi.fn(),
 }))
 
 vi.mock("../inline-actions", () => ({
@@ -38,6 +40,7 @@ vi.mock("@/utils/dom/clipboard", () => ({
 }))
 
 vi.mock("@/utils/storage/vocabulary", () => ({
+  getDueVocabularyCount: getDueVocabularyCountMock,
   saveVocabularyEntry: saveVocabularyEntryMock,
 }))
 
@@ -290,6 +293,7 @@ describe("video platform subtitle translation", () => {
     fetchMock.mockReset()
     copyTextToClipboardMock.mockResolvedValue(undefined)
     saveVocabularyEntryMock.mockResolvedValue(undefined)
+    getDueVocabularyCountMock.mockResolvedValue(0)
     Object.defineProperty(window, "speechSynthesis", {
       configurable: true,
       value: { cancel: vi.fn(), speak: vi.fn() },
