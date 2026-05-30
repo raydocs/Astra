@@ -1249,7 +1249,7 @@ describe("AstraWebApp smoke", () => {
     expect(render.container.textContent).toContain("What's broken on the current page")
     expect(render.container.textContent).toContain("Three quiet problems")
     expect(render.container.textContent).toContain("Three corresponding moves")
-    expect(render.container.textContent).not.toContain("Use instantly")
+    expect(render.container.textContent).not.toContain("Start free sample")
     expect(render.container.textContent).not.toContain("Sign in to sync")
     expect(mocks.createWebAnonymousSessionMock).not.toHaveBeenCalled()
 
@@ -1258,8 +1258,9 @@ describe("AstraWebApp smoke", () => {
     render = await renderApp()
 
     expect(render.container.querySelector(".public-site--landing-cert")).toBeFalsy()
-    expect(render.container.textContent).toContain("A bilingual reading room")
-    expect(render.container.textContent).toContain("Use instantly")
+    expect(render.container.textContent).toContain("Learn from the English you already read and watch")
+    expect(render.container.textContent).toContain("Start free sample")
+    expect(render.container.textContent).toContain("不需要配置模型")
     expect(render.container.textContent).toContain("Why Astra asks for browser access")
     expect(render.container.textContent).toContain("Astra reads the page you choose")
     expect(render.container.textContent).toContain("Astra does not read your clipboard in the background")
@@ -1497,7 +1498,7 @@ describe("AstraWebApp smoke", () => {
     const { container, unmount } = await renderApp()
 
     await act(async () => {
-      clickButton(container, "Use instantly")
+      clickButton(container, "Start free sample")
     })
     await flush()
 

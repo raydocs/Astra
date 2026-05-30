@@ -1,7 +1,7 @@
 {
   "name": "Astra",
   "short_name": "Astra",
-  "description": "A bilingual reading room for the pages you import.",
+  "description": "Zero-config AI language learning for webpages, supported videos, saved expressions, and daily review.",
   "start_url": "./",
   "scope": "./",
   "display": "standalone",

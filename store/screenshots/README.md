@@ -17,6 +17,7 @@ The root-level PNGs are present at 1280x800 so store packet assembly has stable 
 
 | File | Source/evidence status |
 |---|---|
+| `00-github-page-landing.png` | Captured 2026-05-30 from the current Astra Web public landing page. Use for GitHub README/GitHub Pages preview, not as the primary browser-store screenshot unless the store packet wants a marketing landing image. |
 | `01-page-translation.png` | Derived 2026-05-28 from `ui-parity-2026-05-13/production/page-translation-progress-errors.png`; recapture before final upload if page-translation chrome changes. |
 | `02-selection-toolbar.png` | Derived 2026-05-28 from `ui-parity-2026-05-13/production/selection-toolbar.png`; acceptable as a launch-candidate artifact for selection-toolbar claim review. |
 | `03-popup-control-center.png` | Derived 2026-05-28 from `ui-parity-2026-05-13/production/popup-empty-state.png`; recapture if the Study Hub/routing card should be emphasized in the final listing. |
@@ -26,6 +27,12 @@ The root-level PNGs are present at 1280x800 so store packet assembly has stable 
 These files are claim-boundary artifacts, not proof that the store submission has been manually approved. Manual recapture remains required for any surface that changed after the source capture or where the table above marks the artifact temporary.
 
 ## Launch-safe primary screenshot set (1--5)
+
+### GitHub / landing preview: `00-github-page-landing.png`
+
+Shows the public product story: zero-config AI language learning, bilingual reading, saved expressions, supported-video context, and daily review. This is the preferred README/GitHub Pages hero preview because it matches the current product positioning instead of showing a single extension surface.
+
+**Key elements visible:** "Learn from the English you already read and watch", no API setup, trust bullets, bilingual reading mock, video timestamp, review card count, zero-setup card.
 
 ### 1. `01-page-translation.png` -- Full-page bilingual translation
 
