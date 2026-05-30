@@ -55,7 +55,7 @@ import { isTtsSupported, listVoices, type TTSVoiceOption } from "@/utils/tts"
 import { useViewportProfile } from "@/utils/ui/useViewportProfile"
 import { useAstraTheme } from "@/utils/ui/useAstraTheme"
 import { t } from "@/utils/i18n"
-import { getSafeAiUnavailableCopy, getServiceModeLabel, SERVICE_MODE_LABELS } from "@/utils/copy-dictionary"
+import { getSafeAiUnavailableCopy, getServiceModeLabel } from "@/utils/copy-dictionary"
 import {
   isOptionsAdvancedEnabled,
   sanitizeRequestedSection,
@@ -156,10 +156,10 @@ const SERVICE_MODE_OPTIONS: Array<{
   label: string
   hint: string
 }> = [
-  { value: "automatic", label: SERVICE_MODE_LABELS.automatic, hint: "Recommended. Astra decides whether speed or precision matters more for each task." },
-  { value: "fast", label: SERVICE_MODE_LABELS.fast, hint: "Prioritizes quick page reading and everyday browsing." },
-  { value: "balanced", label: SERVICE_MODE_LABELS.balanced, hint: "Keeps normal reading quick while staying careful for explanations." },
-  { value: "best_quality", label: SERVICE_MODE_LABELS.best_quality, hint: "Uses the most careful service path for harder content and study work." },
+  { value: "automatic", label: getServiceModeLabel("automatic"), hint: "Recommended. Astra decides whether speed or precision matters more for each task." },
+  { value: "fast", label: getServiceModeLabel("fast"), hint: "Prioritizes quick page reading and everyday browsing." },
+  { value: "balanced", label: getServiceModeLabel("balanced"), hint: "Keeps normal reading quick while staying careful for explanations." },
+  { value: "best_quality", label: getServiceModeLabel("best_quality"), hint: "Uses the most careful service path for harder content and study work." },
 ]
 
 const BRAND_COLOR = "var(--astra-brand)"
@@ -951,7 +951,7 @@ function TranslationSection({
       <SectionHeader
         eyebrow="Reading · Translation"
         headline="How Astra translates the page"
-        intro="Quiet reading controls that keep the source visible while Astra adds an alternate reading. Every control here also accepts per-site overrides under Sites."
+        intro="Quiet reading controls that keep the source visible while Astra adds an alternate reading. There is no model or API key to set up — Astra automatically picks the right speed and quality for each page. Every control here also accepts per-site overrides under Sites."
       />
 
       <div className="astra-settings-rows">

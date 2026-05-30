@@ -5,8 +5,8 @@
 </p>
 
 <p align="center">
-  <strong>AI-powered language learning layer for the web.</strong><br />
-  为中文用户阅读英文网页而设计的浏览器学习层。
+  <strong>Learn from the English you already read and watch.</strong><br />
+  Astra turns websites and supported videos into bilingual reading, saved expressions, and daily review — no API setup required.
 </p>
 
 <p align="center">
@@ -24,48 +24,48 @@
   <img alt="TypeScript" src="https://img.shields.io/badge/TypeScript-React%20%2B%20WXT-3178C6" />
 </p>
 
-Astra is not just another page translator. It starts with low-friction browser translation, then turns daily reading into explanation, review, and long-term language-learning assets.
+Astra is not a model-control panel or another page translator. It is a zero-config learning layer: read a real page, save useful words and sentences, and review them later with source context attached.
 
-Astra 现在最强的是“读懂”和“解释”：整页翻译、双语阅读、划词解释、悬停翻译、输入框翻译、文章模式、站点规则和字幕翻译。词汇沉淀、复习、阅读历史、PDF/EPUB/视频等能力正在演进中，不在 README 里夸大成已经完全成熟的生态。
+Astra 的产品方向是“用户只管读和复习”：不需要 API、不需要配置模型，只把网页和受支持视频里的真实表达沉淀为可复习的学习资产。
 
 ## Preview
 
 <p align="center">
-  <img src="store/screenshots/01-page-translation.png" alt="Astra page translation launch-candidate screenshot" width="840" />
+  <img src="store/screenshots/00-github-page-landing.png" alt="Astra public landing page showing zero-config bilingual reading and review loop" width="840" />
 </p>
 
 <table>
   <tr>
     <td width="50%">
-      <img src="store/screenshots/03-popup-control-center.png" alt="Astra browser extension popup control surface launch-candidate screenshot" />
+      <img src="store/screenshots/01-page-translation.png" alt="Astra page translation launch-candidate screenshot" />
       <br />
-      <strong>Extension control surface</strong><br />
-      Configure reading and translation behavior close to the page.
+      <strong>Page translation</strong><br />
+      Read supported webpages with bilingual translation in place.
     </td>
     <td width="50%">
       <img src="store/screenshots/02-selection-toolbar.png" alt="Astra selection toolbar launch-candidate screenshot for translating highlighted text" />
       <br />
-      <strong>Selection translation</strong><br />
-      Translate and explain selected text without leaving the current page.
+      <strong>Save from the page</strong><br />
+      Translate, explain, and save selected text without leaving the current page.
     </td>
   </tr>
   <tr>
     <td width="50%">
       <img src="store/screenshots/ui-parity-2026-05-13/production/review-card.png" alt="Astra review card for language learning follow-up" />
       <br />
-      <strong>Review loop</strong><br />
-      Early learning-loop surface for turning reading into review material.
+      <strong>Daily review</strong><br />
+      Turn saved expressions into lightweight review cards.
     </td>
     <td width="50%">
-      <img src="store/screenshots/05-pdf-reader.png" alt="Astra web companion PDF reader launch-candidate screenshot" />
+      <img src="store/screenshots/03-popup-control-center.png" alt="Astra browser extension popup control surface launch-candidate screenshot" />
       <br />
-      <strong>Reader surfaces</strong><br />
-      Web companion surfaces for owned reading workflows under active development.
+      <strong>Zero-config control</strong><br />
+      Astra keeps service details behind the scenes so ordinary users can just read.
     </td>
   </tr>
 </table>
 
-> Screenshot set uses root-level launch-candidate artifacts in `store/screenshots/`, derived from current production/parity captures where noted in `store/screenshots/README.md`. Design references live under `docs/design-comparison/` and are not presented here as shipped product UI.
+> Screenshot set uses root-level launch-candidate artifacts in `store/screenshots/`. `00-github-page-landing.png` is captured from the current Astra Web landing page at 1280×800; older parity captures are documented in `store/screenshots/README.md`.
 
 ## Why Astra
 

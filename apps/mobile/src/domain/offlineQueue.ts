@@ -1,5 +1,6 @@
 import type { MobileSyncMutationInput } from "../api/astraClient"
-import type { ReviewCard, ReviewEvent } from "./review"
+import type { ReviewCard, ReviewEvent, ReviewRating } from "./review"
+import type { ReviewGrade, SrsFields } from "./srs"
 
 export type PendingOperationStatus = "pending" | "syncing" | "synced" | "rejected"
 
@@ -114,13 +115,34 @@ export function parseOfflineReviewQueue(value: string | null | undefined): Offli
   }
 }
 
+/** Map a mobile review rating to the canonical SRS grade. Mobile has no "hard"; "skip" relearns like "again". */
+export function reviewRatingToGrade(rating: ReviewRating): ReviewGrade {
+  switch (rating) {
+    case "again":
+    case "skip":
+      return "again"
+    case "good":
+      return "good"
+    case "easy":
+      return "easy"
+  }
+}
+
+/**
+ * Serialize a graded review into a review_schedule sync mutation. The SRS state
+ * (`fields`) is computed by the caller via the shared Leitner scheduler so mobile
+ * schedules identically to web/desktop — this builder does NOT invent intervals.
+ */
 export function buildLegacyReviewScheduleMutation(params: {
   operation: PendingReviewOperation
   card: Pick<ReviewCard, "cardId" | "itemId">
   deviceId: string
+  fields: SrsFields
+  grade: ReviewGrade
   clientUpdatedAt?: Date
 }): MobileSyncMutationInput {
-  const clientUpdatedAt = params.clientUpdatedAt ?? new Date(params.operation.event.reviewedAt)
+  const reviewedAt = new Date(params.operation.event.reviewedAt)
+  const clientUpdatedAt = params.clientUpdatedAt ?? reviewedAt
   return {
     collection: "review_schedule",
     schemaVersion: 1,
@@ -131,14 +153,13 @@ export function buildLegacyReviewScheduleMutation(params: {
     clientUpdatedAt: clientUpdatedAt.toISOString(),
     payload: {
       vocabularyEntryId: params.card.itemId,
-      lastReviewedAt: new Date(params.operation.event.reviewedAt).getTime(),
-      lastReviewGrade: params.operation.event.rating === "skip" ? "again" : params.operation.event.rating,
-      lastReviewGradeAt: new Date(params.operation.event.reviewedAt).getTime(),
-      reviewCount: 1,
-      srsBox: params.operation.event.rating === "easy" ? 3 : params.operation.event.rating === "good" ? 2 : 1,
-      nextReviewAt: new Date(params.operation.event.reviewedAt).getTime(),
+      lastReviewedAt: params.fields.lastReviewedAt ?? reviewedAt.getTime(),
+      lastReviewGrade: params.grade,
+      lastReviewGradeAt: reviewedAt.getTime(),
+      reviewCount: params.fields.reviewCount,
+      srsBox: params.fields.srsBox,
+      nextReviewAt: params.fields.nextReviewAt,
       updatedAt: clientUpdatedAt.getTime(),
-      mobileReviewEventId: params.operation.event.eventId,
     },
   }
 }

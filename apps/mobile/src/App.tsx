@@ -702,6 +702,7 @@ export function App() {
             onClearSourceReview={() => setSourceReviewScope(null)}
             sampleDeck={appState.sampleDeck}
             offlineQueue={appState.offlineQueue}
+            reviewSchedules={appState.cloudVocabulary.reviewSchedules}
             onRateCard={(cardId, rating) => {
               trackRetention(rating === "skip" ? "review_skipped" : "review_rated", { rating, sampleDeck: appState.sampleDeck, sourceScoped: Boolean(sourceReviewScope) })
               setAppState((current) => recordMobileReviewRating({

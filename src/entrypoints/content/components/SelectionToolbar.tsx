@@ -1265,13 +1265,13 @@ function SelectionToolbarApp() {
             {saved && (
               <button
                 type="button"
-                style={{ ...styles.resultFooterButton, color: OVERLAY_STYLE_TOKENS.success }}
+                style={styles.resultFooterButton}
                 onClick={(event) => {
                   event.stopPropagation()
                   openVocabulary()
                 }}
               >
-                {t("actionSaved")}
+                {t("popup_vocabulary")}
               </button>
             )}
             {actionResult?.actionId === "translate" && explainAction && (

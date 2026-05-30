@@ -13,6 +13,7 @@ import {
 import { saveConfig } from "@/utils/storage/config"
 import { buildLearningProfileFromConfig, updateLearningProfile } from "@/utils/storage/learning-profile"
 import type { AstraConfig } from "@/types/config"
+import { shouldShowDebugDiagnostics } from "@/utils/dev-diagnostics"
 import { useAstraTheme } from "@/utils/ui/useAstraTheme"
 import {
   getPageAccessState,
@@ -165,15 +166,6 @@ function formatStatusTime(value: string | null): string {
   }
 
   return parsed.toLocaleString()
-}
-
-function shouldShowDebugDiagnostics(): boolean {
-  if (import.meta.env.DEV) return true
-  try {
-    return new URLSearchParams(window.location.search).get("debug") === "1"
-  } catch {
-    return false
-  }
 }
 
 function shouldShowOnboardingCertificationFrame(): boolean {

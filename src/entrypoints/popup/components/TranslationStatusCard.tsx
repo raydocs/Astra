@@ -24,6 +24,8 @@ export interface TranslationStatusCardProps {
   onSubtitleDiagnosticsExport?: () => void
   subtitleDiagnosticsExportStatus?: string | null
   onRetryFailed?: () => void
+  /** Reveal technical diagnostics (phase enum, mode/theme, queue counts, subtitle QC). Off by default — ordinary users see only a human status. */
+  showDiagnostics?: boolean
 }
 
 type SubtitleAnomalyTier = "latency" | "jitter" | "fallback"
@@ -258,6 +260,7 @@ export default function TranslationStatusCard({
   onSubtitleDiagnosticsExport,
   subtitleDiagnosticsExportStatus,
   onRetryFailed,
+  showDiagnostics = false,
 }: TranslationStatusCardProps) {
   const lastAutoSwitchSignatureRef = useRef<string | null>(null)
   const normalizedSubtitleQualityControls = useMemo(() => ({
@@ -379,16 +382,18 @@ export default function TranslationStatusCard({
     <div style={statusCardStyle} aria-live="polite">
       <div style={statusRowStyle}>
         <span>{t("status_status")}</span>
-        <strong>{phase}</strong>
+        <strong>{showDiagnostics ? phase : t("status_translating")}</strong>
       </div>
       <div style={statusRowStyle}>
         <span>{t("status_targetLang")}</span>
         <strong>{targetLang}</strong>
       </div>
-      <div style={statusRowStyle}>
-        <span>{t("status_modeTheme")}</span>
-        <strong>{presentation.mode} / {presentation.theme}</strong>
-      </div>
+      {showDiagnostics && (
+        <div style={statusRowStyle}>
+          <span>{t("status_modeTheme")}</span>
+          <strong>{presentation.mode} / {presentation.theme}</strong>
+        </div>
+      )}
       <div style={statusRowStyle}>
         <span>{t("status_site")}</span>
         <strong>{hostname ?? t("status_currentPage")}</strong>
@@ -401,12 +406,12 @@ export default function TranslationStatusCard({
             : "0/0"}
         </strong>
       </div>
-      {progress && phase !== "idle" && (
+      {showDiagnostics && progress && phase !== "idle" && (
         <div style={{ fontSize: 12, color: "var(--astra-text-muted)", marginTop: 6 }}>
           queued {progress.queuedBlocks} · in-flight {progress.inFlightBlocks} · failed {progress.failedBlocks}
         </div>
       )}
-      {subtitleQuality?.active && (
+      {showDiagnostics && subtitleQuality?.active && (
         <div
           data-testid="subtitle-qc-panel"
           style={{

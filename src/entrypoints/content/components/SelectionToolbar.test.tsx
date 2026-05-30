@@ -80,6 +80,7 @@ vi.mock("@/utils/reading/assist", () => ({
   isLexicalCandidate: vi.fn().mockReturnValue(false),
 }))
 
+import { browser } from "#imports"
 import { DEFAULT_ASTRA_CONFIG } from "@/types/config"
 import { t } from "@/utils/i18n"
 import * as tts from "@/utils/tts"
@@ -759,6 +760,47 @@ describe("SelectionToolbar interaction suppression", () => {
 
     expect(saveVocabularyEntryMock).toHaveBeenCalledTimes(1)
     expect(markSessionSaveMock).toHaveBeenCalledWith("selection_toolbar", 0)
+  })
+
+  it("offers a Vocabulary affordance in the saved footer that opens the library", async () => {
+    const target = document.getElementById("target") as HTMLElement
+
+    await triggerDocumentMouseDown(target)
+    setSelection("Hello world")
+    await triggerDocumentMouseUp(target)
+
+    const host = document.getElementById(HOST_ID)!
+    const shadow = host.shadowRoot!
+    const translateBtn = Array.from(shadow.querySelectorAll("button")).find((btn) => btn.textContent === "翻译")
+
+    await act(async () => {
+      translateBtn!.click()
+      await Promise.resolve()
+      await Promise.resolve()
+    })
+
+    const inlineSaveCta = shadow.querySelector("[data-testid='selection-result-save-cta']") as HTMLButtonElement | null
+    expect(inlineSaveCta).toBeTruthy()
+
+    await act(async () => {
+      inlineSaveCta!.click()
+      await Promise.resolve()
+      await Promise.resolve()
+    })
+
+    // Parity with HoverTranslate/DeepRead: the saved footer must surface a discoverable
+    // Vocabulary ("find it later") affordance, not just a "Saved" status chip.
+    const vocabularyBtn = Array.from(shadow.querySelectorAll("button")).find(
+      (btn) => btn.textContent === t("popup_vocabulary"),
+    )
+    expect(vocabularyBtn).toBeTruthy()
+
+    await act(async () => {
+      vocabularyBtn!.click()
+      await Promise.resolve()
+    })
+
+    expect(browser.tabs.create).toHaveBeenCalledWith({ url: "/vocabulary.html" })
   })
 
   it("ignores stale explain results after the user makes a new selection", async () => {

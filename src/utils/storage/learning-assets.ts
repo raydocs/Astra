@@ -1,5 +1,6 @@
 import { z } from "zod"
 
+import { buildVideoTimestampUrl, formatVideoTimestamp, sanitizeVideoSourceUrl } from "@/utils/video-timestamp-url"
 import { OwnedReadingUserControlSchema, type OwnedReadingItem } from "./owned-reading"
 import {
   sanitizeVocabularyUrl,
@@ -222,8 +223,19 @@ function cardStateFromVocabularyEntry(entry: VocabularyEntry): ReviewCard["state
 }
 
 function cardTypeFromVocabularyEntry(entry: VocabularyEntry): ReviewCard["cardType"] {
-  const sourceType = entry.sourceContext?.ownedReadingSourceType
-  if (sourceType === "subtitle-file") return "video_moment"
+  const sourceContext = entry.sourceContext
+  // A "video moment" is anything that returns the learner to a point in a video:
+  // subtitle files, YouTube transcript saves, the subtitle reader, or any save
+  // carrying a replay timestamp. (Previously only subtitle-file qualified, so
+  // every YouTube transcript save was mislabeled word/sentence.)
+  if (
+    sourceContext?.ownedReadingSourceType === "subtitle-file"
+    || sourceContext?.surface === "video_transcript"
+    || sourceContext?.surface === "subtitle_reader"
+    || typeof sourceContext?.videoTimestampMs === "number"
+  ) {
+    return "video_moment"
+  }
   const tokenCount = entry.text.trim().split(/\s+/).filter(Boolean).length
   return tokenCount > 4 ? "sentence" : "word"
 }
@@ -254,19 +266,27 @@ export function sourceContentFromVocabularyEntry(entry: VocabularyEntry, targetL
   if (!id) return null
 
   const sourceContext = entry.sourceContext
+  const isVideoSource = sourceContext?.surface === "subtitle_reader" || sourceContext?.surface === "video_transcript"
   return SourceContentSchema.parse({
     id,
-    type: sourceContext?.surface === "subtitle_reader" ? "video" : "page",
+    type: isVideoSource ? "video" : "page",
     title: sourceContext?.ownedReadingTitle ?? sourceContext?.pageTitle ?? entry.hostname ?? "Saved source",
-    canonicalUrl: sanitizeVocabularyUrl(sourceContext?.pageUrl ?? entry.url),
+    // Video sources keep their replay identity (YouTube ?v=); page sources strip
+    // the whole query for privacy.
+    canonicalUrl: isVideoSource
+      ? sanitizeVideoSourceUrl(sourceContext?.pageUrl ?? entry.url)
+      : sanitizeVocabularyUrl(sourceContext?.pageUrl ?? entry.url),
     hostname: sourceContext?.hostname ?? entry.hostname,
     targetLanguage,
     createdAt: entry.savedAt,
     lastStudiedAt: entry.lastReviewedAt ?? entry.savedAt,
     progress: {
       status: (entry.reviewCount ?? 0) > 0 ? "reviewed" : "saved",
-      lastPosition: sourceContext?.sentenceIndex !== undefined
-        ? { selectorAnchor: `sentence:${sourceContext.sentenceIndex}` }
+      lastPosition: sourceContext?.sentenceIndex !== undefined || typeof sourceContext?.videoTimestampMs === "number"
+        ? {
+            ...(sourceContext?.sentenceIndex !== undefined ? { selectorAnchor: `sentence:${sourceContext.sentenceIndex}` } : {}),
+            ...(typeof sourceContext?.videoTimestampMs === "number" ? { timestampMs: sourceContext.videoTimestampMs } : {}),
+          }
         : undefined,
     },
     summary: {
@@ -291,6 +311,7 @@ export function savedSnippetFromVocabularyEntry(entry: VocabularyEntry): SavedSn
     reviewCardIds: [reviewCardId],
     anchor: {
       textQuote: entry.sourceContext?.sentenceText ?? entry.text,
+      timestampMs: entry.sourceContext?.videoTimestampMs,
     },
   })
 }
@@ -367,6 +388,56 @@ export function buildLearningAssetProjection(params: {
     vocabularyItems,
     reviewCards,
   }
+}
+
+/**
+ * A VideoMomentCard is a DERIVED VIEW over the projection — not a 5th persisted
+ * entity. It joins each video_moment ReviewCard with its snippet (for the replay
+ * timestamp) and SourceContent (for the video title + URL), so the UI can show
+ * "return to this moment" without re-reading raw entries.
+ */
+export interface VideoMomentCard {
+  reviewCardId: string
+  sourceContentId: string | null
+  videoTitle: string
+  timestampMs: number | null
+  formattedTimestamp: string | null
+  replayUrl: string | null
+  front: string
+  back: string
+  dueAt: number
+  state: ReviewCard["state"]
+}
+
+export function deriveVideoMomentCards(
+  projection: Pick<LearningAssetProjection, "reviewCards" | "savedSnippets" | "sourceContents">,
+): VideoMomentCard[] {
+  const snippetById = new Map(projection.savedSnippets.map((snippet) => [snippet.id, snippet]))
+  const sourceById = new Map(projection.sourceContents.map((source) => [source.id, source]))
+
+  return projection.reviewCards
+    .filter((card) => card.cardType === "video_moment")
+    .map((card) => {
+      const snippet = card.linkedSnippetId ? snippetById.get(card.linkedSnippetId) : undefined
+      const source = card.linkedSourceContentId ? sourceById.get(card.linkedSourceContentId) : undefined
+      const timestampMs = snippet?.anchor.timestampMs ?? source?.progress.lastPosition?.timestampMs ?? null
+      const baseUrl = source?.canonicalUrl ?? null
+      const replayUrl = baseUrl !== null && typeof timestampMs === "number"
+        ? buildVideoTimestampUrl(baseUrl, timestampMs)
+        : baseUrl
+      return {
+        reviewCardId: card.id,
+        sourceContentId: card.linkedSourceContentId,
+        videoTitle: source?.title ?? "Video",
+        timestampMs: typeof timestampMs === "number" ? timestampMs : null,
+        formattedTimestamp: typeof timestampMs === "number" ? formatVideoTimestamp(timestampMs) : null,
+        replayUrl,
+        front: card.front,
+        back: card.back,
+        dueAt: card.dueAt,
+        state: card.state,
+      }
+    })
 }
 
 export function deriveWeeklyReviewableLearningMoments(

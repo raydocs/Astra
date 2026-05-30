@@ -106,7 +106,7 @@ describe("SampleLessonApp", () => {
     }))
 
     await act(async () => {
-      buttonByText("Save this sentence for review")?.click()
+      buttonByText("Save 3 expressions for review")?.click()
       await Promise.resolve()
       await Promise.resolve()
     })
@@ -133,19 +133,27 @@ describe("SampleLessonApp", () => {
       hasReviewCard: true,
     }))
     expect(container.querySelector('[data-testid="sample-lesson-saved-step"]')?.textContent)
-      .toContain("You just created your first review card")
+      .toContain("你刚刚创建了 3 个学习卡片")
     expect(container.querySelector('[data-testid="sample-lesson-source-handoff"]')?.textContent)
       .toContain("Source added to Library")
-    expect(commitLearningContinuitySyncMock).toHaveBeenCalledWith("sample-lesson-first-card-saved")
+    expect(commitLearningContinuitySyncMock).toHaveBeenCalledWith("sample-lesson-first-cards-saved")
 
     await act(async () => {
-      buttonByText("Start 1-card review")?.click()
+      buttonByText("Start review")?.click()
       await Promise.resolve()
     })
 
     expect(container.querySelector('[data-testid="sample-lesson-review-step"]')?.textContent)
-      .toContain("Review card 1 of 1")
+      .toContain("Review card 1 of 3")
 
+    await act(async () => {
+      buttonByText("I reviewed this — next card")?.click()
+      await Promise.resolve()
+    })
+    await act(async () => {
+      buttonByText("I reviewed this — next card")?.click()
+      await Promise.resolve()
+    })
     await act(async () => {
       buttonByText("I reviewed this card")?.click()
       await Promise.resolve()
@@ -157,9 +165,10 @@ describe("SampleLessonApp", () => {
       .toContain("sample source")
     expect(recordLearningLoopEventMock).toHaveBeenCalledWith("review_session_completed", expect.objectContaining({
       source: "sample_lesson",
-      cardCount: 1,
+      cardCount: 3,
       firstReview: true,
     }))
+    expect(saveVocabularyEntryMock).toHaveBeenCalledTimes(3)
     expect(container.querySelector('[data-testid="sample-lesson-growth-card"]')?.textContent)
       .toContain("Share the result, not your history")
 
@@ -212,12 +221,20 @@ describe("SampleLessonApp", () => {
     const browser = (globalThis as unknown as { __ASTRA_TEST_BROWSER__: any }).__ASTRA_TEST_BROWSER__
 
     await act(async () => {
-      buttonByText("Save this sentence for review")?.click()
+      buttonByText("Save 3 expressions for review")?.click()
       await Promise.resolve()
       await Promise.resolve()
     })
     await act(async () => {
-      buttonByText("Start 1-card review")?.click()
+      buttonByText("Start review")?.click()
+      await Promise.resolve()
+    })
+    await act(async () => {
+      buttonByText("I reviewed this — next card")?.click()
+      await Promise.resolve()
+    })
+    await act(async () => {
+      buttonByText("I reviewed this — next card")?.click()
       await Promise.resolve()
     })
     await act(async () => {

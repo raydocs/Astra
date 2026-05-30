@@ -91,7 +91,9 @@ import {
 import {
   SyncedVocabularyEntrySchema,
   applySyncedVocabularyMutations,
+  applyVocabularyReviewScheduleSyncMutations,
   type SyncedVocabularyEntry,
+  type VocabularyReviewScheduleRecord,
 } from "@/utils/storage/vocabulary-core"
 import {
   getCachedTranslations,
@@ -802,6 +804,9 @@ export interface WebCloudAssetsWorkspace {
     cursor: string | null
     count: number
     entries: SyncedVocabularyEntry[]
+    // SRS schedule (nextReviewAt etc.) lives in a separate sync collection; carried
+    // alongside entries (not merged into them) so /today can order by what's due.
+    reviewSchedule: VocabularyReviewScheduleRecord[]
   }
   readingHistory: {
     enabled: boolean
@@ -1825,6 +1830,7 @@ export async function fetchWebCloudAssets(params: {
   const libraryItems = parseWebLibraryItems(configMutations)
   const librarySnapshots = parseWebLibraryDocumentSnapshots(configMutations)
   const vocabularyMutations = snapshot.pull?.deltas.vocabulary ?? []
+  const reviewScheduleMutations = snapshot.pull?.deltas.review_schedule ?? []
   const readingHistoryMutations = snapshot.pull?.deltas.reading_history ?? []
   const studyProgressMutations = snapshot.pull?.deltas.study_progress ?? []
   const syncedConfig = buildSyncSafeConfig(
@@ -1834,6 +1840,7 @@ export async function fetchWebCloudAssets(params: {
   const syncedVocabulary = applySyncedVocabularyMutations([], vocabularyMutations)
     .map((entry) => SyncedVocabularyEntrySchema.parse(entry))
     .sort((a, b) => b.savedAt - a.savedAt)
+  const reviewSchedule = applyVocabularyReviewScheduleSyncMutations([], reviewScheduleMutations)
   const readingHistoryEntries = applyReadingHistorySyncMutations([], readingHistoryMutations)
   const studyProgressPages = applyStudyProgressSyncMutations([], studyProgressMutations)
   const stepCoverage = summarizeStudyProgressCoverage(studyProgressPages)
@@ -1890,6 +1897,7 @@ export async function fetchWebCloudAssets(params: {
       cursor: snapshot.pull?.nextCursors.vocabulary ?? snapshot.bootstrap.collections.vocabulary.cursor,
       count: countActiveRecords(vocabularyMutations),
       entries: syncedVocabulary,
+      reviewSchedule,
     },
     readingHistory: {
       enabled: snapshot.bootstrap.collections.reading_history.enabled,

@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from "react"
 import { browser } from "#imports"
 import { t } from "@/utils/i18n"
-import { getSafeAiUnavailableCopy } from "@/utils/copy-dictionary"
+import { getSafeAiUnavailableCopy, localizedOrFallback } from "@/utils/copy-dictionary"
+import { shouldShowDebugDiagnostics } from "@/utils/dev-diagnostics"
 import {
   buildLearningLoopAccountContinuityProofMoment,
   buildLearningLoopProValueMoments,
@@ -386,10 +387,13 @@ function PopupProValueMomentsCard({
   return (
     <div className="astra-card" data-testid="popup-pro-value-moments-card" style={{ marginTop: 12 }}>
       <div style={{ fontSize: 12, fontWeight: 800, color: "var(--astra-text-primary)", marginBottom: 4 }}>
-        Pro value moments
+        {localizedOrFallback("proMomentsCardTitle", "Pro value moments")}
       </div>
       <div style={{ fontSize: 11, color: "var(--astra-text-secondary)", lineHeight: 1.45 }}>
-        Astra explains upgrade value by the current learning moment—long content, deeper reading, continuity, digest, or approaching today’s included reading—without technical setup language.
+        {localizedOrFallback(
+          "proMomentsCardSummary",
+          "Astra explains upgrade value by the current learning moment—long content, deeper reading, continuity, digest, or approaching today’s included reading—without technical setup language.",
+        )}
       </div>
       {upgradePrompt && (
         <div data-testid="popup-upgrade-prompt" style={{ border: "1px solid var(--astra-border)", borderRadius: 10, padding: "8px 10px", background: "var(--astra-bg-elevated)", marginTop: 10 }}>
@@ -2590,6 +2594,25 @@ export default function App() {
 
       <PopupArticleHero studyContext={popupHeroStudyContext} certEmptyFocus={showCertificationEmptyLibrarySurface} />
 
+      {showCompactEmptyLibrarySurface && !showCertificationEmptyLibrarySurface && (
+        <section className="astra-popup-group">
+          <button
+            type="button"
+            data-testid="popup-try-sample-article"
+            onClick={() => void browser.tabs.create({ url: browser.runtime.getURL("/sample-lesson.html" as "/popup.html") })}
+            className="astra-btn-outline-quiet"
+            style={{ width: "100%", padding: "10px 12px", fontSize: 13, display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 6 }}
+          >
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+              <path d="M6 3h9l5 5v13H6z" />
+              <path d="M14 3v6h6" />
+              <path d="M9 13h6M9 17h6" />
+            </svg>
+            {t("popup_trySampleArticle")}
+          </button>
+        </section>
+      )}
+
       <section className="astra-popup-group astra-popup-primary-group">
         <div className="astra-group-card astra-group-card--padded">
           {isIdle ? (
@@ -2776,6 +2799,7 @@ export default function App() {
         <div style={{ marginTop: 12 }}>
           <TranslationStatusCard
             phase={currentPhase}
+            showDiagnostics={shouldShowDebugDiagnostics()}
             targetLang={translationState?.targetLang ?? persistedResolvedSite.targetLang}
             presentation={currentPresentation}
             hostname={currentSite.hostname}

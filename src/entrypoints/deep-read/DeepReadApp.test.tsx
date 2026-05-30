@@ -181,7 +181,7 @@ vi.mock("@/utils/i18n", () => ({
       actionSaved: "Saved",
       popup_deepReadSavedCount: `${subs[0] ?? "$1"} saved`,
       popup_studyPageSavedReviewTitle: "Saved sentences on this page",
-      popup_studyPageSavedReviewHint: `${subs[0] ?? "$1"} saved sentence(s) from this page can be reviewed anytime.`,
+      popup_studyPageSavedReviewHint: `Added to today's review · Review ${subs[0] ?? "$1"} card(s) now`,
       popup_studyPageSavedReviewAction: "Review saved sentences from this page",
       popup_studyTitle: "Study Hub",
       popup_studySummaryEmpty: "No study summary",

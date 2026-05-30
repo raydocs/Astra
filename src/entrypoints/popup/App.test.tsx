@@ -793,6 +793,30 @@ describe("popup App", () => {
     expect(container.textContent).not.toContain("newyorker.com · 12 min read")
   })
 
+  it("offers a sample-article CTA in the empty-library state that opens the sample lesson", async () => {
+    getDueVocabularyCountMock.mockResolvedValueOnce(0)
+    getVocabularyEntriesMock.mockResolvedValueOnce([])
+
+    await act(async () => {
+      window.dispatchEvent(new Event("focus"))
+      await Promise.resolve()
+      await Promise.resolve()
+      await Promise.resolve()
+      await Promise.resolve()
+    })
+
+    const sampleCta = container.querySelector('[data-testid="popup-try-sample-article"]') as HTMLButtonElement | null
+    expect(sampleCta).toBeTruthy()
+
+    browserMock.tabs.create.mockClear()
+    await act(async () => {
+      sampleCta!.click()
+      await Promise.resolve()
+    })
+
+    expect(browserMock.tabs.create).toHaveBeenCalledWith({ url: "/sample-lesson.html" })
+  })
+
   it("uses astraCert=1 to show a focused first-run popup empty state without normal-mode actions", async () => {
     await act(async () => {
       root.unmount()
@@ -985,6 +1009,7 @@ describe("popup App", () => {
   })
 
   it("renders idle subtitle QC state and polls for fresh snapshots", async () => {
+    window.history.replaceState({}, "", "/popup.html?debug=1")
     const baseState = createIdleState().state
     getActiveTabTranslationStateMock.mockResolvedValueOnce({
       ok: true,
@@ -1052,6 +1077,7 @@ describe("popup App", () => {
   })
 
   it("uses configured local subtitle QC poll interval and freshness threshold", async () => {
+    window.history.replaceState({}, "", "/popup.html?debug=1")
     const baseState = createIdleState().state
     readConfigMock.mockResolvedValueOnce(createConfig({
       subtitleQualityControls: {
@@ -1410,6 +1436,7 @@ describe("popup App", () => {
   })
 
   it("exports local subtitle QC diagnostics JSON from the popup", async () => {
+    window.history.replaceState({}, "", "/popup.html?debug=1")
     let createdDiagnosticsBlob: Blob | null = null
     const createObjectURLMock = vi.fn((blob: Blob) => {
       createdDiagnosticsBlob = blob

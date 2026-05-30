@@ -840,7 +840,29 @@ function buildMobileReviewCards(cloudAssets: WebCloudAssetsWorkspace | null): Mo
   const entries = cloudAssets?.vocabulary.entries ?? []
   if (entries.length === 0) return SAMPLE_MOBILE_REVIEW_CARDS
 
+  // Order /today by what's DUE (SRS), not by what was most recently saved. The SRS
+  // schedule rides in a separate sync collection alongside entries; an entry with no
+  // schedule record is new and counts as due now. Mirrors srs/leitner isDue (due when
+  // now >= nextReviewAt): due/overdue first (most overdue first), then soonest-upcoming,
+  // with savedAt as the final tiebreak. Slices to the session size, never empty.
+  const now = Date.now()
+  const nextReviewByEntryId = new Map(
+    (cloudAssets?.vocabulary.reviewSchedule ?? []).map((record) => [record.vocabularyEntryId, record.nextReviewAt]),
+  )
+  const nextReviewAtFor = (entryId: string): number => nextReviewByEntryId.get(entryId) ?? 0
+
   return entries
+    .slice()
+    .sort((a, b) => {
+      const aNext = nextReviewAtFor(a.id)
+      const bNext = nextReviewAtFor(b.id)
+      const aDue = aNext <= now
+      const bDue = bNext <= now
+      if (aDue !== bDue) return aDue ? -1 : 1
+      if (aNext !== bNext) return aNext - bNext
+      return b.savedAt - a.savedAt
+    })
+    .slice(0, MOBILE_REVIEW_SESSION_SIZE)
     .map((entry): MobileReviewCard => {
       const sentence = entry.sourceContext?.sentenceText ?? entry.context ?? ""
       const looksLikeSentence = entry.text.trim().includes(" ") || entry.text.length > 48
@@ -857,8 +879,6 @@ function buildMobileReviewCards(cloudAssets: WebCloudAssetsWorkspace | null): Mo
         sample: false,
       }
     })
-    .sort((a, b) => b.savedAt - a.savedAt)
-    .slice(0, MOBILE_REVIEW_SESSION_SIZE)
 }
 
 function summarizeMobileReviewSources(cards: MobileReviewCard[]): string {
@@ -3165,17 +3185,24 @@ function PublicLandingPage(props: {
     ? "Shared sentence card · zero-config sample"
     : isReferralLanding
       ? "Friend invite · zero-config sample"
-      : "Free preview · managed Astra relay"
+      : "Zero-config AI language learning"
   const heroTitle = isSentenceShareLanding
     ? "Someone shared an Astra sentence card. Try the learning loop behind it."
     : isReferralLanding
       ? "A friend invited you to try Astra on a sample page."
-      : "A bilingual reading room for the pages you already saved."
+      : "Learn from the English you already read and watch."
   const heroCopy = isSentenceShareLanding
     ? "Astra turns a sentence into context you can understand, save, and review. This landing page does not host the shared text; it just lets you try the same private learning flow."
     : isReferralLanding
       ? "Start with a guided sample: understand one sentence, save it, and complete a one-card review without configuring AI. Referral rewards are not active in this MVP."
-      : "Articles, PDFs, EPUBs, and subtitle files — translated in the margin. Use the browser extension for live page translation; Astra Web is for imported content, files, and portable reading workspaces."
+      : "Astra turns websites and supported videos into bilingual reading, saved expressions, and daily review — no API setup required."
+  const landingTrustBullets = [
+    "不需要 API",
+    "不需要配置模型",
+    "你可以删除学习数据",
+    "默认不上传不必要内容",
+    "只保存你主动保存的学习片段",
+  ]
 
   return (
     <div className="public-site">
@@ -3188,11 +3215,14 @@ function PublicLandingPage(props: {
           </span>
         </button>
         <nav className="public-nav-actions" aria-label="Astra website navigation">
+          <button type="button" className="button ghost" onClick={() => props.onNavigate("/sample")}>
+            Sample
+          </button>
           <button type="button" className="button ghost" onClick={() => props.onNavigate("/articles")}>
             Reader
           </button>
-          <button type="button" className="button ghost" onClick={() => props.onNavigate("/files/subtitles")}>
-            Subtitles
+          <button type="button" className="button ghost" onClick={() => props.onNavigate("/today")}>
+            Review
           </button>
           <button type="button" className="button secondary" onClick={() => props.onNavigate("/sign-in")}>
             Sign in
@@ -3217,7 +3247,7 @@ function PublicLandingPage(props: {
             <p>{heroCopy}</p>
             <div className="hero-actions">
               <button type="button" className="button primary large-button" onClick={() => void startFree()} disabled={isBusy}>
-                {props.authState === "signing-in" ? "Starting..." : "Use instantly"}
+                {props.authState === "signing-in" ? "Starting..." : "Start free sample"}
               </button>
               <button type="button" className="button secondary large-button" onClick={() => props.onNavigate("/sign-in")} disabled={isBusy}>
                 Sign in to sync
@@ -3234,55 +3264,78 @@ function PublicLandingPage(props: {
               </div>
             )}
             <div className="public-proof-strip" aria-label="Astra Web preview highlights">
-              <span>Imported articles</span>
-              <span>PDF + EPUB reading rooms</span>
-              <span>Subtitle files in context</span>
+              <span>No API setup</span>
+              <span>Saved expressions</span>
+              <span>Daily review</span>
+            </div>
+            <div className="public-trust-row" aria-label="Astra trust promises">
+              {landingTrustBullets.map((bullet) => (
+                <span key={bullet}>{bullet}</span>
+              ))}
             </div>
           </div>
 
-          <div className="public-marginalia-card" aria-label="Static Astra marginalia preview">
-            <div className="sample-status-pill"><span /> Static preview</div>
-            <div className="sample-meta">
-              <span>Imported article</span>
-              <span>7 min read</span>
-              <span>EN → 中文</span>
+          <div className="public-product-stage" aria-label="Astra product preview">
+            <div className="public-browser-mock">
+              <div className="browser-bar" aria-hidden="true">
+                <span />
+                <span />
+                <span />
+                <strong>astra://web-learning</strong>
+              </div>
+              <div className="public-marginalia-card" aria-label="Static Astra bilingual reading preview">
+                <div className="sample-status-pill"><span /> Bilingual reading</div>
+                <div className="sample-meta">
+                  <span>Public article</span>
+                  <span>7 min read</span>
+                  <span>EN → 中文</span>
+                </div>
+                <h2>The Quiet Years of the Long-Distance Reader</h2>
+                <div className="bilingual-paragraph">
+                  <p className="source-copy">
+                    At the turn of the century, the <span className="selected-phrase">marginalia</span> a reader left in a book
+                    traveled with it across estates and centuries — a quiet correspondence between strangers.
+                  </p>
+                  <p className="translation-margin">
+                    世纪之交，读者留在书中的眉批会随书本流转于宅邸与时代之间——一场陌生人之间的安静通信。
+                  </p>
+                </div>
+                <div className="saved-word-row" aria-label="Decorative saved word sample">
+                  <span className="saved-word-chip">marginalia · 眉批</span>
+                  <span className="sample-footnote">已加入今日复习 · Review 3 now</span>
+                </div>
+              </div>
             </div>
-            <h2>The Quiet Years of the Long-Distance Reader</h2>
-            <div className="bilingual-paragraph">
-              <p className="source-copy">
-                At the turn of the century, the <span className="selected-phrase">marginalia</span> a reader left in a book
-                traveled with it across estates and centuries — a quiet correspondence between strangers.
-              </p>
-              <p className="translation-margin">
-                世纪之交，读者留在书中的眉批会随书本流转于宅邸与时代之间——一场陌生人之间的安静通信。
-              </p>
-            </div>
-            <div className="bilingual-paragraph">
-              <p className="source-copy">
-                Astra keeps the writer’s words in place and lets the translation live beside them, like a pencil note in
-                the margin.
-              </p>
-              <p className="translation-margin">
-                Astra 保留作者原文的位置，让译文安静地落在旁边，像页边的一则铅笔注记。
-              </p>
-            </div>
-            <div className="saved-word-row" aria-label="Decorative saved word sample">
-              <span className="saved-word-chip">marginalia · 眉批</span>
-              <span className="sample-footnote">2px rail · margin translation · saved in context</span>
+            <div className="public-product-stack" aria-label="Astra learning loop preview">
+              <article className="product-mini-card video">
+                <span className="mini-kicker">Supported video · best-effort</span>
+                <strong>YouTube · 03:24</strong>
+                <p>Save a subtitle line with timestamp context.</p>
+              </article>
+              <article className="product-mini-card review">
+                <span className="mini-kicker">Today Review</span>
+                <strong>3 cards ready</strong>
+                <p>Again · Good · Easy</p>
+              </article>
+              <article className="product-mini-card ai">
+                <span className="mini-kicker">Astra AI</span>
+                <strong>Zero setup</strong>
+                <p>Astra chooses the reading path. You just read.</p>
+              </article>
             </div>
           </div>
         </section>
 
         <section className="public-section">
           <div className="section-kicker">
-            <div className="eyebrow">Astra Web companion</div>
-            <h2>Bring reading material into one portable workspace.</h2>
+            <div className="eyebrow">How Astra feels</div>
+            <h2>Capture from the web. Review when you have a minute.</h2>
           </div>
           <div className="public-feature-grid">
             {[
-              ["Read", "Import articles, PDFs, and EPUBs into a quiet bilingual reading room for focused study."],
-              ["Keep", "Save vocabulary and useful context from imported material so review starts from real sentences."],
-              ["Watch", "Bring subtitle and document files into Astra for bilingual export and file-based video study."],
+              ["Read", "Translate supported webpages into a calm bilingual layout without asking users to pick models or API keys."],
+              ["Save", "Keep the useful word, sentence, or video moment with its source context attached."],
+              ["Review", "Turn real reading and supported video moments into lightweight cards for daily practice."],
             ].map(([title, copy]) => (
               <article key={title} className="public-feature">
                 <h3>{title}</h3>
