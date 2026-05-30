@@ -332,6 +332,13 @@ describe("Astra evidence reference validator parity", () => {
     expect(evidenceReferenceDuplicateIdentity("https://github.com/astra-release/other/blob/main/docs/reviews/release-evidence.md")).toBe(
       "https://github.com/astra-release/other/blob/main/docs/reviews/release-evidence.md",
     )
+    expect(evidenceReferenceDuplicateIdentity("https://github.com/raydocs/Astra/blob/main/docs/reviews/release-evidence.md")).toBe(repoArtifactPath)
+    expect(evidenceReferenceDuplicateIdentity("https://github.com/evil-org/Astra/blob/main/docs/reviews/release-evidence.md")).toBe(
+      "https://github.com/evil-org/Astra/blob/main/docs/reviews/release-evidence.md",
+    )
+    expect(evidenceReferenceDuplicateIdentity("https://raw.githubusercontent.com/evil-org/Astra/main/docs/reviews/release-evidence.md")).toBe(
+      "https://raw.githubusercontent.com/evil-org/Astra/main/docs/reviews/release-evidence.md",
+    )
   })
 
   it.each(acceptedEvidenceReferences)("accepts public/canonical evidence reference %s across release evidence evaluators", (evidenceReference) => {

@@ -96,6 +96,18 @@ describe("Astra AI quality system", () => {
     ])
   })
 
+  it("does not allow duplicate sample ids to inflate P0 quality coverage", () => {
+    const samples = buildPassingSamples()
+    samples[99] = { ...samples[0], sampleId: "Sample_001" }
+    const summary = summarizePassingSamples(samples)
+    const decision = evaluateAiQualityReleaseReadiness(summary)
+
+    expect(summary.sampleCount).toBe(99)
+    expect(summary.p0SampleCount).toBe(99)
+    expect(decision.ready).toBe(false)
+    expect(decision.findings.map((finding) => finding.code)).toContain("p0_sample_coverage")
+  })
+
   it("turns blocker taxonomy failures into release blockers and low-score backlog labels", () => {
     const samples = buildPassingSamples()
     samples[0] = {
@@ -374,6 +386,29 @@ describe("Astra AI quality system", () => {
     const decision = evaluateAiQualityHumanScoredReportEvidence({
       reviewer: "quality-owner@example.test",
       reviewedAt: "2026-99-99",
+      environment: "target release relay with managed providers enabled",
+      runId: "ai-quality-human-2026-05-28",
+      rubricVersion: "docs/quality/rubrics.md@2026-05-28",
+      fixtureManifestPath: "test/fixtures/quality/ai-quality-samples.json",
+      fixtureManifestVersion: "astra-ai-quality-samples.v1",
+      providerSampleEvidenceLink: "https://release-evidence.astra-cdn.net/ai-quality/provider-samples/2026-05-28",
+      scoredSampleCount: summary.p0SampleCount,
+      liveProviderSampleCount: 12,
+      blockerTriageLink: "https://release-evidence.astra-cdn.net/ai-quality/blocker-triage/2026-05-28",
+      trendDirection: "stable",
+      releaseDecision: "approve_with_downgrade",
+      summary,
+    })
+
+    expect(decision.acceptable).toBe(false)
+    expect(decision.findings.map((finding) => finding.code)).toEqual(["invalid_review_date"])
+  })
+
+  it("rejects future human-scored quality report review dates", () => {
+    const summary = summarizePassingSamples(buildPassingSamples())
+    const decision = evaluateAiQualityHumanScoredReportEvidence({
+      reviewer: "quality-owner@example.test",
+      reviewedAt: "2099-01-01",
       environment: "target release relay with managed providers enabled",
       runId: "ai-quality-human-2026-05-28",
       rubricVersion: "docs/quality/rubrics.md@2026-05-28",
@@ -865,6 +900,29 @@ describe("Astra AI quality system", () => {
       "invalid_blocker_triage_reference",
       "duplicate_evidence_reference",
     ])
+  })
+
+  it("rejects generic blocker sample artifacts that do not identify triage or backlog disposition", () => {
+    const summary = summarizePassingSamples(buildPassingSamples())
+    const decision = evaluateAiQualityHumanScoredReportEvidence({
+      reviewer: "quality-owner@example.test",
+      reviewedAt: "2026-05-28",
+      environment: "target release relay with managed providers enabled",
+      runId: "ai-quality-human-2026-05-28",
+      rubricVersion: "docs/quality/rubrics.md@2026-05-28",
+      fixtureManifestPath: "test/fixtures/quality/ai-quality-samples.json",
+      fixtureManifestVersion: "astra-ai-quality-samples.v1",
+      providerSampleEvidenceLink: "https://release-evidence.astra-cdn.net/ai-quality/provider-samples/2026-05-28",
+      scoredSampleCount: summary.p0SampleCount,
+      liveProviderSampleCount: 12,
+      blockerTriageLink: "docs/reviews/ai-quality-blocker-samples-2026-05-28.md",
+      trendDirection: "stable",
+      releaseDecision: "approve_with_downgrade",
+      summary,
+    })
+
+    expect(decision.acceptable).toBe(false)
+    expect(decision.findings.map((finding) => finding.code)).toContain("invalid_blocker_triage_reference")
   })
 
   it("rejects human-scored quality reports with swapped provider sample and blocker triage evidence links", () => {

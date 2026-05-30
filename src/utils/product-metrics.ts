@@ -402,9 +402,19 @@ function isStableQueryVersionReference(value: string): boolean {
     || (/^20\d{2}-\d{2}-\d{2}$/.test(identityValue) && includesIsoDate(identityValue))
 }
 
+function currentUtcDateStart(): number {
+  const now = new Date()
+  return Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate())
+}
+
 function includesIsoDate(value: string): boolean {
-  const match = /\b(20\d{2}-\d{2}-\d{2})\b/.exec(value)
-  return match ? parseIsoDate(match[1]) !== null : false
+  const matches = [...value.matchAll(/\b(20\d{2}-\d{2}-\d{2})\b/g)]
+  if (matches.length === 0) return false
+  const today = currentUtcDateStart()
+  return matches.every((match) => {
+    const timestamp = parseIsoDate(match[1])
+    return timestamp !== null && timestamp <= today
+  })
 }
 
 function hasOwnerIdentityWithIsoDate(value: string): boolean {
@@ -434,20 +444,32 @@ function parseIsoDate(value: string): number | null {
   return timestamp
 }
 
-function isIsoDateRange(value: string): boolean {
-  if (value.trim() !== value) return false
+function isoDateRangeEndTimestamp(value: string): number | null {
+  if (value.trim() !== value) return null
   const [startText, endText] = value.split("..")
-  if (!startText || !endText) return false
+  if (!startText || !endText) return null
   const start = parseIsoDate(startText)
   const end = parseIsoDate(endText)
-  return start !== null && end !== null && start <= end
+  if (start === null || end === null || start > end) return null
+  return end
+}
+
+function isIsoDateRange(value: string): boolean {
+  return isoDateRangeEndTimestamp(value) !== null
+}
+
+function exportedAtCoversDateRange(exportedAt: string, dateRange: string): boolean {
+  const exportedAtTimestamp = Date.parse(exportedAt)
+  const dateRangeEndTimestamp = isoDateRangeEndTimestamp(dateRange)
+  return dateRangeEndTimestamp !== null && !Number.isNaN(exportedAtTimestamp) && exportedAtTimestamp >= dateRangeEndTimestamp
 }
 
 function isIsoTimestamp(value: string): boolean {
-  if (!/^20\d{2}-\d{2}-\d{2}T(?:[01]\d|2[0-3]):[0-5]\d:[0-5]\d(?:\.\d{1,9})?(?:Z|[+-](?:[01]\d|2[0-3]):[0-5]\d)$/.test(value) || Number.isNaN(Date.parse(value))) {
+  const timestamp = Date.parse(value)
+  if (!/^20\d{2}-\d{2}-\d{2}T(?:[01]\d|2[0-3]):[0-5]\d:[0-5]\d(?:\.\d{1,9})?(?:Z|[+-](?:[01]\d|2[0-3]):[0-5]\d)$/.test(value) || Number.isNaN(timestamp)) {
     return false
   }
-  return parseIsoDate(value.slice(0, 10)) !== null
+  return parseIsoDate(value.slice(0, 10)) !== null && timestamp <= Date.now()
 }
 
 export function evaluateAstraProductionMetricsExportPacket(
@@ -633,6 +655,8 @@ export function evaluateAstraProductionMetricsExportPacket(
       findings.push({ code: "missing_exported_at", category: row.category, message: `${row.category} export is missing exported-at timestamp.`, nextStep: "Record when the production/cohort export was generated." })
     } else if (!isIsoTimestamp(row.exportedAt)) {
       findings.push({ code: "invalid_exported_at", category: row.category, message: `${row.category} export exported-at value must be an ISO timestamp.`, nextStep: "Record the exported-at timestamp as an ISO date-time for the attached export artifact." })
+    } else if (isIsoDateRange(row.dateRange) && !exportedAtCoversDateRange(row.exportedAt, row.dateRange)) {
+      findings.push({ code: "invalid_exported_at", category: row.category, message: `${row.category} export exported-at timestamp must not be earlier than the date range end date.`, nextStep: "Regenerate or attach the export artifact after the covered production/cohort date range has begun for its final date." })
     }
     if (isBlank(row.exportDigest)) {
       findings.push({ code: "missing_export_digest", category: row.category, message: `${row.category} export is missing digest/checksum.`, nextStep: "Record a digest or checksum for the attached dashboard/query export artifact." })

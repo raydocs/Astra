@@ -350,6 +350,18 @@ function makeLowScoreBacklogItem(sample: AiQualitySampleResult): AiQualityLowSco
   }
 }
 
+function uniqueAiQualitySamples(samples: readonly AiQualitySampleResult[]): AiQualitySampleResult[] {
+  const seenSampleIds = new Set<string>()
+  const uniqueSamples: AiQualitySampleResult[] = []
+  for (const sample of samples) {
+    const sampleIdentity = sample.sampleId.trim().toLowerCase()
+    if (seenSampleIds.has(sampleIdentity)) continue
+    seenSampleIds.add(sampleIdentity)
+    uniqueSamples.push(sample)
+  }
+  return uniqueSamples
+}
+
 export function summarizeAiQualityRun(
   samples: AiQualitySampleResult[],
   options: { reproducible?: boolean; runId?: string; generatedAt?: string } = {},
@@ -360,14 +372,15 @@ export function summarizeAiQualityRun(
   const capabilityScores = Object.fromEntries(
     ASTRA_AI_QUALITY_ABILITY_CATEGORIES.map((capability) => [capability, [] as number[]]),
   ) as Record<AiQualityCapability, number[]>
+  const uniqueSamples = uniqueAiQualitySamples(samples)
   const blockerErrorCounts: Partial<Record<AiQualityErrorType, number>> = {}
   const blockerSampleIds: string[] = []
-  const reviewCardSamples = samples.filter((sample) => sample.capability === "review_card" && typeof sample.reviewCardReusable === "boolean")
-  const safetySamples = samples.filter((sample) => typeof sample.safetyPassed === "boolean")
+  const reviewCardSamples = uniqueSamples.filter((sample) => sample.capability === "review_card" && typeof sample.reviewCardReusable === "boolean")
+  const safetySamples = uniqueSamples.filter((sample) => typeof sample.safetyPassed === "boolean")
   const lowScoreBacklog: AiQualityLowScoreBacklogItem[] = []
   const allScores: number[] = []
 
-  for (const sample of samples) {
+  for (const sample of uniqueSamples) {
     capabilityCounts[sample.capability] += 1
     const scores = numericScores(sample)
     capabilityScores[sample.capability].push(...scores)
@@ -397,8 +410,8 @@ export function summarizeAiQualityRun(
   const capabilityCount = Object.values(capabilityCounts).filter((count) => count > 0).length
 
   return {
-    sampleCount: samples.length,
-    p0SampleCount: samples.filter((sample) => (sample.priority ?? "P0") === "P0").length,
+    sampleCount: uniqueSamples.length,
+    p0SampleCount: uniqueSamples.filter((sample) => (sample.priority ?? "P0") === "P0").length,
     capabilityCount,
     capabilityCounts,
     capabilityAverages,
@@ -570,19 +583,29 @@ function isSpecificAiQualityEnvironment(value: string): boolean {
   return hasReleaseContext && hasProviderOrRuntimeContext
 }
 
+function currentUtcDateStart(): number {
+  const now = new Date()
+  return Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate())
+}
+
 function includesIsoDate(value: string): boolean {
-  const match = /\b(20\d{2})-(\d{2})-(\d{2})\b/.exec(value)
-  if (!match) return false
+  const matches = [...value.matchAll(/\b(20\d{2})-(\d{2})-(\d{2})\b/g)]
+  if (matches.length === 0) return false
 
-  const [, yearText, monthText, dayText] = match
-  const year = Number(yearText)
-  const month = Number(monthText)
-  const day = Number(dayText)
-  const date = new Date(Date.UTC(year, month - 1, day))
+  const today = currentUtcDateStart()
+  return matches.every((match) => {
+    const [, yearText, monthText, dayText] = match
+    const year = Number(yearText)
+    const month = Number(monthText)
+    const day = Number(dayText)
+    const timestamp = Date.UTC(year, month - 1, day)
+    const date = new Date(timestamp)
 
-  return date.getUTCFullYear() === year
-    && date.getUTCMonth() === month - 1
-    && date.getUTCDate() === day
+    return date.getUTCFullYear() === year
+      && date.getUTCMonth() === month - 1
+      && date.getUTCDate() === day
+      && timestamp <= today
+  })
 }
 
 function isExactIsoDate(value: string): boolean {
@@ -590,10 +613,11 @@ function isExactIsoDate(value: string): boolean {
 }
 
 function isIsoTimestamp(value: string): boolean {
-  if (!/^20\d{2}-\d{2}-\d{2}T(?:[01]\d|2[0-3]):[0-5]\d:[0-5]\d(?:\.\d{1,9})?(?:Z|[+-](?:[01]\d|2[0-3]):[0-5]\d)$/.test(value) || Number.isNaN(Date.parse(value))) {
+  const timestamp = Date.parse(value)
+  if (!/^20\d{2}-\d{2}-\d{2}T(?:[01]\d|2[0-3]):[0-5]\d:[0-5]\d(?:\.\d{1,9})?(?:Z|[+-](?:[01]\d|2[0-3]):[0-5]\d)$/.test(value) || Number.isNaN(timestamp)) {
     return false
   }
-  return includesIsoDate(value.slice(0, 10))
+  return includesIsoDate(value.slice(0, 10)) && timestamp <= Date.now()
 }
 
 function isFixtureManifestReference(value: string): boolean {
@@ -627,8 +651,8 @@ function isLiveProviderSampleEvidenceReference(value: string): boolean {
 
 function isBlockerTriageEvidenceReference(value: string): boolean {
   return evidenceReferenceSemanticCandidates(value).some((candidate) => (
-    /\b(?:blocker|triage|backlog|severity|release disposition)\b/.test(candidate)
-    && /\b(?:triage|blocker|backlog|sample|samples|disposition)\b/.test(candidate)
+    /\b(?:blocker|severity|sample|samples)\b/.test(candidate)
+    && /\b(?:triage|backlog|release disposition|disposition)\b/.test(candidate)
   ))
 }
 

@@ -516,6 +516,19 @@ describe("Astra product metrics contract", () => {
     expect(decision.findings.map((finding) => finding.code)).toEqual(["invalid_owner_date"])
   })
 
+  it("rejects future production metric owner/date values", () => {
+    const decision = evaluateAstraProductionMetricsExportPacket([
+      {
+        ...completeProductionExportRows[0],
+        ownerDate: "metrics-owner@astra.ai — 2026-05-28 / rechecked 2099-01-01",
+      },
+      ...completeProductionExportRows.slice(1),
+    ])
+
+    expect(decision.acceptable).toBe(false)
+    expect(decision.findings.map((finding) => finding.code)).toEqual(["invalid_owner_date"])
+  })
+
   it("rejects generic production metric owner/date identities", () => {
     const decision = evaluateAstraProductionMetricsExportPacket([
       {
@@ -673,11 +686,28 @@ describe("Astra product metrics contract", () => {
         ...completeProductionExportRows[2],
         exportedAt: "2026-05-28T24:00:00.000Z",
       },
-      ...completeProductionExportRows.slice(3),
+      {
+        ...completeProductionExportRows[3],
+        exportedAt: "2099-01-01T00:00:00.000Z",
+      },
     ])
 
     expect(decision.acceptable).toBe(false)
-    expect(decision.findings.map((finding) => finding.code).filter((code) => code === "invalid_exported_at")).toHaveLength(3)
+    expect(decision.findings.map((finding) => finding.code).filter((code) => code === "invalid_exported_at")).toHaveLength(4)
+  })
+
+  it("rejects production metric exports generated before the covered date range end date", () => {
+    const decision = evaluateAstraProductionMetricsExportPacket([
+      {
+        ...completeProductionExportRows[0],
+        dateRange: "2026-05-28..2026-05-28",
+        exportedAt: "2026-05-27T23:59:59.000Z",
+      },
+      ...completeProductionExportRows.slice(1),
+    ])
+
+    expect(decision.acceptable).toBe(false)
+    expect(decision.findings.map((finding) => finding.code)).toContain("invalid_exported_at")
   })
 
   it("rejects incomplete production metric export evidence so local diagnostics cannot masquerade as cohort exports", () => {

@@ -63,15 +63,24 @@ export function evidenceReferenceDuplicateIdentity(value: string): string {
   return trimmedValue
 }
 
+const ASTRA_GITHUB_REPOSITORY_OWNERS = new Set(["astra-release", "raydocs"])
+
+function isAstraGitHubRepository(owner: string | undefined, repo: string | undefined): boolean {
+  return owner !== undefined
+    && repo !== undefined
+    && ASTRA_GITHUB_REPOSITORY_OWNERS.has(owner.toLowerCase())
+    && repo.toLowerCase() === "astra"
+}
+
 function githubAstraRepoArtifactPathDuplicateIdentity(url: URL): string | null {
   const hostname = url.hostname.toLowerCase().replace(/\.+$/, "")
   const pathSegments = url.pathname.split("/").filter((segment) => segment.length > 0)
   const repoPathSegments = (() => {
-    if (hostname === "github.com" && pathSegments.length >= 5 && pathSegments[1]?.toLowerCase() === "astra") {
+    if (hostname === "github.com" && pathSegments.length >= 5 && isAstraGitHubRepository(pathSegments[0], pathSegments[1])) {
       const mode = pathSegments[2]
       if (mode === "blob" || mode === "raw") return pathSegments.slice(4)
     }
-    if (hostname === "raw.githubusercontent.com" && pathSegments.length >= 4 && pathSegments[1]?.toLowerCase() === "astra") {
+    if (hostname === "raw.githubusercontent.com" && pathSegments.length >= 4 && isAstraGitHubRepository(pathSegments[0], pathSegments[1])) {
       return pathSegments.slice(3)
     }
     return null

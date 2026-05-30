@@ -998,6 +998,29 @@ function isSpecificLaunchArtifactEnvironment(value: string, requirement: AstraMa
   return hasReleaseContext && hasChannelOrRuntimeContext && hasLaunchArtifactGroupContext(value, requirement.group) && hasLaunchArtifactRequirementContext(value, requirement.id)
 }
 
+function normalizeLaunchArtifactEvidenceSemanticText(value: string): string {
+  let decodedValue = value
+  try {
+    decodedValue = decodeURIComponent(value)
+  } catch {
+    decodedValue = value
+  }
+  return decodedValue
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+}
+
+function launchArtifactEvidenceLinkMatchesRequirement(
+  evidenceLink: string,
+  requirement: AstraMacroLaunchArtifactRequirement,
+): boolean {
+  const normalizedLink = normalizeLaunchArtifactEvidenceSemanticText(evidenceLink)
+  return hasLaunchArtifactGroupContext(normalizedLink, requirement.group)
+    && hasLaunchArtifactRequirementContext(normalizedLink, requirement.id)
+}
+
 function isStableVersionReference(value: string): boolean {
   const normalizedValue = digestOrVersionIdentity(value)
   if (hasWeakEvidenceKeyword(normalizedValue) || isPlaceholderEvidenceReference(normalizedValue)) return false
@@ -1034,19 +1057,29 @@ function isCiIdentityReference(value: string): boolean {
     || /^[a-z][a-z0-9]*(?:[-_:][a-z0-9]+)+$/i.test(identityValue) && /\d/.test(identityValue)
 }
 
+function currentUtcDateStart(): number {
+  const now = new Date()
+  return Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate())
+}
+
 function includesIsoDate(value: string): boolean {
-  const match = /\b(20\d{2})-(\d{2})-(\d{2})\b/.exec(value)
-  if (!match) return false
+  const matches = [...value.matchAll(/\b(20\d{2})-(\d{2})-(\d{2})\b/g)]
+  if (matches.length === 0) return false
 
-  const [, yearText, monthText, dayText] = match
-  const year = Number(yearText)
-  const month = Number(monthText)
-  const day = Number(dayText)
-  const date = new Date(Date.UTC(year, month - 1, day))
+  const today = currentUtcDateStart()
+  return matches.every((match) => {
+    const [, yearText, monthText, dayText] = match
+    const year = Number(yearText)
+    const month = Number(monthText)
+    const day = Number(dayText)
+    const timestamp = Date.UTC(year, month - 1, day)
+    const date = new Date(timestamp)
 
-  return date.getUTCFullYear() === year
-    && date.getUTCMonth() === month - 1
-    && date.getUTCDate() === day
+    return date.getUTCFullYear() === year
+      && date.getUTCMonth() === month - 1
+      && date.getUTCDate() === day
+      && timestamp <= today
+  })
 }
 
 function isExactIsoDate(value: string): boolean {
@@ -1063,6 +1096,39 @@ function hasOwnerIdentityWithIsoDate(value: string): boolean {
   const ownerIdentity = ownerText.toLowerCase()
   if (/^(?:owner|release owner|qa owner|tester|metrics owner)$/.test(ownerIdentity)) return false
   return /[a-z][a-z0-9@.-]{1,}/i.test(ownerText)
+}
+
+function isSpecificReleaseApproverIdentity(value: string): boolean {
+  const normalizedValue = value.trim()
+  if (normalizedValue !== value || isPlaceholderIdentityReference(value)) return false
+  if (/^[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,}$/i.test(normalizedValue)) return true
+  const identityTokens = normalizedValue
+    .replace(/[—–:|/(),._-]+/g, " ")
+    .split(/\s+/)
+    .filter((token) => /[a-z0-9]/i.test(token))
+  return identityTokens.length >= 2 && identityTokens.join("").length >= 6
+}
+
+function normalizeReleaseApprovalRecordReference(value: string): string {
+  let decodedValue = value
+  try {
+    decodedValue = decodeURIComponent(value)
+  } catch {
+    decodedValue = value
+  }
+  return decodedValue
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+}
+
+function isSpecificReleaseApprovalRecordReference(value: string): boolean {
+  const normalizedValue = normalizeReleaseApprovalRecordReference(value)
+  if (/\bevidence note\b/.test(normalizedValue)) return false
+  const namesApproval = /\b(?:approval|approved|approver|signoff|signed|decision)\b/.test(normalizedValue)
+  const namesOwnerOrRelease = /\b(?:owner|release|approver|approval)\b/.test(normalizedValue)
+  return namesApproval && namesOwnerOrRelease
 }
 
 function manualQaRowContextMatches(value: string, section: number, qaRow: string): boolean {
@@ -1084,6 +1150,26 @@ function manualQaRowContextMatches(value: string, section: number, qaRow: string
     default:
       return normalizedRow.length > 0 && normalizedRow.split(/[^a-z0-9]+/).filter((part) => part.length >= 5).some((part) => normalizedValue.includes(part))
   }
+}
+
+function normalizeManualQaEvidenceSemanticText(value: string): string {
+  let decodedValue = value
+  try {
+    decodedValue = decodeURIComponent(value)
+  } catch {
+    decodedValue = value
+  }
+  return decodedValue
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+}
+
+function manualQaEvidenceLinkMatchesRow(evidenceLink: string, section: number, qaRow: string): boolean {
+  const normalizedLink = normalizeManualQaEvidenceSemanticText(evidenceLink)
+  const normalizedRow = normalizeManualQaEvidenceSemanticText(qaRow)
+  return normalizedLink.includes(`section ${section}`) && normalizedRow.length > 0 && normalizedLink.includes(normalizedRow)
 }
 
 function isSpecificManualQaEnvironment(value: string, section: number, qaRow: string): boolean {
@@ -1153,6 +1239,12 @@ interface CiArtifactUrlParts {
   repo: string
   runId?: string
   artifactId: string
+}
+
+const ASTRA_CI_GITHUB_REPOSITORIES = new Set(["astra-release/astra", "raydocs/astra"])
+
+function isAllowedAstraCiRepository(repo: string | undefined): boolean {
+  return repo !== undefined && ASTRA_CI_GITHUB_REPOSITORIES.has(repo.toLowerCase())
 }
 
 function ciRunUrlParts(value: string): CiRunUrlParts | null {
@@ -1422,6 +1514,8 @@ export function evaluateAstraMacroCiArtifactPacket(
       findings.push({ evidenceField: requirement.evidenceField, message: `${requirement.label} CI run URL must be a GitHub Actions run URL.`, nextStep: "Attach the https://github.com/<owner>/<repo>/actions/runs/<run-id> URL for the target commit/SHA." })
     } else if (!ciIdentityMatchesUrlSegment(item.runId, runUrlParts?.runId)) {
       findings.push({ evidenceField: requirement.evidenceField, message: `${requirement.label} CI run id must match the GitHub Actions run URL.`, nextStep: "Use the immutable run id from the same https://github.com/<owner>/<repo>/actions/runs/<run-id> URL." })
+    } else if (!isAllowedAstraCiRepository(runUrlParts?.repo)) {
+      findings.push({ evidenceField: requirement.evidenceField, message: `${requirement.label} CI run URL must point to an allowed Astra GitHub repository.`, nextStep: "Attach the GitHub Actions run URL from astra-release/astra or raydocs/Astra for the target commit/SHA." })
     }
     if (isBlank(item.artifactUrl)) {
       findings.push({ evidenceField: requirement.evidenceField, message: `${requirement.label} is missing the downloadable artifact URL.`, nextStep: "Attach the downloadable artifact URL, not only local terminal output." })
@@ -1438,6 +1532,9 @@ export function evaluateAstraMacroCiArtifactPacket(
       }
       if (artifactUrlParts?.runId !== undefined && !ciIdentityMatchesUrlSegment(item.runId, artifactUrlParts.runId)) {
         findings.push({ evidenceField: requirement.evidenceField, message: `${requirement.label} CI run id must match the run segment in the artifact URL.`, nextStep: "Attach an artifact URL from the same GitHub Actions run as the recorded run id." })
+      }
+      if (!isAllowedAstraCiRepository(artifactUrlParts?.repo)) {
+        findings.push({ evidenceField: requirement.evidenceField, message: `${requirement.label} downloadable artifact URL must point to an allowed Astra GitHub repository.`, nextStep: "Attach the GitHub Actions artifact URL from astra-release/astra or raydocs/Astra for the target commit/SHA." })
       }
     }
     if (isBlank(item.commitSha)) {
@@ -1512,7 +1609,7 @@ export function evaluateAstraMacroManualQaEvidencePacket(
     }
     const evidenceLink = row.evidenceLink.trim()
     const evidenceLinkIdentity = evidenceReferenceDuplicateIdentity(row.evidenceLink)
-    if (evidenceLink.length > 0) {
+    if (evidenceLink.length > 0 && manualQaEvidenceLinkMatchesRow(row.evidenceLink, canonicalRow.section, canonicalRow.qaRow)) {
       const existingRowKey = seenEvidenceLinks.get(evidenceLinkIdentity)
       if (existingRowKey && existingRowKey !== canonicalKey) {
         findings.push({
@@ -1579,6 +1676,8 @@ export function evaluateAstraMacroManualQaEvidencePacket(
         findings.push({ section: requirement.section, qaRow, message: `Section ${requirement.section} / ${qaRow} evidence link is placeholder evidence.`, nextStep: "Attach the real screenshot, recording, run folder, log excerpt, or written QA note." })
       } else if (!isEvidenceLikeReference(row.evidenceLink)) {
         findings.push({ section: requirement.section, qaRow, message: `Section ${requirement.section} / ${qaRow} evidence link must be a URL or repo artifact path.`, nextStep: "Attach a URL or repo path under docs/, data/, artifacts/, test-results/, or playwright-report/." })
+      } else if (!manualQaEvidenceLinkMatchesRow(row.evidenceLink, requirement.section, qaRow)) {
+        findings.push({ section: requirement.section, qaRow, message: `Section ${requirement.section} / ${qaRow} evidence link must identify Section ${requirement.section} and row-specific manual QA evidence.`, nextStep: "Attach evidence whose URL or repo artifact path names the manual QA section and exact checklist row." })
       }
     }
   }
@@ -1597,6 +1696,8 @@ export function evaluateAstraMacroReleaseApprovalPacket(
     findings.push({ message: "Release approval approver must be canonical without surrounding whitespace.", nextStep: "Record the accountable owner or release approver without surrounding whitespace." })
   } else if (isPlaceholderIdentityReference(evidence.approver)) {
     findings.push({ message: "Release approval approver is placeholder evidence.", nextStep: "Record the accountable owner or release approver." })
+  } else if (!isSpecificReleaseApproverIdentity(evidence.approver)) {
+    findings.push({ message: "Release approval approver must identify an accountable owner, not an ambiguous short label.", nextStep: "Record an email-like approver or a concrete multi-token owner identity." })
   }
   if (isBlank(evidence.approvalDate)) {
     findings.push({ message: "Release approval is missing approval date.", nextStep: "Record the approval date." })
@@ -1609,6 +1710,8 @@ export function evaluateAstraMacroReleaseApprovalPacket(
     findings.push({ message: "Release approval record link is placeholder evidence.", nextStep: "Attach the real signed issue/comment/document that records approval." })
   } else if (!isEvidenceLikeReference(evidence.approvalRecordLink)) {
     findings.push({ message: "Release approval record link must be a URL or repo artifact path.", nextStep: "Attach a URL or repo path under docs/, data/, artifacts/, test-results/, or playwright-report/." })
+  } else if (!isSpecificReleaseApprovalRecordReference(evidence.approvalRecordLink)) {
+    findings.push({ message: "Release approval record link must identify a signed owner/release approval record, not a generic evidence note.", nextStep: "Attach the signed issue/comment/document or owner approval packet that records the release decision." })
   }
   if (isBlank(evidence.targetCommitSha)) {
     findings.push({ message: "Release approval is missing target commit/SHA.", nextStep: "Record the exact commit/SHA being approved." })
@@ -1756,7 +1859,7 @@ export function evaluateAstraMacroLaunchArtifactPacket(
 
     const evidenceLink = item.evidenceLink.trim()
     const evidenceLinkIdentity = evidenceReferenceDuplicateIdentity(item.evidenceLink)
-    if (evidenceLink.length > 0) {
+    if (evidenceLink.length > 0 && launchArtifactEvidenceLinkMatchesRequirement(item.evidenceLink, requirement)) {
       const existingRequirementId = seenEvidenceLinks.get(evidenceLinkIdentity)
       if (existingRequirementId && existingRequirementId !== requirement.id) {
         findings.push({
@@ -1935,6 +2038,13 @@ export function evaluateAstraMacroLaunchArtifactPacket(
         group: requirement.group,
         message: `${requirement.label} evidence link must be a URL or repo artifact path.`,
         nextStep: requirement.requiredEvidence,
+      })
+    } else if (!launchArtifactEvidenceLinkMatchesRequirement(item.evidenceLink, requirement)) {
+      findings.push({
+        requirementId: requirement.id,
+        group: requirement.group,
+        message: `${requirement.label} evidence link must identify ${requirement.group} and ${requirement.id} launch evidence.`,
+        nextStep: "Attach evidence whose URL or repo artifact path names the launch artifact group and exact requirement.",
       })
     }
     if (isBlank(item.ownerDate)) {

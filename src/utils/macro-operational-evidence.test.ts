@@ -867,8 +867,8 @@ describe("Astra macro operational evidence", () => {
     expect(checker).toContain("function packetLabelIndicatesAttemptedEvidence")
     expect(checker).toContain("packet.rows.length > 0 || packetLabelIndicatesAttemptedEvidence(packet.label)")
     expect(checker).toContain("expected a canonical non-placeholder label")
-    expect(checker).toContain('validatePacketLabel(value.label, "artifact.label", findings)')
-    expect(checker).toContain('validatePacketLabel(value.label, "ciArtifactPacket.label", findings)')
+    expect(checker).toContain('validatePacketLabel(value.label, "artifact.label", findings, FINAL_COMPLETION_EVIDENCE_PATH)')
+    expect(checker).toContain('validatePacketLabel(value.label, "ciArtifactPacket.label", findings, CI_ARTIFACT_PACKET_PATH)')
     expect(checker).toContain("options: EvidenceReferenceOptions = {}")
     expect(checker).toContain("if (value.trim().length === 0 || !isEvidenceLikeReference(value, options)) return")
     expect(checker).toContain("isRepoArtifactPathReference(value, options)")
@@ -954,6 +954,10 @@ describe("Astra macro operational evidence", () => {
     expect(checker).toContain("crossFieldEvidenceLinks.get(duplicateIdentity)")
     expect(checker).toContain("fieldsCanShareEvidenceLinkIdentity(existingField, key, duplicateIdentity)")
     expect(checker).toContain("function fieldRequiresEvidenceLinkIdentity")
+    expect(checker).toContain("function fieldAllowsEvidenceLink")
+    expect(checker).toContain("unexpected evidence link for ${key}; top-level links must be the required machine-readable packet paths")
+    expect(checker).toContain('console.log(`Complete: ${valid && decision.complete ? "yes" : "no"}`)')
+    expect(checker).not.toContain('console.log(`Complete: ${decision.complete ? "yes" : "no"}`)')
     expect(checker).not.toContain("else if (!isEvidenceLikeReference(normalizedLink))")
     expect(checker).not.toContain("return isRepoArtifactPathReference(trimmedLink) && trimmedLink === requiredPath")
     expect(checker).not.toContain("existsSync(trimmedValue)")
@@ -1017,6 +1021,44 @@ describe("Astra macro operational evidence", () => {
       }
     } finally {
       writeFileSync(packetPath, originalPacket)
+    }
+  })
+
+  it("rejects unrelated extra links on true top-level final evidence fields", () => {
+    const artifactPath = "docs/reviews/macro-final-completion-evidence-2026-05-28.json"
+    const originalArtifact = readFileSync(artifactPath, "utf8")
+    const artifact = JSON.parse(originalArtifact) as MacroFinalCompletionEvidenceArtifact
+    artifact.evidence = {
+      ...emptyFinalCompletionEvidence,
+      ciQualityArtifactsAttached: true,
+    }
+    artifact.evidenceLinks = FINAL_COMPLETION_EVIDENCE_KEYS.reduce((evidenceLinks, key) => {
+      evidenceLinks[key] = []
+      return evidenceLinks
+    }, {} as MacroFinalCompletionEvidenceArtifact["evidenceLinks"])
+    artifact.evidenceLinks.ciQualityArtifactsAttached = [
+      "docs/reviews/macro-ci-artifact-packet-2026-05-28.json",
+      "https://release-evidence.astra-cdn.net/final-evidence/ci-quality-extra-proof.md",
+    ]
+
+    try {
+      writeFileSync(artifactPath, `${JSON.stringify(artifact, null, 2)}\n`)
+      let output = ""
+      try {
+        execFileSync(
+          resolve("node_modules/.bin/tsx"),
+          [resolve("script/maintenance/check-macro-final-completion.ts")],
+          { encoding: "utf8", env: { ...process.env, FORCE_COLOR: "0" } },
+        )
+      } catch (error) {
+        const result = error as { stdout?: Buffer | string; stderr?: Buffer | string; status?: number }
+        output = `${result.stdout ?? ""}${result.stderr ?? ""}`
+        expect(result.status).toBe(1)
+      }
+
+      expect(output).toContain("artifact.evidenceLinks.ciQualityArtifactsAttached[1]: unexpected evidence link for ciQualityArtifactsAttached; top-level links must be the required machine-readable packet paths.")
+    } finally {
+      writeFileSync(artifactPath, originalArtifact)
     }
   })
 
@@ -1126,6 +1168,79 @@ describe("Astra macro operational evidence", () => {
     expect(checker).not.toContain('.split("\\n")\n        .filter((line) => line.startsWith("| ")')
   })
 
+  it("rejects final evidence intake requirements hidden only in comments", () => {
+    const intakePath = "docs/reviews/macro-final-evidence-intake-2026-05-28.md"
+    const originalIntake = readFileSync(intakePath, "utf8")
+    const requiredTerm = "Semantic evidence requirements are enforced by parsing the machine-readable packet/checklist"
+    const replacement = "Semantic evidence requirements are enforced by visible packet evaluator requirements"
+
+    try {
+      writeFileSync(intakePath, `${originalIntake.replace(requiredTerm, replacement)}\n<!-- ${requiredTerm} -->\n`)
+      let output = ""
+      try {
+        execFileSync(
+          resolve("node_modules/.bin/tsx"),
+          [resolve("script/maintenance/check-macro-final-completion.ts")],
+          { encoding: "utf8", env: { ...process.env, FORCE_COLOR: "0" } },
+        )
+      } catch (error) {
+        const result = error as { stdout?: Buffer | string; stderr?: Buffer | string; status?: number }
+        output = `${result.stdout ?? ""}${result.stderr ?? ""}`
+        expect(result.status).toBe(1)
+      }
+
+      expect(output).toContain(`docs/reviews/macro-final-evidence-intake-2026-05-28.md: missing required intake term \`${requiredTerm}\`.`)
+    } finally {
+      writeFileSync(intakePath, originalIntake)
+    }
+  })
+
+  it("rejects final evidence intake requirements hidden only in link metadata", () => {
+    const intakePath = "docs/reviews/macro-final-evidence-intake-2026-05-28.md"
+    const originalIntake = readFileSync(intakePath, "utf8")
+    const requiredTerm = "Semantic evidence requirements are enforced by parsing the machine-readable packet/checklist"
+    const replacement = "Semantic evidence requirements are enforced by visible packet evaluator requirements"
+
+    try {
+      writeFileSync(
+        intakePath,
+        `${originalIntake.replace(requiredTerm, replacement)}\n[release evidence](https://release-evidence.astra-cdn.net/intake \"${requiredTerm}\")\n`,
+      )
+      let output = ""
+      try {
+        execFileSync(
+          resolve("node_modules/.bin/tsx"),
+          [resolve("script/maintenance/check-macro-final-completion.ts")],
+          { encoding: "utf8", env: { ...process.env, FORCE_COLOR: "0" } },
+        )
+      } catch (error) {
+        const result = error as { stdout?: Buffer | string; stderr?: Buffer | string; status?: number }
+        output = `${result.stdout ?? ""}${result.stderr ?? ""}`
+        expect(result.status).toBe(1)
+      }
+
+      expect(output).toContain(`docs/reviews/macro-final-evidence-intake-2026-05-28.md: missing required intake term \`${requiredTerm}\`.`)
+    } finally {
+      writeFileSync(intakePath, originalIntake)
+    }
+  })
+
+  it("keeps the final checker strict for final evidence intake visible text", () => {
+    const checker = readFileSync("script/maintenance/check-macro-final-completion.ts", "utf8")
+
+    expect(checker).toContain("function renderedMarkdownLineText")
+    expect(checker).toContain("function visibleMarkdownText")
+    expect(checker).toContain("const visibleText = visibleMarkdownText(markdown)")
+    expect(checker).toContain("!visibleText.includes(`\\`${key}\\``)")
+    expect(checker).toContain("!visibleText.includes(term)")
+    expect(checker).toContain("/^\\s{0,3}\\[[^\\]]+\\]:\\s+\\S+/")
+    expect(checker).toContain(".replace(/!\\[([^\\]]*)\\]\\((?:\\\\.|[^\\\\)])*\\)/g, \"$1\")")
+    expect(checker).toContain(".replace(/\\[([^\\]]+)\\]\\((?:\\\\.|[^\\\\)])*\\)/g, \"$1\")")
+    expect(checker).toContain('trimmedLine.startsWith("<!--")')
+    expect(checker).toContain('trimmedLine.startsWith(\">")')
+    expect(checker).toContain("activeFenceMarker !== null")
+  })
+
   it("rejects product metrics readiness evidence that reuses production export or privacy artifacts", () => {
     const exportPacketPath = "docs/reviews/macro-production-metrics-export-packet-2026-05-28.json"
     const readinessPacketPath = "docs/reviews/macro-product-metrics-readiness-packet-2026-05-28.json"
@@ -1194,6 +1309,49 @@ describe("Astra macro operational evidence", () => {
     }
   })
 
+  it("rejects generic product metrics readiness evidence links even when readiness booleans are all true", () => {
+    const readinessPacketPath = "docs/reviews/macro-product-metrics-readiness-packet-2026-05-28.json"
+    const originalReadinessPacket = readFileSync(readinessPacketPath, "utf8")
+
+    try {
+      writeFileSync(readinessPacketPath, `${JSON.stringify({
+        schema: "astra-macro-product-metrics-readiness-packet.v1",
+        generatedAt: "2026-05-28T00:00:00.000Z",
+        label: "Macro product metrics readiness packet — 2026-05-28 final production readiness",
+        ownerDate: "metrics-owner@astra.ai — 2026-05-28",
+        evidenceLink: "docs/reviews/macro-final-evidence-intake-2026-05-28.md",
+        evidence: {
+          productQuestionsHaveMetricCoverage: true,
+          activationMetricsCovered: true,
+          understandingMetricsCovered: true,
+          learningMetricsCovered: true,
+          membershipMetricsCovered: true,
+          telemetryAvoidsSensitiveRawText: true,
+          telemetryPrefersEventsOverContent: true,
+          privacyModeReducesTelemetryDetail: true,
+          userDataControlsAreClear: true,
+        },
+      }, null, 2)}\n`)
+
+      let output = ""
+      try {
+        execFileSync(
+          resolve("node_modules/.bin/tsx"),
+          [resolve("script/maintenance/check-macro-final-completion.ts")],
+          { encoding: "utf8", env: { ...process.env, FORCE_COLOR: "0" } },
+        )
+      } catch (error) {
+        const result = error as { stdout?: Buffer | string; stderr?: Buffer | string; status?: number }
+        output = `${result.stdout ?? ""}${result.stderr ?? ""}`
+        expect(result.status).toBe(1)
+      }
+
+      expect(output).toContain("productMetricsReadinessPacket.evidenceLink: attempted readiness evidence link must identify product metrics readiness evidence and target release context.")
+    } finally {
+      writeFileSync(readinessPacketPath, originalReadinessPacket)
+    }
+  })
+
   it("keeps the final checker strict for product metrics readiness before final metric claims", () => {
     const checker = readFileSync("script/maintenance/check-macro-final-completion.ts", "utf8")
 
@@ -1209,9 +1367,12 @@ describe("Astra macro operational evidence", () => {
     expect(checker).toContain("packet.ownerDate.trim().length > 0")
     expect(checker).toContain("productMetricsReadinessPacket.ownerDate: attempted readiness evidence must identify a real owner and include YYYY-MM-DD.")
     expect(checker).toContain("function isSpecificProductMetricsReadinessLabel")
+    expect(checker).toContain("function hasProductMetricsReadinessContext")
+    expect(checker).toContain("function productMetricsReadinessSemanticCandidates")
     expect(checker).toContain("namesProductMetricsReadiness")
     expect(checker).toContain("namesTargetReleaseContext")
     expect(checker).toContain("productMetricsReadinessPacket.label: attempted readiness evidence label must identify product metrics readiness and target release context.")
+    expect(checker).toContain("productMetricsReadinessPacket.evidenceLink: attempted readiness evidence link must identify product metrics readiness evidence and target release context.")
     expect(checker).toContain("validateExistingEvidenceReference(packet.evidenceLink, \"productMetricsReadinessPacket.evidenceLink\", findings)")
     expect(checker).toContain("function isUuidReference")
     expect(checker).toContain("function isPrefixedNumericIdentityReference")
@@ -1220,18 +1381,471 @@ describe("Astra macro operational evidence", () => {
     expect(checker).toContain("/^20\\d{2}-\\d{2}-\\d{2}$/.test(identityValue) && includesIsoDate(identityValue)")
   })
 
+  it("rejects dated final evidence artifacts whose generatedAt date does not match the packet filename", () => {
+    const artifactPath = "docs/reviews/macro-final-completion-evidence-2026-05-28.json"
+    const originalArtifact = readFileSync(artifactPath, "utf8")
+    const artifact = JSON.parse(originalArtifact) as MacroFinalCompletionEvidenceArtifact
+    artifact.generatedAt = "2026-01-01T00:00:00.000Z"
+
+    try {
+      writeFileSync(artifactPath, `${JSON.stringify(artifact, null, 2)}\n`)
+      let output = ""
+      try {
+        execFileSync(
+          resolve("node_modules/.bin/tsx"),
+          [resolve("script/maintenance/check-macro-final-completion.ts")],
+          { encoding: "utf8", env: { ...process.env, FORCE_COLOR: "0" } },
+        )
+      } catch (error) {
+        const result = error as { stdout?: Buffer | string; stderr?: Buffer | string; status?: number }
+        output = `${result.stdout ?? ""}${result.stderr ?? ""}`
+        expect(result.status).toBe(1)
+      }
+
+      expect(output).toContain("artifact.generatedAt: expected generatedAt date 2026-05-28 to match docs/reviews/macro-final-completion-evidence-2026-05-28.json.")
+    } finally {
+      writeFileSync(artifactPath, originalArtifact)
+    }
+  })
+
+  it("rejects dated final evidence artifacts whose generatedAt timestamp is in the future", () => {
+    const artifactPath = "docs/reviews/macro-final-completion-evidence-2026-05-28.json"
+    const originalArtifact = readFileSync(artifactPath, "utf8")
+    const artifact = JSON.parse(originalArtifact) as MacroFinalCompletionEvidenceArtifact
+    artifact.generatedAt = "2099-01-01T00:00:00.000Z"
+
+    try {
+      writeFileSync(artifactPath, `${JSON.stringify(artifact, null, 2)}\n`)
+      let output = ""
+      try {
+        execFileSync(
+          resolve("node_modules/.bin/tsx"),
+          [resolve("script/maintenance/check-macro-final-completion.ts")],
+          { encoding: "utf8", env: { ...process.env, FORCE_COLOR: "0" } },
+        )
+      } catch (error) {
+        const result = error as { stdout?: Buffer | string; stderr?: Buffer | string; status?: number }
+        output = `${result.stdout ?? ""}${result.stderr ?? ""}`
+        expect(result.status).toBe(1)
+      }
+
+      expect(output).toContain("artifact.generatedAt: generatedAt timestamp must not be in the future.")
+    } finally {
+      writeFileSync(artifactPath, originalArtifact)
+    }
+  })
+
+  it("rejects dated subordinate evidence packets whose generatedAt date does not match the packet filename", () => {
+    const packetPath = "docs/reviews/macro-product-metrics-readiness-packet-2026-05-28.json"
+    const originalPacket = readFileSync(packetPath, "utf8")
+    const packet = JSON.parse(originalPacket) as { generatedAt: string }
+    packet.generatedAt = "2026-05-29T00:00:00.000Z"
+
+    try {
+      writeFileSync(packetPath, `${JSON.stringify(packet, null, 2)}\n`)
+      let output = ""
+      try {
+        execFileSync(
+          resolve("node_modules/.bin/tsx"),
+          [resolve("script/maintenance/check-macro-final-completion.ts")],
+          { encoding: "utf8", env: { ...process.env, FORCE_COLOR: "0" } },
+        )
+      } catch (error) {
+        const result = error as { stdout?: Buffer | string; stderr?: Buffer | string; status?: number }
+        output = `${result.stdout ?? ""}${result.stderr ?? ""}`
+        expect(result.status).toBe(1)
+      }
+
+      expect(output).toContain("productMetricsReadinessPacket.generatedAt: expected generatedAt date 2026-05-28 to match docs/reviews/macro-product-metrics-readiness-packet-2026-05-28.json.")
+    } finally {
+      writeFileSync(packetPath, originalPacket)
+    }
+  })
+
+  it("rejects dated subordinate evidence packets whose generatedAt timestamp is in the future", () => {
+    const packetPath = "docs/reviews/macro-product-metrics-readiness-packet-2026-05-28.json"
+    const originalPacket = readFileSync(packetPath, "utf8")
+    const packet = JSON.parse(originalPacket) as { generatedAt: string }
+    packet.generatedAt = "2099-01-01T00:00:00.000Z"
+
+    try {
+      writeFileSync(packetPath, `${JSON.stringify(packet, null, 2)}\n`)
+      let output = ""
+      try {
+        execFileSync(
+          resolve("node_modules/.bin/tsx"),
+          [resolve("script/maintenance/check-macro-final-completion.ts")],
+          { encoding: "utf8", env: { ...process.env, FORCE_COLOR: "0" } },
+        )
+      } catch (error) {
+        const result = error as { stdout?: Buffer | string; stderr?: Buffer | string; status?: number }
+        output = `${result.stdout ?? ""}${result.stderr ?? ""}`
+        expect(result.status).toBe(1)
+      }
+
+      expect(output).toContain("productMetricsReadinessPacket.generatedAt: generatedAt timestamp must not be in the future.")
+      expect(output).toContain("productMetricsReadinessPacket.generatedAt: expected generatedAt date 2026-05-28 to match docs/reviews/macro-product-metrics-readiness-packet-2026-05-28.json.")
+    } finally {
+      writeFileSync(packetPath, originalPacket)
+    }
+  })
+
+  it("rejects evidence packet row dates after the packet generatedAt date", () => {
+    const packetPath = "docs/reviews/macro-operational-evidence-completion-packet-2026-05-28.json"
+    const originalPacket = readFileSync(packetPath, "utf8")
+    const packet = JSON.parse(originalPacket) as {
+      schema: string
+      generatedAt: string
+      label: string
+      rows: Array<Record<string, unknown>>
+    }
+    packet.rows = [
+      {
+        areaId: "first_success_activation_evidence",
+        ownerDate: "release-owner@astra.ai — 2026-05-29",
+        environment: "target release candidate / production evidence packet",
+        evidenceLink: "https://release-evidence.astra-cdn.net/operational-evidence/first-success.md",
+        requirementEvidence: ASTRA_MACRO_OPERATIONAL_EVIDENCE[0].requiredBeforeStrongerClaim.join(" "),
+        verdict: "proved",
+      },
+    ]
+
+    try {
+      writeFileSync(packetPath, `${JSON.stringify(packet, null, 2)}\n`)
+      let output = ""
+      try {
+        execFileSync(
+          resolve("node_modules/.bin/tsx"),
+          [resolve("script/maintenance/check-macro-final-completion.ts")],
+          { encoding: "utf8", env: { ...process.env, FORCE_COLOR: "0" } },
+        )
+      } catch (error) {
+        const result = error as { stdout?: Buffer | string; stderr?: Buffer | string; status?: number }
+        output = `${result.stdout ?? ""}${result.stderr ?? ""}`
+        expect(result.status).toBe(1)
+      }
+
+      expect(output).toContain("operationalPacket.rows.first_success_activation_evidence.ownerDate: evidence date must not be after packet generatedAt date.")
+    } finally {
+      writeFileSync(packetPath, originalPacket)
+    }
+  })
+
+  it("rejects evidence packet references with impossible ISO-like dates", () => {
+    const packetPath = "docs/reviews/macro-operational-evidence-completion-packet-2026-05-28.json"
+    const originalPacket = readFileSync(packetPath, "utf8")
+    const packet = JSON.parse(originalPacket) as {
+      schema: string
+      generatedAt: string
+      label: string
+      rows: Array<Record<string, unknown>>
+    }
+    packet.rows = [
+      {
+        areaId: "first_success_activation_evidence",
+        ownerDate: "release-owner@astra.ai — 2026-05-28",
+        environment: "target release candidate / production evidence packet",
+        evidenceLink: "https://release-evidence.astra-cdn.net/operational-evidence/first-success-2026-99-99.md",
+        requirementEvidence: ASTRA_MACRO_OPERATIONAL_EVIDENCE[0].requiredBeforeStrongerClaim.join(" "),
+        verdict: "proved",
+      },
+    ]
+
+    try {
+      writeFileSync(packetPath, `${JSON.stringify(packet, null, 2)}\n`)
+      let output = ""
+      try {
+        execFileSync(
+          resolve("node_modules/.bin/tsx"),
+          [resolve("script/maintenance/check-macro-final-completion.ts")],
+          { encoding: "utf8", env: { ...process.env, FORCE_COLOR: "0" } },
+        )
+      } catch (error) {
+        const result = error as { stdout?: Buffer | string; stderr?: Buffer | string; status?: number }
+        output = `${result.stdout ?? ""}${result.stderr ?? ""}`
+        expect(result.status).toBe(1)
+      }
+
+      expect(output).toContain("operationalPacket.rows.first_success_activation_evidence.evidenceLink: evidence date must use real calendar YYYY-MM-DD values.")
+    } finally {
+      writeFileSync(packetPath, originalPacket)
+    }
+  })
+
+  it("rejects evidence packet reference dates after the packet generatedAt date", () => {
+    const packetPath = "docs/reviews/macro-operational-evidence-completion-packet-2026-05-28.json"
+    const originalPacket = readFileSync(packetPath, "utf8")
+    const packet = JSON.parse(originalPacket) as {
+      schema: string
+      generatedAt: string
+      label: string
+      rows: Array<Record<string, unknown>>
+    }
+    packet.rows = [
+      {
+        areaId: "first_success_activation_evidence",
+        ownerDate: "release-owner@astra.ai — 2026-05-28",
+        environment: "target release candidate / production evidence packet",
+        evidenceLink: "https://release-evidence.astra-cdn.net/operational-evidence/2026-05-28/first-success-2026-05-29.md",
+        requirementEvidence: ASTRA_MACRO_OPERATIONAL_EVIDENCE[0].requiredBeforeStrongerClaim.join(" "),
+        verdict: "proved",
+      },
+    ]
+
+    try {
+      writeFileSync(packetPath, `${JSON.stringify(packet, null, 2)}\n`)
+      let output = ""
+      try {
+        execFileSync(
+          resolve("node_modules/.bin/tsx"),
+          [resolve("script/maintenance/check-macro-final-completion.ts")],
+          { encoding: "utf8", env: { ...process.env, FORCE_COLOR: "0" } },
+        )
+      } catch (error) {
+        const result = error as { stdout?: Buffer | string; stderr?: Buffer | string; status?: number }
+        output = `${result.stdout ?? ""}${result.stderr ?? ""}`
+        expect(result.status).toBe(1)
+      }
+
+      expect(output).toContain("operationalPacket.rows.first_success_activation_evidence.evidenceLink: evidence date must not be after packet generatedAt date.")
+    } finally {
+      writeFileSync(packetPath, originalPacket)
+    }
+  })
+
+  it("rejects dated final evidence artifacts whose label contains any stale date", () => {
+    const artifactPath = "docs/reviews/macro-final-completion-evidence-2026-05-28.json"
+    const originalArtifact = readFileSync(artifactPath, "utf8")
+    const artifact = JSON.parse(originalArtifact) as MacroFinalCompletionEvidenceArtifact
+    artifact.label = "Macro plan final completion gate — 2026-05-28 / stale 2099-01-01"
+
+    try {
+      writeFileSync(artifactPath, `${JSON.stringify(artifact, null, 2)}\n`)
+      let output = ""
+      try {
+        execFileSync(
+          resolve("node_modules/.bin/tsx"),
+          [resolve("script/maintenance/check-macro-final-completion.ts")],
+          { encoding: "utf8", env: { ...process.env, FORCE_COLOR: "0" } },
+        )
+      } catch (error) {
+        const result = error as { stdout?: Buffer | string; stderr?: Buffer | string; status?: number }
+        output = `${result.stdout ?? ""}${result.stderr ?? ""}`
+        expect(result.status).toBe(1)
+      }
+
+      expect(output).toContain("artifact.label: expected label date 2026-05-28 to match docs/reviews/macro-final-completion-evidence-2026-05-28.json.")
+    } finally {
+      writeFileSync(artifactPath, originalArtifact)
+    }
+  })
+
+  it("rejects dated final evidence artifacts whose label date does not match the packet filename", () => {
+    const artifactPath = "docs/reviews/macro-final-completion-evidence-2026-05-28.json"
+    const originalArtifact = readFileSync(artifactPath, "utf8")
+    const artifact = JSON.parse(originalArtifact) as MacroFinalCompletionEvidenceArtifact
+    artifact.label = "Macro plan final completion gate — 2026-01-01"
+
+    try {
+      writeFileSync(artifactPath, `${JSON.stringify(artifact, null, 2)}\n`)
+      let output = ""
+      try {
+        execFileSync(
+          resolve("node_modules/.bin/tsx"),
+          [resolve("script/maintenance/check-macro-final-completion.ts")],
+          { encoding: "utf8", env: { ...process.env, FORCE_COLOR: "0" } },
+        )
+      } catch (error) {
+        const result = error as { stdout?: Buffer | string; stderr?: Buffer | string; status?: number }
+        output = `${result.stdout ?? ""}${result.stderr ?? ""}`
+        expect(result.status).toBe(1)
+      }
+
+      expect(output).toContain("artifact.label: expected label date 2026-05-28 to match docs/reviews/macro-final-completion-evidence-2026-05-28.json.")
+    } finally {
+      writeFileSync(artifactPath, originalArtifact)
+    }
+  })
+
+  it("rejects filled manual QA rows with evidence dates after the checklist artifact date", () => {
+    const checklistPath = "docs/reviews/macro-manual-qa-evidence-checklist-2026-05-28.md"
+    const originalChecklist = readFileSync(checklistPath, "utf8")
+    const originalRow = "| Article source return | Open Library/Reading, search or filter to an article source, open detail, return to source, confirm source metadata remains attached. | browser-backed only through release-proof learning-loop revisit; manual-required for full Library claim |  |  |  | not-run |"
+    const datedRow = "| Article source return | Open Library/Reading, search or filter to an article source, open detail, return to source, confirm source metadata remains attached. | browser-backed only through release-proof learning-loop revisit; manual-required for full Library claim | human.qa@astra.ai — 2026-05-29 | Chrome 125 on macOS 14, extension build astra-rc-2026-05-28, Library article source return manual QA | https://release-evidence.astra-cdn.net/manual-qa/section-6/article-source-return-2026-05-29.md | pass |"
+
+    try {
+      writeFileSync(checklistPath, originalChecklist.replace(originalRow, datedRow))
+      let output = ""
+      try {
+        execFileSync(
+          resolve("node_modules/.bin/tsx"),
+          [resolve("script/maintenance/check-macro-final-completion.ts")],
+          { encoding: "utf8", env: { ...process.env, FORCE_COLOR: "0" } },
+        )
+      } catch (error) {
+        const result = error as { stdout?: Buffer | string; stderr?: Buffer | string; status?: number }
+        output = `${result.stdout ?? ""}${result.stderr ?? ""}`
+        expect(result.status).toBe(1)
+      }
+
+      expect(output).toContain("Section 6 / Article source return owner/date: evidence date must not be after docs/reviews/macro-manual-qa-evidence-checklist-2026-05-28.md date.")
+      expect(output).toContain("Section 6 / Article source return evidence link: evidence date must not be after docs/reviews/macro-manual-qa-evidence-checklist-2026-05-28.md date.")
+    } finally {
+      writeFileSync(checklistPath, originalChecklist)
+    }
+  })
+
+  it("rejects dated markdown evidence docs whose H1 title date does not match the filename", () => {
+    const intakePath = "docs/reviews/macro-final-evidence-intake-2026-05-28.md"
+    const checklistPath = "docs/reviews/macro-manual-qa-evidence-checklist-2026-05-28.md"
+    const originalIntake = readFileSync(intakePath, "utf8")
+    const originalChecklist = readFileSync(checklistPath, "utf8")
+
+    try {
+      writeFileSync(intakePath, originalIntake.replace("# Macro Final Evidence Intake — 2026-05-28", "# Macro Final Evidence Intake — 2026-05-27 / stale 2099-01-01"))
+      writeFileSync(checklistPath, originalChecklist.replace("# Macro Manual / Browser QA Evidence Checklist — 2026-05-28", "# Macro Manual / Browser QA Evidence Checklist — 2026-05-27 / stale 2099-01-01"))
+      let output = ""
+      try {
+        execFileSync(
+          resolve("node_modules/.bin/tsx"),
+          [resolve("script/maintenance/check-macro-final-completion.ts")],
+          { encoding: "utf8", env: { ...process.env, FORCE_COLOR: "0" } },
+        )
+      } catch (error) {
+        const result = error as { stdout?: Buffer | string; stderr?: Buffer | string; status?: number }
+        output = `${result.stdout ?? ""}${result.stderr ?? ""}`
+        expect(result.status).toBe(1)
+      }
+
+      expect(output).toContain("docs/reviews/macro-final-evidence-intake-2026-05-28.md: expected title date 2026-05-28 to match filename.")
+      expect(output).toContain("docs/reviews/macro-manual-qa-evidence-checklist-2026-05-28.md: expected title date 2026-05-28 to match filename.")
+    } finally {
+      writeFileSync(intakePath, originalIntake)
+      writeFileSync(checklistPath, originalChecklist)
+    }
+  })
+
+  it("rejects hidden dated markdown titles before a stale visible H1", () => {
+    const intakePath = "docs/reviews/macro-final-evidence-intake-2026-05-28.md"
+    const originalIntake = readFileSync(intakePath, "utf8")
+    const staleVisibleTitle = "# Macro Final Evidence Intake — 2026-05-27"
+    const hiddenValidTitle = "```md\n# Macro Final Evidence Intake — 2026-05-28\n```"
+
+    try {
+      writeFileSync(intakePath, `${hiddenValidTitle}\n\n${originalIntake.replace("# Macro Final Evidence Intake — 2026-05-28", staleVisibleTitle)}`)
+      let output = ""
+      try {
+        execFileSync(
+          resolve("node_modules/.bin/tsx"),
+          [resolve("script/maintenance/check-macro-final-completion.ts")],
+          { encoding: "utf8", env: { ...process.env, FORCE_COLOR: "0" } },
+        )
+      } catch (error) {
+        const result = error as { stdout?: Buffer | string; stderr?: Buffer | string; status?: number }
+        output = `${result.stdout ?? ""}${result.stderr ?? ""}`
+        expect(result.status).toBe(1)
+      }
+
+      expect(output).toContain("docs/reviews/macro-final-evidence-intake-2026-05-28.md: expected title date 2026-05-28 to match filename.")
+    } finally {
+      writeFileSync(intakePath, originalIntake)
+    }
+  })
+
+  it("rejects dated markdown titles whose only matching date is in link metadata", () => {
+    const intakePath = "docs/reviews/macro-final-evidence-intake-2026-05-28.md"
+    const originalIntake = readFileSync(intakePath, "utf8")
+    const hiddenDateTitle = "# Macro Final Evidence Intake — [release packet](https://release-evidence.astra-cdn.net/intake/2026-05-28 \"2026-05-28\")"
+
+    try {
+      writeFileSync(intakePath, originalIntake.replace("# Macro Final Evidence Intake — 2026-05-28", hiddenDateTitle))
+      let output = ""
+      try {
+        execFileSync(
+          resolve("node_modules/.bin/tsx"),
+          [resolve("script/maintenance/check-macro-final-completion.ts")],
+          { encoding: "utf8", env: { ...process.env, FORCE_COLOR: "0" } },
+        )
+      } catch (error) {
+        const result = error as { stdout?: Buffer | string; stderr?: Buffer | string; status?: number }
+        output = `${result.stdout ?? ""}${result.stderr ?? ""}`
+        expect(result.status).toBe(1)
+      }
+
+      expect(output).toContain("docs/reviews/macro-final-evidence-intake-2026-05-28.md: expected title date 2026-05-28 to match filename.")
+    } finally {
+      writeFileSync(intakePath, originalIntake)
+    }
+  })
+
+  it("rejects duplicate visible H1 titles in dated markdown evidence docs", () => {
+    const intakePath = "docs/reviews/macro-final-evidence-intake-2026-05-28.md"
+    const originalIntake = readFileSync(intakePath, "utf8")
+
+    try {
+      writeFileSync(intakePath, `${originalIntake}\n# Duplicate stale final evidence intake title — 2026-05-27\n`)
+      let output = ""
+      try {
+        execFileSync(
+          resolve("node_modules/.bin/tsx"),
+          [resolve("script/maintenance/check-macro-final-completion.ts")],
+          { encoding: "utf8", env: { ...process.env, FORCE_COLOR: "0" } },
+        )
+      } catch (error) {
+        const result = error as { stdout?: Buffer | string; stderr?: Buffer | string; status?: number }
+        output = `${result.stdout ?? ""}${result.stderr ?? ""}`
+        expect(result.status).toBe(1)
+      }
+
+      expect(output).toContain("docs/reviews/macro-final-evidence-intake-2026-05-28.md: expected exactly one visible H1 title.")
+      expect(output).toContain("docs/reviews/macro-final-evidence-intake-2026-05-28.md: expected title date 2026-05-28 to match filename.")
+    } finally {
+      writeFileSync(intakePath, originalIntake)
+    }
+  })
+
   it("keeps the final checker strict for packet generatedAt timestamps", () => {
     const checker = readFileSync("script/maintenance/check-macro-final-completion.ts", "utf8")
 
     expect(checker).toContain("function validateIsoGeneratedAt")
+    expect(checker).toContain("function expectedGeneratedAtDateFromEvidencePath")
+    expect(checker).toContain("function validateEvidenceDateNotAfterPacketGeneratedAt")
+    expect(checker).toContain("function isoDateParseResults")
+    expect(checker).toContain("evidence date must use real calendar YYYY-MM-DD values")
+    expect(checker).toContain("matchAll(/\\b(20\\d{2}-\\d{2}-\\d{2})\\b/g)")
+    expect(checker).toContain("function validateEvidenceTimestampNotAfterPacketGeneratedAt")
+    expect(checker).toContain("function validateEvidenceDateNotAfterDatedArtifactPath")
+    expect(checker).toContain("function validateDatedMarkdownTitle")
+    expect(checker).toContain('const titles = visibleMarkdownText(markdown).split("\\n").map((line) => line.trim()).filter((line) => /^#\\s+/.test(line))')
+    expect(checker).toContain("expected exactly one visible H1 title")
+    expect(checker).toContain("titles.flatMap((title) => isoDateParseResults(title))")
+    expect(checker).toContain("expected title date ${expectedDate} to match filename")
+    expect(checker).toContain("title date must use real calendar YYYY-MM-DD values")
+    expect(checker).toContain("generatedAt timestamp must not be in the future")
+    expect(checker).toContain("evidence date must not be after packet generatedAt date")
+    expect(checker).toContain("evidence date must not be after ${evidencePath} date")
+    expect(checker).toContain("expected generatedAt date ${expectedDate} to match ${evidencePath}")
+    expect(checker).toContain("expected label date ${expectedDate} to match ${evidencePath}")
+    expect(checker).toContain("labelDateResults.some((result) => result.value !== expectedDate)")
+    expect(checker).toContain("label date must use real calendar YYYY-MM-DD values")
+    expect(checker).toContain("validatePacketLabel(value.label, \"artifact.label\", findings, FINAL_COMPLETION_EVIDENCE_PATH)")
     expect(checker).toContain("function parseIsoDate")
     expect(checker).toContain("parseIsoDate(value.slice(0, 10)) !== null")
     expect(checker).toContain("(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d")
     expect(checker).toContain("(?:Z|[+-](?:[01]\\d|2[0-3]):[0-5]\\d)")
     expect(checker).toContain("expected an ISO timestamp string")
-    expect(checker).toContain("validateIsoGeneratedAt(value.generatedAt, \"artifact.generatedAt\"")
-    expect(checker).toContain("validateIsoGeneratedAt(value.generatedAt, \"productionMetricsExportPacket.generatedAt\"")
-    expect(checker).toContain("validateIsoGeneratedAt(value.generatedAt, \"productMetricsReadinessPacket.generatedAt\"")
+    expect(checker).toContain("validateIsoGeneratedAt(value.generatedAt, \"artifact.generatedAt\", findings, FINAL_COMPLETION_EVIDENCE_PATH)")
+    expect(checker).toContain("validateIsoGeneratedAt(value.generatedAt, \"operationalPacket.generatedAt\", findings, OPERATIONAL_COMPLETION_PACKET_PATH)")
+    expect(checker).toContain("validateIsoGeneratedAt(value.generatedAt, \"productionMetricsExportPacket.generatedAt\", findings, PRODUCTION_METRICS_EXPORT_PACKET_PATH)")
+    expect(checker).toContain("validateIsoGeneratedAt(value.generatedAt, \"productMetricsReadinessPacket.generatedAt\", findings, PRODUCT_METRICS_READINESS_PACKET_PATH)")
+    expect(checker).toContain("validateEvidenceDateNotAfterPacketGeneratedAt(row.ownerDate, `ciArtifactPacket.rows.${row.evidenceField}.ownerDate`, packet.generatedAt, findings)")
+    expect(checker).toContain("validateEvidenceDateNotAfterPacketGeneratedAt(row.evidenceLink, `operationalPacket.rows.${row.areaId}.evidenceLink`, packet.generatedAt, findings)")
+    expect(checker).toContain("validateEvidenceDateNotAfterPacketGeneratedAt(row.artifactManifestPath, `ciArtifactPacket.rows.${row.evidenceField}.artifactManifestPath`, packet.generatedAt, findings)")
+    expect(checker).toContain("validateEvidenceTimestampNotAfterPacketGeneratedAt(row.exportedAt, `productionMetricsExportPacket.rows.${row.category}.exportedAt`, packet.generatedAt, findings)")
+    expect(checker).toContain("validateEvidenceDateNotAfterDatedArtifactPath(row.ownerDate, `Section ${row.section} / ${row.qaRow} owner/date`, MANUAL_QA_CHECKLIST_PATH, findings)")
+    expect(checker).toContain("validateEvidenceDateNotAfterDatedArtifactPath(row.evidenceLink, `Section ${row.section} / ${row.qaRow} evidence link`, MANUAL_QA_CHECKLIST_PATH, findings)")
+    expect(checker).toContain("validateDatedMarkdownTitle(markdown, FINAL_EVIDENCE_INTAKE_PATH, findings)")
+    expect(checker).toContain("validateDatedMarkdownTitle(checklistText, MANUAL_QA_CHECKLIST_PATH, findings)")
   })
 
   it("keeps the final checker strict for human-scored AI quality summary packet shape", () => {
@@ -1769,6 +2383,18 @@ describe("Astra macro operational evidence", () => {
     ])
   })
 
+  it("rejects ambiguous short owner release approver labels", () => {
+    const decision = evaluateAstraMacroReleaseApprovalPacket({
+      ...completeReleaseApprovalPacket,
+      approver: "J",
+    })
+
+    expect(decision.acceptable).toBe(false)
+    expect(decision.findings.map((finding) => finding.message)).toEqual([
+      "Release approval approver must identify an accountable owner, not an ambiguous short label.",
+    ])
+  })
+
   it("rejects non-enum owner release approval decisions from JSON packets", () => {
     const decision = evaluateAstraMacroReleaseApprovalPacket({
       ...completeReleaseApprovalPacket,
@@ -1789,6 +2415,18 @@ describe("Astra macro operational evidence", () => {
 
     expect(decision.acceptable).toBe(false)
     expect(decision.findings.map((finding) => finding.message)).toContain("Release approval record link must be a URL or repo artifact path.")
+  })
+
+  it("rejects generic evidence notes as owner release approval records", () => {
+    const decision = evaluateAstraMacroReleaseApprovalPacket({
+      ...completeReleaseApprovalPacket,
+      approvalRecordLink: "docs/reviews/owner-release-approval-evidence-note-2026-05-28.md",
+    })
+
+    expect(decision.acceptable).toBe(false)
+    expect(decision.findings.map((finding) => finding.message)).toEqual([
+      "Release approval record link must identify a signed owner/release approval record, not a generic evidence note.",
+    ])
   })
 
   it("rejects non-canonical or duplicate owner release reviewed artifacts before variants can satisfy required artifact checks", () => {
@@ -1817,6 +2455,7 @@ describe("Astra macro operational evidence", () => {
 
     expect(decision.acceptable).toBe(false)
     expect(decision.findings.map((finding) => finding.message)).toEqual([
+      "Release approval record link must identify a signed owner/release approval record, not a generic evidence note.",
       `Release approval record link reuses reviewed artifact ${reviewedArtifact}.`,
     ])
   })
@@ -1931,6 +2570,44 @@ describe("Astra macro operational evidence", () => {
     ])
     const launchDecision = evaluateAstraMacroLaunchArtifactPacket([
       { ...completeLaunchArtifactRows[0], ownerDate: "2026-05-28" },
+      ...completeLaunchArtifactRows.slice(1),
+    ])
+
+    expect(operationalDecision.findings.map((finding) => finding.message)).toContain("First-success activation evidence owner/date must identify a real owner and include a YYYY-MM-DD date.")
+    expect(manualDecision.findings.map((finding) => finding.message)).toContain("Section 6 / Article source return owner/date must identify a real owner and include a YYYY-MM-DD date.")
+    expect(ciDecision.findings.map((finding) => finding.message)).toContain("CI quality gate artifact owner/date must identify a real owner and include a YYYY-MM-DD date.")
+    expect(launchDecision.findings.map((finding) => finding.message)).toContain("Billing checkout success/cancel owner/date must identify a real owner and include a YYYY-MM-DD date.")
+  })
+
+  it("rejects future owner/date values across final evidence packets", () => {
+    const operationalDecision = evaluateAstraMacroOperationalEvidenceCompletionPacket([
+      {
+        areaId: "first_success_activation_evidence",
+        ownerDate: "release-owner@astra.ai — 2026-05-28 / rechecked 2099-01-01",
+        environment: "target release candidate / production evidence packet",
+        evidenceLink: "https://release-evidence.astra-cdn.net/operational-evidence/first-success.md",
+        requirementEvidence: ASTRA_MACRO_OPERATIONAL_EVIDENCE[0].requiredBeforeStrongerClaim.join(" "),
+        verdict: "proved" as const,
+      },
+      ...ASTRA_MACRO_OPERATIONAL_EVIDENCE.slice(1).map((item) => ({
+        areaId: item.id,
+        ownerDate: "release-owner@astra.ai — 2026-05-28",
+        environment: "target release candidate / production evidence packet",
+        evidenceLink: `https://release-evidence.astra-cdn.net/operational-evidence/${item.id}.md`,
+        requirementEvidence: item.requiredBeforeStrongerClaim.join(" "),
+        verdict: "proved" as const,
+      })),
+    ])
+    const manualDecision = evaluateAstraMacroManualQaEvidencePacket([
+      { ...completeManualQaRows[0], ownerDate: "qa-owner@astra.ai — 2026-05-28 / rechecked 2099-01-01" },
+      ...completeManualQaRows.slice(1),
+    ])
+    const ciDecision = evaluateAstraMacroCiArtifactPacket([
+      { ...completeCiArtifactPacket[0], ownerDate: "ci-owner@astra.ai — 2026-05-28 / rechecked 2099-01-01" },
+      completeCiArtifactPacket[1],
+    ])
+    const launchDecision = evaluateAstraMacroLaunchArtifactPacket([
+      { ...completeLaunchArtifactRows[0], ownerDate: "launch-owner@astra.ai — 2026-05-28 / rechecked 2099-01-01" },
       ...completeLaunchArtifactRows.slice(1),
     ])
 
@@ -2083,11 +2760,15 @@ describe("Astra macro operational evidence", () => {
   })
 
   it("rejects reused manual QA evidence links so one walkthrough cannot prove multiple rows", () => {
+    const sharedEvidenceLink = "https://release-evidence.astra-cdn.net/manual-qa/section-6-article-source-return-remote-pdf-source-return.md"
     const decision = evaluateAstraMacroManualQaEvidencePacket([
-      completeManualQaRows[0],
+      {
+        ...completeManualQaRows[0],
+        evidenceLink: sharedEvidenceLink,
+      },
       {
         ...completeManualQaRows[1],
-        evidenceLink: completeManualQaRows[0].evidenceLink,
+        evidenceLink: sharedEvidenceLink,
       },
       ...completeManualQaRows.slice(2),
     ])
@@ -2097,8 +2778,28 @@ describe("Astra macro operational evidence", () => {
       {
         section: completeManualQaRows[1].section,
         qaRow: completeManualQaRows[1].qaRow,
-        message: `Section ${completeManualQaRows[1].section} / ${completeManualQaRows[1].qaRow} reuses manual QA evidence link ${completeManualQaRows[0].evidenceLink}.`,
+        message: `Section ${completeManualQaRows[1].section} / ${completeManualQaRows[1].qaRow} reuses manual QA evidence link ${sharedEvidenceLink}.`,
         nextStep: "Attach row-specific manual QA evidence so every checklist row can be audited independently.",
+      },
+    ])
+  })
+
+  it("rejects manual QA evidence links that point at a different checklist row", () => {
+    const decision = evaluateAstraMacroManualQaEvidencePacket([
+      {
+        ...completeManualQaRows[0],
+        evidenceLink: "https://release-evidence.astra-cdn.net/manual-qa/section-6-remote-pdf-source-return.md",
+      },
+      ...completeManualQaRows.slice(1),
+    ])
+
+    expect(decision.complete).toBe(false)
+    expect(decision.findings).toEqual([
+      {
+        section: 6,
+        qaRow: "Article source return",
+        message: "Section 6 / Article source return evidence link must identify Section 6 and row-specific manual QA evidence.",
+        nextStep: "Attach evidence whose URL or repo artifact path names the manual QA section and exact checklist row.",
       },
     ])
   })
@@ -2312,6 +3013,32 @@ describe("Astra macro operational evidence", () => {
         message: "CI quality and live-browser artifact URLs must point to the same GitHub repository.",
         nextStep: "Attach quality-gate-results and live-bench-results artifacts from the same target GitHub repository.",
       },
+      {
+        evidenceField: "ciLiveBrowserArtifactsAttached",
+        message: "CI live-browser release-proof artifact CI run URL must point to an allowed Astra GitHub repository.",
+        nextStep: "Attach the GitHub Actions run URL from astra-release/astra or raydocs/Astra for the target commit/SHA.",
+      },
+      {
+        evidenceField: "ciLiveBrowserArtifactsAttached",
+        message: "CI live-browser release-proof artifact downloadable artifact URL must point to an allowed Astra GitHub repository.",
+        nextStep: "Attach the GitHub Actions artifact URL from astra-release/astra or raydocs/Astra for the target commit/SHA.",
+      },
+    ])
+  })
+
+  it("rejects CI artifact packets from a same-named non-Astra GitHub repository", () => {
+    const decision = evaluateAstraMacroCiArtifactPacket(completeCiArtifactPacket.map((row) => ({
+      ...row,
+      runUrl: row.runUrl.replace("github.com/astra-release/astra", "github.com/evil-org/astra"),
+      artifactUrl: row.artifactUrl.replace("github.com/astra-release/astra", "github.com/evil-org/astra"),
+    })))
+
+    expect(decision.acceptable).toBe(false)
+    expect(decision.findings.map((finding) => finding.message)).toEqual([
+      "CI quality gate artifact CI run URL must point to an allowed Astra GitHub repository.",
+      "CI quality gate artifact downloadable artifact URL must point to an allowed Astra GitHub repository.",
+      "CI live-browser release-proof artifact CI run URL must point to an allowed Astra GitHub repository.",
+      "CI live-browser release-proof artifact downloadable artifact URL must point to an allowed Astra GitHub repository.",
     ])
   })
 
@@ -2800,12 +3527,16 @@ describe("Astra macro operational evidence", () => {
   })
 
   it("rejects duplicate launch artifact ids and evidence links across requirements", () => {
+    const sharedEvidenceLink = "https://release-evidence.astra-cdn.net/launch-artifacts/billing-checkout-billing-webhook.md"
     const decision = evaluateAstraMacroLaunchArtifactPacket([
-      completeLaunchArtifactRows[0],
+      {
+        ...completeLaunchArtifactRows[0],
+        evidenceLink: sharedEvidenceLink,
+      },
       {
         ...completeLaunchArtifactRows[1],
         artifactId: completeLaunchArtifactRows[0].artifactId,
-        evidenceLink: completeLaunchArtifactRows[0].evidenceLink,
+        evidenceLink: sharedEvidenceLink,
       },
       ...completeLaunchArtifactRows.slice(2),
     ])
@@ -2813,7 +3544,22 @@ describe("Astra macro operational evidence", () => {
     expect(decision.acceptable).toBe(false)
     expect(decision.findings.map((finding) => finding.message)).toEqual([
       `billing_webhook reuses launch artifact id ${completeLaunchArtifactRows[0].artifactId}.`,
-      `billing_webhook reuses launch artifact evidence link ${completeLaunchArtifactRows[0].evidenceLink}.`,
+      `billing_webhook reuses launch artifact evidence link ${sharedEvidenceLink}.`,
+    ])
+  })
+
+  it("rejects launch artifact evidence links that point at a different launch requirement", () => {
+    const decision = evaluateAstraMacroLaunchArtifactPacket([
+      {
+        ...completeLaunchArtifactRows[0],
+        evidenceLink: "https://release-evidence.astra-cdn.net/launch-artifacts/gtm-copy-claim-review.md",
+      },
+      ...completeLaunchArtifactRows.slice(1),
+    ])
+
+    expect(decision.acceptable).toBe(false)
+    expect(decision.findings.map((finding) => finding.message)).toEqual([
+      "Billing checkout success/cancel evidence link must identify billing and billing_checkout launch evidence.",
     ])
   })
 
@@ -2892,11 +3638,15 @@ describe("Astra macro operational evidence", () => {
   })
 
   it("rejects duplicate launch evidence links that differ only by URL scheme, host casing, or unreserved URL encoding", () => {
-    const duplicateEvidenceLink = completeLaunchArtifactRows[0].evidenceLink
+    const sharedEvidenceLink = "https://release-evidence.astra-cdn.net/launch-artifacts/billing-checkout-billing-webhook.md"
+    const duplicateEvidenceLink = sharedEvidenceLink
       .replace("https://release-evidence.astra-cdn.net", "HTTPS://RELEASE-EVIDENCE.ASTRA-CDN.NET")
       .replace("launch-artifacts", "launch-%61rtifacts")
     const decision = evaluateAstraMacroLaunchArtifactPacket([
-      completeLaunchArtifactRows[0],
+      {
+        ...completeLaunchArtifactRows[0],
+        evidenceLink: sharedEvidenceLink,
+      },
       {
         ...completeLaunchArtifactRows[1],
         evidenceLink: duplicateEvidenceLink,

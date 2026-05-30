@@ -1009,6 +1009,7 @@ describe("popup App", () => {
   })
 
   it("renders idle subtitle QC state and polls for fresh snapshots", async () => {
+    window.history.replaceState({}, "", "/popup.html?debug=1")
     const baseState = createIdleState().state
     getActiveTabTranslationStateMock.mockResolvedValueOnce({
       ok: true,
@@ -1076,6 +1077,7 @@ describe("popup App", () => {
   })
 
   it("uses configured local subtitle QC poll interval and freshness threshold", async () => {
+    window.history.replaceState({}, "", "/popup.html?debug=1")
     const baseState = createIdleState().state
     readConfigMock.mockResolvedValueOnce(createConfig({
       subtitleQualityControls: {
@@ -1434,6 +1436,7 @@ describe("popup App", () => {
   })
 
   it("exports local subtitle QC diagnostics JSON from the popup", async () => {
+    window.history.replaceState({}, "", "/popup.html?debug=1")
     let createdDiagnosticsBlob: Blob | null = null
     const createObjectURLMock = vi.fn((blob: Blob) => {
       createdDiagnosticsBlob = blob

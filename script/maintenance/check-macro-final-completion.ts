@@ -92,6 +92,10 @@ function fieldsCanShareEvidenceLinkIdentity(
     && fieldRequiresEvidenceLinkIdentity(currentField, duplicateIdentity)
 }
 
+function fieldAllowsEvidenceLink(field: FinalCompletionEvidenceKey, link: string): boolean {
+  return REQUIRED_EVIDENCE_LINK_PATHS[field].some((requiredPath) => evidenceLinkMatchesRequiredPath(link, requiredPath))
+}
+
 const REQUIRED_EVIDENCE_INTAKE_TERMS = [
   "evaluateAstraMacroOperationalEvidenceCompletionPacket()",
   "macro-operational-evidence-completion-packet-note-2026-05-28.md",
@@ -491,9 +495,19 @@ function isWeakContextEvidenceReference(value: string): boolean {
   return isPlaceholderEvidenceReference(normalizedValue) || hasWeakEvidenceKeyword(normalizedValue)
 }
 
+function currentUtcDateStart(): number {
+  const now = new Date()
+  return Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate())
+}
+
 function includesIsoDate(value: string): boolean {
-  const match = /\b(20\d{2}-\d{2}-\d{2})\b/.exec(value)
-  return match ? parseIsoDate(match[1]) !== null : false
+  const matches = [...value.matchAll(/\b(20\d{2}-\d{2}-\d{2})\b/g)]
+  if (matches.length === 0) return false
+  const today = currentUtcDateStart()
+  return matches.every((match) => {
+    const timestamp = parseIsoDate(match[1])
+    return timestamp !== null && timestamp <= today
+  })
 }
 
 function hasOwnerIdentityWithIsoDate(value: string): boolean {
@@ -561,18 +575,30 @@ function isIsoTimestamp(value: string): boolean {
   return parseIsoDate(value.slice(0, 10)) !== null
 }
 
-function validateIsoGeneratedAt(value: unknown, path: string, findings: string[]): string {
+function expectedGeneratedAtDateFromEvidencePath(value: string): string | null {
+  return /-(20\d{2}-\d{2}-\d{2})\.(?:json|md)$/.exec(value)?.[1] ?? null
+}
+
+function validateIsoGeneratedAt(value: unknown, path: string, findings: string[], evidencePath?: string): string {
   if (typeof value !== "string" || value.trim().length === 0) {
     findings.push(`${path}: expected an ISO timestamp string.`)
     return ""
   }
-  if (!isIsoTimestamp(value)) {
+  const validIsoTimestamp = isIsoTimestamp(value)
+  if (!validIsoTimestamp) {
     findings.push(`${path}: expected an ISO timestamp string.`)
+  }
+  const expectedDate = evidencePath ? expectedGeneratedAtDateFromEvidencePath(evidencePath) : null
+  if (validIsoTimestamp && Date.parse(value) > Date.now()) {
+    findings.push(`${path}: generatedAt timestamp must not be in the future.`)
+  }
+  if (validIsoTimestamp && expectedDate !== null && value.slice(0, 10) !== expectedDate) {
+    findings.push(`${path}: expected generatedAt date ${expectedDate} to match ${evidencePath}.`)
   }
   return value
 }
 
-function validatePacketLabel(value: unknown, path: string, findings: string[]): string {
+function validatePacketLabel(value: unknown, path: string, findings: string[], evidencePath?: string): string {
   if (typeof value !== "string" || value.trim().length === 0) {
     findings.push(`${path}: expected a non-empty string.`)
     return ""
@@ -580,7 +606,75 @@ function validatePacketLabel(value: unknown, path: string, findings: string[]): 
   if (value.trim() !== value || isPlaceholderEvidenceReference(value)) {
     findings.push(`${path}: expected a canonical non-placeholder label.`)
   }
+  const expectedDate = evidencePath ? expectedGeneratedAtDateFromEvidencePath(evidencePath) : null
+  const labelDateResults = isoDateParseResults(value)
+  if (labelDateResults.some((result) => result.timestamp === null)) {
+    findings.push(`${path}: label date must use real calendar YYYY-MM-DD values.`)
+  }
+  if (expectedDate !== null && (labelDateResults.length === 0 || labelDateResults.some((result) => result.value !== expectedDate))) {
+    findings.push(`${path}: expected label date ${expectedDate} to match ${evidencePath}.`)
+  }
   return value
+}
+
+function validateDatedMarkdownTitle(markdown: string, evidencePath: string, findings: string[]): void {
+  const titles = visibleMarkdownText(markdown).split("\n").map((line) => line.trim()).filter((line) => /^#\s+/.test(line))
+  if (titles.length === 0) {
+    findings.push(`${evidencePath}: missing H1 title.`)
+    return
+  }
+  if (titles.length > 1) {
+    findings.push(`${evidencePath}: expected exactly one visible H1 title.`)
+  }
+  const expectedDate = expectedGeneratedAtDateFromEvidencePath(evidencePath)
+  const titleDateResults = titles.flatMap((title) => isoDateParseResults(title))
+  if (titleDateResults.some((result) => result.timestamp === null)) {
+    findings.push(`${evidencePath}: title date must use real calendar YYYY-MM-DD values.`)
+  }
+  if (expectedDate !== null && (titleDateResults.length === 0 || titleDateResults.some((result) => result.value !== expectedDate))) {
+    findings.push(`${evidencePath}: expected title date ${expectedDate} to match filename.`)
+  }
+}
+
+function isoDateParseResults(value: string): Array<{ value: string; timestamp: number | null }> {
+  return [...value.matchAll(/\b(20\d{2}-\d{2}-\d{2})\b/g)]
+    .map((match) => ({ value: match[1], timestamp: parseIsoDate(match[1]) }))
+}
+
+function packetGeneratedAtDateTimestamp(generatedAt: string): number | null {
+  return isIsoTimestamp(generatedAt) ? parseIsoDate(generatedAt.slice(0, 10)) : null
+}
+
+function validateEvidenceDateNotAfterPacketGeneratedAt(value: string, path: string, generatedAt: string, findings: string[]): void {
+  const dateResults = isoDateParseResults(value)
+  if (dateResults.some((result) => result.timestamp === null)) {
+    findings.push(`${path}: evidence date must use real calendar YYYY-MM-DD values.`)
+  }
+  const generatedAtTimestamp = packetGeneratedAtDateTimestamp(generatedAt)
+  if (generatedAtTimestamp === null) return
+  if (dateResults.some((result) => result.timestamp !== null && result.timestamp > generatedAtTimestamp)) {
+    findings.push(`${path}: evidence date must not be after packet generatedAt date.`)
+  }
+}
+
+function validateEvidenceTimestampNotAfterPacketGeneratedAt(value: string | undefined, path: string, generatedAt: string, findings: string[]): void {
+  if (value === undefined || !isIsoTimestamp(value) || !isIsoTimestamp(generatedAt)) return
+  if (Date.parse(value) > Date.parse(generatedAt)) {
+    findings.push(`${path}: evidence timestamp must not be after packet generatedAt timestamp.`)
+  }
+}
+
+function validateEvidenceDateNotAfterDatedArtifactPath(value: string, path: string, evidencePath: string, findings: string[]): void {
+  const dateResults = isoDateParseResults(value)
+  if (dateResults.some((result) => result.timestamp === null)) {
+    findings.push(`${path}: evidence date must use real calendar YYYY-MM-DD values.`)
+  }
+  const expectedDate = expectedGeneratedAtDateFromEvidencePath(evidencePath)
+  const expectedTimestamp = expectedDate === null ? null : parseIsoDate(expectedDate)
+  if (expectedTimestamp === null) return
+  if (dateResults.some((result) => result.timestamp !== null && result.timestamp > expectedTimestamp)) {
+    findings.push(`${path}: evidence date must not be after ${evidencePath} date.`)
+  }
 }
 
 function isUnattemptedIntakeLabel(value: string): boolean {
@@ -735,8 +829,8 @@ function validateEvidenceArtifact(value: unknown, findings: string[]): FinalComp
   if (value.schema !== "astra-macro-final-completion-evidence.v1") {
     findings.push("artifact.schema: expected astra-macro-final-completion-evidence.v1.")
   }
-  validateIsoGeneratedAt(value.generatedAt, "artifact.generatedAt", findings)
-  validatePacketLabel(value.label, "artifact.label", findings)
+  validateIsoGeneratedAt(value.generatedAt, "artifact.generatedAt", findings, FINAL_COMPLETION_EVIDENCE_PATH)
+  validatePacketLabel(value.label, "artifact.label", findings, FINAL_COMPLETION_EVIDENCE_PATH)
   if (!isRecord(value.evidence)) {
     findings.push("artifact.evidence: expected an object.")
     return null
@@ -805,6 +899,11 @@ function validateEvidenceArtifact(value: unknown, findings: string[]): FinalComp
       findings.push(`artifact.evidence.${key}: cannot be true without at least one evidence link.`)
     }
     if (evidence[key]) {
+      for (const [index, link] of links.entries()) {
+        if (!fieldAllowsEvidenceLink(key, link)) {
+          findings.push(`artifact.evidenceLinks.${key}[${index}]: unexpected evidence link for ${key}; top-level links must be the required machine-readable packet paths.`)
+        }
+      }
       for (const requiredPath of REQUIRED_EVIDENCE_LINK_PATHS[key]) {
         if (!links.some((link) => evidenceLinkMatchesRequiredPath(link, requiredPath))) {
           findings.push(`artifact.evidenceLinks.${key}: expected a matching machine-readable packet path ${requiredPath}.`)
@@ -834,8 +933,8 @@ function validateOperationalEvidenceCompletionPacket(value: unknown, findings: s
   if (value.schema !== "astra-macro-operational-evidence-completion-packet.v1") {
     findings.push("operationalPacket.schema: expected astra-macro-operational-evidence-completion-packet.v1.")
   }
-  validateIsoGeneratedAt(value.generatedAt, "operationalPacket.generatedAt", findings)
-  validatePacketLabel(value.label, "operationalPacket.label", findings)
+  validateIsoGeneratedAt(value.generatedAt, "operationalPacket.generatedAt", findings, OPERATIONAL_COMPLETION_PACKET_PATH)
+  validatePacketLabel(value.label, "operationalPacket.label", findings, OPERATIONAL_COMPLETION_PACKET_PATH)
   if (!Array.isArray(value.rows)) {
     findings.push("operationalPacket.rows: expected array.")
     return null
@@ -901,6 +1000,9 @@ function validateOperationalCompletionPacketPreclaimRows(packet: OperationalEvid
     }
     seenAreaIds.add(areaIdIdentity)
 
+    validateEvidenceDateNotAfterPacketGeneratedAt(row.ownerDate, `operationalPacket.rows.${row.areaId}.ownerDate`, packet.generatedAt, findings)
+
+    validateEvidenceDateNotAfterPacketGeneratedAt(row.evidenceLink, `operationalPacket.rows.${row.areaId}.evidenceLink`, packet.generatedAt, findings)
     if (row.evidenceLink && isPlaceholderEvidenceReference(row.evidenceLink)) {
       findings.push(`operationalPacket.rows.${row.areaId}: placeholder evidence links are not allowed.`)
     } else {
@@ -931,8 +1033,8 @@ function validateCiArtifactPacket(value: unknown, findings: string[]): CiArtifac
   if (value.schema !== "astra-macro-ci-artifact-packet.v1") {
     findings.push("ciArtifactPacket.schema: expected astra-macro-ci-artifact-packet.v1.")
   }
-  validateIsoGeneratedAt(value.generatedAt, "ciArtifactPacket.generatedAt", findings)
-  validatePacketLabel(value.label, "ciArtifactPacket.label", findings)
+  validateIsoGeneratedAt(value.generatedAt, "ciArtifactPacket.generatedAt", findings, CI_ARTIFACT_PACKET_PATH)
+  validatePacketLabel(value.label, "ciArtifactPacket.label", findings, CI_ARTIFACT_PACKET_PATH)
   if (!Array.isArray(value.rows)) {
     findings.push("ciArtifactPacket.rows: expected array.")
     return null
@@ -1009,12 +1111,16 @@ function validateCiArtifactPacketPreclaimRows(packet: CiArtifactPacket, findings
     if (row.commitSha.trim().length > 0) {
       commitShas.add(row.commitSha.trim().toLowerCase())
     }
+    validateEvidenceDateNotAfterPacketGeneratedAt(row.ownerDate, `ciArtifactPacket.rows.${row.evidenceField}.ownerDate`, packet.generatedAt, findings)
 
     for (const field of ["runId", "jobName", "artifactId", "artifactDigest", "artifactManifestPath", "runUrl", "artifactUrl"] as const) {
       if (row[field] && isPlaceholderEvidenceReference(row[field])) {
         findings.push(`ciArtifactPacket.rows.${row.evidenceField}.${field}: placeholder evidence links are not allowed.`)
       }
     }
+    validateEvidenceDateNotAfterPacketGeneratedAt(row.artifactManifestPath, `ciArtifactPacket.rows.${row.evidenceField}.artifactManifestPath`, packet.generatedAt, findings)
+    validateEvidenceDateNotAfterPacketGeneratedAt(row.runUrl, `ciArtifactPacket.rows.${row.evidenceField}.runUrl`, packet.generatedAt, findings)
+    validateEvidenceDateNotAfterPacketGeneratedAt(row.artifactUrl, `ciArtifactPacket.rows.${row.evidenceField}.artifactUrl`, packet.generatedAt, findings)
     validateExistingEvidenceReference(row.artifactManifestPath, `ciArtifactPacket.rows.${row.evidenceField}.artifactManifestPath`, findings)
     for (const field of ["runId", "artifactId"] as const) {
       if (row[field] && isWeakDigestOrVersionReference(row[field])) {
@@ -1056,8 +1162,8 @@ function validateOwnerReleaseApprovalPacket(value: unknown, findings: string[]):
   if (value.schema !== "astra-macro-owner-release-approval-packet.v1") {
     findings.push("ownerReleaseApprovalPacket.schema: expected astra-macro-owner-release-approval-packet.v1.")
   }
-  validateIsoGeneratedAt(value.generatedAt, "ownerReleaseApprovalPacket.generatedAt", findings)
-  validatePacketLabel(value.label, "ownerReleaseApprovalPacket.label", findings)
+  validateIsoGeneratedAt(value.generatedAt, "ownerReleaseApprovalPacket.generatedAt", findings, OWNER_RELEASE_APPROVAL_PACKET_PATH)
+  validatePacketLabel(value.label, "ownerReleaseApprovalPacket.label", findings, OWNER_RELEASE_APPROVAL_PACKET_PATH)
   if (!isRecord(value.approval)) {
     findings.push("ownerReleaseApprovalPacket.approval: expected object.")
     return null
@@ -1125,6 +1231,13 @@ function validateOwnerReleaseApprovalPacketPreclaim(packet: OwnerReleaseApproval
     return
   }
 
+  validateEvidenceDateNotAfterPacketGeneratedAt(
+    packet.approval.approvalDate,
+    "ownerReleaseApprovalPacket.approval.approvalDate",
+    packet.generatedAt,
+    findings,
+  )
+
   const expectedReviewedArtifactsByIdentity = new Map(
     ASTRA_MACRO_RELEASE_APPROVAL_REQUIREMENT.requiredReviewedArtifacts.map((artifact) => [evidenceReferenceDuplicateIdentity(artifact), artifact]),
   )
@@ -1143,6 +1256,7 @@ function validateOwnerReleaseApprovalPacketPreclaim(packet: OwnerReleaseApproval
       findings.push(`ownerReleaseApprovalPacket.reviewedArtifacts.${artifact}: duplicate reviewed artifact.`)
     }
     seenReviewedArtifacts.add(artifactIdentity)
+    validateEvidenceDateNotAfterPacketGeneratedAt(artifact, `ownerReleaseApprovalPacket.reviewedArtifacts.${artifact}`, packet.generatedAt, findings)
     if (isPlaceholderEvidenceReference(artifact)) {
       findings.push(`ownerReleaseApprovalPacket.reviewedArtifacts.${artifact}: placeholder reviewed artifacts are not allowed.`)
     } else {
@@ -1150,6 +1264,12 @@ function validateOwnerReleaseApprovalPacketPreclaim(packet: OwnerReleaseApproval
     }
   }
 
+  validateEvidenceDateNotAfterPacketGeneratedAt(
+    packet.approval.approvalRecordLink,
+    "ownerReleaseApprovalPacket.approval.approvalRecordLink",
+    packet.generatedAt,
+    findings,
+  )
   if (packet.approval.approvalRecordLink && isPlaceholderEvidenceReference(packet.approval.approvalRecordLink)) {
     findings.push("ownerReleaseApprovalPacket.approval.approvalRecordLink: placeholder evidence links are not allowed.")
   } else {
@@ -1200,8 +1320,8 @@ function validateLaunchArtifactPacket(value: unknown, findings: string[]): Launc
   if (value.schema !== "astra-macro-launch-artifact-packet.v1") {
     findings.push("launchArtifactPacket.schema: expected astra-macro-launch-artifact-packet.v1.")
   }
-  validateIsoGeneratedAt(value.generatedAt, "launchArtifactPacket.generatedAt", findings)
-  validatePacketLabel(value.label, "launchArtifactPacket.label", findings)
+  validateIsoGeneratedAt(value.generatedAt, "launchArtifactPacket.generatedAt", findings, LAUNCH_ARTIFACT_PACKET_PATH)
+  validatePacketLabel(value.label, "launchArtifactPacket.label", findings, LAUNCH_ARTIFACT_PACKET_PATH)
   if (!Array.isArray(value.rows)) {
     findings.push("launchArtifactPacket.rows: expected array.")
     return null
@@ -1261,6 +1381,9 @@ function validateLaunchArtifactPacketPreclaimRows(packet: LaunchArtifactPacket, 
     }
     seenRequirementIds.add(requirementIdIdentity)
 
+    validateEvidenceDateNotAfterPacketGeneratedAt(row.ownerDate, `launchArtifactPacket.rows.${row.requirementId}.ownerDate`, packet.generatedAt, findings)
+
+    validateEvidenceDateNotAfterPacketGeneratedAt(row.evidenceLink, `launchArtifactPacket.rows.${row.requirementId}.evidenceLink`, packet.generatedAt, findings)
     if (row.evidenceLink && isPlaceholderEvidenceReference(row.evidenceLink)) {
       findings.push(`launchArtifactPacket.rows.${row.requirementId}: placeholder evidence links are not allowed.`)
     } else {
@@ -1522,8 +1645,8 @@ function validateAiQualityHumanScoredPacket(value: unknown, findings: string[]):
   if (value.schema !== "astra-macro-ai-quality-human-scored-packet.v1") {
     findings.push("aiQualityHumanScoredPacket.schema: expected astra-macro-ai-quality-human-scored-packet.v1.")
   }
-  validateIsoGeneratedAt(value.generatedAt, "aiQualityHumanScoredPacket.generatedAt", findings)
-  validatePacketLabel(value.label, "aiQualityHumanScoredPacket.label", findings)
+  validateIsoGeneratedAt(value.generatedAt, "aiQualityHumanScoredPacket.generatedAt", findings, AI_QUALITY_HUMAN_SCORED_PACKET_PATH)
+  validatePacketLabel(value.label, "aiQualityHumanScoredPacket.label", findings, AI_QUALITY_HUMAN_SCORED_PACKET_PATH)
   if (!isRecord(value.evidence)) {
     findings.push("aiQualityHumanScoredPacket.evidence: expected object.")
     return null
@@ -1617,6 +1740,23 @@ function validateAiQualityHumanScoredPacketPreclaim(packet: AiQualityHumanScored
     return
   }
 
+  validateEvidenceDateNotAfterPacketGeneratedAt(
+    packet.evidence.reviewedAt,
+    "aiQualityHumanScoredPacket.evidence.reviewedAt",
+    packet.generatedAt,
+    findings,
+  )
+  validateEvidenceTimestampNotAfterPacketGeneratedAt(
+    packet.evidence.summary.generatedAt,
+    "aiQualityHumanScoredPacket.evidence.summary.generatedAt",
+    packet.generatedAt,
+    findings,
+  )
+
+  for (const field of ["fixtureManifestPath", "providerSampleEvidenceLink", "blockerTriageLink"] as const) {
+    validateEvidenceDateNotAfterPacketGeneratedAt(packet.evidence[field], `aiQualityHumanScoredPacket.evidence.${field}`, packet.generatedAt, findings)
+  }
+
   for (const field of ["providerSampleEvidenceLink", "blockerTriageLink"] as const) {
     if (packet.evidence[field] && isPlaceholderEvidenceReference(packet.evidence[field])) {
       findings.push(`aiQualityHumanScoredPacket.evidence.${field}: placeholder evidence links are not allowed.`)
@@ -1658,8 +1798,8 @@ function validateProductionMetricsExportPacket(value: unknown, findings: string[
   if (value.schema !== "astra-macro-production-metrics-export-packet.v1") {
     findings.push("productionMetricsExportPacket.schema: expected astra-macro-production-metrics-export-packet.v1.")
   }
-  validateIsoGeneratedAt(value.generatedAt, "productionMetricsExportPacket.generatedAt", findings)
-  validatePacketLabel(value.label, "productionMetricsExportPacket.label", findings)
+  validateIsoGeneratedAt(value.generatedAt, "productionMetricsExportPacket.generatedAt", findings, PRODUCTION_METRICS_EXPORT_PACKET_PATH)
+  validatePacketLabel(value.label, "productionMetricsExportPacket.label", findings, PRODUCTION_METRICS_EXPORT_PACKET_PATH)
   if (!Array.isArray(value.rows)) {
     findings.push("productionMetricsExportPacket.rows: expected array.")
     return null
@@ -1714,8 +1854,8 @@ function validateProductMetricsReadinessPacket(value: unknown, findings: string[
   if (value.schema !== "astra-macro-product-metrics-readiness-packet.v1") {
     findings.push("productMetricsReadinessPacket.schema: expected astra-macro-product-metrics-readiness-packet.v1.")
   }
-  validateIsoGeneratedAt(value.generatedAt, "productMetricsReadinessPacket.generatedAt", findings)
-  validatePacketLabel(value.label, "productMetricsReadinessPacket.label", findings)
+  validateIsoGeneratedAt(value.generatedAt, "productMetricsReadinessPacket.generatedAt", findings, PRODUCT_METRICS_READINESS_PACKET_PATH)
+  validatePacketLabel(value.label, "productMetricsReadinessPacket.label", findings, PRODUCT_METRICS_READINESS_PACKET_PATH)
   if (typeof value.ownerDate !== "string") {
     findings.push("productMetricsReadinessPacket.ownerDate: expected string.")
   }
@@ -1755,12 +1895,31 @@ function productMetricsReadinessPacketAttempted(packet: ProductMetricsReadinessP
     || PRODUCT_METRICS_READINESS_EVIDENCE_KEYS.some((key) => packet.evidence[key])
 }
 
+function productMetricsReadinessSemanticCandidates(value: string): string[] {
+  const candidates = [value]
+  try {
+    candidates.push(decodeURIComponent(value))
+  } catch {
+    // Malformed percent-encoding is rejected by evidence reference validation.
+  }
+  return candidates.map((candidate) => candidate
+    .toLowerCase()
+    .replace(/[_./:-]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim())
+}
+
+function hasProductMetricsReadinessContext(value: string): boolean {
+  return productMetricsReadinessSemanticCandidates(value).some((candidate) => {
+    const namesProductMetricsReadiness = /\b(?:product metrics|metrics readiness|metric readiness|telemetry readiness|telemetry evidence|readiness evidence)\b/.test(candidate)
+    const namesTargetReleaseContext = /\b(?:target|release|rc|final gate|production|cohort)\b/.test(candidate)
+    return namesProductMetricsReadiness && namesTargetReleaseContext
+  })
+}
+
 function isSpecificProductMetricsReadinessLabel(value: string): boolean {
   if (value.trim() !== value || isPlaceholderEvidenceReference(value)) return false
-  const normalizedValue = value.toLowerCase()
-  const namesProductMetricsReadiness = /\b(?:product metrics|metrics readiness|metric readiness|telemetry readiness)\b/.test(normalizedValue)
-  const namesTargetReleaseContext = /\b(?:target|release|rc|final gate|production|cohort)\b/.test(normalizedValue)
-  return namesProductMetricsReadiness && namesTargetReleaseContext
+  return hasProductMetricsReadinessContext(value)
 }
 
 function validateProductMetricsReadinessPacketPreclaim(packet: ProductMetricsReadinessPacket, findings: string[]): void {
@@ -1773,15 +1932,20 @@ function validateProductMetricsReadinessPacketPreclaim(packet: ProductMetricsRea
   } else if (!isSpecificProductMetricsReadinessLabel(packet.label)) {
     findings.push("productMetricsReadinessPacket.label: attempted readiness evidence label must identify product metrics readiness and target release context.")
   }
+  validateEvidenceDateNotAfterPacketGeneratedAt(packet.ownerDate, "productMetricsReadinessPacket.ownerDate", packet.generatedAt, findings)
   if (!hasOwnerIdentityWithIsoDate(packet.ownerDate)) {
     findings.push("productMetricsReadinessPacket.ownerDate: attempted readiness evidence must identify a real owner and include YYYY-MM-DD.")
   }
+  validateEvidenceDateNotAfterPacketGeneratedAt(packet.evidenceLink, "productMetricsReadinessPacket.evidenceLink", packet.generatedAt, findings)
   if (packet.evidenceLink && isPlaceholderEvidenceReference(packet.evidenceLink)) {
     findings.push("productMetricsReadinessPacket.evidenceLink: placeholder evidence links are not allowed.")
   } else if (!isEvidenceLikeReference(packet.evidenceLink)) {
     findings.push("productMetricsReadinessPacket.evidenceLink: attempted readiness evidence must be a URL or repo artifact path.")
   } else {
     validateExistingEvidenceReference(packet.evidenceLink, "productMetricsReadinessPacket.evidenceLink", findings)
+    if (!hasProductMetricsReadinessContext(packet.evidenceLink)) {
+      findings.push("productMetricsReadinessPacket.evidenceLink: attempted readiness evidence link must identify product metrics readiness evidence and target release context.")
+    }
   }
 
   const readinessDecision = evaluateAstraProductMetricsReadiness(packet.evidence)
@@ -1835,8 +1999,11 @@ function validateProductionMetricsExportPacketPreclaimRows(packet: ProductionMet
       findings.push(`productionMetricsExportPacket.rows.${row.category}: duplicate production metrics export row.`)
     }
     seenCategories.add(categoryIdentity)
+    validateEvidenceDateNotAfterPacketGeneratedAt(row.ownerDate, `productionMetricsExportPacket.rows.${row.category}.ownerDate`, packet.generatedAt, findings)
+    validateEvidenceTimestampNotAfterPacketGeneratedAt(row.exportedAt, `productionMetricsExportPacket.rows.${row.category}.exportedAt`, packet.generatedAt, findings)
 
     for (const field of ["evidenceLink", "privacyReviewLink"] as const) {
+      validateEvidenceDateNotAfterPacketGeneratedAt(row[field], `productionMetricsExportPacket.rows.${row.category}.${field}`, packet.generatedAt, findings)
       if (row[field] && isPlaceholderEvidenceReference(row[field])) {
         findings.push(`productionMetricsExportPacket.rows.${row.category}.${field}: placeholder evidence links are not allowed.`)
       } else {
@@ -1970,8 +2137,11 @@ function validateManualQaRows(rows: ManualQaChecklistRow[], findings: string[]):
 
     if (!row.ownerDate) {
       findings.push(`Section ${row.section} / ${row.qaRow}: non-not-run row requires owner/date.`)
-    } else if (!hasOwnerIdentityWithIsoDate(row.ownerDate)) {
-      findings.push(`Section ${row.section} / ${row.qaRow}: non-not-run row owner/date must identify a real owner and include a YYYY-MM-DD date.`)
+    } else {
+      validateEvidenceDateNotAfterDatedArtifactPath(row.ownerDate, `Section ${row.section} / ${row.qaRow} owner/date`, MANUAL_QA_CHECKLIST_PATH, findings)
+      if (!hasOwnerIdentityWithIsoDate(row.ownerDate)) {
+        findings.push(`Section ${row.section} / ${row.qaRow}: non-not-run row owner/date must identify a real owner and include a YYYY-MM-DD date.`)
+      }
     }
     if (!row.environment) {
       findings.push(`Section ${row.section} / ${row.qaRow}: non-not-run row requires environment.`)
@@ -1980,12 +2150,15 @@ function validateManualQaRows(rows: ManualQaChecklistRow[], findings: string[]):
     }
     if (!row.evidenceLink) {
       findings.push(`Section ${row.section} / ${row.qaRow}: non-not-run row requires evidence link.`)
-    } else if (isPlaceholderEvidenceReference(row.evidenceLink)) {
-      findings.push(`Section ${row.section} / ${row.qaRow}: non-not-run row uses placeholder evidence link.`)
-    } else if (!isEvidenceLikeReference(row.evidenceLink)) {
-      findings.push(`Section ${row.section} / ${row.qaRow}: non-not-run row evidence link must be a URL or repo artifact path.`)
     } else {
-      validateExistingEvidenceReference(row.evidenceLink, `Section ${row.section} / ${row.qaRow} evidence link`, findings)
+      validateEvidenceDateNotAfterDatedArtifactPath(row.evidenceLink, `Section ${row.section} / ${row.qaRow} evidence link`, MANUAL_QA_CHECKLIST_PATH, findings)
+      if (isPlaceholderEvidenceReference(row.evidenceLink)) {
+        findings.push(`Section ${row.section} / ${row.qaRow}: non-not-run row uses placeholder evidence link.`)
+      } else if (!isEvidenceLikeReference(row.evidenceLink)) {
+        findings.push(`Section ${row.section} / ${row.qaRow}: non-not-run row evidence link must be a URL or repo artifact path.`)
+      } else {
+        validateExistingEvidenceReference(row.evidenceLink, `Section ${row.section} / ${row.qaRow} evidence link`, findings)
+      }
     }
   }
 
@@ -2013,15 +2186,67 @@ function validateManualQaCompletionPacket(rows: ManualQaChecklistRow[], findings
   }
 }
 
+function renderedMarkdownLineText(line: string): string {
+  if (/^\s{0,3}\[[^\]]+\]:\s+\S+/.test(line)) {
+    return ""
+  }
+
+  return line
+    .replace(/!\[([^\]]*)\]\((?:\\.|[^\\)])*\)/g, "$1")
+    .replace(/\[([^\]]+)\]\((?:\\.|[^\\)])*\)/g, "$1")
+    .replace(/\[([^\]]+)\]\[[^\]]*\]/g, "$1")
+}
+
+function visibleMarkdownText(markdown: string): string {
+  const visibleLines: string[] = []
+  let activeFenceMarker: string | null = null
+  let activeHtmlComment = false
+
+  for (const line of markdown.split("\n")) {
+    const trimmedLine = line.trim()
+    if (activeHtmlComment) {
+      if (trimmedLine.includes("-->")) activeHtmlComment = false
+      continue
+    }
+    if (trimmedLine.startsWith("<!--")) {
+      if (!trimmedLine.includes("-->")) activeHtmlComment = true
+      continue
+    }
+    const fenceMatch = /^(?<marker>`{3,}|~{3,})/.exec(trimmedLine)
+    if (fenceMatch?.groups?.marker) {
+      const marker = fenceMatch.groups.marker
+      if (activeFenceMarker === null) {
+        activeFenceMarker = marker
+        continue
+      }
+      if (marker[0] === activeFenceMarker[0] && marker.length >= activeFenceMarker.length) {
+        activeFenceMarker = null
+      }
+      continue
+    }
+    if (activeFenceMarker !== null || trimmedLine.startsWith(">") || /^(?: {4,}|\t)/.test(line)) {
+      continue
+    }
+    const renderedLine = renderedMarkdownLineText(line)
+    if (renderedLine.trim().length > 0) {
+      visibleLines.push(renderedLine)
+    }
+  }
+
+  return visibleLines.join("\n")
+}
+
 function validateFinalEvidenceIntakeDoc(markdown: string, findings: string[]): void {
+  validateDatedMarkdownTitle(markdown, FINAL_EVIDENCE_INTAKE_PATH, findings)
+  const visibleText = visibleMarkdownText(markdown)
   for (const key of FINAL_COMPLETION_EVIDENCE_KEYS) {
-    if (!markdown.includes(`\`${key}\``)) {
+    if (!visibleText.includes(`\`${key}\``)) {
       findings.push(`${FINAL_EVIDENCE_INTAKE_PATH}: missing final evidence field \`${key}\`.`)
     }
   }
 
   for (const term of REQUIRED_EVIDENCE_INTAKE_TERMS) {
-    if (!markdown.includes(term)) {
+    if (!visibleText.includes(term)) {
       findings.push(`${FINAL_EVIDENCE_INTAKE_PATH}: missing required intake term \`${term}\`.`)
     }
   }
@@ -2084,6 +2309,7 @@ async function main(): Promise<void> {
     validateProductMetricsReadinessExportEvidenceDistinct(productionMetricsExportPacket, productMetricsReadinessPacket, findings)
   }
   validateCrossPacketTargetCommitConsistency(ciArtifactPacket, ownerReleaseApprovalPacket, findings)
+  validateDatedMarkdownTitle(checklistText, MANUAL_QA_CHECKLIST_PATH, findings)
   const manualRows = parseManualQaChecklistRows(checklistText, findings)
   validateManualQaRows(manualRows, findings)
 
@@ -2206,8 +2432,9 @@ async function main(): Promise<void> {
     }
 
     const decision = evaluateAstraMacroPlanCompletion(artifact.evidence)
-    console.log(`Macro final completion check: valid=${findings.length === 0 ? "yes" : "no"}`)
-    console.log(`Complete: ${decision.complete ? "yes" : "no"}`)
+    const valid = findings.length === 0
+    console.log(`Macro final completion check: valid=${valid ? "yes" : "no"}`)
+    console.log(`Complete: ${valid && decision.complete ? "yes" : "no"}`)
     console.log(`Blocker count: ${decision.blockers.length}`)
     for (const blocker of decision.blockers) {
       console.log(`- ${blocker.code}: ${blocker.message}`)
