@@ -201,7 +201,7 @@
     "message": "Saved sentences on this page"
   },
   "popup_studyPageSavedReviewHint": {
-    "message": "$1 saved sentence(s) from this page can be reviewed anytime.",
+    "message": "Added to today's review · Review $1 card(s) now",
     "placeholders": {
       "1": { "content": "$1" }
     }
@@ -244,6 +244,9 @@
   },
   "popup_deepReadAction": {
     "message": "Start deep read"
+  },
+  "popup_trySampleArticle": {
+    "message": "Try Astra's sample article"
   },
   "popup_contentAssetizationEyebrow": {
     "message": "Content asset"
@@ -656,6 +659,9 @@
   },
   "status_status": {
     "message": "Status"
+  },
+  "status_translating": {
+    "message": "Translating…"
   },
   "status_targetLang": {
     "message": "Target Language"
@@ -1455,5 +1461,164 @@
   },
   "omnibox_defaultSuggestion": {
     "message": "Translate: %s"
+  },
+  "serviceModeAutomatic": {
+    "message": "Auto"
+  },
+  "serviceModeFast": {
+    "message": "Faster"
+  },
+  "serviceModeBalanced": {
+    "message": "Balanced"
+  },
+  "serviceModeBestQuality": {
+    "message": "Study mode"
+  },
+  "floatBallModeBilingual": {
+    "message": "Bilingual"
+  },
+  "floatBallModeTranslationOnly": {
+    "message": "Translation only"
+  },
+  "floatBallScopeFullPage": {
+    "message": "Full page"
+  },
+  "floatBallScopeImmersive": {
+    "message": "Immersive"
+  },
+  "copyProValue": {
+    "message": "Pro includes longer videos, deeper explanations, synced learning history, and unlimited review cards."
+  },
+  "copyDailyFreeReached": {
+    "message": "You’ve used today’s free reading. It refreshes tomorrow, or Pro keeps longer videos and deeper explanations going."
+  },
+  "copyFreeLimit": {
+    "message": "You’ve used today’s free long-content experience."
+  },
+  "copyProLongContent": {
+    "message": "Longer videos and deeper explanations are included with Pro."
+  },
+  "copyContinueTomorrow": {
+    "message": "You can continue tomorrow, or upgrade for longer reading."
+  },
+  "proMoment_long_video_eyebrow": {
+    "message": "Pro value · Long video"
+  },
+  "proMoment_long_video_title": {
+    "message": "Turn longer videos into study notes without babysitting captions."
+  },
+  "proMoment_long_video_summary": {
+    "message": "Pro is designed for longer listening sessions: reliable bilingual subtitles, a clickable transcript you can jump back into, and reviewable notes stay connected."
+  },
+  "proMoment_long_video_cta": {
+    "message": "Use video notes for long lessons"
+  },
+  "proMoment_deep_read_eyebrow": {
+    "message": "Pro value · Deep Read"
+  },
+  "proMoment_deep_read_title": {
+    "message": "Go deeper than page translation when a sentence matters."
+  },
+  "proMoment_deep_read_summary": {
+    "message": "Deep Read keeps article context, explanations, saved sentences, and review together for focused learning sessions."
+  },
+  "proMoment_deep_read_cta": {
+    "message": "Open Deep Read"
+  },
+  "proMoment_sync_eyebrow": {
+    "message": "Pro value · Continuity"
+  },
+  "proMoment_sync_title": {
+    "message": "Keep today’s trail ready on your next device."
+  },
+  "proMoment_sync_summary": {
+    "message": "Account continuity protects saved cards, reading history, and review schedules so learning does not stay trapped on one browser."
+  },
+  "proMoment_sync_cta": {
+    "message": "Connect continuity"
+  },
+  "proMoment_digest_eyebrow": {
+    "message": "Pro value · Digest"
+  },
+  "proMoment_digest_title": {
+    "message": "Summarize what mattered and keep the next step visible."
+  },
+  "proMoment_digest_summary": {
+    "message": "Digest moments package page context, vocabulary focus, grammar focus, and suggested follow-up into a reusable study checkpoint."
+  },
+  "proMoment_digest_cta": {
+    "message": "Generate or refresh a digest"
+  },
+  "proMoment_near_limit_eyebrow": {
+    "message": "Pro value · More included reading"
+  },
+  "proMoment_near_limit_title": {
+    "message": "When you approach today’s included reading, Pro protects momentum."
+  },
+  "proMoment_near_limit_summary": {
+    "message": "Near-limit moments explain value in plain language: more length, more stability, and fewer interruptions."
+  },
+  "proMoment_near_limit_cta": {
+    "message": "Keep reading with Pro"
+  },
+  "upgradePrompt_cta": {
+    "message": "I'm interested in upgrades"
+  },
+  "upgradePrompt_boundary": {
+    "message": "Beta note: paid upgrades are not available in this build. This button only records local interest; it does not start checkout, a trial, email capture, or a subscription change."
+  },
+  "upgradePrompt_momentum_eyebrow": {
+    "message": "Upgrade interest · learning momentum"
+  },
+  "upgradePrompt_momentum_title": {
+    "message": "Would an upgrade help you keep this learning momentum?"
+  },
+  "upgradePrompt_momentum_summary": {
+    "message": "Astra is exploring ways to support moments like {moment} Tell us locally if this kind of upgrade would be useful when paid plans launch later."
+  },
+  "upgradePrompt_continuity_eyebrow": {
+    "message": "Upgrade interest · continuity"
+  },
+  "upgradePrompt_continuity_title": {
+    "message": "Would an upgrade help keep this learning trail connected?"
+  },
+  "upgradePrompt_continuity_summary": {
+    "message": "Astra is exploring upgrade value around continuity, deeper reading, and fewer interruptions. This moment is about {moment} Tell us locally if that sounds useful when paid plans launch later."
+  },
+  "transcriptSaveExpressions": {
+    "message": "Save 3 expressions to Review"
+  },
+  "transcriptSaveSummary": {
+    "message": "Save summary to Review"
+  },
+  "transcriptSaveWord": {
+    "message": "Save word to Review"
+  },
+  "transcriptReviewNow": {
+    "message": "Review now"
+  },
+  "transcriptFindInVocabulary": {
+    "message": "Find it later in your Vocabulary"
+  },
+  "transcriptSavedFromVideoSuffix": {
+    "message": "saved from this video"
+  },
+  "transcriptNoCaptionsTitle": {
+    "message": "Captions aren't available for this video"
+  },
+  "transcriptNoCaptionsBody": {
+    "message": "YouTube captions aren't available for this video. Paste a line you copied from the subtitles and Astra will explain it."
+  },
+  "transcriptNoCaptionsPasteLabel": {
+    "message": "Paste subtitle text"
+  },
+  "transcriptNoCaptionsExplain": {
+    "message": "Explain pasted text"
+  },
+  "proMomentsCardTitle": {
+    "message": "Pro value moments"
+  },
+  "proMomentsCardSummary": {
+    "message": "Astra explains upgrade value by the current learning moment—long content, deeper reading, continuity, digest, or approaching today’s included reading—without technical setup language."
   }
 }

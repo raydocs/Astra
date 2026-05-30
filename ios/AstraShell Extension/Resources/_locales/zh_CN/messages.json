@@ -201,7 +201,7 @@
     "message": "本页已保存的句子"
   },
   "popup_studyPageSavedReviewHint": {
-    "message": "本页已有 $1 条保存句子，可随时进入复习。",
+    "message": "已加入今日复习 · 现在复习 $1 张",
     "placeholders": {
       "1": { "content": "$1" }
     }
@@ -244,6 +244,9 @@
   },
   "popup_deepReadAction": {
     "message": "开始深读"
+  },
+  "popup_trySampleArticle": {
+    "message": "试试 Astra 的样例文章"
   },
   "popup_contentAssetizationEyebrow": {
     "message": "内容资产"
@@ -656,6 +659,9 @@
   },
   "status_status": {
     "message": "状态"
+  },
+  "status_translating": {
+    "message": "正在翻译…"
   },
   "status_targetLang": {
     "message": "目标语言"
@@ -1454,5 +1460,164 @@
   },
   "omnibox_defaultSuggestion": {
     "message": "翻译：%s"
+  },
+  "serviceModeAutomatic": {
+    "message": "自动"
+  },
+  "serviceModeFast": {
+    "message": "快速理解"
+  },
+  "serviceModeBalanced": {
+    "message": "精准阅读"
+  },
+  "serviceModeBestQuality": {
+    "message": "学习模式"
+  },
+  "floatBallModeBilingual": {
+    "message": "双语"
+  },
+  "floatBallModeTranslationOnly": {
+    "message": "仅译文"
+  },
+  "floatBallScopeFullPage": {
+    "message": "整页"
+  },
+  "floatBallScopeImmersive": {
+    "message": "沉浸"
+  },
+  "copyProValue": {
+    "message": "Pro 包含更长的视频、更深入的讲解、跨设备同步的学习记录，以及无限的复习卡片。"
+  },
+  "copyDailyFreeReached": {
+    "message": "今天的免费阅读已用完，明天会自动恢复。Pro 包含更长的视频和更深入的讲解。"
+  },
+  "copyFreeLimit": {
+    "message": "今天的免费长内容已用完。"
+  },
+  "copyProLongContent": {
+    "message": "更长的视频和更深入的讲解已包含在 Pro 中。"
+  },
+  "copyContinueTomorrow": {
+    "message": "你可以明天继续，或升级以阅读更长的内容。"
+  },
+  "proMoment_long_video_eyebrow": {
+    "message": "Pro 价值 · 长视频"
+  },
+  "proMoment_long_video_title": {
+    "message": "把更长的视频变成学习笔记，无需盯着字幕反复操作。"
+  },
+  "proMoment_long_video_summary": {
+    "message": "Pro 专为更长的观看场景设计：稳定的双语字幕、可点回任意时刻的逐句记录，可复习的笔记始终连贯。"
+  },
+  "proMoment_long_video_cta": {
+    "message": "用视频笔记学习长课程"
+  },
+  "proMoment_deep_read_eyebrow": {
+    "message": "Pro 价值 · 深读"
+  },
+  "proMoment_deep_read_title": {
+    "message": "当某个句子值得深究时，比整页翻译更进一步。"
+  },
+  "proMoment_deep_read_summary": {
+    "message": "深读会把文章语境、讲解、已保存的句子和复习放在一起，专注于每一次深入学习。"
+  },
+  "proMoment_deep_read_cta": {
+    "message": "开始深读"
+  },
+  "proMoment_sync_eyebrow": {
+    "message": "Pro 价值 · 连贯"
+  },
+  "proMoment_sync_title": {
+    "message": "让今天的学习轨迹在下一台设备上随时可用。"
+  },
+  "proMoment_sync_summary": {
+    "message": "账户连贯会保护已保存的卡片、阅读记录和复习计划，让学习不再被困在一个浏览器里。"
+  },
+  "proMoment_sync_cta": {
+    "message": "开启账户连贯"
+  },
+  "proMoment_digest_eyebrow": {
+    "message": "Pro 价值 · 摘要"
+  },
+  "proMoment_digest_title": {
+    "message": "总结重要内容，并让下一步保持清晰可见。"
+  },
+  "proMoment_digest_summary": {
+    "message": "摘要会把页面语境、重点词汇、重点语法和建议的后续步骤，整理成一份可重复使用的学习节点。"
+  },
+  "proMoment_digest_cta": {
+    "message": "生成或刷新摘要"
+  },
+  "proMoment_near_limit_eyebrow": {
+    "message": "Pro 价值 · 更多包含的阅读"
+  },
+  "proMoment_near_limit_title": {
+    "message": "当你接近今天包含的阅读额度时，Pro 会守护学习节奏。"
+  },
+  "proMoment_near_limit_summary": {
+    "message": "接近上限时，Pro 守护你的学习节奏：更长的篇幅、更稳定的体验，以及更少的打断。"
+  },
+  "proMoment_near_limit_cta": {
+    "message": "用 Pro 继续阅读"
+  },
+  "upgradePrompt_cta": {
+    "message": "我对升级感兴趣"
+  },
+  "upgradePrompt_boundary": {
+    "message": "测试版说明：此版本暂不提供付费升级。该按钮仅在本地记录你的兴趣，不会发起结账、试用、邮箱收集或订阅变更。"
+  },
+  "upgradePrompt_momentum_eyebrow": {
+    "message": "升级兴趣 · 学习节奏"
+  },
+  "upgradePrompt_momentum_title": {
+    "message": "升级是否能帮你保持这股学习势头？"
+  },
+  "upgradePrompt_momentum_summary": {
+    "message": "Astra 正在探索如何支持这样的学习时刻：{moment} 如果这类升级在付费方案上线后对你有用，欢迎现在在本地告诉我们。"
+  },
+  "upgradePrompt_continuity_eyebrow": {
+    "message": "升级兴趣 · 连贯"
+  },
+  "upgradePrompt_continuity_title": {
+    "message": "升级是否能让这条学习轨迹保持连贯？"
+  },
+  "upgradePrompt_continuity_summary": {
+    "message": "Astra 正在围绕学习连贯、更深入的阅读和更少的打断探索升级价值。比如这样的时刻：{moment} 如果付费方案上线后它对你有用，欢迎现在在本地告诉我们。"
+  },
+  "transcriptSaveExpressions": {
+    "message": "保存这 3 个表达去复习"
+  },
+  "transcriptSaveSummary": {
+    "message": "保存摘要去复习"
+  },
+  "transcriptSaveWord": {
+    "message": "保存这个词去复习"
+  },
+  "transcriptReviewNow": {
+    "message": "现在复习"
+  },
+  "transcriptFindInVocabulary": {
+    "message": "稍后在词汇表里找回"
+  },
+  "transcriptSavedFromVideoSuffix": {
+    "message": "个已存入本视频笔记"
+  },
+  "transcriptNoCaptionsTitle": {
+    "message": "这个视频暂时没有字幕"
+  },
+  "transcriptNoCaptionsBody": {
+    "message": "这个视频暂时没有 YouTube 字幕。把你复制的字幕粘贴进来，Astra 会为你解释。"
+  },
+  "transcriptNoCaptionsPasteLabel": {
+    "message": "粘贴字幕文本"
+  },
+  "transcriptNoCaptionsExplain": {
+    "message": "解释粘贴的内容"
+  },
+  "proMomentsCardTitle": {
+    "message": "Pro 价值时刻"
+  },
+  "proMomentsCardSummary": {
+    "message": "Astra 会依据当前的学习时刻来说明升级价值——长内容、更深入的阅读、连贯、摘要，或接近今天包含的阅读额度——不使用技术配置术语。"
   }
 }
