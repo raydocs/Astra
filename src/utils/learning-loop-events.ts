@@ -691,7 +691,7 @@ export const LEARNING_LOOP_PRO_VALUE_MOMENTS: Record<LearningLoopProValueTrigger
   long_video: {
     eyebrow: "Pro value · Long video",
     title: "Turn longer videos into study notes without babysitting captions.",
-    summary: "Pro is designed for longer listening sessions: transcript capture, subtitle reliability, and reviewable notes stay connected.",
+    summary: "Pro is designed for longer listening sessions: reliable bilingual subtitles, a clickable transcript you can jump back into, and reviewable notes stay connected.",
     cta: "Use video notes for long lessons",
   },
   deep_read: {

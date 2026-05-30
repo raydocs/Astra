@@ -1507,7 +1507,7 @@
     "message": "把更长的视频变成学习笔记，无需盯着字幕反复操作。"
   },
   "proMoment_long_video_summary": {
-    "message": "Pro 专为更长的观看场景设计：稳定的双语字幕、准确的字幕抓取，可复习的笔记始终连贯。"
+    "message": "Pro 专为更长的观看场景设计：稳定的双语字幕、可点回任意时刻的逐句记录，可复习的笔记始终连贯。"
   },
   "proMoment_long_video_cta": {
     "message": "用视频笔记学习长课程"
@@ -1598,6 +1598,9 @@
   },
   "transcriptFindInVocabulary": {
     "message": "稍后在词汇表里找回"
+  },
+  "transcriptSavedFromVideoSuffix": {
+    "message": "个已存入本视频笔记"
   },
   "transcriptNoCaptionsTitle": {
     "message": "这个视频暂时没有字幕"

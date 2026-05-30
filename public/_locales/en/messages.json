@@ -1508,7 +1508,7 @@
     "message": "Turn longer videos into study notes without babysitting captions."
   },
   "proMoment_long_video_summary": {
-    "message": "Pro is designed for longer listening sessions: transcript capture, subtitle reliability, and reviewable notes stay connected."
+    "message": "Pro is designed for longer listening sessions: reliable bilingual subtitles, a clickable transcript you can jump back into, and reviewable notes stay connected."
   },
   "proMoment_long_video_cta": {
     "message": "Use video notes for long lessons"
@@ -1599,6 +1599,9 @@
   },
   "transcriptFindInVocabulary": {
     "message": "Find it later in your Vocabulary"
+  },
+  "transcriptSavedFromVideoSuffix": {
+    "message": "saved from this video"
   },
   "transcriptNoCaptionsTitle": {
     "message": "Captions aren't available for this video"

@@ -951,7 +951,7 @@ function TranslationSection({
       <SectionHeader
         eyebrow="Reading · Translation"
         headline="How Astra translates the page"
-        intro="Quiet reading controls that keep the source visible while Astra adds an alternate reading. Every control here also accepts per-site overrides under Sites."
+        intro="Quiet reading controls that keep the source visible while Astra adds an alternate reading. There is no model or API key to set up — Astra automatically picks the right speed and quality for each page. Every control here also accepts per-site overrides under Sites."
       />
 
       <div className="astra-settings-rows">

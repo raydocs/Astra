@@ -1150,6 +1150,13 @@ function renderTranscriptPanel(): void {
     const hint = document.createElement("span")
     hint.dataset.astraTranscriptSavedHint = "true"
     hint.textContent = localizedLabel("transcriptFindInVocabulary", "Find it later in your Vocabulary")
+    const savedFromVideo = savedVideoSentences.length + savedVideoWords.length
+    if (savedFromVideo > 0) {
+      const savedMeta = document.createElement("span")
+      savedMeta.dataset.astraTranscriptSavedFromVideo = "true"
+      savedMeta.textContent = `${savedFromVideo} ${localizedLabel("transcriptSavedFromVideoSuffix", "saved from this video")}`
+      nudge.append(savedMeta)
+    }
     nudge.append(reviewBtn, hint)
     panelRoot.appendChild(nudge)
   }
