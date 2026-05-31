@@ -106,10 +106,13 @@ function buildExplainModeSystemPrompt(explainMode: ExplainMode): string | undefi
 }
 
 function formatMessage(template: string, ...values: Array<string | number>): string {
-  return values.reduce<string>(
-    (message, value, index) => message.replace(`$${index + 1}`, String(value)),
-    template,
-  )
+  // Single pass over the original template so already-substituted (possibly
+  // untrusted, e.g. a saved page/video title) text can't consume a later
+  // placeholder like "$2".
+  return template.replace(/\$(\d+)/g, (match, n: string) => {
+    const index = Number(n) - 1
+    return index >= 0 && index < values.length ? String(values[index]) : match
+  })
 }
 
 function formatDate(ts: number): string {
