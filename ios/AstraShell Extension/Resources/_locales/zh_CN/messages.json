@@ -98,6 +98,9 @@
   "actionSaved": {
     "message": "✓ 已收藏"
   },
+  "actionSavePhrase": {
+    "message": "收藏这句"
+  },
   "actionMore": {
     "message": "更多"
   },
@@ -893,7 +896,7 @@
     }
   },
   "review_todayProgressTitle": {
-    "message": "今日学习进度（全页汇总）"
+    "message": "今日学习进度（全部来源）"
   },
   "review_currentPageProgressTitle": {
     "message": "当前页面学习回路"
@@ -915,6 +918,30 @@
   },
   "review_openSourcePage": {
     "message": "打开来源页面"
+  },
+  "review_openVideoAtTimestamp": {
+    "message": "在 $1 打开视频",
+    "placeholders": {
+      "1": { "content": "$1" }
+    }
+  },
+  "review_summaryStreakLine": {
+    "message": "你已连续学习 $1 天。",
+    "placeholders": {
+      "1": { "content": "$1" }
+    }
+  },
+  "review_summaryComeBackTomorrow": {
+    "message": "明天再来，保持节奏。"
+  },
+  "review_summaryDueTomorrowLine": {
+    "message": "明天有 $1 张卡片等你复习。",
+    "placeholders": {
+      "1": { "content": "$1" }
+    }
+  },
+  "review_backToLibrary": {
+    "message": "返回学习库"
   },
   "review_showFullContext": {
     "message": "展开完整上下文"
@@ -1360,7 +1387,7 @@
     "message": "学习闭环活动"
   },
   "options_learningLoopHint": {
-    "message": "仅限本设备的本地诊断，用于查看 popup → Deep Read → 词汇/复习 漏斗是否在运作。"
+    "message": "用于查看 popup → Deep Read → 词汇/复习 漏斗是否在运作的诊断，仅保存在本设备。"
   },
   "options_learningLoopLoading": {
     "message": "正在加载学习闭环活动..."
@@ -1486,7 +1513,7 @@
     "message": "沉浸"
   },
   "copyProValue": {
-    "message": "Pro 包含更长的视频、更深入的讲解、跨设备同步的学习记录，以及无限的复习卡片。"
+    "message": "Pro 包含更长的视频、更深入的讲解、跨设备同步的学习记录，以及更大的复习卡片库。"
   },
   "copyDailyFreeReached": {
     "message": "今天的免费阅读已用完，明天会自动恢复。Pro 包含更长的视频和更深入的讲解。"
