@@ -4,6 +4,7 @@ import { ExplainModeSchema, LanguageLevelSchema, type ExplainMode, type Language
 import { createDefaultSrsFields } from "@/utils/srs/leitner"
 import type { ReviewGrade } from "@/utils/srs/leitner"
 import { buildSentenceHash } from "@/utils/sentence-anchor"
+import { sanitizeVideoSourceUrl } from "@/utils/video-timestamp-url"
 
 export const VocabularySourceContextSurfaceSchema = z.enum([
   "popup_deep_read",
@@ -358,16 +359,29 @@ export function formatGlossaryEvidenceLabel(
   return `Glossary applied: ${normalized.map((term) => `${term.sourceTerm} → ${term.preferredTerm}`).join(", ")}`
 }
 
+/**
+ * Video surfaces (YouTube transcript, subtitle reader) keep their replay
+ * identity (the YouTube `?v=` id) so a saved moment can be returned to;
+ * every other surface strips the whole query for privacy.
+ */
+export function isVideoVocabularySurface(surface?: VocabularySourceContext["surface"] | null): boolean {
+  return surface === "video_transcript" || surface === "subtitle_reader"
+}
+
 export function normalizeVocabularySourceContext(
   sourceContext?: VocabularySourceContext,
   fallback?: { url?: string | null; hostname?: string | null },
 ): VocabularySourceContext | undefined {
   if (!sourceContext) return undefined
 
+  const sanitizePageUrl = isVideoVocabularySurface(sourceContext.surface)
+    ? sanitizeVideoSourceUrl
+    : sanitizeVocabularyUrl
+
   return VocabularySourceContextSchema.parse({
     ...stripUndefinedFields(sourceContext),
     pageTitle: normalizeSourceText(sourceContext.pageTitle),
-    pageUrl: sanitizeVocabularyUrl(sourceContext.pageUrl ?? fallback?.url),
+    pageUrl: sanitizePageUrl(sourceContext.pageUrl ?? fallback?.url),
     hostname: normalizeSourceText(sourceContext.hostname ?? fallback?.hostname),
     contentSummary: normalizeSourceText(sourceContext.contentSummary),
     articleExcerpt: normalizeSourceText(sourceContext.articleExcerpt),
