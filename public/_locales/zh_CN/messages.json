@@ -336,6 +336,63 @@
   "vocabulary_title": {
     "message": "Astra 词汇表"
   },
+  "vocabulary_weeklyDigestAriaLabel": {
+    "message": "本周本地学习小结"
+  },
+  "vocabulary_weeklyDigestEyebrow": {
+    "message": "每周小结 · 本地"
+  },
+  "vocabulary_weeklyDigestHeadlineSaved": {
+    "message": "本周你又收藏了新的可复习表达。"
+  },
+  "vocabulary_weeklyDigestHeadlineReviewed": {
+    "message": "本周你坚持了复习。"
+  },
+  "vocabulary_weeklyDigestHeadlineEmpty": {
+    "message": "保存或复习后，这里会生成你的每周小结。"
+  },
+  "vocabulary_weeklyDigestReviewCta": {
+    "message": "复习 $1",
+    "placeholders": { "1": { "content": "$1" } }
+  },
+  "vocabulary_weeklyDigestOpenReviewCta": {
+    "message": "去复习"
+  },
+  "vocabulary_weeklyDigestContinueCta": {
+    "message": "继续来源"
+  },
+  "vocabulary_weeklyDigestStatSaved": {
+    "message": "已保存"
+  },
+  "vocabulary_weeklyDigestStatReviewed": {
+    "message": "已复习"
+  },
+  "vocabulary_weeklyDigestStatSources": {
+    "message": "来源"
+  },
+  "vocabulary_weeklyDigestSourceLine": {
+    "message": "$1 · 保存 $2 · 复习 $3",
+    "placeholders": { "1": { "content": "$1" }, "2": { "content": "$2" }, "3": { "content": "$3" } }
+  },
+  "vocabulary_weeklyDigestCommonTopics": {
+    "message": "常见主题：$1",
+    "placeholders": { "1": { "content": "$1" } }
+  },
+  "vocabulary_weeklyDigestRepeatedVocabulary": {
+    "message": "反复出现的词：$1",
+    "placeholders": { "1": { "content": "$1" } }
+  },
+  "vocabulary_weeklyDigestRepeatedItem": {
+    "message": "$1（出现在 $2 个来源）",
+    "placeholders": { "1": { "content": "$1" }, "2": { "content": "$2" } }
+  },
+  "vocabulary_weeklyDigestContinueLabel": {
+    "message": "继续：$1 · $2",
+    "placeholders": { "1": { "content": "$1" }, "2": { "content": "$2" } }
+  },
+  "vocabulary_weeklyDigestPrivacy": {
+    "message": "隐私：此小结只使用数量、来源标题/类型、粗略主题和你已确认保存的词条——不包含网页正文、字幕或保存的片段。"
+  },
   "vocabulary_contextShowMore": {
     "message": "展开完整上下文"
   },
