@@ -283,6 +283,8 @@ function getLearningLoopEventLabel(event: LearningLoopEventName): string {
       return t("options_learningLoopEventDeepReadOpened")
     case "sentence_explained":
       return t("options_learningLoopEventSentenceExplained")
+    case "learning_feedback_submitted":
+      return "Learning feedback submitted"
     case "sentence_saved":
       return t("options_learningLoopEventSentenceSaved")
     case "saved_snippet_created":

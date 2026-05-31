@@ -14,6 +14,7 @@ const saveVocabularyEntryMock = vi.hoisted(() => vi.fn())
 const getDueVocabularyCountMock = vi.hoisted(() => vi.fn())
 const runInlineActionMock = vi.hoisted(() => vi.fn())
 const copyTextToClipboardMock = vi.hoisted(() => vi.fn())
+const recordLearningLoopEventMock = vi.hoisted(() => vi.fn())
 
 vi.mock("#imports", () => ({
   browser: browserMock,
@@ -38,6 +39,10 @@ vi.mock("../inline-actions", () => ({
 
 vi.mock("@/utils/dom/clipboard", () => ({
   copyTextToClipboard: copyTextToClipboardMock,
+}))
+
+vi.mock("@/utils/learning-loop-events", () => ({
+  recordLearningLoopEvent: recordLearningLoopEventMock,
 }))
 
 import { mountVideoTranscriptPanel, unmountVideoTranscriptPanel } from "./transcript-panel"
@@ -85,6 +90,9 @@ describe("video transcript panel Deep Read handoff", () => {
       .find((button) => button.textContent === "Transcript") as HTMLButtonElement | undefined
     expect(transcriptTab).toBeTruthy()
     transcriptTab?.click()
+
+    expect(document.querySelector("[data-astra-transcript-save-hint]")?.textContent)
+      .toContain("Save useful lines as Review cards")
 
     const saveSentence = Array.from(document.querySelectorAll("button"))
       .find((button) => button.textContent === "Save sentence") as HTMLButtonElement | undefined
@@ -182,5 +190,18 @@ describe("video transcript panel Deep Read handoff", () => {
 
     expect(panel.querySelector("[data-astra-transcript-no-captions-explanation]")?.textContent)
       .toContain("This subtitle means hello.")
+
+    const feedback = panel.querySelector('[data-astra-transcript-feedback="no-captions-paste"]') as HTMLElement | null
+    expect(feedback?.textContent).toContain("Was this useful?")
+
+    const notAccurate = panel.querySelector('[data-astra-transcript-feedback-rating="not_accurate"]') as HTMLButtonElement | null
+    expect(notAccurate).toBeTruthy()
+    notAccurate!.click()
+
+    expect(recordLearningLoopEventMock).toHaveBeenCalledWith("learning_feedback_submitted", {
+      surface: "no_captions_paste",
+      rating: "not_accurate",
+      cueStartBucket: null,
+    })
   })
 })

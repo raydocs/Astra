@@ -406,7 +406,7 @@ function updateVideoControlButton(): void {
   videoControlButton.title = status === "Off"
     ? "Translate subtitles with Astra"
     : status === "No captions"
-      ? "No captions available for this video."
+      ? "Astra could not find captions for this supported video. Open the transcript panel to paste a line for explanation."
       : "Toggle Astra subtitles"
   videoControlButton.innerHTML = `<span aria-hidden="true">✦</span><span>Astra</span><span data-astra-video-control-status>${status}</span>`
 }

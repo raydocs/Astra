@@ -37,3 +37,4 @@ coverage/
 prompt-exports/
 .playwright-mcp/
 .codex/
+.worktrees/

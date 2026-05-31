@@ -1055,6 +1055,7 @@ describe("FloatBall", () => {
     const shadow = host.shadowRoot as ShadowRoot
     const progressPill = shadow.querySelector('[data-testid="astra-translation-progress-pill"]') as HTMLDivElement | null
 
+    expect(progressPill?.textContent).toContain("Translating the visible part first. Keep reading.")
     expect(progressPill?.textContent).toContain("0/4")
     expect(progressPill?.textContent).not.toContain("14/38")
     expect(shadow.querySelector('div[title]')).not.toBeNull()

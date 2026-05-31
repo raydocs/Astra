@@ -151,6 +151,9 @@ function DigestPreview({ digest, sampleDeck }: { digest: MobileDigestSnapshot; s
     : "saved reading"
   const focusWords = digest.highlightedWords.length > 0 ? digest.highlightedWords.join(" · ") : "your saved words"
   const sentence = digest.highlightedSentences[0]
+  const reviewSuggestion = digest.nextReviewCount > 0
+    ? `${digest.nextReviewCount} saved card${digest.nextReviewCount === 1 ? "" : "s"} will be ready soon.`
+    : "Keep saving useful lines; Astra will bring them back when they are ready."
 
   return (
     <View style={styles.digestCard} accessibilityLabel="Weekly learning note">
@@ -163,12 +166,13 @@ function DigestPreview({ digest, sampleDeck }: { digest: MobileDigestSnapshot; s
       <Text style={styles.heroCopy}>
         {sampleDeck
           ? "After you sign in, Astra turns your web saves into a weekly learning note on this phone."
-          : `From ${sourceSummary}. ${digest.nextReviewCount > 0 ? `${digest.nextReviewCount} cards are ready soon.` : "Keep a light pace and review when ready."}`}
+          : `From ${sourceSummary}. ${reviewSuggestion}`}
       </Text>
       <View style={styles.digestDivider} />
       <Text style={styles.digestLabel}>Expressions to remember</Text>
       <Text style={styles.digestFocus}>{focusWords}</Text>
       {sentence ? <Text style={styles.digestSentence}>“{sentence}”</Text> : null}
+      {!sampleDeck ? <Text style={styles.digestNextStep}>Suggested review: start with Today, then return to the sources that gave you the most useful expressions.</Text> : null}
     </View>
   )
 }
@@ -276,6 +280,7 @@ const styles = StyleSheet.create({
   digestLabel: { color: colors.graphite, fontSize: 12, fontWeight: "800", letterSpacing: 1, textTransform: "uppercase" },
   digestFocus: { color: colors.ink, fontSize: 20, fontWeight: "700", lineHeight: 27 },
   digestSentence: { color: colors.graphite, fontSize: 15, fontStyle: "italic", lineHeight: 22 },
+  digestNextStep: { color: colors.graphite, fontSize: 14, lineHeight: 21 },
   reviewCard: { backgroundColor: colors.paperElevated, borderColor: colors.border, borderRadius: radii.card, borderWidth: 1, gap: spacing.md, padding: spacing.lg },
   sourceRow: { alignItems: "center", flexDirection: "row", flexWrap: "wrap", gap: spacing.sm },
   sourceBadge: { backgroundColor: "#F1E2C5", borderRadius: radii.pill, color: colors.ink, fontSize: 12, fontWeight: "800", overflow: "hidden", paddingHorizontal: spacing.md, paddingVertical: spacing.xs, textTransform: "uppercase" },
