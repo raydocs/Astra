@@ -2084,10 +2084,10 @@ export default function App() {
     session: authSession,
   })
   const accountSourceNote = accountSurfaceSource === "account_summary"
-    ? "Plan and daily quota mirror Astra account summary."
+    ? "Plan and daily reading mirror your Astra account."
     : accountSurfaceSource === "session_snapshot"
-      ? "Showing the last session snapshot until Astra account summary refresh succeeds."
-      : "Sign in to load Astra account plan and daily quota."
+      ? "Showing your most recent status until your Astra account refreshes."
+      : "Sign in to load your Astra plan and daily reading."
 
   const isSupportedVideoTab = isSupportedVideoUrl(activePageUrl)
   const videoNoteViewerBaseUrl = authSession?.relayBaseURL ?? configDraft.provider.relayBaseURL ?? ""

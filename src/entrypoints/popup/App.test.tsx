@@ -1812,7 +1812,7 @@ describe("popup App", () => {
     expect(container.textContent).toContain("Study progress sync: off · Optional · Daily stats stay local")
     expect(container.textContent).toContain("Learning continuity commit: synced")
     expect(container.textContent).toContain("Config, vocabulary, review schedules, reading history, and study progress continuity ready · Daily study stats stay local")
-    expect(container.textContent).toContain("Plan and daily quota mirror Astra account summary.")
+    expect(container.textContent).toContain("Plan and daily reading mirror your Astra account.")
   })
 
   const continuityCardStateCases: Array<[string, LearningContinuitySyncStatus, string, boolean]> = [

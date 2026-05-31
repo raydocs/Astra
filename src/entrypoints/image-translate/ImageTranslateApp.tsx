@@ -3,6 +3,7 @@ import { readConfig } from "@/utils/storage/config"
 import { DEFAULT_ASTRA_CONFIG, type ServiceMode } from "@/types/config"
 import { translateTexts } from "@/utils/translate/translate"
 import { getSafeAiUnavailableCopy } from "@/utils/copy-dictionary"
+import { shouldShowDebugDiagnostics } from "@/utils/dev-diagnostics"
 import type { TranslationPathSummary } from "@/utils/providers/routing-metadata"
 import {
   consumeImageTranslateHandoff,
@@ -580,7 +581,7 @@ export function ImageTranslateApp() {
         {translation && (
           <section data-testid="image-translation-result-panel" style={{ display: "grid", gap: 16 }}>
             <QualityTierCard summary={translation.qualitySummary} />
-            {translation.translationPathSummary && <PathMarkerCard summary={translation.translationPathSummary} />}
+            {translation.translationPathSummary && shouldShowDebugDiagnostics() && <PathMarkerCard summary={translation.translationPathSummary} />}
             <OverlayQualitySummary summary={translation.overlayQualitySummary} />
             <div role="group" aria-label="Image translation display mode" style={{ ...panelStyle, padding: 12, display: "flex", flexWrap: "wrap", gap: 8, alignItems: "center" }}>
               <strong style={{ color: "var(--astra-text-primary)" }}>View:</strong>

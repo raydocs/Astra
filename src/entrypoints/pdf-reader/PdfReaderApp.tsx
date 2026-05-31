@@ -12,6 +12,7 @@ import { useState, useCallback, useEffect, useRef } from "react"
 import { upsertOwnedPdfFromFileName, upsertOwnedPdfFromRemoteUrl } from "@/utils/storage/owned-reading"
 import { classifyPdfTranslationQuality, type TranslationQualitySummary } from "@/utils/ocr/image-translation"
 import { summarizeTranslationPathMarkers, type TranslationPathSummary } from "@/utils/providers/routing-metadata"
+import { shouldShowDebugDiagnostics } from "@/utils/dev-diagnostics"
 import {
   consumeDocumentFileHandoff,
   describeDocumentFileHandoffFailure,
@@ -330,7 +331,7 @@ export function PdfReaderApp() {
       )}
 
       {qualitySummary && <QualityTierCard summary={qualitySummary} />}
-      {pathSummary && <PathMarkerCard summary={pathSummary} />}
+      {pathSummary && shouldShowDebugDiagnostics() && <PathMarkerCard summary={pathSummary} />}
 
       {phase === "idle" && (
         <label
