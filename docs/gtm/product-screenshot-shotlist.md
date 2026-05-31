@@ -5,11 +5,11 @@ Use this when capturing README, landing, store, or launch visuals. Screenshots s
 ## Global rules
 
 - Prefer light theme.
-- Do not show provider/model/API/token/quota/relay controls.
+- Do not show implementation or advanced service controls.
 - Do not show dev/operator diagnostics.
 - Prefer the loop: understand → save → review.
 - Use supported videos wording when video appears.
-- Avoid implying all websites or all videos work.
+- Avoid implying universal webpage or video support.
 
 ## Shot 1 — Public landing / GitHub preview
 
@@ -24,7 +24,7 @@ Must show:
 
 Do not show:
 
-- provider/model/settings console.
+- advanced service/settings console.
 - unsupported platform claims.
 
 Suggested size: 1280×800.
