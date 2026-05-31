@@ -196,7 +196,7 @@ function getProgressLabel(snapshot: TranslationSnapshot): string {
   if (snapshot.phase === "stopping") return "Removing translation…"
   if (snapshot.lastError) return getSafeAiUnavailableCopy(snapshot.lastError, { siteEnabled: snapshot.site.enabled })
   if (snapshot.progress.failedBlocks > 0) return `${snapshot.progress.failedBlocks} paragraph${snapshot.progress.failedBlocks === 1 ? "" : "s"} need retry.`
-  return "Translating…"
+  return "Translating the visible part first. Keep reading."
 }
 
 function QuietProgressPill({ snapshot, fontScale }: { snapshot: TranslationSnapshot; fontScale: number }) {

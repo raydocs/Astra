@@ -1,5 +1,6 @@
 import { browser } from "#imports"
 import { copyTextToClipboard } from "@/utils/dom/clipboard"
+import { recordLearningLoopEvent } from "@/utils/learning-loop-events"
 import { getDueVocabularyCount, saveVocabularyEntry } from "@/utils/storage/vocabulary"
 import { buildVideoTimestampUrl } from "@/utils/video-timestamp-url"
 import { runInlineAction } from "../inline-actions"
@@ -57,6 +58,7 @@ let activeOptions: TranscriptPanelOptions | null = null
 let searchQuery = ""
 let activeTab: TranscriptPanelTab = "summary"
 let explanationByCueId = new Map<string, string>()
+let feedbackByExplanationKey = new Map<string, "helpful" | "not_accurate" | "too_hard">()
 let miniDictionary: { word: string; cueId: string; definition: string; languageHint: string; loading: boolean } | null = null
 let videoLearningSummary: VideoLearningSummary | null = null
 let savedVideoSentences: VideoNoteLearningItem[] = []
@@ -766,6 +768,52 @@ async function handleExplainPastedText(text: string): Promise<void> {
   }
 }
 
+function submitExplanationFeedback(params: {
+  key: string
+  rating: "helpful" | "not_accurate" | "too_hard"
+  surface: "transcript_cue" | "no_captions_paste"
+  cueStartMs?: number
+}): void {
+  feedbackByExplanationKey.set(params.key, params.rating)
+  recordLearningLoopEvent("learning_feedback_submitted", {
+    surface: params.surface,
+    rating: params.rating,
+    cueStartBucket: typeof params.cueStartMs === "number" ? Math.floor(params.cueStartMs / 30000) * 30 : null,
+  })
+  setPanelSuccess("Thanks — saved as learning feedback.")
+}
+
+function appendExplanationFeedback(parent: HTMLElement, params: { key: string; surface: "transcript_cue" | "no_captions_paste"; cueStartMs?: number }): void {
+  const selected = feedbackByExplanationKey.get(params.key)
+  const wrapper = document.createElement("span")
+  wrapper.dataset.astraTranscriptFeedback = params.key
+  wrapper.setAttribute("aria-label", "Was this explanation useful?")
+
+  const intro = document.createElement("span")
+  intro.textContent = selected ? "Feedback saved" : "Was this useful?"
+  wrapper.appendChild(intro)
+
+  const actions: Array<["helpful" | "not_accurate" | "too_hard", string]> = [
+    ["helpful", "Helpful"],
+    ["not_accurate", "Not accurate"],
+    ["too_hard", "Too hard"],
+  ]
+  for (const [rating, label] of actions) {
+    const button = document.createElement("button")
+    button.type = "button"
+    button.dataset.astraTranscriptFeedbackRating = rating
+    button.textContent = label
+    button.disabled = selected === rating
+    button.addEventListener("click", (event) => {
+      event.stopPropagation()
+      submitExplanationFeedback({ ...params, rating })
+    })
+    wrapper.appendChild(button)
+  }
+
+  parent.appendChild(wrapper)
+}
+
 async function handleSaveCue(cue: YouTubeTranscriptCueSnapshot): Promise<void> {
   const sourceUrl = buildVideoTimestampUrl(latestSnapshot?.pageUrl ?? window.location.href, cue.startMs)
   const savedItem: VideoNoteLearningItem = {
@@ -1130,6 +1178,7 @@ function renderTranscriptPanel(): void {
       explanation.dataset.astraTranscriptNoCaptionsExplanation = "true"
       explanation.textContent = pastedSubtitleExplanation
       fallback.appendChild(explanation)
+      appendExplanationFeedback(fallback, { key: "no-captions-paste", surface: "no_captions_paste" })
     }
 
     panelRoot.appendChild(fallback)
@@ -1194,6 +1243,11 @@ function renderTranscriptPanel(): void {
 
   const list = document.createElement("div")
   list.dataset.astraTranscriptList = "true"
+
+  const saveHint = document.createElement("div")
+  saveHint.dataset.astraTranscriptSaveHint = "true"
+  saveHint.textContent = localizedLabel("transcriptSaveHint", "Save useful lines as Review cards — Astra keeps the video time so you can return here later.")
+  panelRoot.appendChild(saveHint)
 
   displayedCues.forEach((cue) => {
     const originalIndex = snapshot?.cues.findIndex((item) => item.id === cue.id) ?? -1
@@ -1269,6 +1323,7 @@ function renderTranscriptPanel(): void {
       explanationEl.dataset.astraTranscriptExplanation = "true"
       explanationEl.textContent = explanation
       row.appendChild(explanationEl)
+      appendExplanationFeedback(row, { key: `cue:${cue.id}`, surface: "transcript_cue", cueStartMs: cue.startMs })
     }
 
     list.appendChild(row)
@@ -1310,6 +1365,7 @@ export function unmountVideoTranscriptPanel(): void {
   searchQuery = ""
   activeTab = "summary"
   explanationByCueId = new Map()
+  feedbackByExplanationKey = new Map()
   miniDictionary = null
   videoLearningSummary = null
   savedVideoSentences = []

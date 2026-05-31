@@ -1460,7 +1460,7 @@ describe("video platform subtitle translation", () => {
     expect(container.dataset.astraCaptionStatus).toBe("no-captions")
     const control = document.querySelector("#astra-youtube-player-button") as HTMLButtonElement | null
     expect(control?.textContent).toContain("No captions")
-    expect(control?.title).toBe("No captions available for this video.")
+    expect(control?.title).toBe("Astra could not find captions for this supported video. Open the transcript panel to paste a line for explanation.")
   })
 
   it("binds the YouTube hybrid pipeline to the video in the same player subtree", async () => {

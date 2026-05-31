@@ -16,6 +16,7 @@ export type LearningLoopEventName =
   | "onboarding_completed"
   | "deep_read_opened"
   | "sentence_explained"
+  | "learning_feedback_submitted"
   | "sentence_saved"
   | "saved_snippet_created"
   | "review_opened"
