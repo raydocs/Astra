@@ -1308,6 +1308,30 @@ export function retryFailedBlocks(options: { serviceMode?: ServiceMode } = {}): 
   scheduleDrain(currentSession)
 }
 
+/**
+ * Translate the remaining below-fold blocks now, instead of waiting for the
+ * reader to scroll each one into view. Opt-in only (the calm "Translate the
+ * rest" affordance) — page translation stays viewport-first by default.
+ */
+export function drainAllBlocks(options: { serviceMode?: ServiceMode } = {}): void {
+  if (!currentSession) return
+  if (options.serviceMode) {
+    currentSession.serviceMode = options.serviceMode
+  }
+  const idleElements = currentSession.registry.getElementsByState("idle")
+  if (idleElements.length === 0) return
+
+  currentSession.registry.markQueued(idleElements)
+  currentSession.queue.push(...idleElements)
+  sortQueueByViewportPriority(currentSession)
+  const session = currentSession
+  idleElements.forEach((element) => {
+    showQueuedLoading(session, element)
+  })
+  publishSessionState(currentSession, "running")
+  scheduleDrain(currentSession)
+}
+
 export async function togglePageTranslation(
   overrides: TranslationOverrides = {},
 ): Promise<TranslationSnapshot> {

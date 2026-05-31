@@ -4,7 +4,7 @@ import { browser } from "#imports"
 import { ErrorBoundary } from "@/components/ErrorBoundary"
 import { t } from "@/utils/i18n"
 import { getContentScopeLabel, getReadingModeLabel, getSafeAiUnavailableCopy, getServiceModeLabel } from "@/utils/copy-dictionary"
-import { retryFailedBlocks, stopPageTranslation, subscribePageTranslationState, translatePageElements } from "../page-translate"
+import { drainAllBlocks, retryFailedBlocks, stopPageTranslation, subscribePageTranslationState, translatePageElements } from "../page-translate"
 import { toggleCurrentTabTranslation } from "@/utils/extension/messages"
 import { IDLE_TRANSLATION_SNAPSHOT, type TranslationSnapshot } from "@/types/translation"
 import { getLearningState, subscribeLearningState, type LearningStateSnapshot } from "../learning-state"
@@ -191,11 +191,26 @@ function getQuietStatusVisualState(
   }
 }
 
+// The viewport batch is translated, but below-fold paragraphs are still
+// deferred until the reader scrolls them into view. Page translation is
+// viewport-first, so this is a calm steady state, not "stuck".
+function isVisiblePartSettled(snapshot: TranslationSnapshot): boolean {
+  const p = snapshot.progress
+  const deferred = Math.max(0, p.totalBlocks - p.translatedBlocks - p.queuedBlocks - p.inFlightBlocks - p.failedBlocks)
+  return snapshot.phase === "running"
+    && !snapshot.lastError
+    && p.failedBlocks === 0
+    && p.queuedBlocks === 0
+    && p.inFlightBlocks === 0
+    && deferred > 0
+}
+
 function getProgressLabel(snapshot: TranslationSnapshot): string {
   if (snapshot.phase === "starting") return "Preparing translation…"
   if (snapshot.phase === "stopping") return "Removing translation…"
   if (snapshot.lastError) return getSafeAiUnavailableCopy(snapshot.lastError, { siteEnabled: snapshot.site.enabled })
   if (snapshot.progress.failedBlocks > 0) return `${snapshot.progress.failedBlocks} paragraph${snapshot.progress.failedBlocks === 1 ? "" : "s"} need retry.`
+  if (isVisiblePartSettled(snapshot)) return "Visible part done — keep scrolling for the rest."
   return "Translating the visible part first. Keep reading."
 }
 
@@ -294,6 +309,10 @@ function QuietProgressPill({ snapshot, fontScale }: { snapshot: TranslationSnaps
       {hasFailures ? (
         <button type="button" onClick={() => retryFailedBlocks()} style={progressButtonStyle(fontScale)}>
           Retry
+        </button>
+      ) : isVisiblePartSettled(snapshot) ? (
+        <button type="button" data-testid="astra-translate-rest" onClick={() => drainAllBlocks()} style={progressButtonStyle(fontScale)}>
+          Translate the rest
         </button>
       ) : (
         <button type="button" onClick={stopOrCancel} style={progressButtonStyle(fontScale)}>

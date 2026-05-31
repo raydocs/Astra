@@ -10,6 +10,7 @@ import { createMockBrowser, setMockBrowser } from "../../../../test/utils/mockBr
 const {
   subscribePageTranslationStateMock,
   retryFailedBlocksMock,
+  drainAllBlocksMock,
   stopPageTranslationMock,
   translatePageElementsMock,
   subscribeLearningStateMock,
@@ -24,6 +25,7 @@ const {
 } = vi.hoisted(() => ({
   subscribePageTranslationStateMock: vi.fn(),
   retryFailedBlocksMock: vi.fn(),
+  drainAllBlocksMock: vi.fn(),
   stopPageTranslationMock: vi.fn(),
   translatePageElementsMock: vi.fn(),
   subscribeLearningStateMock: vi.fn(),
@@ -40,6 +42,7 @@ const {
 vi.mock("../page-translate", () => ({
   subscribePageTranslationState: subscribePageTranslationStateMock,
   retryFailedBlocks: retryFailedBlocksMock,
+  drainAllBlocks: drainAllBlocksMock,
   stopPageTranslation: stopPageTranslationMock,
   translatePageElements: translatePageElementsMock,
 }))
@@ -379,6 +382,57 @@ describe("FloatBall", () => {
 
     expect(button.textContent).toContain("Astra · Done")
     expect(button.textContent).not.toContain("2/2")
+  })
+
+  it("offers Translate the rest when the visible part is done but blocks remain deferred", async () => {
+    subscribePageTranslationStateMock.mockImplementation((listener: (snapshot: TranslationSnapshot) => void) => {
+      listener(snap({
+        phase: "running",
+        progress: { totalBlocks: 40, translatedBlocks: 8, queuedBlocks: 0, inFlightBlocks: 0, failedBlocks: 0 },
+      }))
+      return () => {}
+    })
+
+    await act(async () => {
+      mountFloatBall()
+      await Promise.resolve()
+      await Promise.resolve()
+    })
+
+    const host = document.getElementById("astra-float-ball-host") as HTMLDivElement
+    const pill = host.shadowRoot?.querySelector('[data-testid="astra-translation-progress-pill"]') as HTMLElement | null
+    expect(pill).toBeTruthy()
+    expect(pill?.textContent).toContain("Visible part done")
+    const translateRest = pill?.querySelector('[data-testid="astra-translate-rest"]') as HTMLButtonElement | null
+    expect(translateRest).toBeTruthy()
+    expect(pill?.textContent).not.toContain("Stop")
+
+    await act(async () => {
+      translateRest?.click()
+      await Promise.resolve()
+    })
+    expect(drainAllBlocksMock).toHaveBeenCalledTimes(1)
+  })
+
+  it("keeps Stop (not Translate the rest) while blocks are still in flight", async () => {
+    subscribePageTranslationStateMock.mockImplementation((listener: (snapshot: TranslationSnapshot) => void) => {
+      listener(snap({
+        phase: "running",
+        progress: { totalBlocks: 40, translatedBlocks: 8, queuedBlocks: 4, inFlightBlocks: 2, failedBlocks: 0 },
+      }))
+      return () => {}
+    })
+
+    await act(async () => {
+      mountFloatBall()
+      await Promise.resolve()
+      await Promise.resolve()
+    })
+
+    const host = document.getElementById("astra-float-ball-host") as HTMLDivElement
+    const pill = host.shadowRoot?.querySelector('[data-testid="astra-translation-progress-pill"]') as HTMLElement | null
+    expect(pill?.querySelector('[data-testid="astra-translate-rest"]')).toBeNull()
+    expect(pill?.textContent).toContain("Stop")
   })
 
   it("surfaces a protected embedded-frame boundary while translation is active", async () => {
