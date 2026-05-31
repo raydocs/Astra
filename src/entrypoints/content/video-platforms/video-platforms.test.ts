@@ -883,7 +883,7 @@ describe("video platform subtitle translation", () => {
     }))
     expect(panel.textContent).toContain("翻译结果")
 
-    getRowButton("Save sentence").click()
+    getRowButton("Save this line").click()
     await flushPromises(4)
     expect(saveVocabularyEntryMock).toHaveBeenCalledWith(expect.objectContaining({
       text: "Hello world",
