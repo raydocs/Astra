@@ -101,6 +101,15 @@
   "actionSavePhrase": {
     "message": "Save phrase"
   },
+  "resultFeedbackHelpful": {
+    "message": "Helpful"
+  },
+  "resultFeedbackInaccurate": {
+    "message": "Not accurate"
+  },
+  "resultFeedbackThanks": {
+    "message": "Thanks for the feedback."
+  },
   "actionMore": {
     "message": "More"
   },

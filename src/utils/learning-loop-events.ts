@@ -17,6 +17,7 @@ export type LearningLoopEventName =
   | "deep_read_opened"
   | "sentence_explained"
   | "sentence_saved"
+  | "result_feedback_submitted"
   | "saved_snippet_created"
   | "review_opened"
   | "review_answered"
@@ -242,6 +243,7 @@ export const LEARNING_LOOP_EVENT_NAMES: LearningLoopEventName[] = [
   "deep_read_opened",
   "sentence_explained",
   "sentence_saved",
+  "result_feedback_submitted",
   "saved_snippet_created",
   "review_opened",
   "review_answered",

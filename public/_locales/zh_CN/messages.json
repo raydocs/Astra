@@ -101,6 +101,15 @@
   "actionSavePhrase": {
     "message": "收藏这句"
   },
+  "resultFeedbackHelpful": {
+    "message": "有帮助"
+  },
+  "resultFeedbackInaccurate": {
+    "message": "不准确"
+  },
+  "resultFeedbackThanks": {
+    "message": "感谢反馈。"
+  },
   "actionMore": {
     "message": "更多"
   },

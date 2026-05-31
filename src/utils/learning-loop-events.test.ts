@@ -319,6 +319,7 @@ describe("learning loop events", () => {
     expect(LEARNING_LOOP_EVENT_NAMES).toEqual(expect.arrayContaining([
       "extension_installed",
       "onboarding_started",
+      "result_feedback_submitted",
       "sample_started",
       "first_value_seen",
       "onboarding_completed",
