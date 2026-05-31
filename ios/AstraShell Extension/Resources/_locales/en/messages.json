@@ -98,6 +98,9 @@
   "actionSaved": {
     "message": "\u2713 Saved"
   },
+  "actionSavePhrase": {
+    "message": "Save phrase"
+  },
   "actionMore": {
     "message": "More"
   },
@@ -893,7 +896,7 @@
     }
   },
   "review_todayProgressTitle": {
-    "message": "Today's study loop (all pages)"
+    "message": "Today's study loop (all sources)"
   },
   "review_currentPageProgressTitle": {
     "message": "Current page loop"
@@ -915,6 +918,30 @@
   },
   "review_openSourcePage": {
     "message": "Open source page"
+  },
+  "review_openVideoAtTimestamp": {
+    "message": "Open video at $1",
+    "placeholders": {
+      "1": { "content": "$1" }
+    }
+  },
+  "review_summaryStreakLine": {
+    "message": "You came back $1 days in a row.",
+    "placeholders": {
+      "1": { "content": "$1" }
+    }
+  },
+  "review_summaryComeBackTomorrow": {
+    "message": "Come back tomorrow to keep it going."
+  },
+  "review_summaryDueTomorrowLine": {
+    "message": "$1 cards are waiting for you tomorrow.",
+    "placeholders": {
+      "1": { "content": "$1" }
+    }
+  },
+  "review_backToLibrary": {
+    "message": "Back to Library"
   },
   "review_showFullContext": {
     "message": "Show full context"
@@ -1361,7 +1388,7 @@
     "message": "Learning loop activity"
   },
   "options_learningLoopHint": {
-    "message": "Local-only diagnostics for the popup → Deep Read → vocabulary/review funnel on this device."
+    "message": "Diagnostics for the popup → Deep Read → vocabulary/review funnel, kept on this device."
   },
   "options_learningLoopLoading": {
     "message": "Loading learning loop activity..."
@@ -1487,7 +1514,7 @@
     "message": "Immersive"
   },
   "copyProValue": {
-    "message": "Pro includes longer videos, deeper explanations, synced learning history, and unlimited review cards."
+    "message": "Pro includes longer videos, deeper explanations, synced learning history, and a larger review library."
   },
   "copyDailyFreeReached": {
     "message": "You’ve used today’s free reading. It refreshes tomorrow, or Pro keeps longer videos and deeper explanations going."

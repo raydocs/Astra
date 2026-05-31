@@ -45,7 +45,7 @@ export const COPY_DICTIONARY = {
   syncIssue: "Your learning record is saved on this device for now.",
   supportPrivacy: "We’ll include technical details, not your page text.",
   proLongContent: "Longer videos and deeper explanations are included with Pro.",
-  proValue: "Pro includes longer videos, deeper explanations, synced learning history, and unlimited review cards.",
+  proValue: "Pro includes longer videos, deeper explanations, synced learning history, and a larger review library.",
   dailyFreeReached: "You’ve used today’s free reading. It refreshes tomorrow, or Pro keeps longer videos and deeper explanations going.",
   continueTomorrow: "You can continue tomorrow, or upgrade for longer reading.",
   proBusy: "Astra is processing a lot of long content. Some tasks may take longer.",

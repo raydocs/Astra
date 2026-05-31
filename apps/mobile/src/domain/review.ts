@@ -39,6 +39,22 @@ export interface ReviewCard {
   priority: number
 }
 
+/**
+ * The link that returns a learner to where they saved an item: a saved video
+ * moment opens the source at its timestamp; everything else opens the bare
+ * source URL. Used by both the Today review card and the Library "Open source".
+ */
+export function buildSavedItemSourceUrl(
+  item: Pick<SavedItem, "videoTimestampMs">,
+  source: Pick<SourceContent, "type" | "url"> | undefined,
+): string | undefined {
+  if (!source?.url) return undefined
+  if (source.type === "video" && item.videoTimestampMs != null) {
+    return buildVideoTimestampUrl(source.url, item.videoTimestampMs)
+  }
+  return source.url
+}
+
 export interface MobileReviewCardViewModel {
   cardId: string
   itemId: string
@@ -130,9 +146,7 @@ export function buildTodayReviewQueue(snapshot: MobileReviewSnapshot, now = new 
         context: item.context ?? "",
         sourceTitle: source.title,
         sourceType: source.type,
-        sourceUrl: item.videoTimestampMs != null && source.url
-          ? buildVideoTimestampUrl(source.url, item.videoTimestampMs)
-          : source.url,
+        sourceUrl: buildSavedItemSourceUrl(item, source),
         dueAt: card.dueAt,
         state: card.state,
       } satisfies MobileReviewCardViewModel

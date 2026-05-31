@@ -75,6 +75,46 @@ describe("vocabulary storage", () => {
     expect(entries[0].sourceContext?.surface).toBe("sample_lesson")
   })
 
+  it("keeps the YouTube ?v= id on a saved video moment so review can return to it", async () => {
+    await saveVocabularyEntry({
+      text: "serendipity",
+      translation: "意外发现",
+      url: "https://www.youtube.com/watch?v=abc123&list=PLxyz&t=42s",
+      hostname: "www.youtube.com",
+      sourceContext: {
+        surface: "video_transcript",
+        pageTitle: "How to learn fast",
+        pageUrl: "https://www.youtube.com/watch?v=abc123&list=PLxyz",
+        hostname: "www.youtube.com",
+        videoTimestampMs: 42000,
+        sentenceText: "Serendipity favors the prepared mind.",
+      },
+    })
+
+    const [saved] = await getVocabularyEntries()
+    // The replay identity (?v=) survives the save so the Review "return to this
+    // moment" link works; tracking params (list) are still dropped.
+    expect(saved.sourceContext?.pageUrl).toBe("https://www.youtube.com/watch?v=abc123")
+  })
+
+  it("strips the whole query from a non-video page save for privacy", async () => {
+    await saveVocabularyEntry({
+      text: "ubiquitous",
+      translation: "无处不在的",
+      url: "https://news.example.com/story?utm_source=x&id=99",
+      hostname: "news.example.com",
+      sourceContext: {
+        surface: "selection_toolbar",
+        pageTitle: "A story",
+        pageUrl: "https://news.example.com/story?utm_source=x&id=99",
+        hostname: "news.example.com",
+      },
+    })
+
+    const [saved] = await getVocabularyEntries()
+    expect(saved.sourceContext?.pageUrl).toBe("https://news.example.com/story")
+  })
+
   it("deduplicates entries with same text and url", async () => {
     await saveVocabularyEntry({
       text: "hello",

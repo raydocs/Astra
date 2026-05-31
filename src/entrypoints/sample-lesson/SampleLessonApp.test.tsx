@@ -163,6 +163,8 @@ describe("SampleLessonApp", () => {
       .toContain("First review complete")
     expect(container.querySelector('[data-testid="sample-lesson-complete-source-handoff"]')?.textContent)
       .toContain("sample source")
+    expect(container.querySelector('[data-testid="sample-lesson-real-page-hint"]')?.textContent)
+      .toContain("supported video")
     expect(recordLearningLoopEventMock).toHaveBeenCalledWith("review_session_completed", expect.objectContaining({
       source: "sample_lesson",
       cardCount: 3,
@@ -242,10 +244,10 @@ describe("SampleLessonApp", () => {
       await Promise.resolve()
     })
     await act(async () => {
-      buttonByText("Open Library")?.click()
+      buttonByText("Open Review")?.click()
       await Promise.resolve()
     })
 
-    expect(browser.tabs.create).toHaveBeenCalledWith({ url: "/vocabulary.html" })
+    expect(browser.tabs.create).toHaveBeenCalledWith({ url: "/vocabulary.html?tab=review" })
   })
 })

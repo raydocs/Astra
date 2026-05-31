@@ -1980,7 +1980,7 @@ export default function VocabularyApp() {
         {activeTab === "review" && (
           <>
             {accountContinuityAuthHydrated && renderAccountContinuityProofCard("vocabulary-review-continuity-proof", vocabularyReviewProofMoment)}
-            <ReviewMode />
+            <ReviewMode onBackToLibrary={() => setActiveTab("list")} />
           </>
         )}
 

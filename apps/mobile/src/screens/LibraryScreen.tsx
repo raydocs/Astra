@@ -2,7 +2,7 @@ import { useMemo, useState } from "react"
 import { Linking, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native"
 
 import { MIN_TOUCH_TARGET_STYLE, TOUCH_TARGET_HIT_SLOP } from "../domain/mobileAccessibility"
-import { sampleMobileReviewSnapshot, type MobileReviewSnapshot, type SavedItem, type SourceContent } from "../domain/review"
+import { buildSavedItemSourceUrl, sampleMobileReviewSnapshot, type MobileReviewSnapshot, type SavedItem, type SourceContent } from "../domain/review"
 import { colors, radii, spacing } from "../theme"
 
 interface LibraryScreenProps {
@@ -176,6 +176,7 @@ function Section(props: { title: string; count: number }) {
 }
 
 export function LibraryRow(props: { item: SavedItem; source: SourceContent | undefined; onShare?: (item: SavedItem, source: SourceContent | undefined) => void; onSpeak?: (item: SavedItem) => void }) {
+  const itemSourceUrl = buildSavedItemSourceUrl(props.item, props.source)
   return (
     <View style={styles.row}>
       <Text style={styles.rowTitle}>{props.item.text}</Text>
@@ -191,6 +192,11 @@ export function LibraryRow(props: { item: SavedItem; source: SourceContent | und
         {props.onSpeak ? (
           <Pressable accessibilityRole="button" accessibilityLabel={`Speak ${props.item.text}`} accessibilityHint="Read this saved expression aloud" hitSlop={TOUCH_TARGET_HIT_SLOP} style={styles.rowShareButton} onPress={() => props.onSpeak?.(props.item)}>
             <Text style={styles.rowShareButtonText}>Speak</Text>
+          </Pressable>
+        ) : null}
+        {itemSourceUrl ? (
+          <Pressable accessibilityRole="link" accessibilityLabel={`Open source for ${props.item.text}`} accessibilityHint="Open where you saved this — at the saved moment for videos" hitSlop={TOUCH_TARGET_HIT_SLOP} style={styles.rowShareButton} onPress={() => openSourceUrl(itemSourceUrl)}>
+            <Text style={styles.rowShareButtonText}>Open source</Text>
           </Pressable>
         ) : null}
       </View>

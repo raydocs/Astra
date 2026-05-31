@@ -37,7 +37,12 @@ vi.mock("./handoff", () => ({
   IMAGE_TRANSLATE_HANDOFF_QUERY_PARAM: "handoff",
 }))
 
+vi.mock("@/utils/dev-diagnostics", () => ({
+  shouldShowDebugDiagnostics: vi.fn(() => true),
+}))
+
 import { ImageTranslateApp } from "./ImageTranslateApp"
+import { shouldShowDebugDiagnostics } from "@/utils/dev-diagnostics"
 
 function createPathSummary() {
   return summarizeTranslationPathMarkers([
@@ -82,6 +87,7 @@ describe("ImageTranslateApp", () => {
 
   beforeEach(async () => {
     vi.clearAllMocks()
+    vi.mocked(shouldShowDebugDiagnostics).mockReturnValue(true)
     window.history.replaceState(null, "", "/image-translate.html")
     readConfigMock.mockResolvedValue({ ...DEFAULT_ASTRA_CONFIG, targetLang: "ja", serviceMode: "balanced" })
     translateTextsMock.mockResolvedValue({ ok: true, translations: ["こんにちは Astra", "メモ"] })
@@ -209,6 +215,23 @@ describe("ImageTranslateApp", () => {
     expect(card?.textContent).toContain("Enhanced/Astra relay path")
     expect(card?.textContent).toContain("Fallback path")
     expect(card?.textContent).toContain("Direct failed; Astra relay completed the batch.")
+  })
+
+  it("hides the routing path card from ordinary users when diagnostics are off", async () => {
+    vi.mocked(shouldShowDebugDiagnostics).mockReturnValue(false)
+    translateTextsMock.mockResolvedValueOnce({
+      ok: true,
+      translations: ["こんにちは Astra", "メモ"],
+      pathSummary: createPathSummary(),
+    })
+
+    await upload(new File(["<svg><text>Hello Astra</text><text>Note without box</text></svg>"], "path-marker.svg", { type: "image/svg+xml" }))
+
+    // The translation result still renders, but the relay/direct routing diagnostics
+    // card (and its forbidden "relay path" wording) is gated away for ordinary users.
+    expect(container.querySelector('[data-testid="image-translation-result-panel"]')).not.toBeNull()
+    expect(container.querySelector('[data-testid="image-translation-path-marker-card"]')).toBeNull()
+    expect(container.textContent).not.toContain("Astra relay path")
   })
 
   it("renders only safe overlay rows and badges every risky fallback reason", async () => {

@@ -2,6 +2,7 @@ import { useEffect, useState } from "react"
 import { browser } from "#imports"
 import { commitLearningContinuitySync } from "@/utils/extension/messages"
 import { recordLearningLoopEvent } from "@/utils/learning-loop-events"
+import { buildFocusedReviewUrl } from "@/utils/review-link"
 import { buildReferralInvite, buildSentenceShareCard, type AstraGrowthSharePayload } from "@/utils/share/sentence-card"
 import { upsertOwnedArticleFromUrl } from "@/utils/storage/owned-reading"
 import { saveVocabularyEntry } from "@/utils/storage/vocabulary"
@@ -103,8 +104,11 @@ const secondaryButtonStyle: React.CSSProperties = {
   cursor: "pointer",
 }
 
-function openVocabularyLibrary() {
-  void browser.tabs.create({ url: browser.runtime.getURL("/vocabulary.html" as "/popup.html") })
+function openReviewQueue() {
+  // Land directly on the Review queue (the 3 sample cards are due now), so the
+  // understand → save → review loop visibly closes instead of dropping the user
+  // on the default list tab.
+  void browser.tabs.create({ url: buildFocusedReviewUrl("") })
 }
 
 async function shareGrowthPayload(payload: AstraGrowthSharePayload): Promise<"shared" | "copied" | "unavailable"> {
@@ -319,7 +323,13 @@ export default function SampleLessonApp() {
                 You have finished the sample loop: understand → save → review. Your next real page can build on the same Library and Review queue.
               </p>
               <div data-testid="sample-lesson-complete-source-handoff" style={{ padding: "10px 12px", borderRadius: 12, background: "var(--astra-info-bg)", border: "1px solid var(--astra-info-border)", color: "var(--astra-text-secondary)", fontSize: 12, lineHeight: 1.5, margin: "12px 0" }}>
-                Open Library to see the sample source and its linked review card.
+                Open Review to find your 3 saved cards waiting, linked back to the sample source.
+              </div>
+              <div data-testid="sample-lesson-real-page-hint" style={{ padding: "10px 12px", borderRadius: 12, background: "var(--astra-bg-sunken)", border: "1px solid var(--astra-border)", color: "var(--astra-text-secondary)", fontSize: 12, lineHeight: 1.5, margin: "12px 0" }}>
+                <strong style={{ color: "var(--astra-text-primary)" }}>Next, try it on a real page.</strong>
+                <div style={{ marginTop: 4 }}>
+                  Open an English article or a supported video, then use the Astra toolbar to translate, explain, and save — it builds the same Library and Review queue.
+                </div>
               </div>
               <div data-testid="sample-lesson-growth-card" style={{ padding: "10px 12px", borderRadius: 12, background: "var(--astra-bg-elevated)", border: "1px solid var(--astra-border)", color: "var(--astra-text-secondary)", fontSize: 12, lineHeight: 1.5, margin: "12px 0" }}>
                 <strong style={{ color: "var(--astra-text-primary)" }}>Share the result, not your history.</strong>
@@ -333,8 +343,8 @@ export default function SampleLessonApp() {
                 )}
               </div>
               <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                <button type="button" style={primaryButtonStyle} onClick={openVocabularyLibrary}>
-                  Open Library
+                <button type="button" style={primaryButtonStyle} onClick={openReviewQueue}>
+                  Open Review
                 </button>
                 <button type="button" style={secondaryButtonStyle} onClick={() => void shareSentenceCard()}>
                   Share sentence card

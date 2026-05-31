@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import { createMockBrowser, setMockBrowser } from "../../../test/utils/mockBrowser"
 import { createTranslationPathMarker, summarizeTranslationPathMarkers } from "@/utils/providers/routing-metadata"
 import { PdfReaderApp } from "./PdfReaderApp"
+import { shouldShowDebugDiagnostics } from "@/utils/dev-diagnostics"
 
 const { extractPdfPagesMock, translatePdfPageMock, consumeDocumentFileHandoffMock, readDocumentFileBytesMock } = vi.hoisted(() => ({
   extractPdfPagesMock: vi.fn(),
@@ -30,6 +31,10 @@ vi.mock("@/utils/reading/document-file-handoff", () => ({
   readDocumentFileBytes: readDocumentFileBytesMock,
   DOCUMENT_FILE_HANDOFF_FAILURE_QUERY_PARAM: "handoffFailure",
   DOCUMENT_FILE_HANDOFF_QUERY_PARAM: "handoffToken",
+}))
+
+vi.mock("@/utils/dev-diagnostics", () => ({
+  shouldShowDebugDiagnostics: vi.fn(() => true),
 }))
 
 function createPdfPage(text: string, pageNumber = 1) {
@@ -90,6 +95,7 @@ describe("PdfReaderApp", () => {
 
   beforeEach(async () => {
     vi.clearAllMocks()
+    vi.mocked(shouldShowDebugDiagnostics).mockReturnValue(true)
     window.history.replaceState(null, "", "/pdf-reader.html")
     setMockBrowser(createMockBrowser())
     extractPdfPagesMock.mockResolvedValue([
@@ -285,6 +291,25 @@ describe("PdfReaderApp", () => {
     expect(card?.textContent).toContain("Enhanced/Astra relay path")
     expect(card?.textContent).toContain("Fallback path")
     expect(card?.textContent).toContain("Direct failed; Astra relay completed the batch.")
+  })
+
+  it("hides the routing path card from ordinary users when diagnostics are off", async () => {
+    vi.mocked(shouldShowDebugDiagnostics).mockReturnValue(false)
+    translatePdfPageMock.mockResolvedValueOnce({
+      translations: [
+        { sourceIndex: 0, sourceText: "Bonjour Astra", translation: "你好 Astra" },
+        { sourceIndex: 1, sourceText: "Menu du jour", translation: "今日菜单" },
+      ],
+      pathSummary: createPathSummary(),
+    })
+
+    await upload(new File(["%PDF-1.4"], "path-marker.pdf", { type: "application/pdf" }))
+
+    // The bilingual PDF result still renders; only the relay/direct routing
+    // diagnostics card is gated away for ordinary users.
+    expect(container.querySelector('[data-testid="pdf-reader-quality-tier-card"]')).not.toBeNull()
+    expect(container.querySelector('[data-testid="pdf-reader-path-marker-card"]')).toBeNull()
+    expect(container.textContent).not.toContain("Astra relay path")
   })
 
   it("ignores a stale extraction result after a newer load starts", async () => {

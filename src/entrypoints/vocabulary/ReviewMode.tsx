@@ -10,7 +10,7 @@ import type { SrsFields, BoxDistribution, ReviewGrade } from "@/utils/srs/leitne
 import { buildVocabularyReviewStudyEvent, deriveStudyLoopViewModel, getStudyProgress, recordStudyEvent, type PersonalizedTeachingStrategy, type StudyLoopViewModel, type StudyStep } from "@/utils/storage/study-progress"
 import { deriveVocabularySourceDisplay, getPageReviewVocabularyEntries } from "@/utils/storage/vocabulary-core"
 import type { OwnedReadingItem } from "@/utils/storage/owned-reading"
-import { buildVideoTimestampUrl } from "@/utils/video-timestamp-url"
+import { buildVideoTimestampUrl, formatVideoTimestamp } from "@/utils/video-timestamp-url"
 import {
   buildOwnedReadingResumeTarget,
   describeOwnedReadingProgress,
@@ -173,6 +173,36 @@ function buildVideoTimestampReturnUrl(entry?: VocabularyEntry | null): string | 
   return buildVideoTimestampUrl(baseUrl, timestampMs)
 }
 
+const REVIEW_DAY_MS = 24 * 60 * 60 * 1000
+
+// Soft review streak: consecutive days (ending today, or yesterday if today has no
+// review yet) with at least one review. Returns 0 past that, so the UI shows a gentle
+// "come back tomorrow" instead of any "you broke your streak" pressure. Mirrors
+// apps/mobile/src/domain/streak.ts computeReviewStreak.
+function computeReviewStreakDays(reviewTimestampsMs: number[], nowMs: number): number {
+  const days = new Set<number>()
+  for (const ts of reviewTimestampsMs) {
+    if (Number.isFinite(ts) && ts > 0) days.add(Math.floor(ts / REVIEW_DAY_MS))
+  }
+  if (days.size === 0) return 0
+  const today = Math.floor(nowMs / REVIEW_DAY_MS)
+  let anchor: number
+  if (days.has(today)) anchor = today
+  else if (days.has(today - 1)) anchor = today - 1
+  else return 0
+  let streak = 0
+  for (let day = anchor; days.has(day); day -= 1) streak += 1
+  return streak
+}
+
+// Count cards whose next review falls within tomorrow's day window.
+function countDueTomorrow(nextReviewTimestampsMs: number[], nowMs: number): number {
+  const today = Math.floor(nowMs / REVIEW_DAY_MS)
+  const start = (today + 1) * REVIEW_DAY_MS
+  const end = (today + 2) * REVIEW_DAY_MS
+  return nextReviewTimestampsMs.filter((ts) => Number.isFinite(ts) && ts >= start && ts < end).length
+}
+
 function formatLocalDayLabel(date: string): string {
   const parsed = new Date(`${date}T00:00:00`)
   if (Number.isNaN(parsed.getTime())) return date
@@ -263,7 +293,7 @@ const ASTRA_CERT_MISSED_WORDS = [
   ["taciturn", "blanked"],
 ]
 
-export default function ReviewMode() {
+export default function ReviewMode({ onBackToLibrary }: { onBackToLibrary?: () => void } = {}) {
   const [dueCards, setDueCards] = useState<VocabularyEntry[]>([])
   const [currentIndex, setCurrentIndex] = useState(0)
   const [phase, setPhase] = useState<ReviewPhase>("showing-front")
@@ -279,6 +309,7 @@ export default function ReviewMode() {
   const [snippetExpanded, setSnippetExpanded] = useState(false)
   const [studyLoop, setStudyLoop] = useState<StudyLoopViewModel | null>(null)
   const [ownedReadingItems, setOwnedReadingItems] = useState<OwnedReadingItem[]>([])
+  const [completionStats, setCompletionStats] = useState<{ streakDays: number; dueTomorrow: number } | null>(null)
   const [personalizedReviewPlan, setPersonalizedReviewPlan] = useState<AstraPersonalizedReviewPlan | null>(null)
   const [reviewQuery] = useState(() => {
     const params = new URLSearchParams(window.location.search)
@@ -512,6 +543,28 @@ export default function ReviewMode() {
     return () => window.removeEventListener("keydown", handleKeyDown)
   }, [phase, handleFlip, handleAnswer, activeReviewGradeActions, certificationMode])
 
+  // On a real session completion, compute a soft streak + tomorrow-due count from
+  // fresh post-review data, so the summary can show "you came back N days" /
+  // "come back tomorrow" without any settings or shame.
+  useEffect(() => {
+    if (certificationMode || phase !== "session-complete" || summary.total <= 0) return
+    let cancelled = false
+    void (async () => {
+      const entries = await getVocabularyEntries()
+      if (cancelled) return
+      const now = Date.now()
+      const streakDays = computeReviewStreakDays(
+        entries.map((entry) => entry.lastReviewedAt ?? 0),
+        now,
+      )
+      const dueTomorrow = countDueTomorrow(entries.map((entry) => entry.nextReviewAt ?? 0), now)
+      setCompletionStats({ streakDays, dueTomorrow })
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [certificationMode, phase, summary.total])
+
   if (loading) {
     return (
       <div style={containerStyle}>
@@ -541,8 +594,13 @@ export default function ReviewMode() {
   const linkedReadingProgress = linkedReadingItem ? describeOwnedReadingProgress(linkedReadingItem) : null
   const currentPageLoop = studyLoop
   const snippetLong = sourceDisplay.snippet.length > 300
-  const sourcePageUrl = buildVideoTimestampReturnUrl(currentCard) ?? sourceDisplay.pageUrl
+  const currentVideoReturnUrl = buildVideoTimestampReturnUrl(currentCard)
+  const sourcePageUrl = currentVideoReturnUrl ?? sourceDisplay.pageUrl
   const sourcePageIsWeb = /^https?:\/\//i.test(sourcePageUrl)
+  const currentVideoTimestampMs = currentCard?.sourceContext?.videoTimestampMs
+  const sourceLinkLabel = currentVideoReturnUrl && typeof currentVideoTimestampMs === "number"
+    ? t("review_openVideoAtTimestamp", formatVideoTimestamp(currentVideoTimestampMs))
+    : t("review_openSourcePage")
 
   const hasDailyProgress =
     dailyPagesStudied > 0
@@ -745,7 +803,7 @@ export default function ReviewMode() {
               rel="noopener noreferrer"
               style={sourceLinkStyle}
             >
-              {t("review_openSourcePage")}
+              {sourceLinkLabel}
             </a>
           )}
         </div>
@@ -875,6 +933,14 @@ export default function ReviewMode() {
               {certificationSummaryMode && <small>14 words due</small>}
             </div>
           </div>
+          {!certificationSummaryMode && completionStats && (
+            <div className="astra-review-summary-card__hint" data-testid="review-summary-streak-line">
+              {completionStats.streakDays >= 2
+                ? t("review_summaryStreakLine", `${completionStats.streakDays}`)
+                : t("review_summaryComeBackTomorrow")}
+              {completionStats.dueTomorrow > 0 ? ` ${t("review_summaryDueTomorrowLine", `${completionStats.dueTomorrow}`)}` : ""}
+            </div>
+          )}
           <div className="astra-review-summary-card__lists" aria-label="Review outcome summary">
             <div>
               <div className="astra-review-summary-card__section-label">{certificationSummaryMode ? "Settling" : t("review_summaryLongerIntervals")}</div>
@@ -974,6 +1040,16 @@ export default function ReviewMode() {
                 >
                   {t("review_actionReviewAgain")}
                 </button>
+                {onBackToLibrary && (
+                  <button
+                    type="button"
+                    data-testid="review-back-to-library"
+                    className="astra-btn-secondary"
+                    onClick={onBackToLibrary}
+                  >
+                    {t("review_backToLibrary")}
+                  </button>
+                )}
               </>
             )}
           </div>
