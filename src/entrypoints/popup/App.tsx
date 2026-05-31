@@ -3364,7 +3364,7 @@ export default function App() {
 
       {!isAuthenticatedSession && authSession?.identityMode === "anonymous" && (
         <div style={{ fontSize: 11, color: "var(--astra-text-muted)", marginTop: 4 }}>
-          This device is using a local Astra guest session. Sign in later to attach plan, quota, and continuity state.
+          This device is using a local Astra guest session. Sign in later to attach your plan, daily reading, and continuity state.
         </div>
       )}
 
