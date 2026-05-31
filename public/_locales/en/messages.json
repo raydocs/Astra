@@ -336,6 +336,63 @@
   "vocabulary_title": {
     "message": "Astra Vocabulary"
   },
+  "vocabulary_weeklyDigestAriaLabel": {
+    "message": "Local weekly learning digest"
+  },
+  "vocabulary_weeklyDigestEyebrow": {
+    "message": "Weekly digest · local"
+  },
+  "vocabulary_weeklyDigestHeadlineSaved": {
+    "message": "You added new expressions to review this week."
+  },
+  "vocabulary_weeklyDigestHeadlineReviewed": {
+    "message": "You kept up your reviews this week."
+  },
+  "vocabulary_weeklyDigestHeadlineEmpty": {
+    "message": "Your weekly digest is ready once you save or review."
+  },
+  "vocabulary_weeklyDigestReviewCta": {
+    "message": "Review $1",
+    "placeholders": { "1": { "content": "$1" } }
+  },
+  "vocabulary_weeklyDigestOpenReviewCta": {
+    "message": "Open review"
+  },
+  "vocabulary_weeklyDigestContinueCta": {
+    "message": "Continue source"
+  },
+  "vocabulary_weeklyDigestStatSaved": {
+    "message": "Saved"
+  },
+  "vocabulary_weeklyDigestStatReviewed": {
+    "message": "Reviewed"
+  },
+  "vocabulary_weeklyDigestStatSources": {
+    "message": "Sources"
+  },
+  "vocabulary_weeklyDigestSourceLine": {
+    "message": "$1 · $2 saved · $3 reviewed",
+    "placeholders": { "1": { "content": "$1" }, "2": { "content": "$2" }, "3": { "content": "$3" } }
+  },
+  "vocabulary_weeklyDigestCommonTopics": {
+    "message": "Common topics: $1",
+    "placeholders": { "1": { "content": "$1" } }
+  },
+  "vocabulary_weeklyDigestRepeatedVocabulary": {
+    "message": "Repeated vocabulary: $1",
+    "placeholders": { "1": { "content": "$1" } }
+  },
+  "vocabulary_weeklyDigestRepeatedItem": {
+    "message": "$1 across $2 sources",
+    "placeholders": { "1": { "content": "$1" }, "2": { "content": "$2" } }
+  },
+  "vocabulary_weeklyDigestContinueLabel": {
+    "message": "Continue: $1 · $2",
+    "placeholders": { "1": { "content": "$1" }, "2": { "content": "$2" } }
+  },
+  "vocabulary_weeklyDigestPrivacy": {
+    "message": "Privacy: this digest uses counts, source titles/types, coarse topics, and confirmed saved terms only — not page text, transcripts, or saved snippets."
+  },
   "vocabulary_contextShowMore": {
     "message": "Show full context"
   },

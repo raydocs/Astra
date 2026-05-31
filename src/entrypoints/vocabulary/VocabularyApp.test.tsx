@@ -144,6 +144,23 @@ vi.mock("@/utils/i18n", () => ({
     const subs = Array.isArray(substitutions) ? substitutions : substitutions ? [substitutions] : []
     const messages: Record<string, string> = {
       vocabulary_title: "Astra Vocabulary",
+      vocabulary_weeklyDigestAriaLabel: "Local weekly learning digest",
+      vocabulary_weeklyDigestEyebrow: "Weekly digest · local",
+      vocabulary_weeklyDigestHeadlineSaved: "You added new expressions to review this week.",
+      vocabulary_weeklyDigestHeadlineReviewed: "You kept up your reviews this week.",
+      vocabulary_weeklyDigestHeadlineEmpty: "Your weekly digest is ready once you save or review.",
+      vocabulary_weeklyDigestReviewCta: "Review $1",
+      vocabulary_weeklyDigestOpenReviewCta: "Open review",
+      vocabulary_weeklyDigestContinueCta: "Continue source",
+      vocabulary_weeklyDigestStatSaved: "Saved",
+      vocabulary_weeklyDigestStatReviewed: "Reviewed",
+      vocabulary_weeklyDigestStatSources: "Sources",
+      vocabulary_weeklyDigestSourceLine: "$1 · $2 saved · $3 reviewed",
+      vocabulary_weeklyDigestCommonTopics: "Common topics: $1",
+      vocabulary_weeklyDigestRepeatedVocabulary: "Repeated vocabulary: $1",
+      vocabulary_weeklyDigestRepeatedItem: "$1 across $2 sources",
+      vocabulary_weeklyDigestContinueLabel: "Continue: $1 · $2",
+      vocabulary_weeklyDigestPrivacy: "Privacy: this digest uses counts, source titles/types, coarse topics, and confirmed saved terms only — not page text, transcripts, or saved snippets.",
       vocabulary_countBadge: `${subs[0] ?? "$1"} ${subs[1] ?? "$2"}`,
       vocabulary_countWordSingular: "word",
       vocabulary_countWordPlural: "words",
@@ -1010,10 +1027,10 @@ describe("VocabularyApp", () => {
     const digest = container.querySelector('[data-testid="library-weekly-digest-card"]') as HTMLElement
     expect(digest).toBeTruthy()
     expect(digest.textContent).toContain("Weekly digest · local")
-    expect(digest.textContent).toContain("You saved 2 reviewable moments this week")
-    expect(digest.textContent).toContain("2 sources contributed")
+    expect(digest.textContent).toContain("You added new expressions to review this week")
     expect(digest.textContent).toContain("Saved")
     expect(digest.textContent).toContain("Reviewed")
+    expect(digest.textContent).toContain("Sources")
     expect(digest.textContent).toContain("Privacy: this digest uses counts")
     expect(container.querySelector('[data-testid="library-weekly-digest-sources"]')?.textContent)
       .toContain("Example article · 1 saved · 1 reviewed")
