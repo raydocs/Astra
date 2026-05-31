@@ -9,6 +9,7 @@ const {
   hasVocabularyEntryByTextMock,
   markSessionSaveMock,
   createAnnotationFromCurrentSelectionMock,
+  recordLearningLoopEventMock,
 } = vi.hoisted(() => ({
   readConfigMock: vi.fn(),
   translateTextsMock: vi.fn(),
@@ -17,7 +18,13 @@ const {
   hasVocabularyEntryByTextMock: vi.fn(),
   markSessionSaveMock: vi.fn(),
   createAnnotationFromCurrentSelectionMock: vi.fn(),
+  recordLearningLoopEventMock: vi.fn(),
 }))
+
+vi.mock("@/utils/learning-loop-events", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/utils/learning-loop-events")>()
+  return { ...actual, recordLearningLoopEvent: recordLearningLoopEventMock }
+})
 
 vi.mock("@/utils/storage/config", () => ({
   readConfig: readConfigMock,
@@ -105,6 +112,7 @@ describe("SelectionToolbar interaction suppression", () => {
     saveVocabularyEntryMock.mockReset()
     getDueVocabularyCountMock.mockReset()
     hasVocabularyEntryByTextMock.mockReset()
+    recordLearningLoopEventMock.mockReset()
     markSessionSaveMock.mockReset()
     createAnnotationFromCurrentSelectionMock.mockReset()
     document.getElementById(HOST_ID)?.remove()
@@ -735,6 +743,68 @@ describe("SelectionToolbar interaction suppression", () => {
     const topBarSaveButtons = Array.from(shadow.querySelectorAll("button"))
       .filter((btn) => btn.textContent === t("actionSave") && btn.dataset.testid !== "selection-result-save-cta")
     expect(topBarSaveButtons).toHaveLength(0)
+  })
+
+  it("offers content-free helpful/inaccurate feedback on a translation result", async () => {
+    const target = document.getElementById("target") as HTMLElement
+
+    await triggerDocumentMouseDown(target)
+    setSelection("Hello world")
+    await triggerDocumentMouseUp(target)
+
+    const host = document.getElementById(HOST_ID)!
+    const shadow = host.shadowRoot!
+    const translateBtn = Array.from(shadow.querySelectorAll("button")).find((btn) => btn.textContent === "翻译")
+
+    translateTextsMock.mockResolvedValueOnce({ ok: true, translations: ["你好世界"] })
+    await act(async () => {
+      translateBtn!.click()
+      await Promise.resolve()
+      await Promise.resolve()
+    })
+
+    const helpful = shadow.querySelector('[data-testid="selection-result-feedback-helpful"]') as HTMLButtonElement | null
+    expect(helpful).toBeTruthy()
+    expect(shadow.querySelector('[data-testid="selection-result-feedback-inaccurate"]')).toBeTruthy()
+
+    await act(async () => {
+      helpful!.click()
+      await Promise.resolve()
+    })
+
+    expect(recordLearningLoopEventMock).toHaveBeenCalledTimes(1)
+    const [eventName, payload] = recordLearningLoopEventMock.mock.calls[0]
+    expect(eventName).toBe("learning_feedback_submitted")
+    expect(payload).toEqual({ surface: "selection_toolbar", rating: "helpful" })
+    // Content-free: the selected text and the translation never enter the payload.
+    expect(JSON.stringify(payload)).not.toContain("Hello world")
+    expect(JSON.stringify(payload)).not.toContain("你好世界")
+
+    // Row collapses to a thank-you; the choice buttons are gone.
+    expect(shadow.querySelector('[data-testid="selection-result-feedback-helpful"]')).toBeNull()
+    expect(shadow.querySelector('[data-testid="selection-result-feedback"]')?.textContent).toContain(t("resultFeedbackThanks"))
+  })
+
+  it("does not offer result feedback on a failed translation", async () => {
+    const target = document.getElementById("target") as HTMLElement
+
+    await triggerDocumentMouseDown(target)
+    setSelection("Hello world")
+    await triggerDocumentMouseUp(target)
+
+    const host = document.getElementById(HOST_ID)!
+    const shadow = host.shadowRoot!
+    const translateBtn = Array.from(shadow.querySelectorAll("button")).find((btn) => btn.textContent === "翻译")
+
+    translateTextsMock.mockResolvedValueOnce({ ok: false, error: { message: "Relay unavailable" } })
+    await act(async () => {
+      translateBtn!.click()
+      await Promise.resolve()
+      await Promise.resolve()
+    })
+
+    expect(shadow.querySelector('[data-testid="selection-result-feedback"]')).toBeNull()
+    expect(recordLearningLoopEventMock).not.toHaveBeenCalled()
   })
 
   it("reflects an already-saved selection as saved instead of re-offering Save", async () => {
