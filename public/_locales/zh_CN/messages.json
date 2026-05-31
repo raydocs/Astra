@@ -1686,6 +1686,21 @@
   "transcriptSaveWord": {
     "message": "保存这个词去复习"
   },
+  "transcriptSaveLine": {
+    "message": "收藏这句"
+  },
+  "transcriptCueExplain": {
+    "message": "解释"
+  },
+  "transcriptCueAddWord": {
+    "message": "加入单词"
+  },
+  "transcriptCueCopy": {
+    "message": "复制"
+  },
+  "transcriptCueSpeak": {
+    "message": "朗读"
+  },
   "transcriptReviewNow": {
     "message": "现在复习"
   },

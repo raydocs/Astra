@@ -1687,6 +1687,21 @@
   "transcriptSaveWord": {
     "message": "Save word to Review"
   },
+  "transcriptSaveLine": {
+    "message": "Save this line"
+  },
+  "transcriptCueExplain": {
+    "message": "Explain"
+  },
+  "transcriptCueAddWord": {
+    "message": "Add word"
+  },
+  "transcriptCueCopy": {
+    "message": "Copy"
+  },
+  "transcriptCueSpeak": {
+    "message": "Speak"
+  },
   "transcriptReviewNow": {
     "message": "Review now"
   },

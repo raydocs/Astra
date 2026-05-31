@@ -238,6 +238,17 @@ function injectTranscriptPanelStyles(): void {
       margin-top: 7px;
     }
 
+    #${PANEL_ID} [data-astra-transcript-row-actions] button[data-astra-primary] {
+      background: #0f172a;
+      border-color: #0f172a;
+      color: #ffffff;
+      font-weight: 700;
+    }
+
+    #${PANEL_ID} [data-astra-transcript-row-actions] button[data-astra-primary]:hover {
+      background: #1e293b;
+    }
+
     #${PANEL_ID} [data-astra-transcript-word] {
       border: 0;
       border-radius: 5px;
@@ -1225,42 +1236,43 @@ function renderTranscriptPanel(): void {
 
     const rowActions = document.createElement("span")
     rowActions.dataset.astraTranscriptRowActions = "true"
-    const copy = document.createElement("button")
-    copy.type = "button"
-    copy.textContent = "Copy"
-    copy.addEventListener("click", (event) => {
-      event.stopPropagation()
-      void handleCopyCue(cue)
-    })
-    const explain = document.createElement("button")
-    explain.type = "button"
-    explain.textContent = "Explain"
-    explain.addEventListener("click", (event) => {
-      event.stopPropagation()
-      void handleExplainCue(cue)
-    })
     const save = document.createElement("button")
     save.type = "button"
-    save.textContent = "Save sentence"
+    save.dataset.astraPrimary = "true"
+    save.textContent = localizedLabel("transcriptSaveLine", "Save this line")
     save.addEventListener("click", (event) => {
       event.stopPropagation()
       void handleSaveCue(cue)
     })
+    const explain = document.createElement("button")
+    explain.type = "button"
+    explain.textContent = localizedLabel("transcriptCueExplain", "Explain")
+    explain.addEventListener("click", (event) => {
+      event.stopPropagation()
+      void handleExplainCue(cue)
+    })
     const addWord = document.createElement("button")
     addWord.type = "button"
-    addWord.textContent = "Add word"
+    addWord.textContent = localizedLabel("transcriptCueAddWord", "Add word")
     addWord.addEventListener("click", (event) => {
       event.stopPropagation()
       void handleAddWordCue(cue)
     })
+    const copy = document.createElement("button")
+    copy.type = "button"
+    copy.textContent = localizedLabel("transcriptCueCopy", "Copy")
+    copy.addEventListener("click", (event) => {
+      event.stopPropagation()
+      void handleCopyCue(cue)
+    })
     const speak = document.createElement("button")
     speak.type = "button"
-    speak.textContent = "Speak"
+    speak.textContent = localizedLabel("transcriptCueSpeak", "Speak")
     speak.addEventListener("click", (event) => {
       event.stopPropagation()
       speakCue(cue)
     })
-    rowActions.append(copy, explain, save, addWord, speak)
+    rowActions.append(save, explain, addWord, copy, speak)
     row.appendChild(rowActions)
 
     const explanation = explanationByCueId.get(cue.id)

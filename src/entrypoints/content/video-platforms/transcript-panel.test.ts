@@ -87,8 +87,12 @@ describe("video transcript panel Deep Read handoff", () => {
     transcriptTab?.click()
 
     const saveSentence = Array.from(document.querySelectorAll("button"))
-      .find((button) => button.textContent === "Save sentence") as HTMLButtonElement | undefined
+      .find((button) => button.textContent === "Save this line") as HTMLButtonElement | undefined
     expect(saveSentence).toBeTruthy()
+    // The primary save action is first in the per-cue row.
+    const firstRowAction = document.querySelector('[data-astra-transcript-row-actions] button') as HTMLButtonElement | null
+    expect(firstRowAction?.textContent).toBe("Save this line")
+    expect(firstRowAction?.dataset.astraPrimary).toBe("true")
     saveSentence?.click()
     await Promise.resolve()
     await Promise.resolve()
