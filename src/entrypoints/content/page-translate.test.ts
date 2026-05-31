@@ -33,6 +33,7 @@ import {
   startPageTranslation,
   stopPageTranslation,
   retryFailedBlocks,
+  drainAllBlocks,
   translatePageElement,
   translatePageElements,
 } from "./page-translate"
@@ -223,6 +224,27 @@ describe("page translation controller", () => {
 
     expect(visible.querySelector("[data-astra-translation=\"loading\"]")).toBeNull()
     expect(visible.querySelector("[data-astra-translation=\"1\"]")?.textContent).toContain("可见文本")
+  })
+
+  it("translates deferred below-fold blocks on demand via drainAllBlocks", async () => {
+    translateTextsMock.mockResolvedValue({ ok: true, translations: ["译文"] })
+
+    await startPageTranslation({ targetLang: "zh-CN" })
+    await flushPromises()
+
+    // Viewport-first: the visible block is translated, the below-fold block is deferred.
+    expect(document.getElementById("visible")?.querySelector("[data-astra-translation]")).not.toBeNull()
+    expect(document.getElementById("offscreen")?.querySelector("[data-astra-translation]")).toBeNull()
+    const before = getPageTranslationState().progress
+    expect(before.totalBlocks - before.translatedBlocks).toBeGreaterThan(0)
+
+    drainAllBlocks()
+    for (let i = 0; i < 4; i++) {
+      await flushPromises()
+    }
+
+    // The reader didn't scroll, but the deferred block is now translated.
+    expect(document.getElementById("offscreen")?.querySelector("[data-astra-translation]")).not.toBeNull()
   })
 
   it("keeps exhausted paragraph failures visible and retryable", async () => {
