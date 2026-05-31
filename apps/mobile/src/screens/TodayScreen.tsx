@@ -13,6 +13,7 @@ import {
 import {
   buildTodayReviewQueue,
   buildWeeklyDigestSnapshot,
+  estimateReviewMinutes,
   sampleMobileReviewSnapshot,
   type MobileDigestSnapshot,
   type MobileReviewCardViewModel,
@@ -100,7 +101,7 @@ export function TodayScreen({ onOpenLibrary, snapshot = sampleMobileReviewSnapsh
               ? "Review only the due cards from this saved source."
               : sampleDeck
                 ? "Try the mobile review flow with safe sample cards."
-                : "Review in about 3 minutes. No setup, no pressure."
+                : `Review in about ${estimateReviewMinutes(queue.length)} min. No setup, no pressure.`
             : sourceReview
               ? "Source review complete. You can return to the full Today queue."
               : sampleDeck
@@ -108,9 +109,9 @@ export function TodayScreen({ onOpenLibrary, snapshot = sampleMobileReviewSnapsh
                 : "Your review choices are saved on this device for the next sync."}
         </Text>
         <View style={styles.summaryRow}>
-          <Text style={styles.pill}>{queue.length} cards</Text>
-          <Text style={styles.pill}>{sampleDeck ? "sample" : `${queueState?.operations.length ?? 0} offline-ready`}</Text>
-          <Text style={styles.pill}>{sourceReview ? "one source" : "source-backed"}</Text>
+          <Text style={styles.pill}>{queue.length} {queue.length === 1 ? "card" : "cards"}</Text>
+          {queue.length > 0 && !sampleDeck ? <Text style={styles.pill}>about {estimateReviewMinutes(queue.length)} min</Text> : null}
+          {sampleDeck ? <Text style={styles.pill}>sample</Text> : null}
         </View>
         {streakDays >= 2 && !sourceReview ? (
           <Text style={styles.streakLine} accessibilityRole="text">{reviewStreakCopy(streakDays)}</Text>

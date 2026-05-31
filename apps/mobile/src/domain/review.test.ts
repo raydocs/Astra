@@ -1,6 +1,16 @@
 import { describe, expect, it } from "vitest"
 
-import { buildMobileReviewShareText, buildMobileReviewSpeechText, buildMobileSavedItemSpeechText, buildSavedItemSourceUrl, buildTodayReviewQueue, buildWeeklyDigestSnapshot, createReviewEvent, sampleMobileReviewSnapshot } from "./review"
+import { buildMobileReviewShareText, buildMobileReviewSpeechText, buildMobileSavedItemSpeechText, buildSavedItemSourceUrl, buildTodayReviewQueue, buildWeeklyDigestSnapshot, createReviewEvent, estimateReviewMinutes, sampleMobileReviewSnapshot } from "./review"
+
+describe("estimateReviewMinutes", () => {
+  it("returns 0 for an empty queue and a soft, floored estimate otherwise", () => {
+    expect(estimateReviewMinutes(0)).toBe(0)
+    expect(estimateReviewMinutes(1)).toBe(1)
+    expect(estimateReviewMinutes(2)).toBe(1)
+    expect(estimateReviewMinutes(5)).toBe(3)
+    expect(estimateReviewMinutes(10)).toBe(5)
+  })
+})
 
 describe("buildSavedItemSourceUrl", () => {
   it("returns a timestamped URL for a saved video moment", () => {
