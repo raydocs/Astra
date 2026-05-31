@@ -125,6 +125,7 @@ vi.mock("@/utils/i18n", () => ({
     if (key === "popup_studyStatSaved") return `${s} saved`
     if (key === "popup_studyStatReviewed") return `${s} reviewed`
     if (key === "review_openSourcePage") return "Open source page"
+    if (key === "review_openVideoAtTimestamp") return `Open video at ${values[0] ?? "$1"}`
     if (key === "review_showFullContext") return "Show full context"
     if (key === "review_hideFullContext") return "Show less"
     if (key === "vocabulary_readingAssetTitle") return "Reading asset"
@@ -989,6 +990,12 @@ describe("ReviewMode", () => {
       flashcard.click()
       await Promise.resolve()
     })
+
+    // The card-back source link is video-aware: it names the moment and links to it.
+    const videoSourceLink = Array.from(container.querySelectorAll("a")).find((link) => link.textContent === "Open video at 1:15") as HTMLAnchorElement
+    expect(videoSourceLink).toBeTruthy()
+    expect(videoSourceLink.href).toBe("https://www.youtube.com/watch?v=abc123&t=75s")
+    expect(Array.from(container.querySelectorAll("a")).some((link) => link.textContent === "Open source page")).toBe(false)
 
     const knowItButton = container.querySelector('[data-review-grade="good"]') as HTMLButtonElement
     await act(async () => {

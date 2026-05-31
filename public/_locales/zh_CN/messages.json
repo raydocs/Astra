@@ -916,6 +916,12 @@
   "review_openSourcePage": {
     "message": "打开来源页面"
   },
+  "review_openVideoAtTimestamp": {
+    "message": "在 $1 打开视频",
+    "placeholders": {
+      "1": { "content": "$1" }
+    }
+  },
   "review_showFullContext": {
     "message": "展开完整上下文"
   },

@@ -10,7 +10,7 @@ import type { SrsFields, BoxDistribution, ReviewGrade } from "@/utils/srs/leitne
 import { buildVocabularyReviewStudyEvent, deriveStudyLoopViewModel, getStudyProgress, recordStudyEvent, type PersonalizedTeachingStrategy, type StudyLoopViewModel, type StudyStep } from "@/utils/storage/study-progress"
 import { deriveVocabularySourceDisplay, getPageReviewVocabularyEntries } from "@/utils/storage/vocabulary-core"
 import type { OwnedReadingItem } from "@/utils/storage/owned-reading"
-import { buildVideoTimestampUrl } from "@/utils/video-timestamp-url"
+import { buildVideoTimestampUrl, formatVideoTimestamp } from "@/utils/video-timestamp-url"
 import {
   buildOwnedReadingResumeTarget,
   describeOwnedReadingProgress,
@@ -541,8 +541,13 @@ export default function ReviewMode() {
   const linkedReadingProgress = linkedReadingItem ? describeOwnedReadingProgress(linkedReadingItem) : null
   const currentPageLoop = studyLoop
   const snippetLong = sourceDisplay.snippet.length > 300
-  const sourcePageUrl = buildVideoTimestampReturnUrl(currentCard) ?? sourceDisplay.pageUrl
+  const currentVideoReturnUrl = buildVideoTimestampReturnUrl(currentCard)
+  const sourcePageUrl = currentVideoReturnUrl ?? sourceDisplay.pageUrl
   const sourcePageIsWeb = /^https?:\/\//i.test(sourcePageUrl)
+  const currentVideoTimestampMs = currentCard?.sourceContext?.videoTimestampMs
+  const sourceLinkLabel = currentVideoReturnUrl && typeof currentVideoTimestampMs === "number"
+    ? t("review_openVideoAtTimestamp", formatVideoTimestamp(currentVideoTimestampMs))
+    : t("review_openSourcePage")
 
   const hasDailyProgress =
     dailyPagesStudied > 0
@@ -745,7 +750,7 @@ export default function ReviewMode() {
               rel="noopener noreferrer"
               style={sourceLinkStyle}
             >
-              {t("review_openSourcePage")}
+              {sourceLinkLabel}
             </a>
           )}
         </div>
