@@ -6,6 +6,7 @@ import { t } from "@/utils/i18n"
 import { getSafeAiUnavailableCopy } from "@/utils/copy-dictionary"
 import { readConfig } from "@/utils/storage/config"
 import { getDueVocabularyCount, hasVocabularyEntryByText, saveVocabularyEntry } from "@/utils/storage/vocabulary"
+import { recordLearningLoopEvent } from "@/utils/learning-loop-events"
 import { formatGlossaryEvidenceLabel } from "@/utils/storage/vocabulary-core"
 import { copyTextToClipboard } from "@/utils/dom/clipboard"
 import { copyBilingualCard } from "@/utils/dom/share-card"
@@ -465,6 +466,7 @@ function SelectionToolbarApp() {
   const [moreOpen, setMoreOpen] = useState(false)
   const [saved, setSaved] = useState(false)
   const [shared, setShared] = useState(false)
+  const [feedbackGiven, setFeedbackGiven] = useState(false)
   const [speaking, setSpeaking] = useState(false)
   const [ttsEnabled, setTtsEnabled] = useState(DEFAULT_ASTRA_CONFIG.tts.enabled && isTtsSupported(DEFAULT_ASTRA_CONFIG.tts.engine))
   const [actions, setActions] = useState<BuiltinAction[]>(() => getEnabledActions())
@@ -520,6 +522,7 @@ function SelectionToolbarApp() {
     savedLookupSeq.current += 1
     setExistingSaved(false)
     setShared(false)
+    setFeedbackGiven(false)
     setSpeaking(false)
     setGrammarResult(null)
     setWordAnnotation(null)
@@ -714,6 +717,12 @@ function SelectionToolbarApp() {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [visible, selectedText])
+
+  // Reset result feedback whenever a new translate/explain result appears
+  // (e.g. Translate then Explain on the same selection) so the prompt is fresh.
+  useEffect(() => {
+    setFeedbackGiven(false)
+  }, [actionResult])
 
   // Detect whether this exact selection is already in the library, so the
   // toolbar shows a "saved" state + Review affordance instead of re-offering
@@ -1358,6 +1367,45 @@ function SelectionToolbarApp() {
               ×
             </button>
           </div>
+          {hasResultPanelSaveCta && (
+            <div
+              data-testid="selection-result-feedback"
+              style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 6, fontSize: 11, color: OVERLAY_STYLE_TOKENS.textSecondary }}
+            >
+              {feedbackGiven ? (
+                <span>{t("resultFeedbackThanks")}</span>
+              ) : (
+                <>
+                  <button
+                    type="button"
+                    data-testid="selection-result-feedback-helpful"
+                    style={styles.resultFooterButton}
+                    onClick={(event) => {
+                      event.stopPropagation()
+                      skipNextMouseUp.current = true
+                      setFeedbackGiven(true)
+                      recordLearningLoopEvent("learning_feedback_submitted", { surface: "selection_toolbar", rating: "helpful" })
+                    }}
+                  >
+                    {t("resultFeedbackHelpful")}
+                  </button>
+                  <button
+                    type="button"
+                    data-testid="selection-result-feedback-inaccurate"
+                    style={styles.resultFooterButton}
+                    onClick={(event) => {
+                      event.stopPropagation()
+                      skipNextMouseUp.current = true
+                      setFeedbackGiven(true)
+                      recordLearningLoopEvent("learning_feedback_submitted", { surface: "selection_toolbar", rating: "not_accurate" })
+                    }}
+                  >
+                    {t("resultFeedbackInaccurate")}
+                  </button>
+                </>
+              )}
+            </div>
+          )}
         </div>
       )}
 

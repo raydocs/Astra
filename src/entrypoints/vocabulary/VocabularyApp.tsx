@@ -106,10 +106,13 @@ function buildExplainModeSystemPrompt(explainMode: ExplainMode): string | undefi
 }
 
 function formatMessage(template: string, ...values: Array<string | number>): string {
-  return values.reduce<string>(
-    (message, value, index) => message.replace(`$${index + 1}`, String(value)),
-    template,
-  )
+  // Single pass over the original template so already-substituted (possibly
+  // untrusted, e.g. a saved page/video title) text can't consume a later
+  // placeholder like "$2".
+  return template.replace(/\$(\d+)/g, (match, n: string) => {
+    const index = Number(n) - 1
+    return index >= 0 && index < values.length ? String(values[index]) : match
+  })
 }
 
 function formatDate(ts: number): string {
@@ -2051,19 +2054,20 @@ export default function VocabularyApp() {
           </section>
           <section
             data-testid="library-weekly-digest-card"
-            aria-label="Local weekly learning digest"
+            aria-label={t("vocabulary_weeklyDigestAriaLabel")}
             style={{ ...learningDeskCardStyle, marginTop: 12 }}
           >
             <div style={{ display: "flex", justifyContent: "space-between", gap: 12, flexWrap: "wrap", marginBottom: 10 }}>
               <div>
                 <div style={{ fontSize: 12, fontWeight: 800, letterSpacing: 0.4, textTransform: "uppercase", color: "var(--astra-info)", marginBottom: 6 }}>
-                  Weekly digest · local
+                  {t("vocabulary_weeklyDigestEyebrow")}
                 </div>
                 <div style={{ fontSize: 17, lineHeight: 1.35, fontWeight: 800, color: "var(--astra-text-primary)", marginBottom: 4 }}>
-                  {weeklyDigest.headline}
-                </div>
-                <div style={{ fontSize: 13, color: "var(--astra-text-secondary)", lineHeight: 1.5 }}>
-                  {weeklyDigest.detail}
+                  {weeklyDigest.savedSnippetCount > 0
+                    ? t("vocabulary_weeklyDigestHeadlineSaved")
+                    : weeklyDigest.reviewedCardCount > 0
+                      ? t("vocabulary_weeklyDigestHeadlineReviewed")
+                      : t("vocabulary_weeklyDigestHeadlineEmpty")}
                 </div>
               </div>
               <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "flex-start" }}>
@@ -2075,7 +2079,9 @@ export default function VocabularyApp() {
                     setActiveTab("review")
                   }}
                 >
-                  {weeklyDigest.recommendedReviewCount > 0 ? `Review ${weeklyDigest.recommendedReviewCount}` : "Open review"}
+                  {weeklyDigest.recommendedReviewCount > 0
+                    ? formatMessage(t("vocabulary_weeklyDigestReviewCta"), weeklyDigest.recommendedReviewCount)
+                    : t("vocabulary_weeklyDigestOpenReviewCta")}
                 </button>
                 {weeklyDigest.recommendedContinueTarget && (
                   <button
@@ -2090,22 +2096,22 @@ export default function VocabularyApp() {
                       setActiveTab("reading")
                     }}
                   >
-                    Continue source
+                    {t("vocabulary_weeklyDigestContinueCta")}
                   </button>
                 )}
               </div>
             </div>
             <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))", gap: 10 }}>
               <div style={{ background: "var(--astra-bg-card)", border: "1px solid var(--astra-info-border)", borderRadius: 12, padding: "10px 12px" }}>
-                <div style={{ fontSize: 11, color: "var(--astra-text-muted)", fontWeight: 800, textTransform: "uppercase", marginBottom: 4 }}>Saved</div>
+                <div style={{ fontSize: 11, color: "var(--astra-text-muted)", fontWeight: 800, textTransform: "uppercase", marginBottom: 4 }}>{t("vocabulary_weeklyDigestStatSaved")}</div>
                 <div style={{ fontSize: 20, fontWeight: 850 }}>{weeklyDigest.savedSnippetCount}</div>
               </div>
               <div style={{ background: "var(--astra-bg-card)", border: "1px solid var(--astra-info-border)", borderRadius: 12, padding: "10px 12px" }}>
-                <div style={{ fontSize: 11, color: "var(--astra-text-muted)", fontWeight: 800, textTransform: "uppercase", marginBottom: 4 }}>Reviewed</div>
+                <div style={{ fontSize: 11, color: "var(--astra-text-muted)", fontWeight: 800, textTransform: "uppercase", marginBottom: 4 }}>{t("vocabulary_weeklyDigestStatReviewed")}</div>
                 <div style={{ fontSize: 20, fontWeight: 850 }}>{weeklyDigest.reviewedCardCount}</div>
               </div>
               <div style={{ background: "var(--astra-bg-card)", border: "1px solid var(--astra-info-border)", borderRadius: 12, padding: "10px 12px" }}>
-                <div style={{ fontSize: 11, color: "var(--astra-text-muted)", fontWeight: 800, textTransform: "uppercase", marginBottom: 4 }}>Sources</div>
+                <div style={{ fontSize: 11, color: "var(--astra-text-muted)", fontWeight: 800, textTransform: "uppercase", marginBottom: 4 }}>{t("vocabulary_weeklyDigestStatSources")}</div>
                 <div style={{ fontSize: 20, fontWeight: 850 }}>{weeklyDigest.sourceCount}</div>
               </div>
             </div>
@@ -2113,7 +2119,7 @@ export default function VocabularyApp() {
               <div data-testid="library-weekly-digest-sources" style={{ marginTop: 10, display: "grid", gap: 6 }}>
                 {weeklyDigest.sourceBreakdown.map((source) => (
                   <div key={source.sourceContentId} style={{ fontSize: 12, color: "var(--astra-text-secondary)", lineHeight: 1.45 }}>
-                    {source.title} · {source.savedSnippetCount} saved · {source.reviewedCardCount} reviewed
+                    {formatMessage(t("vocabulary_weeklyDigestSourceLine"), source.title, source.savedSnippetCount, source.reviewedCardCount)}
                   </div>
                 ))}
               </div>
@@ -2122,23 +2128,23 @@ export default function VocabularyApp() {
               <div data-testid="library-weekly-digest-insights" style={{ marginTop: 10, display: "grid", gap: 6 }}>
                 {weeklyDigest.commonTopics.length > 0 && (
                   <div style={{ fontSize: 12, color: "var(--astra-text-secondary)", lineHeight: 1.45 }}>
-                    Common topics: {weeklyDigest.commonTopics.map((topic) => `${topic.label} (${topic.sourceCount})`).join(", ")}
+                    {formatMessage(t("vocabulary_weeklyDigestCommonTopics"), weeklyDigest.commonTopics.map((topic) => `${topic.label} (${topic.sourceCount})`).join(", "))}
                   </div>
                 )}
                 {weeklyDigest.repeatedVocabulary.length > 0 && (
                   <div style={{ fontSize: 12, color: "var(--astra-text-secondary)", lineHeight: 1.45 }}>
-                    Repeated vocabulary: {weeklyDigest.repeatedVocabulary.map((item) => `${item.surfaceText} across ${item.sourceCount} sources`).join(", ")}
+                    {formatMessage(t("vocabulary_weeklyDigestRepeatedVocabulary"), weeklyDigest.repeatedVocabulary.map((item) => formatMessage(t("vocabulary_weeklyDigestRepeatedItem"), item.surfaceText, item.sourceCount)).join(", "))}
                   </div>
                 )}
                 {weeklyDigest.recommendedContinueTarget && (
                   <div style={{ fontSize: 12, color: "var(--astra-text-secondary)", lineHeight: 1.45 }}>
-                    Continue: {weeklyDigest.recommendedContinueTarget.title} · {weeklyDigest.recommendedContinueTarget.lastPositionLabel}
+                    {formatMessage(t("vocabulary_weeklyDigestContinueLabel"), weeklyDigest.recommendedContinueTarget.title, weeklyDigest.recommendedContinueTarget.lastPositionLabel)}
                   </div>
                 )}
               </div>
             )}
             <div style={{ fontSize: 11, color: "var(--astra-text-muted)", lineHeight: 1.45, marginTop: 10 }}>
-              Privacy: this digest uses counts, source titles/types, coarse topics, and confirmed saved terms only — not page text, transcripts, or saved snippets.
+              {t("vocabulary_weeklyDigestPrivacy")}
             </div>
           </section>
           <section
