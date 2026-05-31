@@ -40,6 +40,16 @@ export interface ReviewCard {
 }
 
 /**
+ * Soft estimate of how long today's review takes, in minutes (~30s per card,
+ * floored to a friendly 1-minute minimum). Deliberately approximate — surfaced
+ * as "about N min", never a hard SLA.
+ */
+export function estimateReviewMinutes(cardCount: number): number {
+  if (cardCount <= 0) return 0
+  return Math.max(1, Math.round(cardCount * 0.5))
+}
+
+/**
  * The link that returns a learner to where they saved an item: a saved video
  * moment opens the source at its timestamp; everything else opens the bare
  * source URL. Used by both the Today review card and the Library "Open source".
