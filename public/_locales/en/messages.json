@@ -896,7 +896,7 @@
     }
   },
   "review_todayProgressTitle": {
-    "message": "Today's study loop (all pages)"
+    "message": "Today's study loop (all sources)"
   },
   "review_currentPageProgressTitle": {
     "message": "Current page loop"
@@ -1370,7 +1370,7 @@
     "message": "Learning loop activity"
   },
   "options_learningLoopHint": {
-    "message": "Local-only diagnostics for the popup → Deep Read → vocabulary/review funnel on this device."
+    "message": "Diagnostics for the popup → Deep Read → vocabulary/review funnel, kept on this device."
   },
   "options_learningLoopLoading": {
     "message": "Loading learning loop activity..."
@@ -1496,7 +1496,7 @@
     "message": "Immersive"
   },
   "copyProValue": {
-    "message": "Pro includes longer videos, deeper explanations, synced learning history, and unlimited review cards."
+    "message": "Pro includes longer videos, deeper explanations, synced learning history, and a larger review library."
   },
   "copyDailyFreeReached": {
     "message": "You’ve used today’s free reading. It refreshes tomorrow, or Pro keeps longer videos and deeper explanations going."

@@ -896,7 +896,7 @@
     }
   },
   "review_todayProgressTitle": {
-    "message": "今日学习进度（全页汇总）"
+    "message": "今日学习进度（全部来源）"
   },
   "review_currentPageProgressTitle": {
     "message": "当前页面学习回路"
@@ -1369,7 +1369,7 @@
     "message": "学习闭环活动"
   },
   "options_learningLoopHint": {
-    "message": "仅限本设备的本地诊断，用于查看 popup → Deep Read → 词汇/复习 漏斗是否在运作。"
+    "message": "用于查看 popup → Deep Read → 词汇/复习 漏斗是否在运作的诊断，仅保存在本设备。"
   },
   "options_learningLoopLoading": {
     "message": "正在加载学习闭环活动..."
@@ -1495,7 +1495,7 @@
     "message": "沉浸"
   },
   "copyProValue": {
-    "message": "Pro 包含更长的视频、更深入的讲解、跨设备同步的学习记录，以及无限的复习卡片。"
+    "message": "Pro 包含更长的视频、更深入的讲解、跨设备同步的学习记录，以及更大的复习卡片库。"
   },
   "copyDailyFreeReached": {
     "message": "今天的免费阅读已用完，明天会自动恢复。Pro 包含更长的视频和更深入的讲解。"
