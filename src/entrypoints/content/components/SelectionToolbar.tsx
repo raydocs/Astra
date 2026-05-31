@@ -5,7 +5,7 @@ import { ErrorBoundary } from "@/components/ErrorBoundary"
 import { t } from "@/utils/i18n"
 import { getSafeAiUnavailableCopy } from "@/utils/copy-dictionary"
 import { readConfig } from "@/utils/storage/config"
-import { saveVocabularyEntry } from "@/utils/storage/vocabulary"
+import { getDueVocabularyCount, hasVocabularyEntryByText, saveVocabularyEntry } from "@/utils/storage/vocabulary"
 import { formatGlossaryEvidenceLabel } from "@/utils/storage/vocabulary-core"
 import { copyTextToClipboard } from "@/utils/dom/clipboard"
 import { copyBilingualCard } from "@/utils/dom/share-card"
@@ -472,6 +472,7 @@ function SelectionToolbarApp() {
   const [wordAnnotation, setWordAnnotation] = useState<WordAnnotation | null>(null)
   const [grammarLoading, setGrammarLoading] = useState(false)
   const [dueCount, setDueCount] = useState<number | null>(null)
+  const [existingSaved, setExistingSaved] = useState(false)
   const [targetLang, setTargetLang] = useState<string | null>(null)
   const [fontScale, setFontScale] = useState(DEFAULT_ASTRA_CONFIG.presentation.fontSize)
 
@@ -480,6 +481,7 @@ function SelectionToolbarApp() {
   const mouseUpTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const visibleRef = useRef(false)
   const selectionVersionRef = useRef(0)
+  const savedLookupSeq = useRef(0)
   const selectionContextElementRef = useRef<HTMLElement | null>(null)
   const configSyncVersionRef = useRef(0)
   const stopHighlightRef = useRef<(() => void) | null>(null)
@@ -515,6 +517,8 @@ function SelectionToolbarApp() {
     setVisible(false)
     resetInlineResults()
     setSaved(false)
+    savedLookupSeq.current += 1
+    setExistingSaved(false)
     setShared(false)
     setSpeaking(false)
     setGrammarResult(null)
@@ -711,6 +715,36 @@ function SelectionToolbarApp() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [visible, selectedText])
 
+  // Detect whether this exact selection is already in the library, so the
+  // toolbar shows a "saved" state + Review affordance instead of re-offering
+  // Save (mirrors HoverTranslate). Guarded against stale async by savedLookupSeq.
+  useEffect(() => {
+    if (!visible || !selectedText) {
+      setExistingSaved(false)
+      return
+    }
+    const lookupId = savedLookupSeq.current + 1
+    savedLookupSeq.current = lookupId
+    let cancelled = false
+    void (async () => {
+      try {
+        const alreadySaved = await hasVocabularyEntryByText(selectedText)
+        if (cancelled || savedLookupSeq.current !== lookupId) return
+        setExistingSaved(alreadySaved)
+        if (alreadySaved) {
+          const nextDueCount = await getDueVocabularyCount()
+          if (cancelled || savedLookupSeq.current !== lookupId) return
+          setDueCount(nextDueCount)
+        }
+      } catch {
+        if (!cancelled && savedLookupSeq.current === lookupId) setExistingSaved(false)
+      }
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [visible, selectedText])
+
   const resolveConfig = async (): Promise<{
     config: AstraConfig
     targetLang: string
@@ -872,9 +906,6 @@ function SelectionToolbarApp() {
 
     let nextDueCount: number | null = null
     try {
-      const [{ getDueVocabularyCount }] = await Promise.all([
-        import("@/utils/storage/vocabulary"),
-      ])
       nextDueCount = await getDueVocabularyCount()
     } catch {
       nextDueCount = null
@@ -991,7 +1022,8 @@ function SelectionToolbarApp() {
       && !hasActionError
       && (actionResult.actionId === "translate" || actionResult.actionId === "explain"),
   )
-  const showInlineSaveCta = hasResultPanelSaveCta && !saved
+  const effectiveSaved = saved || existingSaved
+  const showInlineSaveCta = hasResultPanelSaveCta && !saved && !existingSaved
   const showSaveInBar = !hasResultPanelSaveCta || saved || certificationMode
   const glossaryEvidenceLabel = actionResult?.matchedGlossaryTerms
     ? formatGlossaryEvidenceLabel(actionResult.matchedGlossaryTerms)
@@ -1052,7 +1084,7 @@ function SelectionToolbarApp() {
               style={{
                 ...styles.button,
                 ...(hoveredBtn === "save" ? styles.buttonHover : {}),
-                ...(saved ? { color: OVERLAY_STYLE_TOKENS.success } : {}),
+                ...(effectiveSaved ? { color: OVERLAY_STYLE_TOKENS.success } : {}),
               }}
               onMouseEnter={() => setHoveredBtn("save")}
               onMouseLeave={() => setHoveredBtn(null)}
@@ -1063,7 +1095,7 @@ function SelectionToolbarApp() {
               }}
             >
               <ToolbarIcon type="save" size={certificationMode ? 12 : 13} />
-              {saved ? t("actionSaved") : t("actionSave")}
+              {effectiveSaved ? t("actionSaved") : t("actionSave")}
             </button>
           )}
           {annotationActions.map((action) => (
@@ -1259,8 +1291,23 @@ function SelectionToolbarApp() {
                 }}
               >
                 <ToolbarIcon type="save" size={12} />
-                {t("actionSave")} phrase
+                {t("actionSavePhrase")}
               </button>
+            )}
+            {!saved && existingSaved && (
+              <div data-testid="selection-existing-saved-row" style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                <span style={{ color: OVERLAY_STYLE_TOKENS.success }}>{t("actionSaved")}</span>
+                <button
+                  type="button"
+                  style={styles.resultFooterButton}
+                  onClick={(event) => {
+                    event.stopPropagation()
+                    openReview()
+                  }}
+                >
+                  {dueCount && dueCount > 0 ? `${t("popup_review")} (${dueCount})` : t("popup_review")}
+                </button>
+              </div>
             )}
             {saved && (
               <button

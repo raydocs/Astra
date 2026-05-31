@@ -6,6 +6,7 @@ const {
   translateTextsMock,
   saveVocabularyEntryMock,
   getDueVocabularyCountMock,
+  hasVocabularyEntryByTextMock,
   markSessionSaveMock,
   createAnnotationFromCurrentSelectionMock,
 } = vi.hoisted(() => ({
@@ -13,6 +14,7 @@ const {
   translateTextsMock: vi.fn(),
   saveVocabularyEntryMock: vi.fn(),
   getDueVocabularyCountMock: vi.fn(),
+  hasVocabularyEntryByTextMock: vi.fn(),
   markSessionSaveMock: vi.fn(),
   createAnnotationFromCurrentSelectionMock: vi.fn(),
 }))
@@ -54,6 +56,7 @@ vi.mock("@/utils/translate/translate", () => ({
 vi.mock("@/utils/storage/vocabulary", () => ({
   saveVocabularyEntry: saveVocabularyEntryMock,
   getDueVocabularyCount: getDueVocabularyCountMock,
+  hasVocabularyEntryByText: hasVocabularyEntryByTextMock,
 }))
 
 vi.mock("../learning-state", () => ({
@@ -101,6 +104,7 @@ describe("SelectionToolbar interaction suppression", () => {
     translateTextsMock.mockReset()
     saveVocabularyEntryMock.mockReset()
     getDueVocabularyCountMock.mockReset()
+    hasVocabularyEntryByTextMock.mockReset()
     markSessionSaveMock.mockReset()
     createAnnotationFromCurrentSelectionMock.mockReset()
     document.getElementById(HOST_ID)?.remove()
@@ -130,6 +134,7 @@ describe("SelectionToolbar interaction suppression", () => {
     translateTextsMock.mockResolvedValue({ ok: true, translations: ["你好"] })
     saveVocabularyEntryMock.mockResolvedValue(undefined)
     getDueVocabularyCountMock.mockResolvedValue(0)
+    hasVocabularyEntryByTextMock.mockResolvedValue(false)
     createAnnotationFromCurrentSelectionMock.mockResolvedValue({
       annotation: { id: "annotation-1" },
       evictedCount: 0,
@@ -730,6 +735,32 @@ describe("SelectionToolbar interaction suppression", () => {
     const topBarSaveButtons = Array.from(shadow.querySelectorAll("button"))
       .filter((btn) => btn.textContent === t("actionSave") && btn.dataset.testid !== "selection-result-save-cta")
     expect(topBarSaveButtons).toHaveLength(0)
+  })
+
+  it("reflects an already-saved selection as saved instead of re-offering Save", async () => {
+    hasVocabularyEntryByTextMock.mockResolvedValue(true)
+    getDueVocabularyCountMock.mockResolvedValue(3)
+    const target = document.getElementById("target") as HTMLElement
+
+    await triggerDocumentMouseDown(target)
+    setSelection("Hello world")
+    await triggerDocumentMouseUp(target)
+
+    // Let the async already-saved lookup (hasVocabularyEntryByText -> getDueVocabularyCount) resolve.
+    await act(async () => {
+      await Promise.resolve()
+      await Promise.resolve()
+      await Promise.resolve()
+    })
+
+    const host = document.getElementById(HOST_ID)!
+    const shadow = host.shadowRoot!
+
+    expect(hasVocabularyEntryByTextMock).toHaveBeenCalledWith("Hello world")
+    // The top-bar Save button shows the saved state rather than a fresh "Save".
+    const saveButton = shadow.querySelector('[data-testid="selection-action-save"]') as HTMLButtonElement
+    expect(saveButton).toBeTruthy()
+    expect(saveButton.textContent).toContain(t("actionSaved"))
   })
 
   it("publishes learning session save state when inline CTA save succeeds", async () => {

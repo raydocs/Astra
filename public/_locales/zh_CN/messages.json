@@ -98,6 +98,9 @@
   "actionSaved": {
     "message": "✓ 已收藏"
   },
+  "actionSavePhrase": {
+    "message": "收藏这句"
+  },
   "actionMore": {
     "message": "更多"
   },

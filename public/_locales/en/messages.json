@@ -98,6 +98,9 @@
   "actionSaved": {
     "message": "\u2713 Saved"
   },
+  "actionSavePhrase": {
+    "message": "Save phrase"
+  },
   "actionMore": {
     "message": "More"
   },
