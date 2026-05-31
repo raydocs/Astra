@@ -285,6 +285,8 @@ function getLearningLoopEventLabel(event: LearningLoopEventName): string {
       return t("options_learningLoopEventSentenceExplained")
     case "sentence_saved":
       return t("options_learningLoopEventSentenceSaved")
+    case "result_feedback_submitted":
+      return "Result feedback submitted"
     case "saved_snippet_created":
       return "Saved snippet created"
     case "review_opened":
