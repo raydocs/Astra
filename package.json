@@ -36,6 +36,7 @@
     "check:repo-knowledge": "tsx script/maintenance/check-repo-knowledge.ts",
     "check:weekly-digest-delivery": "tsx script/maintenance/verify-weekly-digest-delivery-workflow.ts",
     "check:strategic-non-goals": "tsx script/maintenance/check-strategic-non-goals.ts",
+    "check:product-copy": "tsx script/maintenance/check-product-copy.ts",
     "check:macro-final-completion": "tsx script/maintenance/check-macro-final-completion.ts",
     "verify:content-bundles": "tsx script/maintenance/verify-content-script-bundles.ts",
     "verify:firefox-lint": "tsx script/maintenance/verify-firefox-lint.ts",
