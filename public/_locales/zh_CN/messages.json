@@ -925,6 +925,24 @@
       "1": { "content": "$1" }
     }
   },
+  "review_summaryStreakLine": {
+    "message": "你已连续学习 $1 天。",
+    "placeholders": {
+      "1": { "content": "$1" }
+    }
+  },
+  "review_summaryComeBackTomorrow": {
+    "message": "明天再来，保持节奏。"
+  },
+  "review_summaryDueTomorrowLine": {
+    "message": "明天有 $1 张卡片等你复习。",
+    "placeholders": {
+      "1": { "content": "$1" }
+    }
+  },
+  "review_backToLibrary": {
+    "message": "返回学习库"
+  },
   "review_showFullContext": {
     "message": "展开完整上下文"
   },

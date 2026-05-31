@@ -925,6 +925,24 @@
       "1": { "content": "$1" }
     }
   },
+  "review_summaryStreakLine": {
+    "message": "You came back $1 days in a row.",
+    "placeholders": {
+      "1": { "content": "$1" }
+    }
+  },
+  "review_summaryComeBackTomorrow": {
+    "message": "Come back tomorrow to keep it going."
+  },
+  "review_summaryDueTomorrowLine": {
+    "message": "$1 cards are waiting for you tomorrow.",
+    "placeholders": {
+      "1": { "content": "$1" }
+    }
+  },
+  "review_backToLibrary": {
+    "message": "Back to Library"
+  },
   "review_showFullContext": {
     "message": "Show full context"
   },

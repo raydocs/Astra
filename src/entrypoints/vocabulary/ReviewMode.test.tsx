@@ -162,6 +162,10 @@ vi.mock("@/utils/i18n", () => ({
     if (key === "review_summaryFourGradeLede") return `You reviewed ${values[0] ?? "$1"} ${values[1] ?? "$2"}. Again ${values[2] ?? "$3"}, Hard ${values[3] ?? "$4"}, Good ${values[4] ?? "$5"}, Easy ${values[5] ?? "$6"} — each grade now schedules a distinct review interval.`
     if (key === "review_summaryFourGradeNote") return "Again returns soon; Hard keeps the current box with a shorter interval; Good advances one box; Easy advances two boxes with a longer interval."
     if (key === "review_actionReviewAgain") return "Review again"
+    if (key === "review_backToLibrary") return "Back to Library"
+    if (key === "review_summaryStreakLine") return `You came back ${values[0] ?? "$1"} days in a row.`
+    if (key === "review_summaryComeBackTomorrow") return "Come back tomorrow to keep it going."
+    if (key === "review_summaryDueTomorrowLine") return `${values[0] ?? "$1"} cards are waiting for you tomorrow.`
     if (key === "review_cardProgress") return `Card ${values[0] ?? "$1"} of ${values[1] ?? "$2"}`
     if (key === "review_boxLabel") return `Box ${values[0] ?? "$1"}`
     if (key === "review_flipHint") return "Click or press Space to reveal"
@@ -1017,6 +1021,81 @@ describe("ReviewMode", () => {
     expect(browser.tabs.create).toHaveBeenCalledWith({
       url: "https://www.youtube.com/watch?v=abc123&t=75s",
     })
+  })
+
+  it("shows a soft streak + tomorrow line and a Back to Library action on a real completion", async () => {
+    await act(async () => {
+      root.unmount()
+      await Promise.resolve()
+    })
+    root = ReactDOM.createRoot(container)
+    vi.clearAllMocks()
+
+    const dayMs = 24 * 60 * 60 * 1000
+    const now = new Date("2026-04-13T12:00:00.000Z").getTime()
+    const dueEntry = {
+      id: "due-entry",
+      text: "ephemeral",
+      translation: "短暂的",
+      url: "https://example.com/a",
+      hostname: "example.com",
+      savedAt: now - 2 * dayMs,
+      srsBox: 1,
+      nextReviewAt: now - 1000,
+      reviewCount: 1,
+      lastReviewedAt: now - dayMs,
+    }
+    const reviewedTodayEntry = {
+      id: "today-entry",
+      text: "serene",
+      translation: "宁静的",
+      url: "https://example.com/b",
+      hostname: "example.com",
+      savedAt: now - 3 * dayMs,
+      srsBox: 2,
+      nextReviewAt: now + dayMs,
+      reviewCount: 2,
+      lastReviewedAt: now,
+    }
+
+    window.history.pushState({}, "", "/vocabulary.html?tab=review")
+    getVocabularyEntriesMock.mockResolvedValue([dueEntry, reviewedTodayEntry])
+    updateVocabularyEntryMock.mockResolvedValue(dueEntry)
+    listOwnedReadingItemsMock.mockResolvedValue([])
+
+    const onBackToLibrary = vi.fn()
+    await act(async () => {
+      root.render(<ReviewMode onBackToLibrary={onBackToLibrary} />)
+      await Promise.resolve()
+      await Promise.resolve()
+      await Promise.resolve()
+    })
+
+    const flashcard = container.querySelector('[role="button"]') as HTMLDivElement
+    await act(async () => {
+      flashcard.click()
+      await Promise.resolve()
+    })
+    const knowItButton = container.querySelector('[data-review-grade="good"]') as HTMLButtonElement
+    await act(async () => {
+      knowItButton.click()
+      await Promise.resolve()
+      await Promise.resolve()
+      await Promise.resolve()
+    })
+
+    const streakLine = container.querySelector('[data-testid="review-summary-streak-line"]') as HTMLElement
+    expect(streakLine).toBeTruthy()
+    expect(streakLine.textContent).toContain("You came back 2 days in a row.")
+    expect(streakLine.textContent).toContain("1 cards are waiting for you tomorrow.")
+
+    const backButton = container.querySelector('[data-testid="review-back-to-library"]') as HTMLButtonElement
+    expect(backButton).toBeTruthy()
+    await act(async () => {
+      backButton.click()
+      await Promise.resolve()
+    })
+    expect(onBackToLibrary).toHaveBeenCalled()
   })
 
   it("shows subtitle-reader continuity on the second review card and reopens the linked subtitle-file asset", async () => {
