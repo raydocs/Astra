@@ -1,6 +1,31 @@
 import { describe, expect, it } from "vitest"
 
-import { buildMobileReviewShareText, buildMobileReviewSpeechText, buildMobileSavedItemSpeechText, buildTodayReviewQueue, buildWeeklyDigestSnapshot, createReviewEvent, sampleMobileReviewSnapshot } from "./review"
+import { buildMobileReviewShareText, buildMobileReviewSpeechText, buildMobileSavedItemSpeechText, buildSavedItemSourceUrl, buildTodayReviewQueue, buildWeeklyDigestSnapshot, createReviewEvent, sampleMobileReviewSnapshot } from "./review"
+
+describe("buildSavedItemSourceUrl", () => {
+  it("returns a timestamped URL for a saved video moment", () => {
+    const url = buildSavedItemSourceUrl(
+      { videoTimestampMs: 75_000 },
+      { type: "video", url: "https://www.youtube.com/watch?v=abc123" },
+    )
+    expect(url).toBe("https://www.youtube.com/watch?v=abc123&t=75s")
+  })
+
+  it("returns the bare source URL for a non-video item", () => {
+    expect(buildSavedItemSourceUrl({ videoTimestampMs: undefined }, { type: "page", url: "https://example.com/a" }))
+      .toBe("https://example.com/a")
+  })
+
+  it("returns the bare URL for a video item without a saved timestamp", () => {
+    expect(buildSavedItemSourceUrl({ videoTimestampMs: undefined }, { type: "video", url: "https://youtu.be/xyz" }))
+      .toBe("https://youtu.be/xyz")
+  })
+
+  it("returns undefined when the source has no URL", () => {
+    expect(buildSavedItemSourceUrl({ videoTimestampMs: 1000 }, { type: "video", url: undefined })).toBeUndefined()
+    expect(buildSavedItemSourceUrl({ videoTimestampMs: 1000 }, undefined)).toBeUndefined()
+  })
+})
 
 describe("mobile review domain", () => {
   it("builds a source-backed due queue capped for Today Review", () => {
