@@ -94,12 +94,14 @@ const iOxford = col("oxford")
 const iTag = col("tag")
 const iBnc = col("bnc")
 const iFrq = col("frq")
+const iExchange = col("exchange")
 
 if (iWord < 0 || iPhonetic < 0 || iTranslation < 0) {
   throw new Error(`Unexpected ECDICT header: ${header.join(",")}`)
 }
 
 const out = {}
+const pendingAliases = []
 let kept = 0
 for (let r = 1; r < rows.length; r++) {
   const row = rows[r]
@@ -120,13 +122,40 @@ for (let r = 1; r < rows.length; r++) {
   if (!gloss) continue
   if (out[word]) continue
   out[word] = { ipa: phonetic, gloss }
+  if (iExchange >= 0) {
+    const exchange = row[iExchange] || ""
+    for (const alias of parseExchangeAliases(exchange)) {
+      if (alias !== word) pendingAliases.push([alias, word])
+    }
+  }
   kept++
+}
+
+const aliases = {}
+for (const [alias, headword] of pendingAliases) {
+  // Real headwords win (e.g. "better" has its own pronunciation/gloss). Only
+  // fill gaps like went→go, mice→mouse, ran→run.
+  if (out[alias] || !out[headword] || aliases[alias]) continue
+  aliases[alias] = headword
 }
 
 mkdirSync(dirname(outPath), { recursive: true })
 // Stable key order keeps the committed asset diff-friendly across regenerations.
 const ordered = {}
 for (const k of Object.keys(out).sort()) ordered[k] = out[k]
-const json = JSON.stringify(ordered)
+const orderedAliases = {}
+for (const k of Object.keys(aliases).sort()) orderedAliases[k] = aliases[k]
+const json = JSON.stringify({ entries: ordered, aliases: orderedAliases })
 writeFileSync(outPath, json + "\n")
-console.log(`Kept ${kept} entries → ${outPath} (${(json.length / 1024).toFixed(0)} KB)`)
+console.log(`Kept ${kept} headwords + ${Object.keys(orderedAliases).length} inflection aliases → ${outPath} (${(json.length / 1024).toFixed(0)} KB)`)
+
+function parseExchangeAliases(exchange) {
+  if (!exchange) return []
+  const aliases = []
+  for (const part of exchange.split("/")) {
+    const [, rawValue] = part.split(":", 2)
+    const value = (rawValue || "").trim().toLowerCase()
+    if (/^[a-z][a-z'-]*$/.test(value)) aliases.push(value)
+  }
+  return aliases
+}

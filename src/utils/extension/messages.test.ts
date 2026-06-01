@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest"
 
 import type { AstraConfig } from "@/types/config"
 import { DEFAULT_ASTRA_CONFIG } from "@/types/config"
-import { commitLearningContinuitySync, getActiveTabStudyContext, getLearningContinuitySyncStatus, saveConfigInBackground } from "./messages"
+import { commitLearningContinuitySync, getActiveTabStudyContext, getLearningContinuitySyncStatus, requestDictionaryLookup, saveConfigInBackground } from "./messages"
 
 function getMockBrowser() {
   return (globalThis as { __ASTRA_TEST_BROWSER__?: any }).__ASTRA_TEST_BROWSER__
@@ -141,6 +141,29 @@ describe("extension message helpers", () => {
     })
     expect(result.ok).toBe(true)
     expect(result.ok ? result.status.inFlight : false).toBe(true)
+  })
+
+  it("requests offline dictionary entries through the background", async () => {
+    const browser = getMockBrowser()
+    browser.runtime.sendMessage.mockResolvedValue({
+      type: "runtime/dictionary-lookup:result",
+      entry: { ipa: "maus", gloss: "老鼠" },
+    })
+
+    const result = await requestDictionaryLookup("mice")
+
+    expect(browser.runtime.sendMessage).toHaveBeenCalledWith({
+      type: "runtime/dictionary-lookup",
+      word: "mice",
+    })
+    expect(result).toEqual({ ipa: "maus", gloss: "老鼠" })
+  })
+
+  it("treats dictionary transport failures as safe misses", async () => {
+    const browser = getMockBrowser()
+    browser.runtime.sendMessage.mockRejectedValue(new Error("worker asleep"))
+
+    await expect(requestDictionaryLookup("mice")).resolves.toBeNull()
   })
 
   it("requests study context from the top frame of the active tab", async () => {
