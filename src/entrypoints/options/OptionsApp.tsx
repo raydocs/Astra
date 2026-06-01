@@ -942,12 +942,14 @@ function TranslationSection({
   onPresentationChange,
   onConfigChange,
   advancedControlsOptIn,
+  showAdvancedControlsOptIn,
   onAdvancedControlsOptInChange,
 }: {
   config: AstraConfig
   onPresentationChange: (patch: Partial<AstraConfig["presentation"]>) => void
   onConfigChange: (patch: Partial<AstraConfig>) => void
   advancedControlsOptIn: boolean
+  showAdvancedControlsOptIn: boolean
   onAdvancedControlsOptInChange: (value: boolean) => void
 }) {
   const previewSource = "The afternoon light slipped between the columns and rested on the open page."
@@ -958,26 +960,28 @@ function TranslationSection({
       <SectionHeader
         eyebrow="Reading · Translation"
         headline="How Astra translates the page"
-        intro="Quiet reading controls that keep the source visible while Astra adds an alternate reading. There is no model or API key to set up — Astra automatically picks the right speed and quality for each page. Every control here also accepts per-site overrides under Sites."
+        intro="Quiet reading controls that keep the source visible while Astra adds an alternate reading. There is nothing technical to set up — Astra automatically picks the right speed and quality for each page. Every control here also accepts per-site overrides under Sites."
       />
 
       <div className="astra-settings-rows">
-        <div className="astra-settings-row">
-          <div className="astra-settings-row__body">
-            <p className="astra-settings-row__title">Advanced provider controls</p>
-            <p className="astra-settings-row__hint">Off by default — Astra stays zero-config and picks the provider for you. Turn on (power users) to choose the AI provider, model, and your own API key under a new “Astra AI” section.</p>
+        {showAdvancedControlsOptIn && (
+          <div className="astra-settings-row">
+            <div className="astra-settings-row__body">
+              <p className="astra-settings-row__title">Advanced provider controls</p>
+              <p className="astra-settings-row__hint">Off by default — Astra stays zero-config and picks the provider for you. Turn on (power users) to choose the AI provider, model, and your own API key under a new “Astra AI” section.</p>
+            </div>
+            <div className="astra-settings-row__control">
+              <label className="astra-sr-only" htmlFor="options-advanced-optin">Advanced provider controls</label>
+              <input
+                id="options-advanced-optin"
+                type="checkbox"
+                data-testid="advanced-controls-optin"
+                checked={advancedControlsOptIn}
+                onChange={(e) => onAdvancedControlsOptInChange(e.target.checked)}
+              />
+            </div>
           </div>
-          <div className="astra-settings-row__control">
-            <label className="astra-sr-only" htmlFor="options-advanced-optin">Advanced provider controls</label>
-            <input
-              id="options-advanced-optin"
-              type="checkbox"
-              data-testid="advanced-controls-optin"
-              checked={advancedControlsOptIn}
-              onChange={(e) => onAdvancedControlsOptInChange(e.target.checked)}
-            />
-          </div>
-        </div>
+        )}
 
         <div className="astra-settings-row">
           <div className="astra-settings-row__body">
@@ -3140,6 +3144,7 @@ export default function OptionsApp() {
   const { astraTheme, astraDirection } = useAstraTheme()
   const [section, setSection] = useState<Section>(() => getInitialOptionsSection())
   const [advancedControlsOptIn, setAdvancedControlsOptInState] = useState(false)
+  const [advancedControlsUrlOptIn] = useState(() => isOptionsAdvancedEnabled(window.location.search))
   useEffect(() => {
     void getAdvancedControlsOptIn().then(setAdvancedControlsOptInState)
   }, [])
@@ -3151,8 +3156,8 @@ export default function OptionsApp() {
   // unless a power user opts in (the ?advanced=1 flag OR the persisted toggle).
   // Ordinary beta users set neither.
   const optionsAdvancedEnabled = useMemo(
-    () => isOptionsAdvancedEnabled(undefined, advancedControlsOptIn),
-    [advancedControlsOptIn],
+    () => isOptionsAdvancedEnabled(undefined, advancedControlsUrlOptIn || advancedControlsOptIn),
+    [advancedControlsUrlOptIn, advancedControlsOptIn],
   )
   const [searchQuery, setSearchQuery] = useState("")
   const [config, setConfig] = useState<AstraConfig>(DEFAULT_ASTRA_CONFIG)
@@ -3502,6 +3507,7 @@ export default function OptionsApp() {
               onPresentationChange={updatePresentation}
               onConfigChange={updateConfig}
               advancedControlsOptIn={advancedControlsOptIn}
+              showAdvancedControlsOptIn={advancedControlsUrlOptIn || advancedControlsOptIn}
               onAdvancedControlsOptInChange={handleAdvancedControlsOptInChange}
             />
           )
@@ -3514,6 +3520,7 @@ export default function OptionsApp() {
             onPresentationChange={updatePresentation}
             onConfigChange={updateConfig}
             advancedControlsOptIn={advancedControlsOptIn}
+            showAdvancedControlsOptIn={advancedControlsUrlOptIn || advancedControlsOptIn}
             onAdvancedControlsOptInChange={handleAdvancedControlsOptInChange}
           />
         )
