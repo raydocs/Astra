@@ -10,6 +10,8 @@ const {
   markSessionSaveMock,
   createAnnotationFromCurrentSelectionMock,
   recordLearningLoopEventMock,
+  generateWordAnnotationMock,
+  isLexicalCandidateMock,
 } = vi.hoisted(() => ({
   readConfigMock: vi.fn(),
   translateTextsMock: vi.fn(),
@@ -19,6 +21,8 @@ const {
   markSessionSaveMock: vi.fn(),
   createAnnotationFromCurrentSelectionMock: vi.fn(),
   recordLearningLoopEventMock: vi.fn(),
+  generateWordAnnotationMock: vi.fn(),
+  isLexicalCandidateMock: vi.fn(),
 }))
 
 vi.mock("@/utils/learning-loop-events", async (importOriginal) => {
@@ -81,14 +85,17 @@ vi.mock("@/utils/reading/assist", () => ({
     keyPatterns: [],
     vocabularyNotes: [],
   }),
-  generateWordAnnotation: vi.fn().mockResolvedValue({
+  generateWordAnnotation: generateWordAnnotationMock,
+  isLexicalCandidate: isLexicalCandidateMock,
+}))
+
+const defaultWordAnnotation = {
     word: "mock",
     partOfSpeech: "noun",
     meaning: "mock meaning",
     shortExplanation: "mock explanation",
-  }),
-  isLexicalCandidate: vi.fn().mockReturnValue(false),
-}))
+    source: "ai",
+  }
 
 import { browser } from "#imports"
 import { DEFAULT_ASTRA_CONFIG } from "@/types/config"
@@ -115,6 +122,8 @@ describe("SelectionToolbar interaction suppression", () => {
     recordLearningLoopEventMock.mockReset()
     markSessionSaveMock.mockReset()
     createAnnotationFromCurrentSelectionMock.mockReset()
+    generateWordAnnotationMock.mockReset()
+    isLexicalCandidateMock.mockReset()
     document.getElementById(HOST_ID)?.remove()
     document.body.innerHTML = `<main><p id="target">Hello world</p></main>`
 
@@ -143,6 +152,8 @@ describe("SelectionToolbar interaction suppression", () => {
     saveVocabularyEntryMock.mockResolvedValue(undefined)
     getDueVocabularyCountMock.mockResolvedValue(0)
     hasVocabularyEntryByTextMock.mockResolvedValue(false)
+    generateWordAnnotationMock.mockResolvedValue(defaultWordAnnotation)
+    isLexicalCandidateMock.mockReturnValue(false)
     createAnnotationFromCurrentSelectionMock.mockResolvedValue({
       annotation: { id: "annotation-1" },
       evictedCount: 0,
@@ -412,6 +423,39 @@ describe("SelectionToolbar interaction suppression", () => {
         explainMode: "exam",
       }),
     }))
+  })
+
+  it("shows a calm provenance note on AI-generated word annotations", async () => {
+    isLexicalCandidateMock.mockReturnValue(true)
+    generateWordAnnotationMock.mockResolvedValueOnce({
+      word: "resilience",
+      pronunciation: "/rɪˈzɪliəns/",
+      partOfSpeech: "noun",
+      meaning: "韧性",
+      shortExplanation: "从困难中恢复的能力。",
+      source: "ai",
+    })
+    const target = document.getElementById("target") as HTMLElement
+
+    await triggerDocumentMouseDown(target)
+    setSelection("resilience")
+    await triggerDocumentMouseUp(target)
+
+    await act(async () => {
+      await Promise.resolve()
+      await Promise.resolve()
+      await Promise.resolve()
+    })
+
+    const host = document.getElementById(HOST_ID)!
+    const shadow = host.shadowRoot!
+
+    expect(generateWordAnnotationMock).toHaveBeenCalledWith(expect.objectContaining({
+      word: "resilience",
+      targetLang: DEFAULT_ASTRA_CONFIG.targetLang,
+    }))
+    expect(shadow.textContent).toContain("韧性")
+    expect(shadow.querySelector('[data-testid="word-annotation-source"]')?.textContent).toBe(t("wordAnnotationAiNote"))
   })
 
   it("passes configured explanation glossary through selection explain requests", async () => {
