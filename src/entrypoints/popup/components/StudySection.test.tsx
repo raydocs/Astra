@@ -59,6 +59,7 @@ function createProps(patch: Partial<StudySectionProps> = {}): StudySectionProps 
     pageAssetSaveStatus: "idle",
     pageAssetSaveMessage: null,
     pageDigest: null,
+    readingComfort: null,
     digestStale: false,
     digestLoading: false,
     canSpeakStudy: false,

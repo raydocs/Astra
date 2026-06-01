@@ -116,6 +116,15 @@
   "wordAnnotationDictNote": {
     "message": "词典释义 · 语境由 AI 解释"
   },
+  "readingComfortSmooth": {
+    "message": "这页读起来挺顺，可以快速浏览。"
+  },
+  "readingComfortSomeNew": {
+    "message": "有几个表达也许值得收藏。"
+  },
+  "readingComfortSlow": {
+    "message": "这页更适合慢读细看。"
+  },
   "actionMore": {
     "message": "更多"
   },

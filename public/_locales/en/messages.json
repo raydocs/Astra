@@ -116,6 +116,15 @@
   "wordAnnotationDictNote": {
     "message": "Dictionary meaning · AI explains the context"
   },
+  "readingComfortSmooth": {
+    "message": "This looks smooth for quick reading."
+  },
+  "readingComfortSomeNew": {
+    "message": "A few expressions may be worth saving."
+  },
+  "readingComfortSlow": {
+    "message": "This is a better page for slow reading."
+  },
   "actionMore": {
     "message": "More"
   },

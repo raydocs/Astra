@@ -2,6 +2,7 @@ import { t } from "@/utils/i18n"
 import type { PageStudyContext } from "@/types/messages"
 import type { ReadingHistoryEntry } from "@/utils/storage/reading-history"
 import type { PageDigestRecord } from "@/utils/storage/page-digests"
+import { READING_COMFORT_COPY_KEYS, type ReadingComfortId } from "@/utils/reading/known-words"
 import { buildLearningLoopAccountContinuityProofMoment, LEARNING_LOOP_COMMERCIAL_SURFACE_COPY, type LearningLoopAccountContinuityAuthState } from "@/utils/learning-loop-events"
 import { STUDY_STEPS_ORDER, type StudyLoopViewModel, type StudyStep, type WeeklyStudyProgressRoiSummary } from "@/utils/storage/study-progress"
 import type { WeeklyVocabularyRoiSummary } from "@/utils/storage/vocabulary"
@@ -52,6 +53,7 @@ interface StudySectionProps {
   pageAssetSaveStatus: PopupPageAssetSaveStatus
   pageAssetSaveMessage: string | null
   pageDigest: PageDigestRecord | null
+  readingComfort: ReadingComfortId | null
   digestStale: boolean
   digestLoading: boolean
   canSpeakStudy: boolean
@@ -568,6 +570,7 @@ export default function StudySection({
   pageAssetSaveStatus,
   pageAssetSaveMessage,
   pageDigest,
+  readingComfort,
   digestStale,
   digestLoading,
   canSpeakStudy,
@@ -1136,6 +1139,11 @@ export default function StudySection({
               </span>
             )}
           </div>
+          {readingComfort && (
+            <div data-testid="reading-comfort-hint" style={{ fontSize: 11, color: "var(--astra-text-secondary)", marginBottom: 6 }}>
+              {t(READING_COMFORT_COPY_KEYS[readingComfort])}
+            </div>
+          )}
           <div style={{ fontSize: 12, color: "var(--astra-text-secondary)", lineHeight: 1.55 }}>
             {pageDigest.summary}
           </div>
