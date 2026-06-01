@@ -1467,7 +1467,9 @@ function SelectionToolbarApp() {
             data-testid="word-annotation-source"
             style={{ color: OVERLAY_STYLE_TOKENS.textMuted, fontSize: overlayPx(11, fontScale), marginTop: overlayPx(6, fontScale) }}
           >
-            {wordAnnotation.source === "dictionary" ? t("wordAnnotationDictNote") : t("wordAnnotationAiNote")}
+            {wordAnnotation.source === "dictionary"
+              ? (wordAnnotation.shortExplanation ? t("wordAnnotationDictNote") : t("wordAnnotationDictNoteSimple"))
+              : t("wordAnnotationAiNote")}
           </div>
         </div>
       )}
