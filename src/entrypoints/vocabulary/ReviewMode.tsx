@@ -21,6 +21,7 @@ import {
   matchOwnedReadingItemForVocabularyEntry,
 } from "@/utils/storage/owned-reading"
 import { openVocabularyEntryInDeepRead } from "@/utils/deep-read-link"
+import { buildClozeFromSentence, type ClozePrompt } from "@/utils/reading/cloze"
 import { t } from "@/utils/i18n"
 import { commitLearningContinuitySync } from "@/utils/extension/messages"
 import ReviewStats from "./ReviewStats"
@@ -171,6 +172,15 @@ function buildVideoTimestampReturnUrl(entry?: VocabularyEntry | null): string | 
   const baseUrl = entry.sourceContext.pageUrl ?? entry.url
   if (!baseUrl?.trim()) return null
   return buildVideoTimestampUrl(baseUrl, timestampMs)
+}
+
+// A word saved with the real sentence it was met in becomes a cloze: recall the
+// word from its context. Video saves keep their return-to-the-moment affordance
+// instead, and multi-word (sentence) saves are left as-is.
+function deriveReviewClozePrompt(entry?: VocabularyEntry | null): ClozePrompt | null {
+  if (!entry || buildVideoTimestampReturnUrl(entry)) return null
+  if (entry.text.trim().split(/\s+/).filter(Boolean).length > 4) return null
+  return buildClozeFromSentence(entry.sourceContext?.sentenceText ?? entry.context ?? "", entry.text)
 }
 
 const REVIEW_DAY_MS = 24 * 60 * 60 * 1000
@@ -595,6 +605,7 @@ export default function ReviewMode({ onBackToLibrary }: { onBackToLibrary?: () =
   const currentPageLoop = studyLoop
   const snippetLong = sourceDisplay.snippet.length > 300
   const currentVideoReturnUrl = buildVideoTimestampReturnUrl(currentCard)
+  const clozePrompt = deriveReviewClozePrompt(currentCard)
   const sourcePageUrl = currentVideoReturnUrl ?? sourceDisplay.pageUrl
   const sourcePageIsWeb = /^https?:\/\//i.test(sourcePageUrl)
   const currentVideoTimestampMs = currentCard?.sourceContext?.videoTimestampMs
@@ -679,13 +690,28 @@ export default function ReviewMode({ onBackToLibrary }: { onBackToLibrary?: () =
 
   const reviewCardBody = currentCard ? (
     <>
-      {sourceDisplay.snippet && (
-        <div className="astra-review-context-lead">
-          <span className="astra-review-context-lead__label">{t("review_contextLabel")}</span>
-          <span>{snippetLong && !snippetExpanded ? `${sourceDisplay.snippet.slice(0, 220)}...` : sourceDisplay.snippet}</span>
-        </div>
+      {clozePrompt ? (
+        <>
+          <div className="astra-review-context-lead" data-testid="review-cloze">
+            <span className="astra-review-context-lead__label">{t("review_clozeLabel")}</span>
+            <span data-testid="review-cloze-prompt">{clozePrompt.prompt}</span>
+          </div>
+          {/* The answer (the saved word) stays hidden until the card is flipped. */}
+          {phase === "showing-back" && (
+            <div style={wordTextStyle} data-testid="review-cloze-answer">{currentCard.text}</div>
+          )}
+        </>
+      ) : (
+        <>
+          {sourceDisplay.snippet && (
+            <div className="astra-review-context-lead">
+              <span className="astra-review-context-lead__label">{t("review_contextLabel")}</span>
+              <span>{snippetLong && !snippetExpanded ? `${sourceDisplay.snippet.slice(0, 220)}...` : sourceDisplay.snippet}</span>
+            </div>
+          )}
+          <div style={wordTextStyle}>{currentCard.text}</div>
+        </>
       )}
-      <div style={wordTextStyle}>{currentCard.text}</div>
 
       {currentCard.hostname && (
         <span style={hostnameTagStyle}>{currentCard.hostname}</span>

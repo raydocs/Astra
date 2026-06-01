@@ -1180,6 +1180,9 @@
   "review_contextLabel": {
     "message": "Context"
   },
+  "review_clozeLabel": {
+    "message": "Fill in the blank"
+  },
   "review_loading": {
     "message": "Loading..."
   },
