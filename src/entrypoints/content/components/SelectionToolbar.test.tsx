@@ -7,6 +7,7 @@ const {
   saveVocabularyEntryMock,
   getDueVocabularyCountMock,
   hasVocabularyEntryByTextMock,
+  hasMasteredVocabularyEntryByTextMock,
   markSessionSaveMock,
   createAnnotationFromCurrentSelectionMock,
   recordLearningLoopEventMock,
@@ -18,6 +19,7 @@ const {
   saveVocabularyEntryMock: vi.fn(),
   getDueVocabularyCountMock: vi.fn(),
   hasVocabularyEntryByTextMock: vi.fn(),
+  hasMasteredVocabularyEntryByTextMock: vi.fn(),
   markSessionSaveMock: vi.fn(),
   createAnnotationFromCurrentSelectionMock: vi.fn(),
   recordLearningLoopEventMock: vi.fn(),
@@ -68,6 +70,7 @@ vi.mock("@/utils/storage/vocabulary", () => ({
   saveVocabularyEntry: saveVocabularyEntryMock,
   getDueVocabularyCount: getDueVocabularyCountMock,
   hasVocabularyEntryByText: hasVocabularyEntryByTextMock,
+  hasMasteredVocabularyEntryByText: hasMasteredVocabularyEntryByTextMock,
 }))
 
 vi.mock("../learning-state", () => ({
@@ -119,6 +122,7 @@ describe("SelectionToolbar interaction suppression", () => {
     saveVocabularyEntryMock.mockReset()
     getDueVocabularyCountMock.mockReset()
     hasVocabularyEntryByTextMock.mockReset()
+    hasMasteredVocabularyEntryByTextMock.mockReset()
     recordLearningLoopEventMock.mockReset()
     markSessionSaveMock.mockReset()
     createAnnotationFromCurrentSelectionMock.mockReset()
@@ -152,6 +156,7 @@ describe("SelectionToolbar interaction suppression", () => {
     saveVocabularyEntryMock.mockResolvedValue(undefined)
     getDueVocabularyCountMock.mockResolvedValue(0)
     hasVocabularyEntryByTextMock.mockResolvedValue(false)
+    hasMasteredVocabularyEntryByTextMock.mockResolvedValue(false)
     generateWordAnnotationMock.mockResolvedValue(defaultWordAnnotation)
     isLexicalCandidateMock.mockReturnValue(false)
     createAnnotationFromCurrentSelectionMock.mockResolvedValue({
@@ -456,6 +461,30 @@ describe("SelectionToolbar interaction suppression", () => {
     }))
     expect(shadow.textContent).toContain("韧性")
     expect(shadow.querySelector('[data-testid="word-annotation-source"]')?.textContent).toBe(t("wordAnnotationAiNote"))
+  })
+
+  it("does not auto-generate detailed explanations for mastered saved words", async () => {
+    isLexicalCandidateMock.mockReturnValue(true)
+    hasVocabularyEntryByTextMock.mockResolvedValue(true)
+    hasMasteredVocabularyEntryByTextMock.mockResolvedValue(true)
+    const target = document.getElementById("target") as HTMLElement
+
+    await triggerDocumentMouseDown(target)
+    setSelection("resilience")
+    await triggerDocumentMouseUp(target)
+
+    await act(async () => {
+      await Promise.resolve()
+      await Promise.resolve()
+      await Promise.resolve()
+    })
+
+    const host = document.getElementById(HOST_ID)!
+    const shadow = host.shadowRoot!
+
+    expect(generateWordAnnotationMock).not.toHaveBeenCalled()
+    expect(shadow.querySelector('[data-testid="known-word-card"]')?.textContent).toContain(t("knownWordTitle"))
+    expect(shadow.querySelector('[data-testid="word-annotation-card"]')).toBeNull()
   })
 
   it("passes configured explanation glossary through selection explain requests", async () => {

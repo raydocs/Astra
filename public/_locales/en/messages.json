@@ -116,6 +116,12 @@
   "wordAnnotationDictNote": {
     "message": "Dictionary meaning · AI explains the context"
   },
+  "knownWordTitle": {
+    "message": "Already in your comfort zone"
+  },
+  "knownWordHint": {
+    "message": "You have reviewed this word enough. Astra will save the detailed explanation for newer expressions."
+  },
   "readingComfortSmooth": {
     "message": "This looks smooth for quick reading."
   },

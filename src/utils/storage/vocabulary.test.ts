@@ -11,6 +11,7 @@ import {
   deriveWeeklyVocabularyRoi,
   getVocabularyCount,
   getVocabularyEntries,
+  hasMasteredVocabularyEntryByText,
   hasVocabularyEntryByText,
   readSyncSafeVocabularyReviewSchedules,
   importVocabularyEntriesFromThemePackPayload,
@@ -255,6 +256,24 @@ describe("vocabulary storage", () => {
     expect(await hasVocabularyEntryByText("hello world")).toBe(true)
     expect(await hasVocabularyEntryByText("  HELLO WORLD  ")).toBe(true)
     expect(await hasVocabularyEntryByText("goodbye world")).toBe(false)
+  })
+
+  it("checks whether a saved word is mastered using projected review schedules", async () => {
+    const entry = await saveVocabularyEntry({ text: "Resilience", srsBox: 3 })
+
+    expect(await hasMasteredVocabularyEntryByText("resilience")).toBe(false)
+
+    await recordVocabularyReviewSchedule({
+      vocabularyEntryId: entry.id,
+      srsBox: 5,
+      nextReviewAt: Date.now() + 16 * 24 * 60 * 60 * 1000,
+      reviewCount: 4,
+      lastReviewedAt: Date.now(),
+      grade: "easy",
+    })
+
+    expect(await hasMasteredVocabularyEntryByText("  RESILIENCE  ")).toBe(true)
+    expect(await hasMasteredVocabularyEntryByText("mitigate")).toBe(false)
   })
 
   it("derives weekly vocabulary ROI from saved and reviewed SRS entries", () => {

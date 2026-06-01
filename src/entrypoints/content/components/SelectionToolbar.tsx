@@ -5,7 +5,7 @@ import { ErrorBoundary } from "@/components/ErrorBoundary"
 import { t } from "@/utils/i18n"
 import { getSafeAiUnavailableCopy } from "@/utils/copy-dictionary"
 import { readConfig } from "@/utils/storage/config"
-import { getDueVocabularyCount, hasVocabularyEntryByText, saveVocabularyEntry } from "@/utils/storage/vocabulary"
+import { getDueVocabularyCount, hasMasteredVocabularyEntryByText, hasVocabularyEntryByText, saveVocabularyEntry } from "@/utils/storage/vocabulary"
 import { recordLearningLoopEvent } from "@/utils/learning-loop-events"
 import { formatGlossaryEvidenceLabel } from "@/utils/storage/vocabulary-core"
 import { copyTextToClipboard } from "@/utils/dom/clipboard"
@@ -475,6 +475,7 @@ function SelectionToolbarApp() {
   const [grammarLoading, setGrammarLoading] = useState(false)
   const [dueCount, setDueCount] = useState<number | null>(null)
   const [existingSaved, setExistingSaved] = useState(false)
+  const [knownSelection, setKnownSelection] = useState(false)
   const [targetLang, setTargetLang] = useState<string | null>(null)
   const [fontScale, setFontScale] = useState(DEFAULT_ASTRA_CONFIG.presentation.fontSize)
 
@@ -521,6 +522,7 @@ function SelectionToolbarApp() {
     setSaved(false)
     savedLookupSeq.current += 1
     setExistingSaved(false)
+    setKnownSelection(false)
     setShared(false)
     setFeedbackGiven(false)
     setSpeaking(false)
@@ -730,6 +732,7 @@ function SelectionToolbarApp() {
   useEffect(() => {
     if (!visible || !selectedText) {
       setExistingSaved(false)
+      setKnownSelection(false)
       return
     }
     const lookupId = savedLookupSeq.current + 1
@@ -737,16 +740,23 @@ function SelectionToolbarApp() {
     let cancelled = false
     void (async () => {
       try {
-        const alreadySaved = await hasVocabularyEntryByText(selectedText)
+        const [alreadySaved, alreadyMastered] = await Promise.all([
+          hasVocabularyEntryByText(selectedText),
+          isLexicalCandidate(selectedText) ? hasMasteredVocabularyEntryByText(selectedText) : Promise.resolve(false),
+        ])
         if (cancelled || savedLookupSeq.current !== lookupId) return
         setExistingSaved(alreadySaved)
+        setKnownSelection(alreadyMastered)
         if (alreadySaved) {
           const nextDueCount = await getDueVocabularyCount()
           if (cancelled || savedLookupSeq.current !== lookupId) return
           setDueCount(nextDueCount)
         }
       } catch {
-        if (!cancelled && savedLookupSeq.current === lookupId) setExistingSaved(false)
+        if (!cancelled && savedLookupSeq.current === lookupId) {
+          setExistingSaved(false)
+          setKnownSelection(false)
+        }
       }
     })()
     return () => {
@@ -1006,6 +1016,11 @@ function SelectionToolbarApp() {
     setWordAnnotation(null)
 
     try {
+      if (await hasMasteredVocabularyEntryByText(selectedText)) {
+        if (requestVersion !== selectionVersionRef.current) return
+        setKnownSelection(true)
+        return
+      }
       const config = await readConfig()
       if (requestVersion !== selectionVersionRef.current) return
       const result = await generateWordAnnotation({
@@ -1406,6 +1421,17 @@ function SelectionToolbarApp() {
               )}
             </div>
           )}
+        </div>
+      )}
+
+      {knownSelection && !wordAnnotation && (
+        <div style={{ ...styles.resultPanel, borderLeftColor: OVERLAY_STYLE_TOKENS.success }} data-testid="known-word-card">
+          <div style={{ fontWeight: 700, color: OVERLAY_STYLE_TOKENS.success, marginBottom: overlayPx(4, fontScale) }}>
+            {t("knownWordTitle")}
+          </div>
+          <div style={{ color: OVERLAY_STYLE_TOKENS.textSecondary, fontSize: overlayPx(13, fontScale), lineHeight: 1.5 }}>
+            {t("knownWordHint")}
+          </div>
         </div>
       )}
 
