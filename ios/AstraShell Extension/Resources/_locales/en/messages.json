@@ -110,6 +110,9 @@
   "resultFeedbackThanks": {
     "message": "Thanks for the feedback."
   },
+  "wordAnnotationAiNote": {
+    "message": "AI explanation · for reference"
+  },
   "actionMore": {
     "message": "More"
   },

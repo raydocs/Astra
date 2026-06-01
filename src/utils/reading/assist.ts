@@ -188,6 +188,10 @@ export const WordAnnotationSchema = z.object({
   meaning: z.string(),
   shortExplanation: z.string(),
   exampleSentence: z.string().optional(),
+  // Provenance of this annotation. The AI prompt never emits `source`, so model
+  // output parses as "ai"; a future offline-dictionary lookup constructs the
+  // annotation with "dictionary" to mark a verified lexical ground truth.
+  source: z.enum(["ai", "dictionary"]).default("ai"),
 })
 
 export type WordAnnotation = z.infer<typeof WordAnnotationSchema>

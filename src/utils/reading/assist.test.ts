@@ -149,4 +149,28 @@ describe("reading assist prompt builders", () => {
     expect(requestTranslationBatchMock).toHaveBeenNthCalledWith(2, expect.objectContaining({ serviceMode: "balanced" }))
     expect(requestTranslationBatchMock).toHaveBeenNthCalledWith(3, expect.objectContaining({ serviceMode: "fast" }))
   })
+
+  it("marks word annotations as AI-sourced when the model omits a source", async () => {
+    requestTranslationBatchMock.mockResolvedValueOnce({
+      ok: true,
+      translations: [JSON.stringify({
+        word: "resilience",
+        pronunciation: "/rɪˈzɪliəns/",
+        partOfSpeech: "noun",
+        meaning: "韧性",
+        shortExplanation: "从困难中恢复的能力。",
+      })],
+    })
+
+    const annotation = await generateWordAnnotation({
+      word: "resilience",
+      targetLang: "zh-CN",
+      languageLevel: "intermediate",
+    })
+
+    // The prompt never asks the model for `source`, so model output must parse
+    // as "ai" — this is the honesty signal the card surfaces and the field a
+    // future dictionary lookup flips to "dictionary".
+    expect(annotation.source).toBe("ai")
+  })
 })

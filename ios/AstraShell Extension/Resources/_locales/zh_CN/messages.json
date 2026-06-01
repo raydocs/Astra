@@ -110,6 +110,9 @@
   "resultFeedbackThanks": {
     "message": "感谢反馈。"
   },
+  "wordAnnotationAiNote": {
+    "message": "AI 释义 · 仅供参考"
+  },
   "actionMore": {
     "message": "更多"
   },

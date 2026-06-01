@@ -1433,6 +1433,14 @@ function SelectionToolbarApp() {
           {wordAnnotation.exampleSentence && (
             <div style={{ color: OVERLAY_STYLE_TOKENS.textMuted, fontSize: overlayPx(13, fontScale), fontStyle: "italic" }}>{wordAnnotation.exampleSentence}</div>
           )}
+          {wordAnnotation.source === "ai" && (
+            <div
+              data-testid="word-annotation-source"
+              style={{ color: OVERLAY_STYLE_TOKENS.textMuted, fontSize: overlayPx(11, fontScale), marginTop: overlayPx(6, fontScale) }}
+            >
+              {t("wordAnnotationAiNote")}
+            </div>
+          )}
         </div>
       )}
 
