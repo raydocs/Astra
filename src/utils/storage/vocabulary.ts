@@ -417,6 +417,17 @@ export async function hasVocabularyEntryByText(text: string): Promise<boolean> {
   return entries.some((entry) => entry.text.trim().toLowerCase() === normalizedText)
 }
 
+export async function hasMasteredVocabularyEntryByText(text: string): Promise<boolean> {
+  const normalizedText = text.trim().toLowerCase()
+  if (!normalizedText) return false
+
+  const entries = await getVocabularyEntries()
+  return entries.some((entry) => (
+    entry.text.trim().toLowerCase() === normalizedText
+    && (entry.srsBox ?? 1) >= 5
+  ))
+}
+
 /** Update a single vocabulary entry by id with a partial patch. */
 export async function updateVocabularyEntry(
   id: string,

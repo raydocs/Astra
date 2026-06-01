@@ -116,6 +116,12 @@
   "wordAnnotationDictNote": {
     "message": "词典释义 · 语境由 AI 解释"
   },
+  "knownWordTitle": {
+    "message": "这个词你已经比较熟了"
+  },
+  "knownWordHint": {
+    "message": "你已经复习到掌握程度。Astra 会把详细解释留给更新的表达。"
+  },
   "readingComfortSmooth": {
     "message": "这页读起来挺顺，可以快速浏览。"
   },
