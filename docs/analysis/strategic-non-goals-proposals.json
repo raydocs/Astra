@@ -14,6 +14,22 @@
         "observableBySupportAndAnalytics": true,
         "surfaceBoundary": "default"
       }
+    },
+    {
+      "id": "advanced-provider-console-opt-in",
+      "title": "Provider/model/API-key console behind a power-user opt-in",
+      "source": "owner decision 2026-06-01: BYO-key allowed as an advanced opt-in, never the default surface",
+      "allowedDecision": "advanced_or_beta_only",
+      "input": {
+        "supportsZeroConfig": true,
+        "controlsCost": true,
+        "ordinaryLanguage": true,
+        "protectsPrivacyByDefault": true,
+        "advancesLearningLoopOrPaidValue": true,
+        "observableBySupportAndAnalytics": true,
+        "surfaceBoundary": "advanced",
+        "introducesProviderConsoleDefault": true
+      }
     }
   ]
 }

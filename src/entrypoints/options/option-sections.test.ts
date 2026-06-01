@@ -79,4 +79,12 @@ describe("options zero-config advanced gate", () => {
     expect(isOptionsAdvancedEnabled("?advanced=on")).toBe(true)
     expect(isOptionsAdvancedEnabled("?advanced=ON&section=providers")).toBe(true)
   })
+
+  it("honors a persisted opt-in even without the URL flag, but stays off by default", () => {
+    expect(isOptionsAdvancedEnabled("", false)).toBe(false)
+    expect(isOptionsAdvancedEnabled("", undefined)).toBe(false)
+    expect(isOptionsAdvancedEnabled("", true)).toBe(true)
+    // URL flag still works independently of the persisted preference.
+    expect(isOptionsAdvancedEnabled("?advanced=1", false)).toBe(true)
+  })
 })
