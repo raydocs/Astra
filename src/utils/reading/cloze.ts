@@ -31,12 +31,13 @@ export function buildClozeFromSentence(sentence: string, target: string): ClozeP
   // A cloze needs surrounding context — the word alone is not a sentence.
   if (trimmedSentence.toLowerCase() === trimmedTarget.toLowerCase()) return null
 
-  const pattern = new RegExp(`\\b${escapeRegExp(trimmedTarget)}\\b`, "i")
-  const match = pattern.exec(trimmedSentence)
+  const match = new RegExp(`\\b${escapeRegExp(trimmedTarget)}\\b`, "i").exec(trimmedSentence)
   if (!match) return null
 
+  // Blank every occurrence of the word so a repeated target isn't given away
+  // elsewhere in the sentence; keep the original casing as the answer.
   return {
-    prompt: trimmedSentence.replace(pattern, CLOZE_BLANK),
+    prompt: trimmedSentence.replace(new RegExp(`\\b${escapeRegExp(trimmedTarget)}\\b`, "gi"), CLOZE_BLANK),
     answer: match[0],
   }
 }
