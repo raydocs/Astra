@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it } from "vitest"
 import { createMockBrowser, setMockBrowser } from "../../../test/utils/mockBrowser"
 import type { OwnedReadingThemePackPackagePayload } from "./owned-reading"
 import { getVocabularySourceSurfaceLabel } from "./vocabulary-core"
+import { buildShareableDeck } from "./deck-share"
 import {
   applyVocabularyReviewScheduleSyncMutationsToStorage,
   applyVocabularySyncMutations,
@@ -15,6 +16,7 @@ import {
   hasVocabularyEntryByText,
   readSyncSafeVocabularyReviewSchedules,
   importVocabularyEntriesFromThemePackPayload,
+  importShareableDeck,
   previewVocabularyEntriesFromThemePackPayload,
   listGlossaryEntriesForHostname,
   recordVocabularyReviewSchedule,
@@ -29,6 +31,26 @@ import {
 describe("vocabulary storage", () => {
   beforeEach(() => {
     setMockBrowser(createMockBrowser())
+  })
+
+  it("imports a shared deck, deduping against existing saves and minting a fresh schedule", async () => {
+    await saveVocabularyEntry({ text: "run", translation: "跑" })
+    const deck = buildShareableDeck(
+      [
+        { text: "run", translation: "again" }, // duplicate of the existing save
+        { text: "resilience", translation: "韧性", context: "Her resilience helped.", explanation: "why" },
+      ],
+      { now: 1_700_000_000_000 },
+    )
+
+    const result = await importShareableDeck(deck)
+    expect(result).toEqual({ importedCount: 1, skippedCount: 1 })
+
+    const added = (await getVocabularyEntries()).find((e) => e.text === "resilience")
+    expect(added?.translation).toBe("韧性")
+    expect(added?.context).toBe("Her resilience helped.")
+    expect(added?.srsBox).toBe(1) // fresh schedule — importer reviews from box 1
+    expect(added?.url).toBeUndefined() // a shared deck never carries the source URL
   })
 
   it("saves and retrieves a vocabulary entry", async () => {

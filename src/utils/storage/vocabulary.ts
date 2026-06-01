@@ -33,6 +33,7 @@ import {
   type VocabularySyncMutationLike,
 } from "./vocabulary-core"
 import type { OwnedReadingThemePackPackagePayload } from "./owned-reading"
+import type { ShareableDeck } from "./deck-share"
 
 export const VOCABULARY_STORAGE_KEY = "astra.vocabulary.v1"
 export const VOCABULARY_REVIEW_SCHEDULE_STORAGE_KEY = "astra.vocabulary.review_schedule.v1"
@@ -283,6 +284,45 @@ export async function importVocabularyEntriesFromThemePackPayload(
     importedCount: additions.length,
     skippedCount,
   }
+}
+
+/**
+ * Import a user-shared deck (unsigned, learning-content only). Deduplicates
+ * against existing saves by text — a shared card has no source URL — and mints a
+ * fresh id + default SRS schedule so the importer reviews it from box 1.
+ */
+export async function importShareableDeck(
+  deck: ShareableDeck,
+): Promise<VocabularyThemePackImportResult> {
+  const entries = await readEntries()
+  const existingKeys = new Set(entries.map((entry) => buildVocabularyImportKey(entry)))
+  const now = Date.now()
+  const additions: VocabularyEntry[] = []
+  let skippedCount = 0
+
+  for (const card of deck.cards) {
+    const key = buildVocabularyImportKey({ text: card.text, url: undefined })
+    if (existingKeys.has(key)) {
+      skippedCount += 1
+      continue
+    }
+    existingKeys.add(key)
+    additions.push({
+      id: generateId(),
+      text: card.text,
+      translation: card.translation,
+      explanation: card.explanation,
+      context: card.context,
+      savedAt: now,
+      ...createDefaultSrsFields(now),
+    })
+  }
+
+  if (additions.length > 0) {
+    await writeEntries([...additions, ...entries])
+  }
+
+  return { importedCount: additions.length, skippedCount }
 }
 
 export async function saveVocabularyEntry(entry: Omit<VocabularyEntry, "id" | "savedAt">): Promise<VocabularyEntry> {

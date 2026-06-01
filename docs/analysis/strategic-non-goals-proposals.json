@@ -16,10 +16,10 @@
       }
     },
     {
-      "id": "advanced-provider-console-opt-in",
-      "title": "Provider/model/API-key console behind a power-user opt-in",
-      "source": "owner decision 2026-06-01: BYO-key allowed as an advanced opt-in, never the default surface",
-      "allowedDecision": "advanced_or_beta_only",
+      "id": "shareable-decks-user-initiated-export",
+      "title": "Shared decks via user-initiated file export/import (not a social surface)",
+      "source": "owner decision 2026-06-01: deliver shared decks as portable export/import, the gate's preferred alternative to a default social community",
+      "allowedDecision": "accept_candidate",
       "input": {
         "supportsZeroConfig": true,
         "controlsCost": true,
@@ -27,8 +27,8 @@
         "protectsPrivacyByDefault": true,
         "advancesLearningLoopOrPaidValue": true,
         "observableBySupportAndAnalytics": true,
-        "surfaceBoundary": "advanced",
-        "introducesProviderConsoleDefault": true
+        "surfaceBoundary": "default",
+        "introducesSocialCommunityDefault": false
       }
     }
   ]
