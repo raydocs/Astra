@@ -113,6 +113,9 @@
   "wordAnnotationAiNote": {
     "message": "AI explanation · for reference"
   },
+  "wordAnnotationDictNote": {
+    "message": "Dictionary meaning · AI explains the context"
+  },
   "actionMore": {
     "message": "More"
   },

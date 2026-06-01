@@ -19,6 +19,7 @@ import {
   type RuntimeResponse,
 } from "@/types/messages"
 import { executeTabCommand, initializeFrameCoordinator } from "./frame-coordinator"
+import { lookupDictionary } from "@/utils/reading/dictionary"
 import { AstraError, toTranslationError } from "@/types/translation"
 import { toggleTabTranslation } from "@/utils/extension/messages"
 import { reconcileBrowserPermissionEvent } from "@/utils/extension/page-permissions"
@@ -760,6 +761,20 @@ export default defineBackground({
               ...(metadata ? { metadata } : {}),
             } satisfies RuntimeResponse)
           })
+        return true
+      }
+
+      if (
+        typeof message === "object"
+        && message !== null
+        && (message as { type?: string }).type === "runtime/dictionary-lookup"
+      ) {
+        const word = typeof (message as { word?: unknown }).word === "string"
+          ? (message as { word: string }).word
+          : ""
+        lookupDictionary(word)
+          .then((entry) => sendResponse({ type: "runtime/dictionary-lookup:result", entry }))
+          .catch(() => sendResponse({ type: "runtime/dictionary-lookup:result", entry: null }))
         return true
       }
 
