@@ -22,6 +22,8 @@ import {
 } from "@/utils/storage/owned-reading"
 import { openVocabularyEntryInDeepRead } from "@/utils/deep-read-link"
 import { buildClozeFromSentence, type ClozePrompt } from "@/utils/reading/cloze"
+import { isTtsSupported, speak } from "@/utils/tts"
+import { readConfig } from "@/utils/storage/config"
 import { t } from "@/utils/i18n"
 import { commitLearningContinuitySync } from "@/utils/extension/messages"
 import ReviewStats from "./ReviewStats"
@@ -181,6 +183,15 @@ function deriveReviewClozePrompt(entry?: VocabularyEntry | null): ClozePrompt | 
   if (!entry || buildVideoTimestampReturnUrl(entry)) return null
   if (entry.text.trim().split(/\s+/).filter(Boolean).length > 4) return null
   return buildClozeFromSentence(entry.sourceContext?.sentenceText ?? entry.context ?? "", entry.text)
+}
+
+// Reverse recall for a high-value SHORT phrase (2-4 words) with a known meaning:
+// show the meaning, recall the phrase. Single words stay as normal cards and full
+// sentences are not asked for verbatim; cloze/video saves keep their own mode.
+function shouldReverseRecall(entry: VocabularyEntry | null, isCloze: boolean): boolean {
+  if (!entry || isCloze || buildVideoTimestampReturnUrl(entry)) return false
+  const tokenCount = entry.text.trim().split(/\s+/).filter(Boolean).length
+  return tokenCount >= 2 && tokenCount <= 4 && Boolean(entry.translation?.trim())
 }
 
 const REVIEW_DAY_MS = 24 * 60 * 60 * 1000
@@ -606,6 +617,22 @@ export default function ReviewMode({ onBackToLibrary }: { onBackToLibrary?: () =
   const snippetLong = sourceDisplay.snippet.length > 300
   const currentVideoReturnUrl = buildVideoTimestampReturnUrl(currentCard)
   const clozePrompt = deriveReviewClozePrompt(currentCard)
+  const showReverseRecall = shouldReverseRecall(currentCard, Boolean(clozePrompt))
+  const dictationText = currentCard?.sourceContext?.sentenceText?.trim() || currentCard?.context?.trim() || ""
+  const canDictate = Boolean(dictationText) && (isTtsSupported("browser") || isTtsSupported("edge"))
+
+  const handleDictation = async () => {
+    if (!dictationText) return
+    const config = await readConfig()
+    if (!config.tts.enabled || !isTtsSupported(config.tts.engine)) return
+    speak(dictationText, {
+      engine: config.tts.engine,
+      voiceName: config.tts.voiceName,
+      rate: config.tts.rate,
+      pitch: config.tts.pitch,
+      lang: config.targetLang,
+    })
+  }
   const sourcePageUrl = currentVideoReturnUrl ?? sourceDisplay.pageUrl
   const sourcePageIsWeb = /^https?:\/\//i.test(sourcePageUrl)
   const currentVideoTimestampMs = currentCard?.sourceContext?.videoTimestampMs
@@ -701,6 +728,17 @@ export default function ReviewMode({ onBackToLibrary }: { onBackToLibrary?: () =
             <div style={wordTextStyle} data-testid="review-cloze-answer">{currentCard.text}</div>
           )}
         </>
+      ) : showReverseRecall ? (
+        <>
+          {/* Reverse recall: show the meaning, recall the phrase. */}
+          <div className="astra-review-context-lead" data-testid="review-reverse">
+            <span className="astra-review-context-lead__label">{t("review_reverseLabel")}</span>
+            <span data-testid="review-reverse-prompt">{currentCard.translation}</span>
+          </div>
+          {phase === "showing-back" && (
+            <div style={wordTextStyle} data-testid="review-reverse-answer">{currentCard.text}</div>
+          )}
+        </>
       ) : (
         <>
           {sourceDisplay.snippet && (
@@ -711,6 +749,17 @@ export default function ReviewMode({ onBackToLibrary }: { onBackToLibrary?: () =
           )}
           <div style={wordTextStyle}>{currentCard.text}</div>
         </>
+      )}
+      {canDictate && (
+        <button
+          type="button"
+          data-testid="review-listen"
+          onClick={() => { void handleDictation() }}
+          className="astra-btn-link"
+          style={{ marginTop: 6 }}
+        >
+          {t("review_listen")}
+        </button>
       )}
 
       {currentCard.hostname && (

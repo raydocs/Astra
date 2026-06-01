@@ -1182,6 +1182,12 @@
   "review_clozeLabel": {
     "message": "填空回忆"
   },
+  "review_reverseLabel": {
+    "message": "回忆这个表达"
+  },
+  "review_listen": {
+    "message": "朗读"
+  },
   "review_loading": {
     "message": "加载中..."
   },

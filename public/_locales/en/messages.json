@@ -1183,6 +1183,12 @@
   "review_clozeLabel": {
     "message": "Fill in the blank"
   },
+  "review_reverseLabel": {
+    "message": "Recall the phrase"
+  },
+  "review_listen": {
+    "message": "Listen"
+  },
   "review_loading": {
     "message": "Loading..."
   },
