@@ -10,7 +10,7 @@
  *
  * Usage:
  *   1) curl -L -o /tmp/ecdict.csv https://raw.githubusercontent.com/skywind3000/ECDICT/master/ecdict.csv
- *   2) node scripts/build-dictionary.mjs /tmp/ecdict.csv
+ *   2) node script/maintenance/build-dictionary.mjs /tmp/ecdict.csv
  *
  * Frequency: ECDICT `bnc` and `frq` are corpus RANKS (1 = most frequent, 0 =
  * unknown). We keep words whose rank is within RANK_LIMIT in either corpus.
@@ -28,7 +28,7 @@ const RANK_LIMIT = 20000
 const MAX_GLOSS_CHARS = 28
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
-const repoRoot = resolve(__dirname, "..")
+const repoRoot = resolve(__dirname, "../..")
 
 const srcPath = process.argv[2] || "/tmp/ecdict.csv"
 const outPath = resolve(repoRoot, "public/dictionary/en-zh-common.json")

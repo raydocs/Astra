@@ -754,7 +754,10 @@ export default function ReviewMode({ onBackToLibrary }: { onBackToLibrary?: () =
         <button
           type="button"
           data-testid="review-listen"
-          onClick={() => { void handleDictation() }}
+          onClick={(event) => {
+            event.stopPropagation()
+            void handleDictation()
+          }}
           className="astra-btn-link"
           style={{ marginTop: 6 }}
         >
@@ -1145,10 +1148,10 @@ export default function ReviewMode({ onBackToLibrary }: { onBackToLibrary?: () =
           {currentPageLoop && <CurrentPageLoopCard studyLoop={currentPageLoop} />}
 
           {phase === "showing-front" ? (
-            <button
-              type="button"
+            <section
               data-testid="review-card"
               role="button"
+              tabIndex={0}
               className="astra-flashcard-flip astra-flashcard-flip--front"
               style={flashcardStyle}
               onClick={handleFlip}
@@ -1162,7 +1165,7 @@ export default function ReviewMode({ onBackToLibrary }: { onBackToLibrary?: () =
               aria-describedby={reviewKeyboardHintId}
             >
               {certificationMode ? certificationReviewCardBody : reviewCardBody}
-            </button>
+            </section>
           ) : (
             <section
               data-testid="review-card"

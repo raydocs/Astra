@@ -8,7 +8,7 @@
  * lets the model supply only the in-context explanation — so a hallucinated
  * pronunciation/meaning can no longer reach a learner who cannot sanity-check it.
  *
- * Regenerate the data with: node scripts/build-dictionary.mjs /tmp/ecdict.csv
+ * Regenerate the data with: node script/maintenance/build-dictionary.mjs /tmp/ecdict.csv
  */
 
 import { browser } from "#imports"
