@@ -100,6 +100,16 @@ if (iWord < 0 || iPhonetic < 0 || iTranslation < 0) {
   throw new Error(`Unexpected ECDICT header: ${header.join(",")}`)
 }
 
+// ECDICT phonetics use a Cyrillic schwa (U+04D9) and ASCII apostrophe/comma for
+// stress. Map them to real IPA glyphs so the displayed pronunciation is correct.
+function normalizePhonetic(raw) {
+  return raw
+    .replace(/[әӘ]/g, "ə") // Cyrillic ə → IPA ə (schwa)
+    .replace(/'/g, "ˈ") // ASCII apostrophe → ˈ primary stress
+    .replace(/,/g, "ˌ") // ASCII comma → ˌ secondary stress
+    .trim()
+}
+
 const out = {}
 const pendingAliases = []
 let kept = 0
@@ -121,7 +131,7 @@ for (let r = 1; r < rows.length; r++) {
   const gloss = conciseGloss(translation)
   if (!gloss) continue
   if (out[word]) continue
-  out[word] = { ipa: phonetic, gloss }
+  out[word] = { ipa: normalizePhonetic(phonetic), gloss }
   if (iExchange >= 0) {
     const exchange = row[iExchange] || ""
     for (const alias of parseExchangeAliases(exchange)) {
