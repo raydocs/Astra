@@ -1590,6 +1590,74 @@ describe("AstraWebApp smoke", () => {
     await unmount()
   })
 
+  it("presents a word saved with its sentence as a cloze in Today Review", async () => {
+    const session = createSession()
+    mocks.readWebSessionMock.mockReturnValue(session)
+    mocks.refreshWebSessionMock.mockResolvedValue(session)
+    mocks.fetchWebCloudAssetsMock.mockResolvedValue(createCloudAssets({
+      vocabulary: {
+        enabled: true,
+        defaultEnabled: true,
+        cursor: "cloze",
+        count: 1,
+        entries: [
+          { id: "cloze-1", text: "resilient", translation: "有韧性的", context: "The system stayed resilient under load.", hostname: "example.com", savedAt: 1_000_000_000_000 },
+        ],
+        reviewSchedule: [],
+      },
+    }))
+    window.location.hash = "#/today"
+
+    const { container, unmount } = await renderApp()
+
+    const front = container.querySelector('[data-testid="mobile-review-front"]')
+    expect(front?.textContent).toBe("The system stayed _____ under load.")
+    expect(front?.textContent).not.toContain("resilient")
+
+    await act(async () => {
+      clickButton(container, "Show answer")
+    })
+    await flush()
+
+    expect(container.querySelector('[data-testid="mobile-review-answer"]')?.textContent).toBe("resilient")
+
+    await unmount()
+  })
+
+  it("presents a short phrase with a meaning as reverse recall in Today Review", async () => {
+    const session = createSession()
+    mocks.readWebSessionMock.mockReturnValue(session)
+    mocks.refreshWebSessionMock.mockResolvedValue(session)
+    mocks.fetchWebCloudAssetsMock.mockResolvedValue(createCloudAssets({
+      vocabulary: {
+        enabled: true,
+        defaultEnabled: true,
+        cursor: "reverse",
+        count: 1,
+        entries: [
+          { id: "reverse-1", text: "give up", translation: "放弃", hostname: "example.com", savedAt: 1_000_000_000_000 },
+        ],
+        reviewSchedule: [],
+      },
+    }))
+    window.location.hash = "#/today"
+
+    const { container, unmount } = await renderApp()
+
+    const front = container.querySelector('[data-testid="mobile-review-front"]')
+    expect(front?.textContent).toBe("放弃")
+    expect(front?.textContent).not.toContain("give up")
+
+    await act(async () => {
+      clickButton(container, "Show answer")
+    })
+    await flush()
+
+    expect(container.querySelector('[data-testid="mobile-review-answer"]')?.textContent).toBe("give up")
+
+    await unmount()
+  })
+
   it("orders Today Review by SRS due date, not recency", async () => {
     const session = createSession()
     mocks.readWebSessionMock.mockReturnValue(session)
