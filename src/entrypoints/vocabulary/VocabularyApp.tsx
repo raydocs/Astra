@@ -6,6 +6,7 @@ import { commitLearningContinuitySync } from "@/utils/extension/messages"
 import {
   getVocabularyEntries,
   importVocabularyEntriesFromThemePackPayload,
+  importShareableDeck,
   previewVocabularyEntriesFromThemePackPayload,
   removeVocabularyEntry,
   removeVocabularyEntries,
@@ -13,6 +14,7 @@ import {
   updateVocabularyEntry,
 } from "@/utils/storage/vocabulary"
 import { deriveVocabularySourceDisplay, getPageReviewVocabularyEntries, normalizeVocabularyStudyUrl } from "@/utils/storage/vocabulary-core"
+import { buildShareableDeck, parseShareableDeck, serializeShareableDeck } from "@/utils/storage/deck-share"
 import { getReadingHistoryEntry } from "@/utils/storage/reading-history"
 import {
   deriveStudyLoopPageSummary,
@@ -217,6 +219,11 @@ function exportAnkiTSV(entries: VocabularyEntry[]): void {
   })
   const tsv = rows.join("\n")
   downloadFile(tsv, "astra-vocabulary-anki.tsv", "text/tab-separated-values;charset=utf-8")
+}
+
+function exportShareableDeck(entries: VocabularyEntry[]): void {
+  const deck = buildShareableDeck(entries, { now: Date.now() })
+  downloadFile(serializeShareableDeck(deck), `astra-deck-${formatDateISO(Date.now())}.json`, "application/json;charset=utf-8")
 }
 
 async function exportReadingThemePacksJSON(items: readonly OwnedReadingItem[], entries: readonly VocabularyEntry[]): Promise<void> {
@@ -791,6 +798,8 @@ export default function VocabularyApp() {
   const [linkedOwnedReadingItems, setLinkedOwnedReadingItems] = useState<OwnedReadingItem[]>([])
   const [readingLoading, setReadingLoading] = useState(() => getInitialTab() === "reading")
   const [entries, setEntries] = useState<VocabularyEntry[]>([])
+  const [deckImportMessage, setDeckImportMessage] = useState<string | null>(null)
+  const deckImportInputRef = useRef<HTMLInputElement>(null)
   const [search, setSearch] = useState("")
   const [sortMode, setSortMode] = useState<SortMode>("time")
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null)
@@ -1296,6 +1305,24 @@ export default function VocabularyApp() {
       await loadReadingQueue()
     } catch (error) {
       setThemePackImportStatus(error instanceof Error ? error.message : "Theme-pack package import failed.")
+    }
+  }
+
+  const handleImportSharedDeckFile = async (file: File | null | undefined) => {
+    if (deckImportInputRef.current) deckImportInputRef.current.value = ""
+    if (!file) return
+    try {
+      const result = parseShareableDeck(await readLocalTextFile(file))
+      if (!result.ok) {
+        setDeckImportMessage(result.error)
+        return
+      }
+      const { importedCount, skippedCount } = await importShareableDeck(result.deck)
+      await loadEntries()
+      void commitLearningContinuitySync("vocabulary-shared-deck-import")
+      setDeckImportMessage(t("vocabulary_deckImported", [String(importedCount), String(skippedCount)]))
+    } catch {
+      setDeckImportMessage(t("vocabulary_deckImportError"))
     }
   }
 
@@ -2465,7 +2492,37 @@ export default function VocabularyApp() {
             >
               {t("vocabulary_exportAnkiTsv")}
             </button>
+            <button
+              type="button"
+              style={exportButtonStyle}
+              onClick={() => exportShareableDeck(sorted)}
+              disabled={sorted.length === 0}
+              data-testid="vocabulary-export-deck"
+            >
+              {t("vocabulary_exportDeck")}
+            </button>
+            <button
+              type="button"
+              style={exportButtonStyle}
+              onClick={() => deckImportInputRef.current?.click()}
+              data-testid="vocabulary-import-deck"
+            >
+              {t("vocabulary_importDeck")}
+            </button>
+            <input
+              ref={deckImportInputRef}
+              type="file"
+              accept="application/json,.json"
+              style={{ display: "none" }}
+              data-testid="vocabulary-import-deck-input"
+              onChange={(event) => { void handleImportSharedDeckFile(event.currentTarget.files?.[0]) }}
+            />
           </div>
+          {deckImportMessage && (
+            <div data-testid="vocabulary-deck-import-message" style={{ fontSize: 12, marginTop: 6, color: "var(--astra-text-secondary)" }}>
+              {deckImportMessage}
+            </div>
+          )}
 
           {allTags.length > 0 && (
             <div role="group" aria-label="Filter saved items by tag" style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 12 }}>

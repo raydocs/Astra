@@ -14,6 +14,22 @@
         "observableBySupportAndAnalytics": true,
         "surfaceBoundary": "default"
       }
+    },
+    {
+      "id": "shareable-decks-user-initiated-export",
+      "title": "Shared decks via user-initiated file export/import (not a social surface)",
+      "source": "owner decision 2026-06-01: deliver shared decks as portable export/import, the gate's preferred alternative to a default social community",
+      "allowedDecision": "accept_candidate",
+      "input": {
+        "supportsZeroConfig": true,
+        "controlsCost": true,
+        "ordinaryLanguage": true,
+        "protectsPrivacyByDefault": true,
+        "advancesLearningLoopOrPaidValue": true,
+        "observableBySupportAndAnalytics": true,
+        "surfaceBoundary": "default",
+        "introducesSocialCommunityDefault": false
+      }
     }
   ]
 }
