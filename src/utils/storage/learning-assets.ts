@@ -1,6 +1,7 @@
 import { z } from "zod"
 
 import { buildVideoTimestampUrl, formatVideoTimestamp, sanitizeVideoSourceUrl } from "@/utils/video-timestamp-url"
+import { buildClozeFromSentence } from "@/utils/reading/cloze"
 import { OwnedReadingUserControlSchema, type OwnedReadingItem } from "./owned-reading"
 import {
   sanitizeVocabularyUrl,
@@ -438,6 +439,45 @@ export function deriveVideoMomentCards(
         state: card.state,
       }
     })
+}
+
+/**
+ * A ClozeCard is a DERIVED VIEW over the projection (like VideoMomentCard, not a
+ * persisted entity). For each word card whose linked snippet is a real sentence
+ * containing the word, it blanks the word so the learner recalls it in context.
+ */
+export interface ClozeCard {
+  reviewCardId: string
+  /** The saved sentence with the target word blanked. */
+  prompt: string
+  /** The blanked word (the recall answer). */
+  answer: string
+  back: string
+  dueAt: number
+  state: ReviewCard["state"]
+}
+
+export function deriveClozeCards(
+  projection: Pick<LearningAssetProjection, "reviewCards" | "savedSnippets">,
+): ClozeCard[] {
+  const snippetById = new Map(projection.savedSnippets.map((snippet) => [snippet.id, snippet]))
+
+  return projection.reviewCards
+    .filter((card) => card.cardType === "word")
+    .map((card) => {
+      const snippet = card.linkedSnippetId ? snippetById.get(card.linkedSnippetId) : undefined
+      const cloze = snippet?.text ? buildClozeFromSentence(snippet.text, card.front) : null
+      if (!cloze) return null
+      return {
+        reviewCardId: card.id,
+        prompt: cloze.prompt,
+        answer: cloze.answer,
+        back: card.back,
+        dueAt: card.dueAt,
+        state: card.state,
+      } satisfies ClozeCard
+    })
+    .filter((card): card is ClozeCard => card !== null)
 }
 
 export function deriveWeeklyReviewableLearningMoments(
