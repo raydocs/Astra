@@ -13,6 +13,7 @@ import type {
   TranslationTask,
 } from "@/types/messages"
 import type { AstraConfig, AstraConfigInput } from "@/types/config"
+import type { DictionaryEntry } from "@/utils/reading/dictionary"
 import {
   isContentCommandResponse,
   isContentStudyContextResponse,
@@ -216,6 +217,29 @@ export async function requestTranslationBatch(payload: {
     }
   } catch (error) {
     return { ok: false, error: mapRuntimeMessagingError(error) }
+  }
+}
+
+/**
+ * Ask the background worker for an offline-dictionary entry. Resolves null on a
+ * miss or any error — the caller falls back to AI-only annotation.
+ */
+export async function requestDictionaryLookup(word: string): Promise<DictionaryEntry | null> {
+  try {
+    const response = await browser.runtime.sendMessage({
+      type: "runtime/dictionary-lookup",
+      word,
+    }) as unknown
+    if (
+      typeof response === "object"
+      && response !== null
+      && (response as { type?: string }).type === "runtime/dictionary-lookup:result"
+    ) {
+      return (response as { entry: DictionaryEntry | null }).entry ?? null
+    }
+    return null
+  } catch {
+    return null
   }
 }
 

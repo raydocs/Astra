@@ -65,6 +65,7 @@ import {
   type PageDigestRecord,
 } from "@/utils/storage/page-digests"
 import { generatePageDigest } from "@/utils/reading/assist"
+import { assessReadingComfort, countActiveVocabularyOnPage, type ReadingComfortId } from "@/utils/reading/known-words"
 import { isTtsSupported, speak, splitSentences, stopSpeaking } from "@/utils/tts"
 import { translateExplanationWithQualityRetry, translateTexts } from "@/utils/translate/translate"
 import { getMatchedExplanationGlossaryTerms, type MatchedExplanationGlossaryTerm } from "@/utils/translate/explanation-quality"
@@ -620,6 +621,7 @@ export default function App() {
   const [retentionReminderPolicy, setRetentionReminderPolicy] = useState<RetentionReminderPolicy>(DEFAULT_RETENTION_REMINDER_POLICY)
   const [continueReadingCount, setContinueReadingCount] = useState(0)
   const [pageDigest, setPageDigest] = useState<PageDigestRecord | null>(null)
+  const [readingComfort, setReadingComfort] = useState<ReadingComfortId | null>(null)
   const [activePageUrl, setActivePageUrl] = useState<string | null>(null)
   const [digestLoading, setDigestLoading] = useState(false)
   const [studyActionResult, setStudyActionResult] = useState<{ actionId: string; text: string } | null>(null)
@@ -856,6 +858,10 @@ export default function App() {
     setRecentHistory(history.slice(0, 3))
     setDueCount(currentDueCount)
     setVocabularyTotalCount(vocabularyEntries.length)
+    const comfortText = studyContextResponse.ok ? (studyContextResponse.context.contentSummary ?? "") : ""
+    setReadingComfort(comfortText.trim()
+      ? assessReadingComfort(countActiveVocabularyOnPage(comfortText, vocabularyEntries))
+      : null)
     setRetentionReminderPolicy(reminderPolicy)
     setContinueReadingCount(ownedReadingItems.filter((item) => item.status === "in_progress" || item.status === "saved").length)
     setStudyContext(studyContextResponse.ok ? studyContextResponse.context : null)
@@ -2997,6 +3003,7 @@ export default function App() {
         pageAssetSaveStatus={pageAssetSaveStatus}
         pageAssetSaveMessage={pageAssetSaveMessage}
         pageDigest={pageDigest}
+        readingComfort={readingComfort}
         digestStale={digestStale}
         digestLoading={digestLoading}
         onGenerateDigest={() => { void handleGenerateDigest() }}

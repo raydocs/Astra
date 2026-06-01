@@ -113,6 +113,18 @@
   "wordAnnotationAiNote": {
     "message": "AI 释义 · 仅供参考"
   },
+  "wordAnnotationDictNote": {
+    "message": "词典释义 · 语境由 AI 解释"
+  },
+  "readingComfortSmooth": {
+    "message": "这页读起来挺顺，可以快速浏览。"
+  },
+  "readingComfortSomeNew": {
+    "message": "有几个表达也许值得收藏。"
+  },
+  "readingComfortSlow": {
+    "message": "这页更适合慢读细看。"
+  },
   "actionMore": {
     "message": "更多"
   },
@@ -1166,6 +1178,15 @@
   },
   "review_contextLabel": {
     "message": "上下文"
+  },
+  "review_clozeLabel": {
+    "message": "填空回忆"
+  },
+  "review_reverseLabel": {
+    "message": "回忆这个表达"
+  },
+  "review_listen": {
+    "message": "朗读"
   },
   "review_loading": {
     "message": "加载中..."

@@ -668,6 +668,128 @@ describe("ReviewMode", () => {
     expect(container.textContent).not.toContain("focused-word-1")
   })
 
+  it("turns a word saved with its sentence into a cloze: blank on the front, answer on reveal", async () => {
+    await act(async () => {
+      root.unmount()
+      await Promise.resolve()
+    })
+    root = ReactDOM.createRoot(container)
+    vi.clearAllMocks()
+    window.history.pushState({}, "", "/vocabulary.html?tab=review")
+
+    getVocabularyEntriesMock.mockResolvedValue([{
+      id: "cloze-1",
+      text: "resilience",
+      translation: "韧性",
+      explanation: "Recovering under pressure.",
+      url: "https://example.com/a",
+      hostname: "example.com",
+      savedAt: 1000,
+      srsBox: 1,
+      nextReviewAt: 0,
+      reviewCount: 0,
+      lastReviewedAt: null,
+      sourceContext: {
+        surface: "popup_deep_read" as const,
+        pageTitle: "Article",
+        pageUrl: "https://example.com/a",
+        hostname: "example.com",
+        sentenceText: "The team showed resilience under pressure.",
+        sentenceIndex: 1,
+      },
+    }])
+    listOwnedReadingItemsMock.mockResolvedValue([])
+    readLearningProfileMock.mockResolvedValue(null)
+    getStudyProgressMock.mockResolvedValue({
+      pages: [],
+      dailyStats: { date: "2026-04-13", pagesStudied: 0, sentencesExplained: 0, vocabSaved: 0, vocabReviewed: 0 },
+    })
+    deriveStudyLoopViewModelMock.mockReturnValue(null)
+
+    await act(async () => {
+      root.render(<ReviewMode />)
+      await Promise.resolve()
+      await Promise.resolve()
+      await Promise.resolve()
+    })
+
+    // Front: the sentence with the word blanked; the answer word is hidden.
+    expect(container.querySelector('[data-testid="review-cloze-prompt"]')?.textContent).toBe("The team showed _____ under pressure.")
+    expect(container.textContent).not.toContain("resilience")
+
+    const flashcard = container.querySelector('[role="button"]') as HTMLDivElement
+    await act(async () => {
+      flashcard.click()
+      await Promise.resolve()
+      await Promise.resolve()
+    })
+
+    // Reveal: the answer and its meaning appear.
+    expect(container.querySelector('[data-testid="review-cloze-answer"]')?.textContent).toBe("resilience")
+    expect(container.textContent).toContain("韧性")
+
+    // Dictation: a Listen button is offered for cards that carry a source sentence.
+    expect(container.querySelector('[data-testid="review-listen"]')).toBeTruthy()
+  })
+
+  it("shows a short phrase as reverse recall: meaning on the front, phrase on reveal", async () => {
+    await act(async () => {
+      root.unmount()
+      await Promise.resolve()
+    })
+    root = ReactDOM.createRoot(container)
+    vi.clearAllMocks()
+    window.history.pushState({}, "", "/vocabulary.html?tab=review")
+
+    getVocabularyEntriesMock.mockResolvedValue([{
+      id: "reverse-1",
+      text: "give up now",
+      translation: "现在放弃",
+      explanation: "Stop trying at this point.",
+      context: "Saved from a chat thread.",
+      url: "https://example.com/a",
+      hostname: "example.com",
+      savedAt: 1000,
+      srsBox: 1,
+      nextReviewAt: 0,
+      reviewCount: 0,
+      lastReviewedAt: null,
+      sourceContext: {
+        surface: "popup_deep_read" as const,
+        pageTitle: "Chat",
+        pageUrl: "https://example.com/a",
+        hostname: "example.com",
+      },
+    }])
+    listOwnedReadingItemsMock.mockResolvedValue([])
+    readLearningProfileMock.mockResolvedValue(null)
+    getStudyProgressMock.mockResolvedValue({
+      pages: [],
+      dailyStats: { date: "2026-04-13", pagesStudied: 0, sentencesExplained: 0, vocabSaved: 0, vocabReviewed: 0 },
+    })
+    deriveStudyLoopViewModelMock.mockReturnValue(null)
+
+    await act(async () => {
+      root.render(<ReviewMode />)
+      await Promise.resolve()
+      await Promise.resolve()
+      await Promise.resolve()
+    })
+
+    // Front: meaning is the prompt; the phrase itself is hidden.
+    expect(container.querySelector('[data-testid="review-reverse-prompt"]')?.textContent).toBe("现在放弃")
+    expect(container.textContent).not.toContain("give up now")
+
+    const flashcard = container.querySelector('[role="button"]') as HTMLDivElement
+    await act(async () => {
+      flashcard.click()
+      await Promise.resolve()
+      await Promise.resolve()
+    })
+
+    expect(container.querySelector('[data-testid="review-reverse-answer"]')?.textContent).toBe("give up now")
+  })
+
   it("shows popup deep-read source context on the back of the card and records vocab review progress", async () => {
     const flashcard = container.querySelector('[role="button"]') as HTMLDivElement
     expect(flashcard).toBeTruthy()

@@ -113,6 +113,18 @@
   "wordAnnotationAiNote": {
     "message": "AI explanation · for reference"
   },
+  "wordAnnotationDictNote": {
+    "message": "Dictionary meaning · AI explains the context"
+  },
+  "readingComfortSmooth": {
+    "message": "This looks smooth for quick reading."
+  },
+  "readingComfortSomeNew": {
+    "message": "A few expressions may be worth saving."
+  },
+  "readingComfortSlow": {
+    "message": "This is a better page for slow reading."
+  },
   "actionMore": {
     "message": "More"
   },
@@ -1167,6 +1179,15 @@
   },
   "review_contextLabel": {
     "message": "Context"
+  },
+  "review_clozeLabel": {
+    "message": "Fill in the blank"
+  },
+  "review_reverseLabel": {
+    "message": "Recall the phrase"
+  },
+  "review_listen": {
+    "message": "Listen"
   },
   "review_loading": {
     "message": "Loading..."

@@ -5,7 +5,7 @@
 
 import { z } from "zod"
 import { WEB_AI_UNTRUSTED_CONTENT_RULE } from "@/utils/ai-safety"
-import { requestTranslationBatch } from "@/utils/extension/messages"
+import { requestDictionaryLookup, requestTranslationBatch } from "@/utils/extension/messages"
 import type { TranslationRequestContext } from "@/types/messages"
 import type { LanguageLevel, ServiceMode } from "@/types/config"
 
@@ -237,19 +237,49 @@ export function buildWordAnnotationPrompt(req: GenerateWordAnnotationRequest): s
 export async function generateWordAnnotation(req: GenerateWordAnnotationRequest): Promise<WordAnnotation> {
   const prompt = buildWordAnnotationPrompt(req)
 
-  const result = await requestTranslationBatch({
-    texts: [prompt],
-    targetLang: req.targetLang,
-    serviceMode: req.serviceMode,
-    task: "custom",
-    customSystemPrompt: buildWordAnnotationSystemPrompt(req),
-  })
+  // Look up the offline dictionary in parallel with the AI call. The dictionary
+  // supplies verified pronunciation + general meaning (ground truth); the model
+  // supplies the in-context explanation. Either may be absent.
+  const [dictEntry, result] = await Promise.all([
+    requestDictionaryLookup(req.word),
+    requestTranslationBatch({
+      texts: [prompt],
+      targetLang: req.targetLang,
+      serviceMode: req.serviceMode,
+      task: "custom",
+      customSystemPrompt: buildWordAnnotationSystemPrompt(req),
+    }),
+  ])
 
-  if (!result.ok) {
-    throw new Error(`Word annotation failed: ${result.error.message}`)
+  if (result.ok) {
+    const annotation = parseJsonResponse(WordAnnotationSchema, result.translations[0])
+    if (dictEntry) {
+      // Override the two fields the model is most likely to get wrong with the
+      // dictionary's ground truth; keep the model's contextual explanation.
+      return {
+        ...annotation,
+        pronunciation: `/${dictEntry.ipa}/`,
+        meaning: dictEntry.gloss,
+        source: "dictionary",
+      }
+    }
+    return annotation
   }
 
-  return parseJsonResponse(WordAnnotationSchema, result.translations[0])
+  // AI failed but the word is in the dictionary — still give the learner a
+  // verified pronunciation and meaning rather than nothing.
+  if (dictEntry) {
+    return {
+      word: req.word,
+      pronunciation: `/${dictEntry.ipa}/`,
+      partOfSpeech: "",
+      meaning: dictEntry.gloss,
+      shortExplanation: "",
+      source: "dictionary",
+    }
+  }
+
+  throw new Error(`Word annotation failed: ${result.error.message}`)
 }
 
 // ---------------------------------------------------------------------------

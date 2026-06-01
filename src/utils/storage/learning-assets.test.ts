@@ -4,6 +4,7 @@ import type { OwnedReadingItem } from "./owned-reading"
 import {
   buildLearningAssetProjection,
   buildLocalWeeklyDigestViewModel,
+  deriveClozeCards,
   deriveVideoMomentCards,
   deriveWeeklyReviewableLearningMoments,
   reviewCardFromVocabularyEntry,
@@ -312,5 +313,43 @@ describe("video moment cards (derived view)", () => {
     }
     const projection = buildLearningAssetProjection({ vocabularyEntries: [pageEntry] })
     expect(deriveVideoMomentCards(projection)).toHaveLength(0)
+  })
+
+  it("derives a cloze card from a word saved with its source sentence", () => {
+    const wordWithSentence: VocabularyEntry = {
+      id: "vocab-cloze-1",
+      text: "resilience",
+      translation: "韧性",
+      savedAt: Date.UTC(2026, 4, 27),
+      srsBox: 2,
+      sourceContext: {
+        surface: "popup_deep_read",
+        pageTitle: "Article",
+        pageUrl: "https://example.com/a",
+        hostname: "example.com",
+        sentenceText: "The team showed resilience under pressure.",
+      },
+    }
+    const projection = buildLearningAssetProjection({ vocabularyEntries: [wordWithSentence] })
+    const clozes = deriveClozeCards(projection)
+    expect(clozes).toHaveLength(1)
+    expect(clozes[0]).toMatchObject({
+      reviewCardId: "card_vocab-cloze-1",
+      prompt: "The team showed _____ under pressure.",
+      answer: "resilience",
+    })
+  })
+
+  it("derives no cloze when the saved word has no real source sentence", () => {
+    const wordOnly: VocabularyEntry = {
+      id: "vocab-word-only",
+      text: "resilience",
+      translation: "韧性",
+      savedAt: Date.UTC(2026, 4, 27),
+      srsBox: 1,
+      sourceContext: { surface: "popup_deep_read", pageTitle: "Article", pageUrl: "https://example.com/a", hostname: "example.com" },
+    }
+    const projection = buildLearningAssetProjection({ vocabularyEntries: [wordOnly] })
+    expect(deriveClozeCards(projection)).toHaveLength(0)
   })
 })

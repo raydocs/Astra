@@ -1,9 +1,11 @@
 import { beforeEach, describe, expect, it, vi } from "vitest"
 
 const requestTranslationBatchMock = vi.hoisted(() => vi.fn())
+const requestDictionaryLookupMock = vi.hoisted(() => vi.fn())
 
 vi.mock("@/utils/extension/messages", () => ({
   requestTranslationBatch: requestTranslationBatchMock,
+  requestDictionaryLookup: requestDictionaryLookupMock,
 }))
 
 import {
@@ -24,6 +26,9 @@ describe("reading assist prompt builders", () => {
 
   beforeEach(() => {
     requestTranslationBatchMock.mockReset()
+    requestDictionaryLookupMock.mockReset()
+    // Default: no dictionary hit, so tests exercise AI-only behavior unless they opt in.
+    requestDictionaryLookupMock.mockResolvedValue(null)
   })
 
   it("wraps page digest content as untrusted data", () => {
@@ -172,5 +177,65 @@ describe("reading assist prompt builders", () => {
     // as "ai" — this is the honesty signal the card surfaces and the field a
     // future dictionary lookup flips to "dictionary".
     expect(annotation.source).toBe("ai")
+  })
+
+  it("uses dictionary ground truth for pronunciation + meaning and keeps the AI context on a hit", async () => {
+    requestDictionaryLookupMock.mockResolvedValueOnce({ ipa: "ri'ziliәns", gloss: "弹回，有弹力，恢复力" })
+    requestTranslationBatchMock.mockResolvedValueOnce({
+      ok: true,
+      translations: [JSON.stringify({
+        word: "resilience",
+        pronunciation: "/rɛˈzɪl/", // deliberately wrong AI IPA — must be overridden
+        partOfSpeech: "noun",
+        meaning: "AI 猜的意思", // deliberately overridden by the dictionary gloss
+        shortExplanation: "在这句话里指从挫折中恢复。",
+        exampleSentence: "Her resilience impressed everyone.",
+      })],
+    })
+
+    const annotation = await generateWordAnnotation({
+      word: "resilience",
+      sentenceContext: "Her resilience impressed everyone.",
+      targetLang: "zh-CN",
+      languageLevel: "intermediate",
+    })
+
+    expect(annotation.source).toBe("dictionary")
+    expect(annotation.pronunciation).toBe("/ri'ziliәns/") // dictionary IPA, wrapped
+    expect(annotation.meaning).toBe("弹回，有弹力，恢复力") // dictionary gloss
+    expect(annotation.shortExplanation).toBe("在这句话里指从挫折中恢复。") // AI context kept
+  })
+
+  it("falls back to a dictionary-only annotation when the AI call fails", async () => {
+    requestDictionaryLookupMock.mockResolvedValueOnce({ ipa: "rʌn", gloss: "跑，赛跑" })
+    requestTranslationBatchMock.mockResolvedValueOnce({
+      ok: false,
+      error: { code: "UNKNOWN", message: "down" },
+    })
+
+    const annotation = await generateWordAnnotation({
+      word: "run",
+      targetLang: "zh-CN",
+      languageLevel: "beginner",
+    })
+
+    expect(annotation.source).toBe("dictionary")
+    expect(annotation.pronunciation).toBe("/rʌn/")
+    expect(annotation.meaning).toBe("跑，赛跑")
+    expect(annotation.shortExplanation).toBe("")
+  })
+
+  it("throws when both the AI call and the dictionary miss", async () => {
+    requestDictionaryLookupMock.mockResolvedValueOnce(null)
+    requestTranslationBatchMock.mockResolvedValueOnce({
+      ok: false,
+      error: { code: "UNKNOWN", message: "down" },
+    })
+
+    await expect(generateWordAnnotation({
+      word: "qwertzual",
+      targetLang: "zh-CN",
+      languageLevel: "beginner",
+    })).rejects.toThrow(/Word annotation failed/)
   })
 })

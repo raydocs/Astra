@@ -1416,31 +1416,33 @@ function SelectionToolbarApp() {
             {wordAnnotation.pronunciation && (
               <span style={{ color: OVERLAY_STYLE_TOKENS.textMuted, fontSize: overlayPx(13, fontScale) }}>{wordAnnotation.pronunciation}</span>
             )}
-            <span style={{
-              display: "inline-block",
-              padding: `${overlayPx(1, fontScale)} ${overlayPx(6, fontScale)}`,
-              borderRadius: overlayPx(4, fontScale),
-              background: OVERLAY_STYLE_TOKENS.infoBg,
-              color: OVERLAY_STYLE_TOKENS.info,
-              fontSize: overlayPx(12, fontScale),
-              fontWeight: 500,
-            }}>
-              {wordAnnotation.partOfSpeech}
-            </span>
+            {wordAnnotation.partOfSpeech && (
+              <span style={{
+                display: "inline-block",
+                padding: `${overlayPx(1, fontScale)} ${overlayPx(6, fontScale)}`,
+                borderRadius: overlayPx(4, fontScale),
+                background: OVERLAY_STYLE_TOKENS.infoBg,
+                color: OVERLAY_STYLE_TOKENS.info,
+                fontSize: overlayPx(12, fontScale),
+                fontWeight: 500,
+              }}>
+                {wordAnnotation.partOfSpeech}
+              </span>
+            )}
           </div>
           <div style={{ marginBottom: overlayPx(4, fontScale), fontFamily: QUIET_SERIF_FONT_FAMILY, fontStyle: "italic", fontSize: overlayPx(15, fontScale) }}>{wordAnnotation.meaning}</div>
-          <div style={{ color: OVERLAY_STYLE_TOKENS.textSecondary, fontSize: overlayPx(13, fontScale), marginBottom: overlayPx(4, fontScale) }}>{wordAnnotation.shortExplanation}</div>
+          {wordAnnotation.shortExplanation && (
+            <div style={{ color: OVERLAY_STYLE_TOKENS.textSecondary, fontSize: overlayPx(13, fontScale), marginBottom: overlayPx(4, fontScale) }}>{wordAnnotation.shortExplanation}</div>
+          )}
           {wordAnnotation.exampleSentence && (
             <div style={{ color: OVERLAY_STYLE_TOKENS.textMuted, fontSize: overlayPx(13, fontScale), fontStyle: "italic" }}>{wordAnnotation.exampleSentence}</div>
           )}
-          {wordAnnotation.source === "ai" && (
-            <div
-              data-testid="word-annotation-source"
-              style={{ color: OVERLAY_STYLE_TOKENS.textMuted, fontSize: overlayPx(11, fontScale), marginTop: overlayPx(6, fontScale) }}
-            >
-              {t("wordAnnotationAiNote")}
-            </div>
-          )}
+          <div
+            data-testid="word-annotation-source"
+            style={{ color: OVERLAY_STYLE_TOKENS.textMuted, fontSize: overlayPx(11, fontScale), marginTop: overlayPx(6, fontScale) }}
+          >
+            {wordAnnotation.source === "dictionary" ? t("wordAnnotationDictNote") : t("wordAnnotationAiNote")}
+          </div>
         </div>
       )}
 
