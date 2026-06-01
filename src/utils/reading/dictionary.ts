@@ -22,6 +22,11 @@ export interface DictionaryEntry {
 
 export type Lexicon = Record<string, DictionaryEntry>
 
+export interface PackagedLexicon {
+  entries: Lexicon
+  aliases?: Record<string, string>
+}
+
 const LEXICON_PATH = "/dictionary/en-zh-common.json"
 
 /** Normalize a selection into a dictionary key (single lowercased English headword). */
@@ -34,21 +39,31 @@ export function isDictionaryLookupCandidate(word: string): boolean {
   return /^[a-z][a-z'-]*$/.test(normalizeDictionaryKey(word))
 }
 
-/** Pure lookup against an already-loaded lexicon (no I/O — unit-test friendly). */
-export function lookupInLexicon(lexicon: Lexicon, word: string): DictionaryEntry | null {
-  if (!isDictionaryLookupCandidate(word)) return null
-  return lexicon[normalizeDictionaryKey(word)] ?? null
+function isPackagedLexicon(lexicon: Lexicon | PackagedLexicon): lexicon is PackagedLexicon {
+  return typeof (lexicon as PackagedLexicon).entries === "object"
+    && (lexicon as PackagedLexicon).entries !== null
 }
 
-let lexiconPromise: Promise<Lexicon> | null = null
+/** Pure lookup against an already-loaded lexicon (no I/O — unit-test friendly). */
+export function lookupInLexicon(lexicon: Lexicon | PackagedLexicon, word: string): DictionaryEntry | null {
+  if (!isDictionaryLookupCandidate(word)) return null
+  const key = normalizeDictionaryKey(word)
+  if (isPackagedLexicon(lexicon)) {
+    const headword = lexicon.aliases?.[key] ?? key
+    return lexicon.entries[headword] ?? null
+  }
+  return lexicon[key] ?? null
+}
 
-async function loadLexicon(): Promise<Lexicon> {
+let lexiconPromise: Promise<Lexicon | PackagedLexicon> | null = null
+
+async function loadLexicon(): Promise<Lexicon | PackagedLexicon> {
   if (!lexiconPromise) {
     lexiconPromise = (async () => {
       try {
         const response = await fetch(browser.runtime.getURL(LEXICON_PATH as "/popup.html"))
         if (!response.ok) return {}
-        return (await response.json()) as Lexicon
+        return (await response.json()) as Lexicon | PackagedLexicon
       } catch {
         // A missing/corrupt asset must never break word lookup — fall back to AI-only.
         return {}
@@ -67,4 +82,8 @@ export async function lookupDictionary(word: string): Promise<DictionaryEntry | 
   if (!isDictionaryLookupCandidate(word)) return null
   const lexicon = await loadLexicon()
   return lookupInLexicon(lexicon, word)
+}
+
+export function resetDictionaryLexiconForTests(): void {
+  lexiconPromise = null
 }

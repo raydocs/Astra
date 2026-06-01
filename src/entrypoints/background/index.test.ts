@@ -21,6 +21,7 @@ const setCachedTranslationMock = vi.fn()
 const initializeTranslationUsageSessionMock = vi.fn()
 const recordTranslationUsageMock = vi.fn()
 const createImageTranslateHandoffMock = vi.fn()
+const lookupDictionaryMock = vi.fn()
 
 vi.mock("@/utils/storage/config", () => ({
   readConfig: readConfigMock,
@@ -64,6 +65,10 @@ vi.mock("@/entrypoints/image-translate/handoff", () => ({
   IMAGE_TRANSLATE_HANDOFF_QUERY_PARAM: "handoff",
 }))
 
+vi.mock("@/utils/reading/dictionary", () => ({
+  lookupDictionary: lookupDictionaryMock,
+}))
+
 function getMockBrowser(): ReturnType<typeof createMockBrowser> {
   return (globalThis as unknown as { __ASTRA_TEST_BROWSER__: ReturnType<typeof createMockBrowser> })
     .__ASTRA_TEST_BROWSER__
@@ -97,6 +102,7 @@ describe("background runtime translation routing", () => {
     initializeTranslationUsageSessionMock.mockReset()
     recordTranslationUsageMock.mockReset()
     createImageTranslateHandoffMock.mockReset()
+    lookupDictionaryMock.mockReset()
     runPhaseOneCollectionSyncMock.mockResolvedValue({
       skipped: true,
       reason: "no-session",
@@ -553,6 +559,27 @@ describe("background runtime translation routing", () => {
     expect(sendResponseA).toHaveBeenCalled()
     expect(sendResponseB).toHaveBeenCalled()
     expect(runPhaseOneCollectionSyncMock).toHaveBeenCalledTimes(2)
+  })
+
+  it("returns offline dictionary lookup results through runtime messaging", async () => {
+    const browser = getMockBrowser()
+    const sendResponse = vi.fn()
+    lookupDictionaryMock.mockResolvedValueOnce({ ipa: "maus", gloss: "老鼠" })
+    const background = (await import("./index")).default
+    background.main()
+
+    await browser.__emitRuntimeMessage(
+      { type: "runtime/dictionary-lookup", word: "mice" },
+      { id: "sender" },
+      sendResponse,
+    )
+    await flushRuntimeResponse()
+
+    expect(lookupDictionaryMock).toHaveBeenCalledWith("mice")
+    expect(sendResponse).toHaveBeenCalledWith({
+      type: "runtime/dictionary-lookup:result",
+      entry: { ipa: "maus", gloss: "老鼠" },
+    })
   })
 
   it("returns a success response for translate batch requests", async () => {
