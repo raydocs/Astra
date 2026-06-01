@@ -59,6 +59,14 @@ function timedTextJson(events: Array<{ startMs: number; durationMs: number; text
   })
 }
 
+function getUtcWeekStartDate(value: Date = new Date()): string {
+  const day = value.getUTCDay()
+  const mondayOffset = day === 0 ? -6 : 1 - day
+  const weekStart = new Date(Date.UTC(value.getUTCFullYear(), value.getUTCMonth(), value.getUTCDate()))
+  weekStart.setUTCDate(weekStart.getUTCDate() + mondayOffset)
+  return weekStart.toISOString().slice(0, 10)
+}
+
 function buildYouTubeWatchHtml(options: {
   title?: string
   lengthSeconds?: number
@@ -1526,7 +1534,7 @@ describe("Astra relay server", () => {
     })
     expect(payload.weeklyTopIssues).toEqual([
       expect.objectContaining({
-        weekStart: "2026-05-25",
+        weekStart: getUtcWeekStartDate(),
         reportCount: 2,
         hostname: "news.example",
         featureSurface: "page",
@@ -2898,7 +2906,7 @@ describe("Astra relay server", () => {
       knownIssueStatus: "monitoring",
     })
     expect(summary.weeklyTopIssues[0]).toMatchObject({
-      weekStart: "2026-05-25",
+      weekStart: getUtcWeekStartDate(),
       reportCount: 2,
       knownIssueId: "issue_youtube_subtitles_beta",
       knownIssueStatus: "monitoring",
