@@ -1658,6 +1658,45 @@ describe("AstraWebApp smoke", () => {
     await unmount()
   })
 
+  it("offers a Listen button that speaks the saved sentence via the browser TTS", async () => {
+    const speakSpy = vi.fn()
+    vi.stubGlobal("speechSynthesis", { speak: speakSpy, cancel: vi.fn(), getVoices: () => [] })
+    class FakeUtterance { text: string; lang = ""; rate = 1; pitch = 1; voice: unknown = null; constructor(t: string) { this.text = t } }
+    vi.stubGlobal("SpeechSynthesisUtterance", FakeUtterance as unknown as typeof SpeechSynthesisUtterance)
+
+    const session = createSession()
+    mocks.readWebSessionMock.mockReturnValue(session)
+    mocks.refreshWebSessionMock.mockResolvedValue(session)
+    mocks.fetchWebCloudAssetsMock.mockResolvedValue(createCloudAssets({
+      vocabulary: {
+        enabled: true,
+        defaultEnabled: true,
+        cursor: "tts",
+        count: 1,
+        entries: [
+          { id: "tts-1", text: "resilient", translation: "有韧性的", context: "The system stayed resilient under load.", hostname: "example.com", savedAt: 1_000_000_000_000 },
+        ],
+        reviewSchedule: [],
+      },
+    }))
+    window.location.hash = "#/today"
+
+    const { container, unmount } = await renderApp()
+
+    const listen = container.querySelector('[data-testid="mobile-review-listen"]') as HTMLButtonElement | null
+    expect(listen).toBeTruthy()
+
+    await act(async () => {
+      listen!.click()
+    })
+
+    expect(speakSpy).toHaveBeenCalledTimes(1)
+    expect((speakSpy.mock.calls[0][0] as FakeUtterance).text).toBe("The system stayed resilient under load.")
+
+    await unmount()
+    vi.unstubAllGlobals()
+  })
+
   it("orders Today Review by SRS due date, not recency", async () => {
     const session = createSession()
     mocks.readWebSessionMock.mockReturnValue(session)
