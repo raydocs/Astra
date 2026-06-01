@@ -116,6 +116,9 @@
   "wordAnnotationDictNote": {
     "message": "词典释义 · 语境由 AI 解释"
   },
+  "wordAnnotationDictNoteSimple": {
+    "message": "词典释义"
+  },
   "knownWordTitle": {
     "message": "这个词你已经比较熟了"
   },
