@@ -508,6 +508,22 @@
   "vocabulary_exportAnkiTsv": {
     "message": "导出 Anki TSV"
   },
+  "vocabulary_exportDeck": {
+    "message": "分享卡组"
+  },
+  "vocabulary_importDeck": {
+    "message": "导入分享的卡组"
+  },
+  "vocabulary_deckImported": {
+    "message": "已添加 $1 张，跳过 $2 张已收藏。",
+    "placeholders": {
+      "1": { "content": "$1" },
+      "2": { "content": "$2" }
+    }
+  },
+  "vocabulary_deckImportError": {
+    "message": "这个文件不是有效的 Astra 卡组。"
+  },
   "vocabulary_emptySearch": {
     "message": "没有词条匹配当前搜索。"
   },
