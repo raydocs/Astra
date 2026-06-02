@@ -107,6 +107,7 @@
     "verify:mobile": "pnpm mobile:verify && pnpm test:mobile-domain"
   },
   "dependencies": {
+    "@adobe/react-spectrum": "^3.47.1",
     "@ai-sdk/google": "^3.0.80",
     "@ai-sdk/openai": "^3.0.66",
     "ai": "^6.0.193",
@@ -126,9 +127,9 @@
     "@vitejs/plugin-react": "^6.0.2",
     "@vitest/coverage-v8": "^4.1.7",
     "@wxt-dev/module-react": "^1.2.2",
+    "esbuild": "^0.28.0",
     "eslint": "^10.4.0",
     "eslint-plugin-react-hooks": "^7.1.1",
-    "esbuild": "^0.28.0",
     "fake-indexeddb": "^6.2.5",
     "globals": "^17.6.0",
     "playwright": "^1.60.0",

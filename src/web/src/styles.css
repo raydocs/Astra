@@ -1,12 +1,15 @@
+@import "@/assets/astra-fonts-zh.css";
 @import "@/assets/astra-style1-tokens.css";
 @import "@/assets/astra-ui-primitives.css";
+@import "@/assets/astra-atelier.css";
+@import "@/assets/astra-cjk.css";
 
 :root {
   color-scheme: light;
 
   /* Font stacks — match extension `astra-extension.css` (fonts loaded via astra-style1-tokens.css). */
-  --astra-font: "Inter Tight", "Söhne", "Helvetica Neue", "PingFang SC", "Hiragino Sans GB", system-ui, sans-serif;
-  --astra-font-serif: "Source Serif 4", "Source Serif Pro", "Tiempos Text", "Songti SC", "Noto Serif SC", Georgia, serif;
+  --astra-font: "Inter Tight", "LXGW WenKai", "Söhne", "Helvetica Neue", "PingFang SC", "Hiragino Sans GB", system-ui, sans-serif;
+  --astra-font-serif: "Source Serif 4", "LXGW WenKai", "Source Serif Pro", "Tiempos Text", "Songti SC", "Noto Serif SC", Georgia, serif;
   --astra-font-mono: "JetBrains Mono", "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
 
   font-family: var(--astra-font);

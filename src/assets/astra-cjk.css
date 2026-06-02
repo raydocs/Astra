@@ -1,0 +1,59 @@
+/* =============================================================================
+   astra-cjk.css — Chinese-first typography + keyboard skip link
+   -----------------------------------------------------------------------------
+   CJK leading, Latin/CJK spacing, punctuation trimming, balanced headings, and a
+   visible-on-focus skip link. All language-scoped and additive.
+   ========================================================================== */
+
+:where(:lang(zh), :lang(ja), [lang^="zh"], [lang^="ja"]) {
+  text-autospace: normal;
+  text-spacing-trim: space-first;
+  word-break: normal;
+}
+
+:where([lang^="zh"], [lang^="ja"]) :where(p, li, dd, blockquote) {
+  line-height: 1.8;
+  letter-spacing: 0.01em;
+}
+
+:where([lang^="zh"], [lang^="ja"]) :where(h1, h2, h3, h4) {
+  text-spacing-trim: trim-end;
+  text-wrap: balance;
+  hanging-punctuation: allow-end;
+  line-break: strict;
+}
+
+:where([lang^="zh"], [lang^="ja"]) :where(
+  .public-brand,
+  .source-badge,
+  code,
+  kbd,
+  [class*="kicker"],
+  [class*="meta"]
+) {
+  white-space: nowrap;
+}
+
+:where(.sample-meta, .browser-bar, [class*="meta"], [class*="mono"]) {
+  font-variant-numeric: tabular-nums;
+}
+
+.skip-link {
+  position: absolute;
+  left: 12px;
+  top: -48px;
+  z-index: 999;
+  background: var(--accent-primary);
+  color: var(--web-on-accent);
+  font-family: var(--astra-font);
+  font-size: 14px;
+  font-weight: 600;
+  padding: 9px 16px;
+  border-radius: var(--border-radius-lg, 10px);
+  text-decoration: none;
+  transition: top 160ms cubic-bezier(0.2, 0, 0, 1);
+}
+
+.skip-link:focus {
+  top: 12px;
+}
