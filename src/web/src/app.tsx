@@ -3088,7 +3088,7 @@ function PublicIntentPage(props: {
         <section className="public-hero">
           <div className="public-hero-copy">
             <div className="eyebrow">{props.page.eyebrow}</div>
-            <h1>{props.page.title}</h1>
+            <h1 className="font-display-zh">{props.page.title}</h1>
             <p>{props.page.copy}</p>
             <div className="hero-actions">
               <button type="button" className="button primary large-button" onClick={() => void startFree()} disabled={isBusy}>
@@ -3243,7 +3243,7 @@ function PublicLandingPage(props: {
         <section className="public-hero">
           <div className="public-hero-copy">
             <div className="eyebrow">{heroEyebrow}</div>
-            <h1>{heroTitle}</h1>
+            <h1 className="font-display-zh">{heroTitle}</h1>
             <p>{heroCopy}</p>
             <div className="hero-actions">
               <button type="button" className="button primary large-button" onClick={() => void startFree()} disabled={isBusy}>
