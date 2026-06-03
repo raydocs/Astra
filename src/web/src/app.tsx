@@ -17,6 +17,8 @@ import {
   formatAstraSubscriptionStatusLabel,
 } from "@/utils/astra/account-surface"
 import { buildAstraStorePermissionTrustViewModel } from "@/utils/trust/compliance"
+import { buildClozeFromSentence } from "@/utils/reading/cloze"
+import { isTtsSupported, speak } from "@/utils/tts"
 import { summarizeConfigContinuity, type AstraConfig } from "@/types/config"
 import type { PdfPage } from "@/entrypoints/pdf-reader/pdf-extractor"
 import {
@@ -3618,6 +3620,25 @@ function TodayReviewPage(props: {
   const isInitialCloudLoading = props.cloudState === "loading" && !props.cloudAssets
   const sourceSummary = summarizeMobileReviewSources(cards)
 
+  // Review-mode parity with the extension: a word saved with its sentence becomes
+  // a cloze (recall the word from context); a short phrase with a real meaning
+  // becomes reverse recall (show the meaning, recall the phrase).
+  const reviewClozePrompt = currentCard && currentCard.type === "word" && currentCard.context
+    ? buildClozeFromSentence(currentCard.context, currentCard.front)
+    : null
+  const reverseFrontTokens = currentCard ? currentCard.front.trim().split(/\s+/).filter(Boolean).length : 0
+  const showReverseRecall = Boolean(currentCard)
+    && !reviewClozePrompt
+    && reverseFrontTokens >= 2
+    && reverseFrontTokens <= 4
+    && currentCard.translation.trim().length > 0
+    && currentCard.translation !== "Saved for review."
+
+  // Dictation: hear the saved English sentence (or term) via the browser's
+  // built-in TTS. The web PWA has no managed TTS, so we use the browser engine.
+  const dictationText = currentCard ? (currentCard.context?.trim() || currentCard.front) : ""
+  const canDictate = dictationText.length > 0 && isTtsSupported("browser")
+
   const reviewCard = useCallback((rating: MobileReviewRating) => {
     if (!currentCard) return
     if (!currentCard.sample) {
@@ -3716,15 +3737,32 @@ function TodayReviewPage(props: {
           </div>
 
           <div className="mobile-card-face">
-            <div className="mobile-card-kind">{currentCard.type === "sentence" ? "Sentence Card" : "Word Card"}</div>
-            <h3>{currentCard.front}</h3>
-            {currentCard.context && currentCard.context !== currentCard.front && (
+            <div className="mobile-card-kind">{reviewClozePrompt ? "Fill in the blank" : showReverseRecall ? "Recall the phrase" : currentCard.type === "sentence" ? "Sentence Card" : "Word Card"}</div>
+            <h3 data-testid="mobile-review-front">{reviewClozePrompt ? reviewClozePrompt.prompt : showReverseRecall ? currentCard.translation : currentCard.front}</h3>
+            {!reviewClozePrompt && !showReverseRecall && currentCard.context && currentCard.context !== currentCard.front && (
               <p className="mobile-card-context">“{currentCard.context}”</p>
             )}
           </div>
 
+          {canDictate && (
+            <button
+              type="button"
+              className="button secondary mobile-listen"
+              data-testid="mobile-review-listen"
+              onClick={() => { speak(dictationText, { engine: "browser", lang: "en" }) }}
+            >
+              Listen
+            </button>
+          )}
+
           {answered ? (
             <div className="mobile-card-answer">
+              {(reviewClozePrompt || showReverseRecall) && (
+                <>
+                  <div className="mobile-answer-label">Answer</div>
+                  <p data-testid="mobile-review-answer">{currentCard.front}</p>
+                </>
+              )}
               <div className="mobile-answer-label">Meaning</div>
               <p>{currentCard.translation}</p>
               <div className="mobile-answer-label">Why it matters</div>

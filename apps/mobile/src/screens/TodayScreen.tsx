@@ -23,6 +23,7 @@ import {
 import type { OfflineReviewQueueState } from "../domain/offlineQueue"
 import type { MobileSyncedReviewScheduleRecord } from "../domain/cloudVocabulary"
 import { computeReviewStreak, reviewStreakCopy } from "../domain/streak"
+import { resolveReviewPresentation } from "../domain/cloze"
 
 interface TodayScreenProps {
   onOpenLibrary: () => void
@@ -193,6 +194,11 @@ function ReviewCard(props: {
   onSpeakCard?: (card: MobileReviewCardViewModel) => void
   onViewSource?: (card: MobileReviewCardViewModel) => void
 }) {
+  const presentation = resolveReviewPresentation(props.card)
+  const isCloze = presentation.mode === "cloze"
+  const isReverse = presentation.mode === "reverse"
+  const faceText = isCloze ? presentation.prompt : isReverse ? props.card.translation : props.card.front
+  const kindLabel = isCloze ? "Fill in the blank" : isReverse ? "Recall the phrase" : props.card.type === "sentence" ? "Sentence Card" : "Word Card"
   return (
     <View style={styles.reviewCard} accessibilityLabel={buildReviewCardAccessibilityLabel(props.card.type, props.card.sourceTitle)}>
       <View style={styles.sourceRow} accessible accessibilityLabel={`Source: ${props.card.sourceType}, ${props.card.sourceTitle}`}> 
@@ -212,17 +218,23 @@ function ReviewCard(props: {
         ) : null}
       </View>
 
-      <Text style={styles.cardKind}>{props.card.type === "sentence" ? "Sentence Card" : "Word Card"}</Text>
-      <Text accessibilityLabel={buildReviewFrontAccessibilityLabel(props.card.type, props.card.front)} style={props.card.type === "sentence" ? styles.sentenceFront : styles.wordFront}>{props.card.front}</Text>
+      <Text style={styles.cardKind}>{kindLabel}</Text>
+      <Text testID="review-front" accessibilityLabel={buildReviewFrontAccessibilityLabel(props.card.type, faceText)} style={props.card.type === "sentence" ? styles.sentenceFront : styles.wordFront}>{faceText}</Text>
       {props.onSpeakCard ? (
         <Pressable style={styles.secondaryButton} accessibilityRole="button" accessibilityLabel={props.card.type === "sentence" ? "Speak sentence front" : "Play word front"} accessibilityHint="Speak only the front of this card" onPress={() => props.onSpeakCard?.(props.card)}>
           <Text style={styles.secondaryButtonText}>{props.card.type === "sentence" ? "Speak" : "Play"}</Text>
         </Pressable>
       ) : null}
-      {props.card.context ? <Text style={styles.contextText}>“{props.card.context}”</Text> : null}
+      {!isCloze && !isReverse && props.card.context ? <Text style={styles.contextText}>“{props.card.context}”</Text> : null}
 
       {props.answered ? (
         <View style={styles.answerBlock}>
+          {(isCloze || isReverse) ? (
+            <>
+              <Text style={styles.answerLabel}>Answer</Text>
+              <Text testID="review-answer" style={styles.answerText}>{props.card.front}</Text>
+            </>
+          ) : null}
           <Text style={styles.answerLabel}>Meaning</Text>
           <Text style={styles.answerText}>{props.card.translation}</Text>
           <Text style={styles.answerLabel}>Why it matters</Text>
