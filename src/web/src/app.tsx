@@ -3631,8 +3631,8 @@ function TodayReviewPage(props: {
     && !reviewClozePrompt
     && reverseFrontTokens >= 2
     && reverseFrontTokens <= 4
-    && currentCard!.translation.trim().length > 0
-    && currentCard!.translation !== "Saved for review."
+    && currentCard.translation.trim().length > 0
+    && currentCard.translation !== "Saved for review."
 
   // Dictation: hear the saved English sentence (or term) via the browser's
   // built-in TTS. The web PWA has no managed TTS, so we use the browser engine.
