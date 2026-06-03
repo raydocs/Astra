@@ -16,7 +16,7 @@ importers:
     dependencies:
       '@adobe/react-spectrum':
         specifier: ^3.47.1
-        version: 3.47.1(react-dom@19.2.6(react@19.2.7))(react@19.2.7)
+        version: 3.47.1(react-dom@19.2.7(react@19.2.7))(react@19.2.7)
       '@ai-sdk/google':
         specifier: ^3.0.80
         version: 3.0.80(zod@4.4.3)
@@ -42,8 +42,8 @@ importers:
         specifier: ^19.2.7
         version: 19.2.7
       react-dom:
-        specifier: ^19.2.6
-        version: 19.2.6(react@19.2.7)
+        specifier: ^19.2.7
+        version: 19.2.7(react@19.2.7)
       zod:
         specifier: ^4.4.3
         version: 4.4.3
@@ -2865,10 +2865,10 @@ packages:
       react: ^16.8.0 || ^17.0.0-rc.1 || ^18.0.0 || ^19.0.0-rc.1
       react-dom: ^16.8.0 || ^17.0.0-rc.1 || ^18.0.0 || ^19.0.0-rc.1
 
-  react-dom@19.2.6:
-    resolution: {integrity: sha512-0prMI+hvBbPjsWnxDLxlCGyM8PN6UuWjEUCYmZhO67xIV9Xasa/r/vDnq+Xyq4Lo27g8QSbO5YzARu0D1Sps3g==}
+  react-dom@19.2.7:
+    resolution: {integrity: sha512-t0BRVXvbiE/o20Hfw669rLbMCDWtYZLvmJigy2f0MxsXF+71pxhR3xOkspmsO8h3ZlNzyibAmtCa3l4lYKk6gQ==}
     peerDependencies:
-      react: ^19.2.6
+      react: ^19.2.7
 
   react-is@16.13.1:
     resolution: {integrity: sha512-24e6ynE2H+OKt4kqsOvNd8kBpV65zoxbA4BVsEOB3ARVWQki/DHzaUoC5KuON/BiccDaCCTZBuOcfZs70kR8bQ==}
@@ -3546,31 +3546,31 @@ snapshots:
       defu: 6.1.7
       many-keys-map: 3.0.3
 
-  '@adobe/react-spectrum-ui@1.2.1(react-dom@19.2.6(react@19.2.7))(react@19.2.7)':
+  '@adobe/react-spectrum-ui@1.2.1(react-dom@19.2.7(react@19.2.7))(react@19.2.7)':
     dependencies:
       react: 19.2.7
-      react-dom: 19.2.6(react@19.2.7)
+      react-dom: 19.2.7(react@19.2.7)
 
-  '@adobe/react-spectrum-workflow@2.3.5(react-dom@19.2.6(react@19.2.7))(react@19.2.7)':
+  '@adobe/react-spectrum-workflow@2.3.5(react-dom@19.2.7(react@19.2.7))(react@19.2.7)':
     dependencies:
       react: 19.2.7
-      react-dom: 19.2.6(react@19.2.7)
+      react-dom: 19.2.7(react@19.2.7)
 
-  '@adobe/react-spectrum@3.47.1(react-dom@19.2.6(react@19.2.7))(react@19.2.7)':
+  '@adobe/react-spectrum@3.47.1(react-dom@19.2.7(react@19.2.7))(react@19.2.7)':
     dependencies:
       '@internationalized/date': 3.12.2
       '@react-types/shared': 3.35.0(react@19.2.7)
-      '@spectrum-icons/ui': 3.7.1(@adobe/react-spectrum@3.47.1(react-dom@19.2.6(react@19.2.7))(react@19.2.7))(react-dom@19.2.6(react@19.2.7))(react@19.2.7)
-      '@spectrum-icons/workflow': 4.3.1(@adobe/react-spectrum@3.47.1(react-dom@19.2.6(react@19.2.7))(react@19.2.7))(react-dom@19.2.6(react@19.2.7))(react@19.2.7)
+      '@spectrum-icons/ui': 3.7.1(@adobe/react-spectrum@3.47.1(react-dom@19.2.7(react@19.2.7))(react@19.2.7))(react-dom@19.2.7(react@19.2.7))(react@19.2.7)
+      '@spectrum-icons/workflow': 4.3.1(@adobe/react-spectrum@3.47.1(react-dom@19.2.7(react@19.2.7))(react@19.2.7))(react-dom@19.2.7(react@19.2.7))(react@19.2.7)
       '@swc/helpers': 0.5.23
       client-only: 0.0.1
       clsx: 2.1.1
       react: 19.2.7
-      react-aria: 3.49.0(react-dom@19.2.6(react@19.2.7))(react@19.2.7)
-      react-aria-components: 1.18.0(react-dom@19.2.6(react@19.2.7))(react@19.2.7)
-      react-dom: 19.2.6(react@19.2.7)
+      react-aria: 3.49.0(react-dom@19.2.7(react@19.2.7))(react@19.2.7)
+      react-aria-components: 1.18.0(react-dom@19.2.7(react@19.2.7))(react@19.2.7)
+      react-dom: 19.2.7(react@19.2.7)
       react-stately: 3.47.0(react@19.2.7)
-      react-transition-group: 4.4.5(react-dom@19.2.6(react@19.2.7))(react@19.2.7)
+      react-transition-group: 4.4.5(react-dom@19.2.7(react@19.2.7))(react@19.2.7)
       use-sync-external-store: 1.6.0(react@19.2.7)
 
   '@ai-sdk/gateway@3.0.121(zod@4.4.3)':
@@ -4309,22 +4309,22 @@ snapshots:
   '@rollup/rollup-win32-x64-msvc@4.60.0':
     optional: true
 
-  '@spectrum-icons/ui@3.7.1(@adobe/react-spectrum@3.47.1(react-dom@19.2.6(react@19.2.7))(react@19.2.7))(react-dom@19.2.6(react@19.2.7))(react@19.2.7)':
+  '@spectrum-icons/ui@3.7.1(@adobe/react-spectrum@3.47.1(react-dom@19.2.7(react@19.2.7))(react@19.2.7))(react-dom@19.2.7(react@19.2.7))(react@19.2.7)':
     dependencies:
-      '@adobe/react-spectrum': 3.47.1(react-dom@19.2.6(react@19.2.7))(react@19.2.7)
-      '@adobe/react-spectrum-ui': 1.2.1(react-dom@19.2.6(react@19.2.7))(react@19.2.7)
+      '@adobe/react-spectrum': 3.47.1(react-dom@19.2.7(react@19.2.7))(react@19.2.7)
+      '@adobe/react-spectrum-ui': 1.2.1(react-dom@19.2.7(react@19.2.7))(react@19.2.7)
       '@babel/runtime': 7.29.2
       '@swc/helpers': 0.5.23
       react: 19.2.7
-      react-dom: 19.2.6(react@19.2.7)
+      react-dom: 19.2.7(react@19.2.7)
 
-  '@spectrum-icons/workflow@4.3.1(@adobe/react-spectrum@3.47.1(react-dom@19.2.6(react@19.2.7))(react@19.2.7))(react-dom@19.2.6(react@19.2.7))(react@19.2.7)':
+  '@spectrum-icons/workflow@4.3.1(@adobe/react-spectrum@3.47.1(react-dom@19.2.7(react@19.2.7))(react@19.2.7))(react-dom@19.2.7(react@19.2.7))(react@19.2.7)':
     dependencies:
-      '@adobe/react-spectrum': 3.47.1(react-dom@19.2.6(react@19.2.7))(react@19.2.7)
-      '@adobe/react-spectrum-workflow': 2.3.5(react-dom@19.2.6(react@19.2.7))(react@19.2.7)
+      '@adobe/react-spectrum': 3.47.1(react-dom@19.2.7(react@19.2.7))(react@19.2.7)
+      '@adobe/react-spectrum-workflow': 2.3.5(react-dom@19.2.7(react@19.2.7))(react@19.2.7)
       '@swc/helpers': 0.5.23
       react: 19.2.7
-      react-dom: 19.2.6(react@19.2.7)
+      react-dom: 19.2.7(react@19.2.7)
 
   '@standard-schema/spec@1.1.0': {}
 
@@ -6147,18 +6147,18 @@ snapshots:
       minimist: 1.2.8
       strip-json-comments: 2.0.1
 
-  react-aria-components@1.18.0(react-dom@19.2.6(react@19.2.7))(react@19.2.7):
+  react-aria-components@1.18.0(react-dom@19.2.7(react@19.2.7))(react@19.2.7):
     dependencies:
       '@internationalized/date': 3.12.2
       '@react-types/shared': 3.35.0(react@19.2.7)
       '@swc/helpers': 0.5.23
       client-only: 0.0.1
       react: 19.2.7
-      react-aria: 3.49.0(react-dom@19.2.6(react@19.2.7))(react@19.2.7)
-      react-dom: 19.2.6(react@19.2.7)
+      react-aria: 3.49.0(react-dom@19.2.7(react@19.2.7))(react@19.2.7)
+      react-dom: 19.2.7(react@19.2.7)
       react-stately: 3.47.0(react@19.2.7)
 
-  react-aria@3.49.0(react-dom@19.2.6(react@19.2.7))(react@19.2.7):
+  react-aria@3.49.0(react-dom@19.2.7(react@19.2.7))(react@19.2.7):
     dependencies:
       '@internationalized/date': 3.12.2
       '@internationalized/number': 3.6.7
@@ -6168,11 +6168,11 @@ snapshots:
       aria-hidden: 1.2.6
       clsx: 2.1.1
       react: 19.2.7
-      react-dom: 19.2.6(react@19.2.7)
+      react-dom: 19.2.7(react@19.2.7)
       react-stately: 3.47.0(react@19.2.7)
       use-sync-external-store: 1.6.0(react@19.2.7)
 
-  react-dom@19.2.6(react@19.2.7):
+  react-dom@19.2.7(react@19.2.7):
     dependencies:
       react: 19.2.7
       scheduler: 0.27.0
@@ -6189,14 +6189,14 @@ snapshots:
       react: 19.2.7
       use-sync-external-store: 1.6.0(react@19.2.7)
 
-  react-transition-group@4.4.5(react-dom@19.2.6(react@19.2.7))(react@19.2.7):
+  react-transition-group@4.4.5(react-dom@19.2.7(react@19.2.7))(react@19.2.7):
     dependencies:
       '@babel/runtime': 7.29.2
       dom-helpers: 5.2.1
       loose-envify: 1.4.0
       prop-types: 15.8.1
       react: 19.2.7
-      react-dom: 19.2.6(react@19.2.7)
+      react-dom: 19.2.7(react@19.2.7)
 
   react@19.2.7: {}
 
