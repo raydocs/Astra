@@ -1,12 +1,13 @@
-# ✦ Astra
-
 <p align="center">
-  <img src="public/icon-128.png" width="96" height="96" alt="Astra app icon" />
+  <img src="store/brand/astra-banner.png" alt="Astra — 零配置双语阅读室。读你所爱,顺手学会 English。" width="900" />
 </p>
 
+<h1 align="center">✦ Astra</h1>
+
 <p align="center">
-  <strong>Learn from the English you already read and watch.</strong><br />
-  Astra turns websites and supported videos into bilingual reading, saved expressions, and daily review — no API setup required.
+  <strong>读你所爱,顺手学会 English。</strong><br />
+  把你每天在读的网页和视频,变成双语阅读、生词收藏与每日复习 —— 无需配置 API。<br />
+  <sub><strong>Learn from the English you already read and watch.</strong> Bilingual reading, saved expressions, and daily review — no API setup required.</sub>
 </p>
 
 <p align="center">
@@ -17,12 +18,18 @@
 </p>
 
 <p align="center">
-  <img alt="Extension-first" src="https://img.shields.io/badge/extension--first-WXT-5B5BD6" />
-  <img alt="Chromium supported" src="https://img.shields.io/badge/Chromium-supported-2EA043" />
-  <img alt="Firefox and Safari beta" src="https://img.shields.io/badge/Firefox%20%2F%20Safari-beta-F59E0B" />
-  <img alt="License MIT" src="https://img.shields.io/badge/license-MIT-111827" />
-  <img alt="TypeScript" src="https://img.shields.io/badge/TypeScript-React%20%2B%20WXT-3178C6" />
+  <img alt="Extension-first WXT" src="https://img.shields.io/badge/extension--first-WXT-BD8A0F?style=flat-square&labelColor=1A1814" />
+  <img alt="Chromium supported" src="https://img.shields.io/badge/Chromium-supported-2F7D52?style=flat-square&labelColor=1A1814" />
+  <img alt="Firefox and Safari beta" src="https://img.shields.io/badge/Firefox%20%2F%20Safari-beta-C2620C?style=flat-square&labelColor=1A1814" />
+  <img alt="TypeScript React + WXT" src="https://img.shields.io/badge/TypeScript-React%20%2B%20WXT-3D352B?style=flat-square&labelColor=1A1814" />
+  <img alt="License MIT" src="https://img.shields.io/badge/license-MIT-826A3A?style=flat-square&labelColor=1A1814" />
 </p>
+
+<p align="center">
+  <sub>零配置学习层,不是模型控制台,也不是又一个整页翻译器。</sub>
+</p>
+
+---
 
 Astra is not a model-control panel or another page translator. It is a zero-config learning layer: read a real page, save useful words and sentences, and review them later with source context attached.
 
@@ -39,13 +46,13 @@ Astra 的产品方向是“用户只管读和复习”：不需要 API、不需�
     <td width="50%">
       <img src="store/screenshots/01-page-translation.png" alt="Astra page translation launch-candidate screenshot" />
       <br />
-      <strong>Page translation</strong><br />
+      <strong>Page translation · 就地翻译</strong><br />
       Read supported webpages with bilingual translation in place.
     </td>
     <td width="50%">
       <img src="store/screenshots/02-selection-toolbar.png" alt="Astra selection toolbar launch-candidate screenshot for translating highlighted text" />
       <br />
-      <strong>Save from the page</strong><br />
+      <strong>Save from the page · 划词即存</strong><br />
       Translate, explain, and save selected text without leaving the current page.
     </td>
   </tr>
@@ -53,13 +60,13 @@ Astra 的产品方向是“用户只管读和复习”：不需要 API、不需�
     <td width="50%">
       <img src="store/screenshots/ui-parity-2026-05-13/production/review-card.png" alt="Astra review card for language learning follow-up" />
       <br />
-      <strong>Daily review</strong><br />
+      <strong>Daily review · 每日复习</strong><br />
       Turn saved expressions into lightweight review cards.
     </td>
     <td width="50%">
       <img src="store/screenshots/03-popup-control-center.png" alt="Astra browser extension popup control surface launch-candidate screenshot" />
       <br />
-      <strong>Zero-config control</strong><br />
+      <strong>Zero-config control · 零配置</strong><br />
       Astra keeps service details behind the scenes so ordinary users can just read.
     </td>
   </tr>
