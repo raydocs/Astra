@@ -101,7 +101,7 @@ Some compatibility builds omit optional permissions; feature behavior may be nar
 
 Astra is open source. You can review the source code at:
 
-https://github.com/nicepkg/astra
+https://github.com/raydocs/Astra
 
 ## Contact
 
