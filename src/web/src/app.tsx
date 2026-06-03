@@ -1406,7 +1406,7 @@ function WorkspaceCertificationRouteCard(props: {
 
 function WorkspaceSurfacesCertificationPage() {
   return (
-    <main className="workspace-surfaces-cert-page" aria-label="Astra workspace surfaces certification plate">
+    <main id="main" className="workspace-surfaces-cert-page" aria-label="Astra workspace surfaces certification plate">
       <section className="workspace-surfaces-cert-hero">
         <div className="workspace-cert-eyebrow">Q · Workspace surfaces · files · video · assets</div>
         <h1>The Library row template, four ways.</h1>
@@ -2722,7 +2722,7 @@ export function AstraWebApp() {
         <ExtensionOnlyCard />
       </aside>
 
-      <main className="main-panel">
+      <main id="main" className="main-panel">
         <header className="topbar workspace-topbar">
           <div>
             <div className="eyebrow">Quiet Reader workspace</div>
@@ -2970,7 +2970,7 @@ export function AstraWebApp() {
 function PublicLandingCertificationPage() {
   return (
     <div className="public-site public-site--landing-cert">
-      <main className="landing-cert-canvas" aria-label="Astra landing certification diagnostic">
+      <main id="main" className="landing-cert-canvas" aria-label="Astra landing certification diagnostic">
         <section className="landing-cert-header">
           <h1>What&apos;s broken on the current page</h1>
           <p>Side-by-side annotation. The current state is on the left; the corresponding fix is on the right.</p>
@@ -3084,11 +3084,11 @@ function PublicIntentPage(props: {
         </div>
       )}
 
-      <main>
+      <main id="main">
         <section className="public-hero">
           <div className="public-hero-copy">
             <div className="eyebrow">{props.page.eyebrow}</div>
-            <h1>{props.page.title}</h1>
+            <h1 className="font-display-zh">{props.page.title}</h1>
             <p>{props.page.copy}</p>
             <div className="hero-actions">
               <button type="button" className="button primary large-button" onClick={() => void startFree()} disabled={isBusy}>
@@ -3239,11 +3239,11 @@ function PublicLandingPage(props: {
         </div>
       )}
 
-      <main>
+      <main id="main">
         <section className="public-hero">
           <div className="public-hero-copy">
             <div className="eyebrow">{heroEyebrow}</div>
-            <h1>{heroTitle}</h1>
+            <h1 className="font-display-zh">{heroTitle}</h1>
             <p>{heroCopy}</p>
             <div className="hero-actions">
               <button type="button" className="button primary large-button" onClick={() => void startFree()} disabled={isBusy}>
@@ -3468,7 +3468,7 @@ function PublicSignInPage(props: {
         </div>
       )}
 
-      <main className="public-signin-main">
+      <main id="main" className="public-signin-main">
         <section className="public-signin-card" aria-label="Astra sign in">
           <div className="signin-card-brand">
             <span aria-hidden="true">✣</span>

@@ -1,0 +1,22 @@
+/* =============================================================================
+   astra-fonts-zh.css — Chinese-first webfont layer
+   -----------------------------------------------------------------------------
+   Local-only preview layer: LXGW WenKai leads CJK body/serif stacks when it is
+   installed locally; Smiley Sans is an opt-in fashion display face via
+   `.font-display-zh` when available.
+
+   Production note: self-host + subset these fonts before launch if the exact
+   brand look is required. This file intentionally avoids third-party font CDNs.
+   The existing Latin faces remain first for Latin runs.
+   ========================================================================== */
+
+:root {
+  --astra-font: "Inter Tight", "LXGW WenKai", "Kaiti SC", "STKaiti", "PingFang SC", "Hiragino Sans GB", system-ui, sans-serif;
+  --astra-font-serif: "Source Serif 4", "LXGW WenKai", "Kaiti SC", "Songti SC", "Noto Serif SC", Georgia, serif;
+}
+
+.font-display-zh {
+  font-family: "Smiley Sans", "Inter Tight", "PingFang SC", system-ui, sans-serif !important;
+  font-style: oblique 8deg;
+  letter-spacing: -0.01em;
+}

@@ -29,4 +29,10 @@ describe("buildClozeFromSentence", () => {
   it("returns null when the word is absent from the sentence", () => {
     expect(buildClozeFromSentence("A sentence without the term.", "resilience")).toBeNull()
   })
+
+  it("blanks every occurrence so a repeated word is not given away", () => {
+    const cloze = buildClozeFromSentence("Run fast, then run again to run home.", "run")
+    expect(cloze?.prompt).toBe(`${CLOZE_BLANK} fast, then ${CLOZE_BLANK} again to ${CLOZE_BLANK} home.`)
+    expect(cloze?.answer).toBe("Run")
+  })
 })

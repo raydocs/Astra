@@ -120,13 +120,14 @@ export function isAdvancedOptionSection(section: Section): boolean {
 }
 
 /**
- * The advanced flag is OFF by default and enabled only by an explicit
- * `?advanced=1|true|on` query flag on the options URL. Ordinary beta users
- * never add it, so provider/model surfaces stay off the default path. Accepts
- * an explicit search string for deterministic testing; falls back to the live
- * location when omitted.
+ * The advanced flag is OFF by default. A power user can opt in either via the
+ * explicit `?advanced=1|true|on` query flag OR a persisted preference (the opt-in
+ * toggle). Ordinary beta users set neither, so provider/model surfaces stay off
+ * the default path. Accepts an explicit search string + persisted opt-in for
+ * deterministic testing; falls back to the live location when omitted.
  */
-export function isOptionsAdvancedEnabled(search?: string): boolean {
+export function isOptionsAdvancedEnabled(search?: string, persistedOptIn?: boolean): boolean {
+  if (persistedOptIn === true) return true
   let raw = search
   if (raw === undefined) {
     raw = typeof window !== "undefined" ? window.location.search : ""

@@ -40,6 +40,8 @@ For the canonical source-priority/default-read vs generated/runtime classificati
 - **Extension-loaded live scenarios** (`bench-live/site-automation-autostart`, onboarding, vocabulary smoke, etc.) launch Chromium with `--load-extension`. They resolve the browser via `script/bench-live/driver.ts`, preferring **Playwright’s Chromium** (`chromium.executablePath()`) when installed. If that binary is missing, the driver falls back to system **Google Chrome**, which often returns **`net::ERR_BLOCKED_BY_CLIENT`** on `chrome-extension://…` URLs used to seed `chrome.storage` — not an extension logic bug. Fix: run `npx playwright install chromium` once per machine/CI image. In **`CI=true`**, the driver also avoids Playwright’s `channel: "chrome"` for the same reason.
 - **Safari extension CI is a sync gate, not an independent source tree.** Any PR that changes extension assets, entrypoints, public locales, CSS, or bundled UI can make `build-extension (safari)` fail with `[astra-ios] Safari build output is out of sync with committed extension resources`. Do **not** hand-edit `ios/AstraShell Extension/Resources`. If the Safari check fails for sync only, run:
 
+  Run `pnpm check:safari-sync-needed` before pushing extension-affecting changes. This guard is part of `pnpm lint:ci`; it fails early when a PR changes Safari build inputs without also including the synced iOS resource snapshot.
+
 ```bash
 pnpm build:safari
 pnpm ios:sync-extension

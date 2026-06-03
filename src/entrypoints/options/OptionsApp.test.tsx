@@ -633,6 +633,23 @@ describe("OptionsApp — Sites section", () => {
     expect(container.querySelector(".astra-settings-rows")).not.toBeNull()
     expect(container.querySelector(".astra-settings-segmented")).not.toBeNull()
     expect(container.querySelector(".astra-settings-preview")).not.toBeNull()
+    expect(container.querySelector('[data-testid="advanced-controls-optin"]')).toBeNull()
+    expect(container.textContent).not.toContain("Advanced provider controls")
+    expect(container.textContent).not.toContain("API key")
+  })
+
+  it("shows the advanced provider opt-in only on the explicit advanced path", async () => {
+    await act(async () => {
+      root.unmount()
+      window.history.replaceState(null, "", "/options.html?advanced=1&section=translation")
+      root = ReactDOM.createRoot(container)
+      root.render(<OptionsApp />)
+      await Promise.resolve()
+      await Promise.resolve()
+    })
+
+    expect(container.querySelector('[data-testid="advanced-controls-optin"]')).toBeTruthy()
+    expect(container.textContent).toContain("Advanced provider controls")
   })
 
   it("shows Astra AI as automatic instead of exposing engine configuration", async () => {

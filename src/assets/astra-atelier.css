@@ -1,0 +1,68 @@
+/* =============================================================================
+   astra-atelier.css — Atelier night theme for Astra Web
+   -----------------------------------------------------------------------------
+   Upgrades the existing dark mode into a warmer editorial night palette:
+   deep chocolate surfaces + rationed champagne-gold accent. This is an additive
+   layer over the shared Style 1 primitives; light mode is intentionally untouched.
+   ========================================================================== */
+
+[data-astra-theme="dark"] {
+  /* Surfaces: chocolate-trunk espresso, warm not cool. */
+  --astra-style-bg-app: #17100a;
+  --astra-style-bg-surface: #1f160d;
+  --astra-style-bg-elevated: #281c11;
+  --astra-style-bg-subtle: #1a1209;
+  --astra-style-bg-hover: #281c11;
+  --astra-style-bg-input: #1a1209;
+
+  /* Ink → champagne cream text. */
+  --astra-style-text-primary: #efe4cd;
+  --astra-style-text-secondary: #c0ad8b;
+  --astra-style-text-muted: #8c7a5c;
+  --astra-style-text-inverse: #17100a;
+
+  /* Hairline gold-warmed borders. */
+  --astra-style-border-subtle: #3a2a18;
+  --astra-style-border-strong: #513a20;
+
+  /* Accent = antique champagne gold. */
+  --astra-style-accent-primary: #cca767;
+  --astra-style-accent-primary-hover: #ddbf87;
+  --astra-style-accent-border: #5a4322;
+  --astra-style-accent-muted: #2b2012;
+  --astra-style-accent-warm: #cca767;
+  --astra-style-hl: #2a1d0f;
+
+  /* Status colors warmed for the dark canvas. */
+  --astra-style-success: #6fae84;
+  --astra-style-success-bg: #14241a;
+  --astra-style-success-border: #2c4321;
+  --astra-style-warning: #d9a25a;
+  --astra-style-warning-bg: #2a1c0d;
+  --astra-style-warning-border: #4a3216;
+  --astra-style-danger: #d98a76;
+  --astra-style-danger-bg: #2a1410;
+  --astra-style-danger-border: #4a261c;
+
+  /* Elevation: black-based on dark. */
+  --astra-style-shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.5), 0 1px 2px -1px rgba(0, 0, 0, 0.45);
+  --astra-style-shadow-md: 0 4px 14px -2px rgba(0, 0, 0, 0.55);
+  --astra-style-shadow-lg: 0 16px 40px -10px rgba(0, 0, 0, 0.65);
+
+  /* Focus ring uses the gold accent. */
+  --astra-style-focus-ring: 0 0 0 2px var(--astra-style-bg-surface), 0 0 0 4px #cca767;
+
+  /* Text on the gold accent must be dark. */
+  --web-on-accent: #17100a;
+  --label-inverse: #17100a;
+
+  color-scheme: dark;
+}
+
+/* Optional couture flourish: a hairline champagne rule on the public mock cards. */
+[data-astra-theme="dark"] .public-browser-mock,
+[data-astra-theme="dark"] .public-signin-card {
+  box-shadow:
+    0 26px 80px rgba(0, 0, 0, 0.6),
+    inset 0 0 0 1px color-mix(in srgb, #cca767 30%, transparent);
+}

@@ -508,6 +508,22 @@
   "vocabulary_exportAnkiTsv": {
     "message": "Export Anki TSV"
   },
+  "vocabulary_exportDeck": {
+    "message": "Share deck"
+  },
+  "vocabulary_importDeck": {
+    "message": "Import shared deck"
+  },
+  "vocabulary_deckImported": {
+    "message": "Added $1, skipped $2 already saved.",
+    "placeholders": {
+      "1": { "content": "$1" },
+      "2": { "content": "$2" }
+    }
+  },
+  "vocabulary_deckImportError": {
+    "message": "That file isn't a valid Astra deck."
+  },
   "vocabulary_emptySearch": {
     "message": "No words match your search."
   },
