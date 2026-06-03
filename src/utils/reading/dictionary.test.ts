@@ -98,4 +98,13 @@ describe("dictionary lookup", () => {
     expect(lookupInLexicon(asset, "mice")).toEqual(lookupInLexicon(asset, "mouse"))
     expect(lookupInLexicon(asset, "ran")).toEqual(lookupInLexicon(asset, "run"))
   })
+
+  it("stores pronunciations as real IPA (no Cyrillic schwa or ASCII stress marks)", () => {
+    const asset = JSON.parse(readFileSync(resolve(process.cwd(), "public/dictionary/en-zh-common.json"), "utf8")) as PackagedLexicon
+    expect(lookupInLexicon(asset, "resilience")?.ipa).toBe("riˈziliəns")
+    expect(lookupInLexicon(asset, "the")?.ipa).toBe("ðə")
+    // No raw apostrophe/comma stress markers or Cyrillic schwa remain anywhere.
+    const offenders = Object.values(asset.entries).filter((entry) => /[',әӘ]/.test(entry.ipa))
+    expect(offenders).toHaveLength(0)
+  })
 })
