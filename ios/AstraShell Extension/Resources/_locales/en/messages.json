@@ -116,6 +116,9 @@
   "wordAnnotationDictNote": {
     "message": "Dictionary meaning · AI explains the context"
   },
+  "wordAnnotationDictNoteSimple": {
+    "message": "Dictionary meaning"
+  },
   "knownWordTitle": {
     "message": "Already in your comfort zone"
   },

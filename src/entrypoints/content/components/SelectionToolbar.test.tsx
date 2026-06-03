@@ -463,6 +463,62 @@ describe("SelectionToolbar interaction suppression", () => {
     expect(shadow.querySelector('[data-testid="word-annotation-source"]')?.textContent).toBe(t("wordAnnotationAiNote"))
   })
 
+  it("shows the full dictionary provenance note when the model supplied context", async () => {
+    isLexicalCandidateMock.mockReturnValue(true)
+    generateWordAnnotationMock.mockResolvedValueOnce({
+      word: "resilience",
+      pronunciation: "/rɪˈzɪliəns/",
+      partOfSpeech: "noun",
+      meaning: "韧性",
+      shortExplanation: "在这句话里指从挫折中恢复。",
+      source: "dictionary",
+    })
+    const target = document.getElementById("target") as HTMLElement
+
+    await triggerDocumentMouseDown(target)
+    setSelection("resilience")
+    await triggerDocumentMouseUp(target)
+
+    await act(async () => {
+      await Promise.resolve()
+      await Promise.resolve()
+      await Promise.resolve()
+    })
+
+    const shadow = document.getElementById(HOST_ID)!.shadowRoot!
+    expect(shadow.querySelector('[data-testid="word-annotation-source"]')?.textContent).toBe(t("wordAnnotationDictNote"))
+  })
+
+  it("shows a plain dictionary note (no AI-context claim) on a dictionary-only fallback", async () => {
+    isLexicalCandidateMock.mockReturnValue(true)
+    // AI failed, so the annotation is dictionary-only: verified meaning, no context.
+    generateWordAnnotationMock.mockResolvedValueOnce({
+      word: "resilience",
+      pronunciation: "/rɪˈzɪliəns/",
+      partOfSpeech: "",
+      meaning: "韧性",
+      shortExplanation: "",
+      source: "dictionary",
+    })
+    const target = document.getElementById("target") as HTMLElement
+
+    await triggerDocumentMouseDown(target)
+    setSelection("resilience")
+    await triggerDocumentMouseUp(target)
+
+    await act(async () => {
+      await Promise.resolve()
+      await Promise.resolve()
+      await Promise.resolve()
+    })
+
+    const shadow = document.getElementById(HOST_ID)!.shadowRoot!
+    const sourceNote = shadow.querySelector('[data-testid="word-annotation-source"]')
+    expect(sourceNote?.textContent).toBe(t("wordAnnotationDictNoteSimple"))
+    // Must not claim the model explained the context when it did not.
+    expect(sourceNote?.textContent).not.toContain("AI")
+  })
+
   it("does not auto-generate detailed explanations for mastered saved words", async () => {
     isLexicalCandidateMock.mockReturnValue(true)
     hasVocabularyEntryByTextMock.mockResolvedValue(true)
