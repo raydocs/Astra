@@ -41,7 +41,7 @@ jobs:
       ASTRA_WEEKLY_DIGEST_DELIVERY_NOW: ${{ github.event_name == 'workflow_dispatch' && inputs.now || '' }}
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
 
       - name: Setup pnpm
         uses: pnpm/action-setup@v6
