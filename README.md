@@ -1,234 +1,109 @@
 <p align="center">
-  <img src="store/brand/astra-banner.png" alt="Astra — 零配置双语阅读室。读你所爱,顺手学会 English。" width="900" />
+  <img src="assets/readme/hero.svg" alt="Astra turns everyday web, video, and document reading into a read, understand, save, and review loop" width="100%" />
 </p>
 
-<h1 align="center">✦ Astra</h1>
+# Astra
+
+**读你所爱，顺手学会 English。** Astra 是一款以浏览器扩展为主的语言学习工具：在真实网页、受支持的视频和文档里双语阅读，把有用的词句连同来源上下文保存下来，再回到 Review 复习。
+
+它不是模型控制台，也不要求普通用户配置 API。默认产品路径由 Astra 管理翻译与解释服务；本地 relay 是开发者 / 自托管入口。
+
+## 先看实际界面
 
 <p align="center">
-  <strong>读你所爱,顺手学会 English。</strong><br />
-  把你每天在读的网页和视频,变成双语阅读、生词收藏与每日复习 —— 无需配置 API。<br />
-  <sub><strong>Learn from the English you already read and watch.</strong> Bilingual reading, saved expressions, and daily review — no API setup required.</sub>
+  <img src="store/screenshots/01-page-translation.png" alt="Astra 在网页中就地显示双语段落" width="49%" />
+  <img src="store/screenshots/02-selection-toolbar.png" alt="Astra 划词工具条提供翻译、解释和保存操作" width="49%" />
 </p>
-
 <p align="center">
-  <a href="docs/product-roadmap.md">Roadmap</a> ·
-  <a href="docs/investigations/support-matrix-2026-q2.md">Support Matrix</a> ·
-  <a href="docs/capability-matrix-v2.md">Capability Matrix</a> ·
-  <a href="docs/README.md">Docs</a>
+  <img src="store/screenshots/ui-parity-2026-05-13/production/review-card.png" alt="Astra Review 复习卡保留原始上下文" width="49%" />
+  <img src="store/screenshots/03-popup-control-center.png" alt="Astra 扩展弹窗控制当前页面阅读体验" width="49%" />
 </p>
 
-<p align="center">
-  <img alt="Extension-first WXT" src="https://img.shields.io/badge/extension--first-WXT-BD8A0F?style=flat-square&labelColor=1A1814" />
-  <img alt="Chromium supported" src="https://img.shields.io/badge/Chromium-supported-2F7D52?style=flat-square&labelColor=1A1814" />
-  <img alt="Firefox and Safari beta" src="https://img.shields.io/badge/Firefox%20%2F%20Safari-beta-C2620C?style=flat-square&labelColor=1A1814" />
-  <img alt="TypeScript React + WXT" src="https://img.shields.io/badge/TypeScript-React%20%2B%20WXT-3D352B?style=flat-square&labelColor=1A1814" />
-  <img alt="License MIT" src="https://img.shields.io/badge/license-MIT-826A3A?style=flat-square&labelColor=1A1814" />
-</p>
+## 一条完整的学习链
 
-<p align="center">
-  <sub>零配置学习层,不是模型控制台,也不是又一个整页翻译器。</sub>
-</p>
-
----
-
-Astra is not a model-control panel or another page translator. It is a zero-config learning layer: read a real page, save useful words and sentences, and review them later with source context attached.
-
-Astra 的产品方向是“用户只管读和复习”：不需要 API、不需要配置模型，只把网页和受支持视频里的真实表达沉淀为可复习的学习资产。
-
-## Preview
-
-<p align="center">
-  <img src="store/screenshots/00-github-page-landing.png" alt="Astra public landing page showing zero-config bilingual reading and review loop" width="840" />
-</p>
-
-<table>
-  <tr>
-    <td width="50%">
-      <img src="store/screenshots/01-page-translation.png" alt="Astra page translation launch-candidate screenshot" />
-      <br />
-      <strong>Page translation · 就地翻译</strong><br />
-      Read supported webpages with bilingual translation in place.
-    </td>
-    <td width="50%">
-      <img src="store/screenshots/02-selection-toolbar.png" alt="Astra selection toolbar launch-candidate screenshot for translating highlighted text" />
-      <br />
-      <strong>Save from the page · 划词即存</strong><br />
-      Translate, explain, and save selected text without leaving the current page.
-    </td>
-  </tr>
-  <tr>
-    <td width="50%">
-      <img src="store/screenshots/ui-parity-2026-05-13/production/review-card.png" alt="Astra review card for language learning follow-up" />
-      <br />
-      <strong>Daily review · 每日复习</strong><br />
-      Turn saved expressions into lightweight review cards.
-    </td>
-    <td width="50%">
-      <img src="store/screenshots/03-popup-control-center.png" alt="Astra browser extension popup control surface launch-candidate screenshot" />
-      <br />
-      <strong>Zero-config control · 零配置</strong><br />
-      Astra keeps service details behind the scenes so ordinary users can just read.
-    </td>
-  </tr>
-</table>
-
-> Screenshot set uses root-level launch-candidate artifacts in `store/screenshots/`. `00-github-page-landing.png` is captured from the current Astra Web landing page at 1280×800; older parity captures are documented in `store/screenshots/README.md`.
-
-## Why Astra
-
-Most translation tools optimize for one moment: turn unreadable text into readable text.
-
-Astra optimizes a longer loop:
-
-1. **Read** — make real web pages understandable without breaking the page.
-2. **Explain** — preserve enough context to understand why a translation means what it means.
-3. **Save** — turn useful words, sentences, and reading moments into learning assets.
-4. **Review** — connect daily browsing with lightweight long-term memory.
-
-这也是为什么 Astra 先从浏览器插件切入：语言学习最缺的不是另一个课程入口，而是每天自然发生、低摩擦、真实上下文里的输入。
-
-## What works today
-
-Current high-confidence surfaces:
-
-- **Page translation** — progressive batching, viewport priority, conservative DOM handling.
-- **Bilingual / translation-only reading** — switch between study mode and fluent reading.
-- **Selection toolbar** — translate and explain selected text in context.
-- **Hover translation** — configurable trigger behavior for lower-interruption reading.
-- **Input translation** — assist expression in everyday input fields.
-- **Article mode** — prioritize main content and reduce noisy page regions.
-- **Site rules** — enable/disable, auto-translate, target language, hover behavior, scope, and presentation style per site.
-- **Subtitle translation (YouTube)** — proof-backed YouTube subtitle + transcript path: bilingual subtitles, seek-recovery, track-switch, click-to-jump, and save-a-line/word to Review with a click-to-replay timestamp. **YouTube is the only claimed video platform for the paid beta.** Other adapters (Bilibili, etc.) remain code-present but are not claimed, gated, or tested for beta. Transcript file export (bilingual / SRT / notes download) is intentionally not offered — Astra keeps source content in Review, not redistributed as files.
-- **Controlled reader/file workflows** — PDF, EPUB, and SRT/VTT subtitle-file readers have proof-backed intake/reader lanes and in-reader confidence labels; ASS/Markdown/TXT/HTML parser support is opportunistic.
-- **Astra-managed AI access** — users choose a reading style and target language; Astra handles service details behind the scenes.
-
-Evolving surfaces:
-
-- broader owned-reading reopen and cross-device document continuity
-- vocabulary and review loop
-- web companion workspace
-- cross-surface continuity and sync
-- Safari/iOS packaging path
-
-For deeper status, use the [capability matrix](docs/capability-matrix-v2.md). It is evidence context, not a release-claim override.
-
-## Platform support
-
-| Platform | Status | Notes |
+| 阶段 | Astra 做什么 | 代码 / 证据入口 |
 | --- | --- | --- |
-| Chrome / Chromium | Supported primary path | Main development and validation target. |
-| Firefox | Beta | Build and validation path exists; not equal maturity with Chromium. |
-| Desktop Safari | Beta | Safari extension packaging path exists. |
-| iOS Safari shell | Experimental | Host shell exists, but this is not full mobile product parity. |
+| Read | 网页就地翻译、双语 / 仅译文、文章模式、站点规则 | `src/entrypoints/content/` |
+| Understand | 划词与悬停解释，保留当前页面语境 | `src/entrypoints/content/`、`src/utils/providers/` |
+| Save | 保存词语、句子和来源信息 | `src/utils/storage/vocabulary*.ts` |
+| Review | 在 Review 中复习，重新连接原文上下文 | `src/entrypoints/vocabulary/`、`src/web/` |
 
-**Video learning (paid beta scope):** YouTube only, proof-gated (`bench:live:lane:beta-proof`). Other video platforms are code-present but not claimed, not gated, and not in scope. No transcript file export.
+当前有证明链的扩展面包括网页阅读、YouTube 字幕学习，以及 PDF、EPUB、SRT / VTT reader。其它视频适配器和更宽的文件格式即使代码存在，也不等于当前产品承诺；以 [支持矩阵](docs/investigations/support-matrix-2026-q2.md) 为准。
 
-Canonical support boundaries live in [`docs/investigations/support-matrix-2026-q2.md`](docs/investigations/support-matrix-2026-q2.md).
+## 平台边界
 
-## Privacy and AI boundary
+| 平台 | 当前定位 |
+| --- | --- |
+| Chrome / Chromium | 主要开发与验证路径 |
+| Firefox | Beta 构建路径 |
+| Desktop Safari | Beta 打包路径 |
+| iOS Safari shell | Experimental；不代表完整移动端对等 |
 
-Astra translation and explanation requests are processed by Astra-managed AI services in the default product flow. Local development and self-hosted deployments can point the extension at their own trusted backend, but that is an operator/developer setup detail rather than an end-user requirement.
+## 本地开发
 
-Important boundaries:
-
-- Translation content can leave the device for translation or explanation.
-- `privacyMode` means request-context sanitization; it is not a promise of local-only AI processing.
-- If you self-host or use a development backend, its base URL is part of your trust boundary and should point to infrastructure you control or explicitly trust.
-
-Detailed privacy and operator caveats are tracked in [`docs/investigations/month-6-privacy-routing-failure-inventory-2026-04-14.md`](docs/investigations/month-6-privacy-routing-failure-inventory-2026-04-14.md).
-
-## Quick Start
-
-Requires Node 22 and pnpm 10.
+需要 **Node.js 22+** 与 **pnpm 10+**。
 
 ```bash
 pnpm install
-
-# Chrome / Chromium extension dev
 pnpm dev
+```
 
-# Production extension build
+WXT 启动后，按终端提示加载开发扩展。生产构建：
+
+```bash
 pnpm build
+# Chromium 产物：.output/chrome-mv3/
+```
 
-# Firefox build
+其它真实入口：
+
+```bash
+pnpm dev:web          # Web companion，默认 4173
+pnpm relay:start      # 本地 relay，默认 8787
 pnpm build:firefox
-
-# Desktop Safari build / dev
 pnpm build:safari
-pnpm dev:safari
-
-# Prepare iOS Safari shell resources
-pnpm ios:prepare
-
-# Developer/operator only: local relay server
-pnpm relay:start
-
-# Web companion
-pnpm dev:web
-pnpm build:web
-
-# Repository guardrail and validation
-pnpm check:repo-knowledge
-pnpm type-check
-pnpm lint
-pnpm test
 ```
 
-Load the Chromium build from `.output/chrome-mv3/` as an unpacked extension.
+Relay **只读取进程环境变量**，不会自动加载 `src/server/.env`。如需本地 provider key，请先导出变量再启动；详见 [`docs/relay-server.md`](docs/relay-server.md)。
 
-For normal extension use, Astra presents a managed AI service path rather than asking users to configure providers or models. Developer/operator setup for the local relay is documented in [`docs/relay-server.md`](docs/relay-server.md) and [`src/server/.env.example`](src/server/.env.example).
-
-## Architecture
-
-Astra is organized around stable, indexable repo knowledge:
-
-```text
-src/      product/runtime source
-script/   maintenance, benchmark, and optimizer scripts
-docs/     source of truth for repo knowledge and planning
-data/     generated/runtime/reference outputs
-```
-
-Current product surfaces:
-
-```text
-src/entrypoints/       WXT extension entrypoints
-src/utils/             extension runtime utilities
-src/components/        shared extension UI pieces
-src/server/            Astra relay server
-src/web/               React/Vite web companion
-src/platform/          Cloudflare and relay-lite platform code
-script/maintenance/    repo checks and maintenance scripts
-script/bench*/         deterministic, live, and optimizer harnesses
-```
-
-The repo knowledge guardrail rejects tracked files drifting back into legacy top-level roots:
+## 验证
 
 ```bash
 pnpm check:repo-knowledge
+pnpm type-check
+pnpm lint:ci
+pnpm test
+pnpm build
 ```
 
-## Roadmap
+扩展加载型 live bench 还需要 Playwright Chromium；发布验证入口是：
 
-- **Now: daily-use translation** — stable page translation, low-interruption interactions, article mode, site rules, and managed Astra AI access.
-- **Now: proof-backed learning loop** — save useful words/sentences, preserve context, and review them from Vocabulary/Review.
-- **Now: proof-backed reader/video surfaces** — PDF, EPUB, SRT/VTT subtitle-file, and YouTube learning-workspace proof lanes exist; broader platform and document-format claims (including ASS/Markdown/TXT/HTML parser convenience paths) stay scoped by the support matrix.
-- **Next: ecosystem maturity** — browser, reading, video, vocabulary, progress, sync, and future subscription surfaces connected into one product after the required billing/legal work is complete.
+```bash
+pnpm build
+npx playwright install chromium
+pnpm bench:live:lane:release-proof
+```
 
-See [`docs/product-roadmap.md`](docs/product-roadmap.md) for the fuller direction.
+## 隐私边界
 
-## Contributing
+- 翻译与解释内容可能离开设备并由 Astra 管理的 AI 服务处理。
+- `privacyMode` 是请求上下文清理，不是“纯本地 AI”承诺。
+- 自托管 backend URL 属于你的信任边界，只应指向你控制或明确信任的服务。
 
-Astra is a language-learning product, not a generic model-control panel. Before proposing broad product changes, read:
+## 仓库地图
 
-- [`docs/README.md`](docs/README.md)
-- [`docs/product-roadmap.md`](docs/product-roadmap.md)
-- [`docs/investigations/support-matrix-2026-q2.md`](docs/investigations/support-matrix-2026-q2.md)
-- [`docs/capability-matrix-v2.md`](docs/capability-matrix-v2.md)
-- [`docs/bench-harness.md`](docs/bench-harness.md)
-- [`docs/relay-server.md`](docs/relay-server.md)
-- [`ios/README.md`](ios/README.md)
+```text
+src/entrypoints/   浏览器扩展入口
+src/utils/         provider、缓存、配置与学习数据
+src/server/        Node relay
+src/web/           React / Vite companion
+src/platform/      Cloudflare / relay-lite
+script/            维护、bench 与 release proof
+apps/mobile/       移动端实验面
+```
+
+进一步阅读：[Docs](docs/README.md) · [Capability Matrix](docs/capability-matrix-v2.md) · [Product Roadmap](docs/product-roadmap.md) · [iOS / Safari](ios/README.md)
 
 ## License
 
-MIT
+仓库当前未包含顶层 license 文件；在明确复用或分发条款前，请先向维护者确认。
